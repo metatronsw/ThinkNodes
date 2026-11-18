@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "title": "Jegyzetek",
+  "nodes": [
+    {
+      "id": "kovetkezo",
+      "title": "Következő megbeszélés",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "width": 222,
+      "height": 84,
+      "shape": "rounded",
+      "fill": "#e2eaff",
+      "border": "#839be0",
+      "textColor": "#182335",
+      "fontSize": 16,
+      "bold": true,
+      "alignment": "center",
+      "markdown": "## Napirend\n\n- Ötletek áttekintése\n- Első próba kijelölése"
+    }
+  ],
+  "edges": []
+}

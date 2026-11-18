@@ -1,0 +1,7 @@
+.build/
+.swiftpm/
+Public/vendor/
+Data/.users.json
+Data/.trash/
+.DS_Store
+Data/.settings.json

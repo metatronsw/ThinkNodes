@@ -1,0 +1,12 @@
+diff --git a/Sources/AsyncHTTPClient/NIOTransportServices/NWErrorHandler.swift b/Sources/AsyncHTTPClient/NIOTransportServices/NWErrorHandler.swift
+--- a/Sources/AsyncHTTPClient/NIOTransportServices/NWErrorHandler.swift
++++ b/Sources/AsyncHTTPClient/NIOTransportServices/NWErrorHandler.swift
+@@ -23,7 +23,7 @@
+ extension HTTPClient {
+     #if canImport(Network)
+     /// A wrapper for `POSIX` errors thrown by `Network.framework`.
+-    public struct NWPOSIXError: Error, CustomStringConvertible {
++    public struct NWPOSIXError: Error, CustomStringConvertible, @unchecked Sendable {
+         /// POSIX error code (enum)
+         public let errorCode: POSIXErrorCode
+ 

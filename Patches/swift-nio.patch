@@ -1,0 +1,15 @@
+diff --git a/Sources/NIOEmbedded/AsyncTestingEventLoop.swift b/Sources/NIOEmbedded/AsyncTestingEventLoop.swift
+--- a/Sources/NIOEmbedded/AsyncTestingEventLoop.swift
++++ b/Sources/NIOEmbedded/AsyncTestingEventLoop.swift
+@@ -15,11 +15,7 @@
+ #if canImport(Dispatch)
+ import Atomics
+ 
+-#if canImport(Darwin)
+-import Dispatch
+-#else
+ @preconcurrency import Dispatch
+-#endif
+ 
+ import NIOConcurrencyHelpers
+ import NIOCore

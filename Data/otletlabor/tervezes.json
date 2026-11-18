@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "title": "Közös ötletlabor",
+  "nodes": [
+    {
+      "id": "otlet",
+      "title": "Közös ötlet",
+      "position": {
+        "x": -250,
+        "y": -55
+      },
+      "width": 162,
+      "height": 75,
+      "shape": "rounded",
+      "fill": "#e2eaff",
+      "border": "#839be0",
+      "textColor": "#182335",
+      "fontSize": 16,
+      "bold": true,
+      "alignment": "center",
+      "markdown": "## Kiindulópont\n\nMit szeretnénk együtt megoldani?\n\n- Gyűjtsük össze az ötleteket.\n- Jelöljük a függőségeket."
+    },
+    {
+      "id": "kerdes",
+      "title": "Kipróbálható?",
+      "position": {
+        "x": 0,
+        "y": -55
+      },
+      "width": 168,
+      "height": 112,
+      "shape": "diamond",
+      "fill": "#fff0c7",
+      "border": "#d4a750",
+      "textColor": "#182335",
+      "fontSize": 15,
+      "bold": true,
+      "alignment": "center",
+      "markdown": "## Döntés\n\nFogalmazzunk meg **egy ellenőrizhető feltevést**."
+    },
+    {
+      "id": "proba",
+      "title": "Első próba",
+      "position": {
+        "x": 255,
+        "y": -55
+      },
+      "width": 167,
+      "height": 76,
+      "shape": "rounded",
+      "fill": "#d7f1e8",
+      "border": "#76b8a4",
+      "textColor": "#182335",
+      "fontSize": 16,
+      "bold": true,
+      "alignment": "center",
+      "markdown": "## Feladat\n\nKészítsünk egy egyszerű prototípust."
+    },
+    {
+      "id": "tanulsag",
+      "title": "Tanulságok",
+      "position": {
+        "x": 255,
+        "y": 130
+      },
+      "width": 164,
+      "height": 78,
+      "shape": "ellipse",
+      "fill": "#f0e4fb",
+      "border": "#ae92ca",
+      "textColor": "#182335",
+      "fontSize": 16,
+      "bold": true,
+      "alignment": "center",
+      "markdown": "Jegyezzük fel, mi működött, és mi igényel további munkát."
+    },
+    {
+      "id": "visszajelzes",
+      "title": "Visszajelzés",
+      "position": {
+        "x": -125,
+        "y": 130
+      },
+      "width": 172,
+      "height": 72,
+      "shape": "rectangle",
+      "fill": "#ffe4ec",
+      "border": "#ce99ab",
+      "textColor": "#182335",
+      "fontSize": 16,
+      "bold": true,
+      "alignment": "center",
+      "markdown": "## Kérdés a csapathoz\n\nMelyik lépést egyszerűsíthetjük?"
+    }
+  ],
+  "edges": [
+    {
+      "id": "otlettol",
+      "source": "otlet",
+      "target": {
+        "node": "kerdes"
+      },
+      "style": "arrow"
+    },
+    {
+      "id": "dontes",
+      "source": "kerdes",
+      "target": {
+        "node": "proba"
+      },
+      "style": "arrow"
+    },
+    {
+      "id": "tanulas",
+      "source": "proba",
+      "target": {
+        "node": "tanulsag"
+      },
+      "style": "both"
+    },
+    {
+      "id": "visszacsatolas",
+      "source": "tanulsag",
+      "target": {
+        "node": "visszajelzes"
+      },
+      "style": "rope"
+    },
+    {
+      "id": "nyitott",
+      "source": "visszajelzes",
+      "target": {
+        "point": {
+          "x": -300,
+          "y": 159
+        }
+      },
+      "style": "dashed"
+    }
+  ]
+}
