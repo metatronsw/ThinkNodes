@@ -1,0 +1,54 @@
+{
+  "creator" : "admin",
+  "edges" : [
+    {
+      "endArrow" : true,
+      "id" : "6f67ac8d2c01f2b6f51e5eab308b44a9",
+      "source" : "9a6ba5ea6d9ea4679b28f94e49bab868",
+      "style" : "arrow",
+      "target" : {
+        "point" : {
+          "x" : -151.5,
+          "y" : -174.5
+        }
+      }
+    },
+    {
+      "endArrow" : true,
+      "id" : "4afaff6377f6af5bd9564d6f0eba1712",
+      "source" : "9a6ba5ea6d9ea4679b28f94e49bab868",
+      "style" : "arrow",
+      "target" : {
+        "point" : {
+          "x" : -137.75,
+          "y" : -269.75
+        }
+      }
+    }
+  ],
+  "nodes" : [
+    {
+      "alignment" : "center",
+      "autoSize" : true,
+      "bold" : true,
+      "border" : "#839bbc",
+      "fill" : "#dce9ff",
+      "fontSize" : 16,
+      "height" : 80,
+      "hideText" : false,
+      "id" : "9a6ba5ea6d9ea4679b28f94e49bab868",
+      "position" : {
+        "x" : -323.14665243459308,
+        "y" : -159.15520922087995
+      },
+      "shape" : "rounded",
+      "text" : "",
+      "textColor" : "#182335",
+      "title" : "falatka",
+      "width" : 176
+    }
+  ],
+  "revision" : 20,
+  "schemaVersion" : 2,
+  "title" : "asd"
+}

@@ -70,7 +70,7 @@ export function rebaseWorksheet(base, local, remote) {
   return result;
 }
 
-export function liveConnection(path, csrf, onState, onError, {editing = false, onMotion, rate = 100} = {}) {
+export function liveConnection(path, csrf, onState, onError, {editing = false, onMotion, onCursor, rate = 100} = {}) {
   const client = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, "0")).join("");
   const headers = {"Content-Type": "application/json", "X-CSRF-Token": csrf, "X-Worksheet-Client": client};
   let controller;
@@ -79,15 +79,24 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
   let nextFrame = 0;
   let timer;
   let pending;
+  let cursorPoint;
+  function cursor(point) {
+    if (!onCursor) return;
+    cursorPoint = point;
+    if (socket?.readyState === 1) socket.send(JSON.stringify({mouse: true, point}));
+  }
   function openSocket() {
     if (socket || !onMotion || !window.WebSocket) return;
     const url = new URL("/api/motion/" + path, location.href);
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     const opened = socket = new WebSocket(url);
-    opened.onopen = () => opened.send(client);
-    opened.onmessage = event => { if (socket === opened) onMotion(JSON.parse(event.data)); };
+    opened.onopen = () => { opened.send(client); if (cursorPoint) cursor(cursorPoint); };
+    opened.onmessage = event => { if (socket !== opened) return;
+      const frame = JSON.parse(event.data);
+      if (frame.cursor) onCursor?.(frame);
+      else onMotion(frame); };
     opened.onclose = () => {
-      if (socket === opened) { socket = null; onMotion(null); }
+      if (socket === opened) { socket = null; onMotion(null); onCursor?.(null); }
     };
   }
   function sendPending() {
@@ -144,11 +153,13 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
     clearTimeout(timer);
     timer = null;
     pending = null;
+    cursorPoint = null;
+    onCursor?.(null);
     socket?.close();
     socket = null;
     request("leave", {}, {keepalive: true}).catch(() => {});
   }
-  return {client, start, stop, motion, endMotion, ping: target => request("ping", target), snapshot: () => request("poll", {editing}),
+  return {client, start, stop, cursor, motion, endMotion, ping: target => request("ping", target), snapshot: () => request("poll", {editing}),
     checkpoint: (action, revision, checkpointRevision) => request(action, {revision, checkpointRevision}),
     viewSelect: node => request("view-select", {node}),
     select: (node, edge) => request("select", {node, edge})};

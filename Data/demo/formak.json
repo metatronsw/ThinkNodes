@@ -1,6 +1,6 @@
 {
   "background" : "#fcf2df",
-  "comment" : "Kilenc igazítás, külső feliratok és automatikus méretezés.",
+
   "creator" : "admin",
   "edges" : [
 
@@ -22,8 +22,8 @@
       "fontSize" : 17,
       "height" : 92,
       "id" : "align-top-left",
-      "markdown" : "**Minta**",
-      "markdownStyle" : {
+      "text" : "**Minta**",
+      "textStyle" : {
         "alignment" : "left",
         "color" : "#825734",
         "italic" : true,
@@ -34,7 +34,7 @@
         "y" : -163
       },
       "shape" : "rectangle",
-      "showMarkdown" : true,
+      "hideText" : false,
       "textColor" : "#193744",
       "title" : "Felső bal",
       "verticalAlignment" : "top",
@@ -49,8 +49,8 @@
       "fontSize" : 17,
       "height" : 92,
       "id" : "align-top-center",
-      "markdown" : "**Minta**",
-      "markdownStyle" : {
+      "text" : "**Minta**",
+      "textStyle" : {
         "alignment" : "center",
         "color" : "#825734",
         "italic" : true,
@@ -61,7 +61,7 @@
         "y" : -158
       },
       "shape" : "rectangle",
-      "showMarkdown" : true,
+      "hideText" : false,
       "textColor" : "#193744",
       "title" : "Felső közép",
       "verticalAlignment" : "top",
@@ -76,8 +76,8 @@
       "fontSize" : 17,
       "height" : 92,
       "id" : "align-top-right",
-      "markdown" : "**Minta**",
-      "markdownStyle" : {
+      "text" : "**Minta**",
+      "textStyle" : {
         "alignment" : "right",
         "color" : "#825734",
         "italic" : true,
@@ -88,7 +88,7 @@
         "y" : -160
       },
       "shape" : "rectangle",
-      "showMarkdown" : true,
+      "hideText" : false,
       "textColor" : "#193744",
       "title" : "Felső jobb",
       "verticalAlignment" : "top",
@@ -103,8 +103,8 @@
       "fontSize" : 17,
       "height" : 92,
       "id" : "align-middle-left",
-      "markdown" : "**Minta**",
-      "markdownStyle" : {
+      "text" : "**Minta**",
+      "textStyle" : {
         "alignment" : "left",
         "color" : "#825734",
         "italic" : true,
@@ -115,7 +115,7 @@
         "y" : -38
       },
       "shape" : "rectangle",
-      "showMarkdown" : true,
+      "hideText" : false,
       "textColor" : "#193744",
       "title" : "Középső bal",
       "verticalAlignment" : "middle",
@@ -130,8 +130,8 @@
       "fontSize" : 17,
       "height" : 92,
       "id" : "align-middle-center",
-      "markdown" : "**Minta**",
-      "markdownStyle" : {
+      "text" : "**Minta**",
+      "textStyle" : {
         "alignment" : "center",
         "color" : "#825734",
         "italic" : true,
@@ -142,7 +142,7 @@
         "y" : -38
       },
       "shape" : "rectangle",
-      "showMarkdown" : true,
+      "hideText" : false,
       "textColor" : "#193744",
       "title" : "Középső közép",
       "verticalAlignment" : "middle",
@@ -157,8 +157,8 @@
       "fontSize" : 17,
       "height" : 92,
       "id" : "align-middle-right",
-      "markdown" : "**Minta**",
-      "markdownStyle" : {
+      "text" : "**Minta**",
+      "textStyle" : {
         "alignment" : "right",
         "color" : "#825734",
         "italic" : true,
@@ -169,7 +169,7 @@
         "y" : -38
       },
       "shape" : "rectangle",
-      "showMarkdown" : true,
+      "hideText" : false,
       "textColor" : "#193744",
       "title" : "Középső jobb",
       "verticalAlignment" : "middle",
@@ -184,8 +184,8 @@
       "fontSize" : 17,
       "height" : 92,
       "id" : "align-bottom-left",
-      "markdown" : "**Minta**",
-      "markdownStyle" : {
+      "text" : "**Minta**",
+      "textStyle" : {
         "alignment" : "left",
         "color" : "#825734",
         "italic" : true,
@@ -196,7 +196,7 @@
         "y" : 84
       },
       "shape" : "rectangle",
-      "showMarkdown" : true,
+      "hideText" : false,
       "textColor" : "#193744",
       "title" : "Alsó bal",
       "verticalAlignment" : "bottom",
@@ -211,8 +211,8 @@
       "fontSize" : 17,
       "height" : 92,
       "id" : "align-bottom-center",
-      "markdown" : "**Minta**",
-      "markdownStyle" : {
+      "text" : "**Minta**",
+      "textStyle" : {
         "alignment" : "center",
         "color" : "#825734",
         "italic" : true,
@@ -223,7 +223,7 @@
         "y" : 84
       },
       "shape" : "rectangle",
-      "showMarkdown" : true,
+      "hideText" : false,
       "textColor" : "#193744",
       "title" : "Alsó közép",
       "verticalAlignment" : "bottom",
@@ -238,8 +238,8 @@
       "fontSize" : 17,
       "height" : 92,
       "id" : "align-bottom-right",
-      "markdown" : "**Minta**",
-      "markdownStyle" : {
+      "text" : "**Minta**",
+      "textStyle" : {
         "alignment" : "right",
         "color" : "#825734",
         "italic" : true,
@@ -250,7 +250,7 @@
         "y" : 84
       },
       "shape" : "rectangle",
-      "showMarkdown" : true,
+      "hideText" : false,
       "textColor" : "#193744",
       "title" : "Alsó jobb",
       "verticalAlignment" : "bottom",
@@ -261,16 +261,15 @@
       "autoSize" : false,
       "bold" : true,
       "border" : "#567282",
-      "comment" : "A megjegyzéssel együtt",
+
       "fill" : "#ffffff",
       "fontSize" : 17,
       "height" : 70,
       "id" : "outside",
-      "markdown" : "**Külső Markdown**",
-      "markdownBorder" : "#937549",
-      "markdownFill" : "#f4e5cb",
-      "markdownOutside" : true,
-      "markdownStyle" : {
+      "text" : "**Belső Text**",
+      "textBorder" : "#937549",
+      "textFill" : "#f4e5cb",
+      "textStyle" : {
         "alignment" : "center",
         "bold" : true,
         "verticalAlignment" : "bottom"
@@ -280,7 +279,7 @@
         "y" : 298
       },
       "shape" : "rounded",
-      "showMarkdown" : true,
+      "hideText" : false,
       "textColor" : "#193744",
       "title" : "Külső cím",
       "titleOutside" : true,
@@ -297,7 +296,7 @@
       "height" : 102,
       "id" : "auto",
       "italic" : true,
-      "markdown" : "",
+      "text" : "",
       "position" : {
         "x" : -45,
         "y" : 300
@@ -318,7 +317,7 @@
       "height" : 102,
       "id" : "home",
       "link" : "..",
-      "markdown" : "",
+      "text" : "",
       "position" : {
         "x" : 195,
         "y" : 265
@@ -338,7 +337,7 @@
       "height" : 102,
       "id" : "sibling",
       "link" : "../kapcsolatok",
-      "markdown" : "",
+      "text" : "",
       "position" : {
         "x" : 195,
         "y" : 384

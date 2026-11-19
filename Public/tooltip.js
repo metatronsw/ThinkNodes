@@ -13,7 +13,7 @@ export function showTooltip(event, render) {
       const html = await render(signal);
       if (signal.aborted || !currentTarget.isConnected) return;
       tooltip = document.createElement("div");
-      tooltip.className = "markdown canvas-tooltip";
+      tooltip.className = "formatted-text canvas-tooltip";
       tooltip.setAttribute("role", "tooltip");
       tooltip.innerHTML = html;
       document.body.append(tooltip);

@@ -34,17 +34,15 @@ struct TextStyle: Codable, Equatable, Sendable {
     var verticalAlignment: VerticalAlignment?
 
     var isValid: Bool {
-        (color.map(validColor) ?? true) && (size.map { (10...60).contains($0) } ?? true)
+        (color.map(validColor) ?? true) && (size.map { (10...60).contains($0) && $0.rounded() == $0 } ?? true)
     }
 }
 
 struct Idea: Codable, Equatable, Sendable {
     var id: String
     var title: String
-    var markdown = ""
-    var comment: String?
-    var autoSize: Bool?
-    var showMarkdown: Bool?
+    var text = ""
+    var hideText: Bool?
     var position: Point
     var width: Double = 176
     var height: Double = 80
@@ -57,7 +55,6 @@ struct Idea: Codable, Equatable, Sendable {
     var alignment: LabelAlignment = .center
     var verticalAlignment: VerticalAlignment?
     var titleOutside: Bool?
-    var markdownOutside: Bool?
     var link: String?
 
     var kind: IdeaKind?
@@ -65,25 +62,20 @@ struct Idea: Codable, Equatable, Sendable {
     var locked: Bool?
     var italic: Bool?
     var underline: Bool?
-    var commentStyle: TextStyle?
-    var markdownStyle: TextStyle?
-    var markdownFill: String?
-    var markdownBorder: String?
-    var autoMinWidth: Double?
-    var autoMinHeight: Double?
+    var textStyle: TextStyle?
+    var textFill: String?
+    var textBorder: String?
 
     var isValid: Bool {
         let sizeValid = kind == .connectionPoint ? (4...128).contains(width) && height == width :
             (64...880).contains(width) && (40...680).contains(height)
         guard validSlug(id), validTitle(title) || (kind == .connectionPoint && title.isEmpty),
-              markdown.utf8.count <= 100_000, sizeValid else { return false }
-        let validContent = validComment(comment) && position.isValid
+              text.utf8.count <= 100_000, sizeValid else { return false }
+        let validContent = position.isValid
             && (link.map { $0.isEmpty || WorksheetLink($0) != nil } ?? true)
-        let validMinimum = (autoMinWidth.map { (64...880).contains($0) } ?? true)
-            && (autoMinHeight.map { (40...680).contains($0) } ?? true)
-        return validContent && validMinimum && (commentStyle?.isValid ?? true) && (markdownStyle?.isValid ?? true)
-            && [markdownFill, markdownBorder].compactMap { $0 }.allSatisfy(validColor)
-            && (10...60).contains(fontSize)
+        return validContent && (textStyle?.isValid ?? true)
+            && [textFill, textBorder].compactMap { $0 }.allSatisfy(validColor)
+            && (10...60).contains(fontSize) && fontSize.rounded() == fontSize
             && [fill, textColor, border].allSatisfy(validColor)
     }
 }
@@ -138,8 +130,7 @@ struct Worksheet: Content, Equatable {
     var revision = 1
     var resetRevision: Int?
     var title: String
-    var comment: String?
-    var markdown: String?
+    var text: String?
     var background: String?
     var gridColor: String?
     var gridSpacing: Double?
@@ -227,7 +218,7 @@ struct Worksheet: Content, Equatable {
         }
         let nodeIDs = Set(nodes.map(\.id))
         guard (1...2).contains(schemaVersion), revision > 0, revision < Int.max, validTitle(title),
-              validComment(comment), (markdown?.utf8.count ?? 0) <= 100_000, validColor(backgroundColor),
+              (text?.utf8.count ?? 0) <= 100_000, validColor(backgroundColor),
               validColor(gridColor ?? "#ccd7eb"), (6...160).contains(gridSpacing ?? 20),
               owner.map({ validSlug($0) || isTesterName($0) }) ?? true,
               (editors?.count ?? 0) <= 2_000, editors?.allSatisfy(validSlug) ?? true,
@@ -919,5 +910,68 @@ final class WorksheetStore: @unchecked Sendable {
         if (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
             throw Abort(.notFound)
         }
+    }
+}
+
+extension Idea {
+    private enum Legacy: String, CodingKey { case markdown, showMarkdown, markdownStyle, markdownFill, markdownBorder }
+
+    init(from decoder: Decoder) throws {
+        let fields = try decoder.container(keyedBy: CodingKeys.self)
+        let legacy = try decoder.container(keyedBy: Legacy.self)
+        id = try fields.decode(String.self, forKey: .id)
+        title = try fields.decode(String.self, forKey: .title)
+        text = try fields.decodeIfPresent(String.self, forKey: .text) ?? legacy.decodeIfPresent(String.self, forKey: .markdown) ?? ""
+        hideText = try fields.decodeIfPresent(Bool.self, forKey: .hideText) ?? legacy.decodeIfPresent(Bool.self, forKey: .showMarkdown).map { !$0 }
+        position = try fields.decode(Point.self, forKey: .position)
+        width = try fields.decode(Double.self, forKey: .width)
+        height = try fields.decode(Double.self, forKey: .height)
+        shape = try fields.decode(Shape.self, forKey: .shape)
+        fill = try fields.decode(String.self, forKey: .fill)
+        textColor = try fields.decode(String.self, forKey: .textColor)
+        border = try fields.decode(String.self, forKey: .border)
+        fontSize = try fields.decode(Double.self, forKey: .fontSize)
+        bold = try fields.decode(Bool.self, forKey: .bold)
+        alignment = try fields.decode(LabelAlignment.self, forKey: .alignment)
+        verticalAlignment = try fields.decodeIfPresent(VerticalAlignment.self, forKey: .verticalAlignment)
+        titleOutside = try fields.decodeIfPresent(Bool.self, forKey: .titleOutside)
+        link = try fields.decodeIfPresent(String.self, forKey: .link)
+        kind = try fields.decodeIfPresent(IdeaKind.self, forKey: .kind)
+        parent = try fields.decodeIfPresent(String.self, forKey: .parent)
+        locked = try fields.decodeIfPresent(Bool.self, forKey: .locked)
+        italic = try fields.decodeIfPresent(Bool.self, forKey: .italic)
+        underline = try fields.decodeIfPresent(Bool.self, forKey: .underline)
+        textStyle = try fields.decodeIfPresent(TextStyle.self, forKey: .textStyle) ?? legacy.decodeIfPresent(TextStyle.self, forKey: .markdownStyle)
+        textFill = try fields.decodeIfPresent(String.self, forKey: .textFill) ?? legacy.decodeIfPresent(String.self, forKey: .markdownFill)
+        textBorder = try fields.decodeIfPresent(String.self, forKey: .textBorder) ?? legacy.decodeIfPresent(String.self, forKey: .markdownBorder)
+        if legacy.contains(.markdown) {
+            fontSize = fontSize.rounded()
+            if let size = textStyle?.size { textStyle?.size = size.rounded() }
+        }
+    }
+}
+
+extension Worksheet {
+    private enum Legacy: String, CodingKey { case markdown }
+
+    init(from decoder: Decoder) throws {
+        let fields = try decoder.container(keyedBy: CodingKeys.self)
+        let legacy = try decoder.container(keyedBy: Legacy.self)
+        schemaVersion = try fields.decode(Int.self, forKey: .schemaVersion)
+        revision = try fields.decode(Int.self, forKey: .revision)
+        resetRevision = try fields.decodeIfPresent(Int.self, forKey: .resetRevision)
+        title = try fields.decode(String.self, forKey: .title)
+        text = try fields.decodeIfPresent(String.self, forKey: .text) ?? legacy.decodeIfPresent(String.self, forKey: .markdown)
+        background = try fields.decodeIfPresent(String.self, forKey: .background)
+        gridColor = try fields.decodeIfPresent(String.self, forKey: .gridColor)
+        gridSpacing = try fields.decodeIfPresent(Double.self, forKey: .gridSpacing)
+        gridVisible = try fields.decodeIfPresent(Bool.self, forKey: .gridVisible)
+        creator = try fields.decodeIfPresent(String.self, forKey: .creator)
+        owner = try fields.decodeIfPresent(String.self, forKey: .owner)
+        editors = try fields.decodeIfPresent([String].self, forKey: .editors)
+        hidden = try fields.decodeIfPresent(Bool.self, forKey: .hidden)
+        isPublic = try fields.decodeIfPresent(Bool.self, forKey: .isPublic)
+        nodes = try fields.decode([Idea].self, forKey: .nodes)
+        edges = try fields.decode([Connection].self, forKey: .edges)
     }
 }

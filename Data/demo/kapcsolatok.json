@@ -65,7 +65,7 @@
   "gridSpacing" : 20,
   "gridVisible" : true,
   "isPublic" : true,
-  "markdown" : "**Próbáld ki:** Ctrl + kattintás egy vonal közepére csomópontot szúr be. A rácsra igazítást a mágnessel kapcsolhatod be.",
+  "text" : "**Próbáld ki:** Ctrl + kattintás egy vonal közepére csomópontot szúr be. A rácsra igazítást a mágnessel kapcsolhatod be.",
   "nodes" : [
     {
       "alignment" : "center",
@@ -78,7 +78,7 @@
       "id" : "group",
       "kind" : "container",
       "locked" : true,
-      "markdown" : "",
+      "text" : "",
       "position" : {
         "x" : -266,
         "y" : -51
@@ -99,7 +99,7 @@
       "height" : 174,
       "id" : "team",
       "kind" : "container",
-      "markdown" : "",
+      "text" : "",
       "parent" : "group",
       "position" : {
         "x" : -266,
@@ -120,7 +120,7 @@
       "fontSize" : 17,
       "height" : 62,
       "id" : "idea",
-      "markdown" : "",
+      "text" : "",
       "parent" : "team",
       "position" : {
         "x" : -266,
@@ -141,7 +141,7 @@
       "height" : 18,
       "id" : "joint",
       "kind" : "connectionPoint",
-      "markdown" : "",
+      "text" : "",
       "position" : {
         "x" : 160,
         "y" : -36
@@ -160,7 +160,7 @@
       "fontSize" : 17,
       "height" : 102,
       "id" : "goal",
-      "markdown" : "",
+      "text" : "",
       "position" : {
         "x" : 142.99169950618898,
         "y" : -314.14110839478843
@@ -180,7 +180,7 @@
       "height" : 102,
       "id" : "back",
       "link" : "/demo",
-      "markdown" : "",
+      "text" : "",
       "position" : {
         "x" : 378.92529555570013,
         "y" : 142.01660098762216
@@ -200,7 +200,7 @@
       "height" : 102,
       "id" : "next",
       "link" : "../formak",
-      "markdown" : "",
+      "text" : "",
       "position" : {
         "x" : -161.28636703648249,
         "y" : 260.91284481498371

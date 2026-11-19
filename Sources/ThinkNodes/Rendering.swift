@@ -18,11 +18,6 @@ func markdownHTML(_ source: String) -> String {
     }
 }
 
-func renderedComment(_ value: String?) -> String {
-    guard let value, !value.trimmingCharacters(in: .whitespaces).isEmpty else { return "" }
-    return "<p class=\"comment\">\(escaped(value))</p>"
-}
-
 func htmlPage(title: String, body: String, scripts: Bool = false) -> Response {
     let assets = scripts ? """
         <script defer src="/vendor/vue.js"></script>
@@ -74,12 +69,13 @@ func headerLink(_ url: String, _ label: String, symbol: String) -> String {
     "<a class=\"button small\" href=\"\(escaped(url))\">\(uiIcon(symbol))\(escaped(label))</a>"
 }
 
-func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: String?, actions: String = "", afterTitle: String = "", editing: Bool = false, showAdminLogout: Bool = false) -> String {
+func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: String?, actions: String = "", canEdit: Bool = false, editing: Bool = false, showAdminLogout: Bool = false) -> String {
     let parts = path?.split(separator: "/").map(String.init) ?? []
     let base = editing ? "/edit/" : "/"
     let crumb = parts.indices.map { i in
-        let url = base + parts[...i].joined(separator: "/")
         let last = i == parts.count - 1
+        let prefix = last && editing ? "/" : last && canEdit ? "/edit/" : base
+        let url = prefix + parts[...i].joined(separator: "/")
         let label = last ? (project ?? parts[i]) : (parts[i].removingPercentEncoding ?? parts[i])
         return "<span class=\"slash\" aria-hidden=\"true\">/</span><a \(last ? "aria-current='page'" : "") href=\"\(escaped(url))\">\(escaped(label))</a>"
     }.joined()
@@ -103,7 +99,7 @@ func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: 
         <header class="site-header"><div class="header-left"><nav aria-label="Fő navigáció" class="breadcrumbs">
           <a class="brand" href="/"><span class="brand-icon" aria-hidden="true"><span></span><span></span><span></span></span>ThinkNodes</a>
           \(crumb)
-        </nav>\(afterTitle)</div><div class="header-parent">\(parent)</div><div class="header-actions">\(actions)<div class="header-user">\(user?.role == .admin ? headerLink("/admin", "Admin", symbol: "settings") : "")\(session)</div></div></header>
+        </nav></div><div class="header-parent">\(parent)</div><div class="header-actions">\(actions)<div class="header-user">\(user?.role == .admin ? headerLink("/admin", "Admin", symbol: "settings") : "")\(session)</div></div></header>
         """
 }
 
@@ -126,11 +122,10 @@ private func borderPoint(_ idea: Idea, toward point: Point) -> Point {
     return Point(x: idea.position.x + dx * scale, y: idea.position.y + dy * scale)
 }
 
-private func edgePath(from: Point, to: Point, style: ConnectionStyle) -> (path: String, control: Point?) {
+private func edgePath(from: Point, to: Point, bend: Point?) -> (path: String, control: Point?) {
     let start = "\(number(from.x)) \(number(from.y))"
     let end = "\(number(to.x)) \(number(to.y))"
-    guard style == .rope else { return ("M \(start) L \(end)", nil) }
-    let control = Point(x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 + min(110, hypot(to.x - from.x, to.y - from.y) * 0.28))
+    guard let control = bend else { return ("M \(start) L \(end)", nil) }
     return ("M \(start) Q \(number(control.x)) \(number(control.y)) \(end)", control)
 }
 
@@ -185,14 +180,6 @@ private func textWidth(_ value: String, size: Double) -> Double {
     } * size
 }
 
-private func darker(_ color: String) -> String {
-    let channels = Array(color.dropFirst())
-    return "#" + stride(from: 0, to: 6, by: 2).map { index in
-        let value = Int(String(channels[index...index + 1]), radix: 16) ?? 0
-        return String(format: "%02x", Int(Double(value) * 0.83))
-    }.joined()
-}
-
 private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
     var node = idea
     if node.kind == .connectionPoint {
@@ -201,18 +188,9 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
     }
     let widthRatio = node.shape == .diamond ? 0.50 : node.shape == .ellipse ? 0.72 : 0.94
     let heightRatio = node.shape == .diamond ? 0.47 : node.shape == .ellipse ? 0.72 : 0.94
-    let detailSize = max(10, node.fontSize * 0.80)
-    let commentSize = node.commentStyle?.size ?? detailSize
-    let bodySize = node.markdownStyle?.size ?? detailSize
-    let comment = node.comment ?? ""
-    let markdown = node.showMarkdown == true ? canvasMarkdown(node.markdown) :
-        (node.markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? [] : [MarkdownBlock(kind: .body, runs: [MarkdownRun(text: "•")])])
-    if node.autoSize != false {
-        let targetWidth = max(textWidth(node.title, size: node.fontSize),
-                              min(245, textWidth(comment, size: commentSize)),
-                              markdown.isEmpty || node.showMarkdown != true ? 0 : 200)
-        node.width = min(880, max(node.autoMinWidth ?? 64, ceil((targetWidth + 24) / widthRatio)))
-    }
+    let bodySize = node.textStyle?.size ?? 13
+    let text = node.hideText != true ? canvasMarkdown(node.text) :
+        (node.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? [] : [MarkdownBlock(kind: .body, runs: [MarkdownRun(text: "•••")])])
     let labelWidth = max(12, node.width * widthRatio - 16)
     var lines: [IdeaLabelLine] = []
     func add(_ value: String, size: Double, weight: Int, color: String, style: TextStyle?) {
@@ -224,35 +202,28 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
     }
     add(node.title, size: node.fontSize, weight: node.bold ? 650 : 400, color: node.textColor,
         style: TextStyle(italic: node.italic, underline: node.underline, verticalAlignment: node.verticalAlignment))
-    add(comment, size: commentSize, weight: node.commentStyle?.bold == true ? 650 : 400,
-        color: node.commentStyle?.color ?? darker(node.textColor), style: node.commentStyle)
-    for (index, block) in markdown.enumerated() {
-        let size = block.kind == .heading ? bodySize * 1.15 : bodySize
-        let columns = max(2, Int(labelWidth / (size * 0.65)))
+    for (index, block) in text.enumerated() {
+        let size = block.kind == .heading ? (bodySize * 1.15).rounded() : bodySize
+        let columns = max(node.hideText == true ? 3 : 2, Int(labelWidth / (size * 0.65)))
         var runs = block.runs
         if block.kind == .quote { runs.insert(MarkdownRun(text: "› "), at: 0) }
         for (row, pieces) in wrapMarkdown(runs, columns: columns).enumerated() {
             let gap: Double = row == 0 ? (index == 0 ? 8 : 3) : 0
             lines.append(IdeaLabelLine(text: pieces.map(\.text).joined(), size: size,
-                                       weight: block.kind == .heading || node.markdownStyle?.bold == true ? 700 : 400,
-                                       color: node.markdownStyle?.color ?? node.textColor, runs: pieces, gap: gap, style: node.markdownStyle))
+                                       weight: block.kind == .heading || node.textStyle?.bold == true ? 700 : 400,
+                                       color: node.textStyle?.color ?? node.textColor, runs: pieces, gap: gap, style: node.textStyle))
         }
     }
     var groups: [String: [IdeaLabelLine]] = [:]
     lines.removeAll { line in
-        let body = !line.runs.isEmpty
-        guard (body ? node.markdownOutside : node.titleOutside) == true else { return false }
-        let horizontal = (body ? node.markdownStyle?.alignment : nil) ?? node.alignment
-        var vertical = (body ? node.markdownStyle?.verticalAlignment : node.verticalAlignment) ?? .middle
+        guard line.runs.isEmpty, node.titleOutside == true else { return false }
+        let horizontal = node.alignment
+        var vertical = node.verticalAlignment ?? .middle
         if horizontal == .center && vertical == .middle { vertical = .top }
         groups[horizontal.rawValue + "/" + vertical.rawValue, default: []].append(line)
         return true
     }
     let iconSpace: Double = (node.link ?? "").isEmpty ? 0 : 18
-    if node.autoSize != false {
-        let targetHeight = iconSpace + lines.reduce(0) { $0 + $1.step } + 16
-        node.height = min(680, max(node.autoMinHeight ?? 40, ceil(targetHeight / heightRatio)))
-    }
     var visible: [IdeaLabelLine] = []
     let available = max(node.fontSize * 1.25, node.height * heightRatio - 12 - iconSpace)
     var remaining = available
@@ -266,7 +237,7 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
         visible[last].text += "…"
         if !visible[last].runs.isEmpty { visible[last].runs.append(MarkdownRun(text: "…")) }
     }
-    if node.showMarkdown != true, node.markdownOutside != true,
+    if node.hideText == true,
        let marker = lines.last, !marker.runs.isEmpty, !visible.contains(where: { !$0.runs.isEmpty }) {
         while !visible.isEmpty && remaining < marker.step { remaining += visible.removeLast().step }
         visible.append(marker)
@@ -365,8 +336,8 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
             """
     }.joined()
     var frame = ""
-    let fill = node.markdownFill ?? node.fill
-    let border = node.markdownBorder ?? node.border
+    let fill = node.textFill ?? node.fill
+    let border = node.textBorder ?? node.border
     let distinctBorder = border.lowercased() != node.border.lowercased()
     if let bodyTop, let bodyEnd, distinctBorder || fill.lowercased() != node.fill.lowercased() {
         frame = """
@@ -410,9 +381,11 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
         let targetNode = edge.target.node.flatMap { nodes[$0] }
         guard let source = sourceNode?.position ?? edge.sourcePoint,
               let target = targetNode?.position ?? edge.target.point else { return nil }
-        let beginning = sourceNode.map { borderPoint($0, toward: target) } ?? source
-        let ending = targetNode.map { borderPoint($0, toward: source) } ?? target
-        let drawing = edgePath(from: beginning, to: ending, style: edge.style)
+        let control = edge.style == .rope ? Point(x: (source.x + target.x)/2,
+            y: (source.y + target.y)/2 + min(110, hypot(target.x-source.x, target.y-source.y)*0.28)) : nil
+        let beginning = sourceNode.map { borderPoint($0, toward: control ?? target) } ?? source
+        let ending = targetNode.map { borderPoint($0, toward: control ?? source) } ?? target
+        let drawing = edgePath(from: beginning, to: ending, bend: control)
         halfWidth = max(halfWidth, abs(beginning.x) + 40, abs(ending.x) + 40, abs(drawing.control?.x ?? 0) + 40)
         halfHeight = max(halfHeight, abs(beginning.y) + 40, abs(ending.y) + 40, abs(drawing.control?.y ?? 0) + 40)
         let color = escaped(edge.strokeColor)
@@ -423,14 +396,24 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
                 <marker id="\(marker)" markerWidth="6.75" markerHeight="6.75" viewBox="0 0 10 10" refX="9" refY="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="\(color)"/></marker>
                 """)
         }
-        if edge.hasStartArrow { markers += " marker-start=\"url(#\(marker))\"" }
-        if edge.hasEndArrow { markers += " marker-end=\"url(#\(marker))\"" }
+        if edge.hasStartArrow && sourceNode != nil { markers += " marker-start=\"url(#\(marker))\"" }
+        if edge.hasEndArrow && targetNode != nil { markers += " marker-end=\"url(#\(marker))\"" }
         if edge.style == .dashed { markers += " stroke-dasharray=\"\(number(edge.strokeWidth * 3.5)) \(number(edge.strokeWidth * 2.5))\"" }
         let wire: String
         if noteBase != nil, let data = try? JSONEncoder().encode(edge) {
             wire = " data-wire=\"\(escaped(String(decoding: data, as: UTF8.self)))\""
         } else { wire = "" }
-        let path = "<path\(wire) d=\"\(drawing.path)\" stroke=\"\(color)\" stroke-width=\"\(number(edge.strokeWidth))\"\(markers)/>"
+        var heads = ""
+        func arrow(_ end: String, tip: Point, toward: Point) -> String {
+            let angle = atan2(tip.y-toward.y, tip.x-toward.x)*180/Double.pi
+            return """
+                <path data-arrow-end="\(end)" d="M0 0L-1 -.5V.5Z" transform="translate(\(number(tip.x)) \(number(tip.y))) rotate(\(number(angle))) scale(\(number(edge.strokeWidth*6.75)))" fill="\(color)" stroke="none" pointer-events="none"/>
+                """
+        }
+        if edge.hasStartArrow && sourceNode == nil { heads += arrow("source", tip: beginning, toward: control ?? ending) }
+        if edge.hasEndArrow && targetNode == nil { heads += arrow("target", tip: ending, toward: control ?? beginning) }
+        let stroke = "<path\(wire) d=\"\(drawing.path)\" stroke=\"\(color)\" stroke-width=\"\(number(edge.strokeWidth))\"\(markers)/>"
+        let path = heads.isEmpty ? stroke : "<g data-free-arrows=\"\">\(heads)\(stroke)</g>"
         guard let label = edge.label, !label.trimmingCharacters(in: .whitespaces).isEmpty else { return path }
         let center = drawing.control.map {
             Point(x: (beginning.x + 2 * $0.x + ending.x) / 4, y: (beginning.y + 2 * $0.y + ending.y) / 4)
@@ -450,34 +433,24 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
         let node = drawing.node
         let graphic = nodeSVG(drawing, siteHost: siteHost)
         guard let noteBase else { return graphic }
-        let separator = noteBase.contains("?") ? "&amp;" : "?"
         let parts = noteBase.split(separator: "/").map { String($0).removingPercentEncoding ?? String($0) }
         let path = try? WorksheetPath(parts)
         let destination = node.link.flatMap(WorksheetLink.init).flatMap { link in path.flatMap { link.destination(from: $0) } }
-        let url = destination.map(escaped) ?? (escaped(noteBase) + separator + "note=\(node.id)")
-        var linked = destination == nil ? "" : " data-link=\"true\""
+        let tag = destination == nil ? "g" : "a"
+        var linked = destination.map { " data-link=\"true\" href=\"\(escaped($0))\"" } ?? ""
         if let raw = node.link, let link = WorksheetLink(raw), link.isExternal(siteHost: siteHost) {
             linked += " target=\"_blank\" rel=\"noopener noreferrer\""
         }
         let geometry = "data-x=\"\(node.position.x)\" data-y=\"\(node.position.y)\" data-width=\"\(node.width)\" data-height=\"\(node.height)\" data-shape=\"\(node.kind == .connectionPoint ? "ellipse" : node.shape.rawValue)\" data-parent=\"\(node.parent ?? "")\""
-        return "<a data-node=\"\(node.id)\" \(geometry)\(linked) href=\"\(url)\" aria-label=\"\(escaped(node.title))\">\(graphic)</a>"
+        return "<\(tag) data-node=\"\(node.id)\" \(geometry)\(linked) aria-label=\"\(escaped(node.title))\">\(graphic)</\(tag)>"
     }
-    var depths: [String: Int] = [:]
-    func depth(_ node: Idea) -> Int {
-        var path: [String] = []
-        var current = node
-        while let parentID = current.parent, depths[current.id] == nil, let parent = nodes[parentID] {
-            path.append(current.id)
-            current = parent
-        }
-        var depth = depths[current.id] ?? 0
-        for id in path.reversed() { depth += 1; depths[id] = depth }
-        return depths[node.id] ?? 0
+    let ordered = drawings.sorted { a, b in
+        let left = a.node.width * a.node.height, right = b.node.width * b.node.height
+        return left == right ? a.node.kind == .container && b.node.kind != .container : left > right
     }
-    let containers = drawings.filter { $0.node.kind == .container }.sorted {
-        depth($0.node) < depth($1.node)
-    }.map(render).joined(separator: "\n")
-    let renderedNodes = drawings.filter { $0.node.kind != .container }.map(render).joined(separator: "\n")
+    let split = ordered.firstIndex { $0.node.kind != .container } ?? ordered.endIndex
+    let containers = ordered[..<split].map(render).joined(separator: "\n")
+    let renderedNodes = ordered[split...].map(render).joined(separator: "\n")
     let width = number(halfWidth * 2)
     let height = number(halfHeight * 2)
     var grid = ""
@@ -511,12 +484,10 @@ func worksheetMarkdown(_ worksheet: Worksheet) -> String {
         return text.map { syntax.contains($0) ? "\\" + String($0) : String($0) }.joined()
     }
     var sections = ["# \(inline(worksheet.title))\n"]
-    if let comment = worksheet.comment, !comment.isEmpty { sections.append(inline(comment)) }
-    if let markdown = worksheet.markdown, !markdown.isEmpty { sections.append(markdown) }
+    if let text = worksheet.text, !text.isEmpty { sections.append(text) }
     for node in worksheet.nodes {
         sections.append("## \(inline(node.title))\n")
-        if let comment = node.comment, !comment.isEmpty { sections.append(inline(comment)) }
-        if !node.markdown.isEmpty { sections.append(node.markdown) }
+        if !node.text.isEmpty { sections.append(node.text) }
     }
     if !worksheet.edges.isEmpty {
         sections.append("## Kapcsolatok\n")

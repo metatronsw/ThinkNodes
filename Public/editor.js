@@ -1,8 +1,10 @@
+import {sharedMouse} from "./mouse.js";
+import {worksheetChanges, replayChanges} from "./editor-history.js";
 import {flashNode, flashPoint} from "./ping.js";
 import {showTooltip, hideTooltip} from "./tooltip.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {canvasBounds, commentColor, edgeEndpoint, edgeGeometry, edgePaint, labelLayout, limit, lineStyles, paper, selectionOutline, shapeDistance, shapes} from "./geometry.js?v=2";
+import {arrowTransform, canvasBounds, edgeEndpoint, edgeGeometry, edgePaint, labelLayout, limit, lineStyles, paper, selectionOutline, shapeDistance, shapes} from "./geometry.js?v=2";
 
 import {ancestors, containerOrder, overlapFraction} from "./containers.js";
 
@@ -111,16 +113,30 @@ function checkbox(label, checked, change) {
 }
 
 function textarea(value, change) {
-  return h("textarea", {value, maxlength: 30000, rows: 7, onInput: event => change(event.target.value)});
+  return h("textarea", {"aria-label": "Text", value, maxlength: 30000, rows: 7, onInput: event => change(event.target.value)});
 }
 
-function draftMarkdown(source) {
-  return source.slice(0, 6000).split(/\r?\n/).filter(line => line.trim()).map(line => {
-    const heading = /^\s{0,3}#{1,6}[ \t]+/;
-    const text = line.replace(heading, "").replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
-    return {kind: heading.test(line) ? "heading" : "body", runs: [{text}]};
-  });
-}
+const FormattedText = {
+  props: {source: String},
+  setup(props) {
+    const html = ref(""), error = ref("");
+    watch(() => props.source, (source, _, cleanup) => {
+      const controller = new AbortController();
+      error.value = "";
+      if (!source) { html.value = ""; return; }
+      const timer = setTimeout(async () => {
+        try {
+          const response = await checked(await fetch("/api/text", {method: "POST", signal: controller.signal,
+            headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify({text: source})}));
+          const rendered = await response.text();
+          if (!controller.signal.aborted) html.value = rendered;
+        } catch (failure) { if (!controller.signal.aborted) error.value = failure.message; }
+      }, 80);
+      cleanup(() => { clearTimeout(timer); controller.abort(); });
+    }, {immediate: true});
+    return () => error.value ? h("p", {class: "error"}, error.value) : h("div", {class: "formatted-text", innerHTML: html.value});
+  },
+};
 
 function shape(node, linked) {
   const x = node.width / 2;
@@ -133,21 +149,28 @@ function shape(node, linked) {
   return h("rect", {...style, x: -x, y: -y, width: node.width, height: node.height, rx: node.shape === "rounded" ? 12 : 0});
 }
 
-function arrowDefinition(id, color) {
-  return h("marker", {key: id, id, viewBox: "0 0 10 10", markerWidth: 6.75, markerHeight: 6.75, refX: 9, refY: 5,
-    orient: "auto-start-reverse"}, [
-    h("path", {d: "M 0 0 L 10 5 L 0 10 z", fill: color}),
-  ]);
-}
-
-function edgeAppearance(edge, marker) {
-  const {color, width, startArrow, endArrow} = edgePaint(edge);
-  return {
-    stroke: color, "stroke-width": width,
-    "marker-start": startArrow ? "url(#" + marker + ")" : undefined,
-    "marker-end": endArrow ? "url(#" + marker + ")" : undefined,
-    "stroke-dasharray": edge.style === "dashed" ? (width * 3.5) + " " + (width * 2.5) : undefined,
-  };
+// The stored endpoints are the tips. Stop the shaft at each triangle's base.
+function wireDrawing(edge, findNode) {
+  const geometry = edgeGeometry(edge, findNode);
+  const {from, to, control} = geometry;
+  const paint = edgePaint(edge);
+  const ends = {};
+  for (const [end, tip, toward, visible] of [
+    ["source", from, control ?? to, paint.startArrow], ["target", to, control ?? from, paint.endArrow],
+  ]) {
+    const dx = toward.x-tip.x, dy = toward.y-tip.y;
+    const distance = Math.hypot(dx,dy);
+    const available = control || !(paint.startArrow && paint.endArrow) ? distance : distance/2;
+    const length = visible ? Math.min(paint.width*6.75, available) : paint.width*6.75;
+    const ratio = visible && distance ? length/distance : 0;
+    ends[end] = {visible, transform: arrowTransform(tip,toward,length/6.75),
+      base: {x: tip.x+dx*ratio, y: tip.y+dy*ratio}};
+  }
+  const a = ends.source.base, b = ends.target.base;
+  const d = `M ${a.x} ${a.y} ` + (control ? `Q ${control.x} ${control.y} ` : "L ") + `${b.x} ${b.y}`;
+  const stroke = {d, fill: "none", stroke: paint.color, "stroke-width": paint.width, "stroke-linecap": "butt",
+    "stroke-dasharray": edge.style === "dashed" ? (paint.width*3.5)+" "+(paint.width*2.5) : undefined};
+  return {...geometry, ends, stroke, paint};
 }
 
 function setEndpoint(edge, end, endpoint) {
@@ -172,16 +195,33 @@ async function checked(response) {
 createApp({
   setup() {
     const board = ref(null);
-    const nodeMap = computed(() => new Map(board.value?.nodes.map(node => [node.id, node])));
+    const insertion = ref(null);
+    const sceneNodes = computed(() => {
+      const nodes = board.value?.nodes ?? [];
+      return insertion.value ? nodes.concat(insertion.value.nodes) : nodes;
+    });
+    const sceneEdges = computed(() => {
+      const edges = board.value?.edges ?? [];
+      const draft = insertion.value;
+      return draft ? edges.filter(e => e.id !== draft.original?.id).concat(draft.edges) : edges;
+    });
+    const layers = computed(() => {
+      const ordered = [...sceneNodes.value].sort((a,b) => b.width*b.height-a.width*a.height ||
+        Number(b.kind === "container")-Number(a.kind === "container"));
+      const firstBox = ordered.findIndex(n => n.kind !== "container");
+      const split = firstBox < 0 ? ordered.length : firstBox;
+      return {ordered, back: ordered.slice(0,split), front: ordered.slice(split)};
+    });
+    const nodeMap = computed(() => new Map(sceneNodes.value.map(node => [node.id, node])));
     const edgeMap = computed(() => new Map(board.value?.edges.map(edge => [edge.id, edge])));
     const containers = computed(() => containerOrder(board.value?.nodes ?? [], nodeMap.value));
     const ctrl = ref(false);
     const alt = ref(false);
     const accounts = ref(null);
     const canManage = computed(() => role === "admin" || Boolean(user && (board.value?.owner === user || board.value?.creator === user)));
-    const canvasMarkdown = shallowRef(new Map());
-    const markdownSources = computed(() => [...new Set(
-      board.value?.nodes.filter(node => node.showMarkdown && node.markdown).map(node => node.markdown)
+    const canvasText = shallowRef(new Map());
+    const textSources = computed(() => [...new Set(
+      board.value?.nodes.filter(node => !node.hideText && node.text).map(node => node.text)
     )]);
     const motions = shallowRef(new Map());
     function receiveMotion(frame) {
@@ -197,13 +237,15 @@ createApp({
       else next.delete(frame.node);
       motions.value = next;
     }
-    const drawings = computed(() => new Map(board.value?.nodes.map(node => {
-      const markdown = node.showMarkdown && node.markdown
-        ? canvasMarkdown.value.get(node.markdown) ?? draftMarkdown(node.markdown) : [];
-      const layout = labelLayout(node, markdown);
+    const drawings = computed(() => new Map(sceneNodes.value.map(node => {
+      const text = !node.hideText && node.text
+        ? canvasText.value.get(node.text) ?? [] : [];
+      const layout = labelLayout(node, text);
       return [node.id, {node: {...node, width: layout.width, height: layout.height}, layout}];
     })));
     function displayPosition(node) {
+      const drag = gesture.value;
+      if (drag?.type === "batch" && drag.members.has(node.id)) return shifted(node.position, drag.delta);
       if (motions.value.size) {
         const motion = [node, ...ancestors(node, nodeMap.value)].map(n => motions.value.get(n.id))
           .find(m => m && m.revision === board.value.revision);
@@ -213,13 +255,14 @@ createApp({
     }
     function drawnNode(id) {
       const node = drawings.value.get(id)?.node;
-      return node && motions.value.size ? {...node, position: displayPosition(node)} : node;
+      return node && (motions.value.size || gesture.value?.type === "batch") ? {...node, position: displayPosition(node)} : node;
     }
     const drawnBounds = () => canvasBounds({
       nodes: [...drawings.value.values()].map(({node, layout}) => ({...node, extentX: layout.extentX, extentY: layout.extentY})), edges: board.value.edges,
     });
     const snapToGrid = ref(false);
     const selected = ref(null);
+    const batch = ref(null);
     const editingPanel = ref(false);
     const searchQuery = ref(null);
     const searchInput = ref(null);
@@ -257,6 +300,8 @@ createApp({
     }
     const checkpointBusy = ref(false);
     function discardDrafts(latest) {
+      insertion.value = null;
+      batch.value = null;
       generation.value = savedGeneration.value;
       gesture.value = null;
       reconnect.value = null;
@@ -267,6 +312,10 @@ createApp({
       heldEdge = null;
       selectionRequest++;
       inspectNothing();
+      editingField = fieldChanged = false;
+      undo.value = [];
+      redo.value = [];
+      historyBase = copy(latest);
       board.value = copy(latest);
       baseline = copy(latest);
     }
@@ -288,11 +337,13 @@ createApp({
       const latest = await (await checked(await fetch(endpoint))).json();
       if (latest.revision <= baseline.revision) return;
       if (latest.resetRevision > baseline.revision) { discardDrafts(latest); return; }
+      historyBase = rebaseWorksheet(baseline, historyBase, latest);
       board.value = rebaseWorksheet(baseline, copy(board.value), latest);
       baseline = copy(latest);
       if ((gesture.value?.nodeID && !nodeMap.value.has(gesture.value.nodeID)) ||
           (gesture.value?.edgeID && !edgeMap.value.has(gesture.value.edgeID))) {
         gesture.value = null;
+        insertion.value = null;
         preview.value = null;
       }
       if (reconnect.value && !edgeMap.value.has(reconnect.value.edgeID)) {
@@ -303,6 +354,7 @@ createApp({
       else if (note.value) showNote(nodeMap.value.get(note.value.id), false);
     }
 
+    const mouse = sharedMouse(point => live.cursor(point));
     const live = liveConnection(path, csrf, async state => {
       if (!online.value) {
         problem.value = "";
@@ -334,7 +386,7 @@ createApp({
       if (gesture.value) finishPointer({pointerId: gesture.value.pointer}, true);
       if (inspector.value?.kind === "node") inspectNothing();
       problem.value = error.message;
-    }, {editing: true, onMotion: receiveMotion, rate: Number(motionRate) || 100});
+    }, {editing: true, onCursor: mouse?.receive, onMotion: receiveMotion, rate: Number(motionRate) || 100});
 
     function scheduleSave() {
       if (saveTimer) return;
@@ -342,6 +394,7 @@ createApp({
     }
 
     async function selectNode(id, edge = null) {
+      batch.value = null;
       const ticket = ++selectionRequest;
       if (!online.value) return false;
       if (id && occupied(id)) {
@@ -385,16 +438,17 @@ createApp({
       if (visible && !accounts.value) loadAccounts();
     });
     function clearSelection() {
+      finishField();
       selected.value = null;
       inspectNothing();
       selectNode(null);
     }
 
-    async function loadCanvasMarkdown(sources, signal) {
-      const missing = sources.filter(source => !canvasMarkdown.value.has(source));
+    async function loadCanvasText(sources, signal) {
+      const missing = sources.filter(source => !canvasText.value.has(source));
       let blocks = [];
       if (missing.length) {
-        const result = await checked(await fetch("/api/markdown/canvas", {
+        const result = await checked(await fetch("/api/text/canvas", {
           method: "POST", signal,
           headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf},
           body: JSON.stringify({sources: missing}),
@@ -402,18 +456,18 @@ createApp({
         ({blocks} = await result.json());
       }
       if (signal?.aborted) return;
-      const current = new Set(markdownSources.value);
-      const updated = new Map([...canvasMarkdown.value].filter(([source]) => current.has(source)));
+      const current = new Set(textSources.value);
+      const updated = new Map([...canvasText.value].filter(([source]) => current.has(source)));
       missing.forEach((source, index) => {
         if (current.has(source)) updated.set(source, blocks[index]);
       });
-      canvasMarkdown.value = updated;
+      canvasText.value = updated;
     }
 
-    watch(markdownSources, (sources, _, onCleanup) => {
+    watch(textSources, (sources, _, onCleanup) => {
       const controller = new AbortController();
-      const timer = setTimeout(() => loadCanvasMarkdown(sources, controller.signal).catch(() => {
-        // Keep the immediate draft visible if a preview request fails.
+      const timer = setTimeout(() => loadCanvasText(sources, controller.signal).catch(error => {
+        if (!controller.signal.aborted) problem.value = error.message;
       }), 80);
       onCleanup(() => {
         clearTimeout(timer);
@@ -421,7 +475,53 @@ createApp({
       });
     });
 
+    const undo = shallowRef([]), redo = shallowRef([]);
+    let historyBase;
+    let editingField = false;
+    let fieldChanged = false;
+
+    function recordChanges() {
+      const current = copy(board.value);
+      const entry = worksheetChanges(historyBase, current);
+      historyBase = current;
+      if (!entry.length) return;
+      undo.value = [...undo.value.slice(-99), entry];
+      redo.value = [];
+    }
+
+    function finishField() {
+      editingField = false;
+      if (fieldChanged) recordChanges();
+      fieldChanged = false;
+    }
+
+    function replay(forward) {
+      if (gesture.value || !online.value || checkpointBusy.value) return;
+      finishField();
+      const source = forward ? redo : undo, destination = forward ? undo : redo;
+      const entry = source.value.at(-1);
+      if (!entry) return;
+      const next = replayChanges(copy(board.value), entry, forward, occupied);
+      if (!next) {
+        problem.value = "A művelet ütközik a munkalap jelenlegi állapotával vagy egy másik szerkesztő foglalásával.";
+        return;
+      }
+      board.value = next;
+      historyBase = copy(next);
+      destination.value = [...destination.value, entry];
+      source.value = source.value.slice(0, -1);
+      markDirty();
+      const item = selected.value;
+      if (item && !(item.kind === "node" ? nodeMap : edgeMap).value.has(item.id)) clearSelection();
+    }
+
     function modified() {
+      if (editingField) fieldChanged = true;
+      else recordChanges();
+      markDirty();
+    }
+
+    function markDirty() {
       generation.value += 1;
       scheduleSave();
       problem.value = "";
@@ -456,7 +556,7 @@ createApp({
       zoom = d3.zoom().scaleExtent([0.0005, 4])
         .filter(event => {
           if (event.type === "wheel") return !gesture.value;
-          return !event.button && !event.ctrlKey && !reconnect.value && !gesture.value
+          return !event.button && !event.altKey && !event.ctrlKey && !reconnect.value && !gesture.value
             && !event.target.closest("[data-node], [data-edge]");
         })
         .on("start", event => { menu.value = null; if (event.sourceEvent) lastClick = null; })
@@ -504,7 +604,7 @@ createApp({
     }
 
     function makeNode(position) {
-      return {id: id(), title: "Új ötlet", comment: "", markdown: "", autoSize: true, showMarkdown: false, position: clampPoint(position), width: 176, height: 80,
+      return {id: id(), title: "Új ötlet", text: "", hideText: false, position: clampPoint(position), width: 176, height: 80,
         shape: "rounded", fill: "#dce9ff", textColor: "#182335", border: "#839bbc", fontSize: 16, bold: true, alignment: "center"};
     }
 
@@ -543,7 +643,7 @@ createApp({
       }
     }
 
-    async function openProperties(kind, itemID) {
+    async function openProperties(kind, itemID, focusLabel = false) {
       if (kind === "node" && !(await selectNode(itemID))) return;
       manuallyClosed.value = false;
       editingPanel.value = true;
@@ -552,6 +652,14 @@ createApp({
       inspector.value = {kind, id: itemID};
       note.value = null;
       menu.value = null;
+      if (focusLabel) {
+        await nextTick();
+        const field = mount.querySelector?.(focusLabel === "text" ? ".inspector textarea" : ".inspector [data-object-label]");
+        if (selected.value?.id === itemID && field) {
+          field.focus();
+          field.select();
+        }
+      }
     }
 
     async function deleteNode(node, cascade = false) {
@@ -599,6 +707,7 @@ createApp({
     }
 
     function inspectNothing() {
+      finishField();
       inspector.value = null;
       note.value = null;
       menu.value = null;
@@ -670,8 +779,7 @@ createApp({
 
     function snap(point, exclude) {
       const hit = node => node.id !== exclude && shapeDistance(drawnNode(node.id), point, 8 / view.value.k) <= 1;
-      return board.value.nodes.slice().reverse().find(n => n.kind !== "container" && hit(n))
-        ?? containers.value.slice().reverse().find(hit);
+      return layers.value.ordered.findLast(hit);
     }
 
     function nearbyEnd(point, edge) {
@@ -691,8 +799,71 @@ createApp({
       return best;
     }
 
+    function cloneBox(source) {
+      const originals = moveGroup(source).map(member => nodeMap.value.get(member.id));
+      const ids = new Map(originals.map(n => [n.id,id()]));
+      const nodes = originals.map(n => ({...copy(n), id: ids.get(n.id), parent: ids.get(n.parent) ?? n.parent}));
+      const edges = board.value.edges.filter(e => ids.has(e.source) || ids.has(e.target.node)).map(e => {
+        const clone = {...copy(e), id: id()};
+        if (ids.has(e.source)) clone.source = ids.get(e.source);
+        if (ids.has(e.target.node)) clone.target.node = ids.get(e.target.node);
+        return clone;
+      });
+      return {nodes,edges};
+    }
+
+    function stageInsertion(draft) {
+      const points = draft.nodes.map(n => n.position);
+      if (!draft.original) {
+        for (const edge of draft.edges) {
+          if (edge.sourcePoint) points.push(edge.sourcePoint);
+          if (edge.target.point) points.push(edge.target.point);
+        }
+      }
+      insertion.value = {...draft, points: points.map(point => ({point, x:point.x, y:point.y}))};
+    }
+
+    function moveInsertion(operation, point) {
+      const draft = insertion.value;
+      let dx = point.x-operation.initial.x, dy = point.y-operation.initial.y;
+      for (const origin of draft.points) {
+        dx = limit(dx,-100000-origin.x,100000-origin.x);
+        dy = limit(dy,-100000-origin.y,100000-origin.y);
+      }
+      for (const origin of draft.points) {
+        origin.point.x = origin.x+dx;
+        origin.point.y = origin.y+dy;
+      }
+    }
+
+    function commitInsertion() {
+      const draft = insertion.value;
+      insertion.value = null;
+      if (!online.value || draft.original && JSON.stringify(edgeMap.value.get(draft.original.id)) !== JSON.stringify(draft.original)) return;
+      if (board.value.nodes.length + draft.nodes.length > 2000 ||
+          board.value.edges.length + draft.edges.length - (draft.original ? 1 : 0) > 4000) {
+        problem.value = "A művelettel a munkalap túllépné a dobozok vagy vonalak számának korlátját.";
+        return;
+      }
+      const ids = new Set([...nodeMap.value.keys(), ...draft.nodes.map(n => n.id)]);
+      if (draft.edges.some(e => e.source && !ids.has(e.source) || e.target.node && !ids.has(e.target.node))) return;
+      board.value.nodes.push(...draft.nodes);
+      if (draft.original) board.value.edges.splice(board.value.edges.findIndex(e => e.id === draft.original.id),1,...draft.edges);
+      else board.value.edges.push(...draft.edges);
+      const root = draft.nodes[0];
+      dropParent(root);
+      modified();
+      selectNode(root.id);
+    }
+
     function pressNode(event, node) {
-      const controlClick = event.ctrlKey && (event.button === 0 || event.button === 2);
+      finishField();
+      if (event.altKey && !event.ctrlKey && event.button === 0 && node.kind !== "connectionPoint") {
+        if (!online.value || reconnect.value) return;
+        beginDrag(event,"clone",{nodeID: node.id});
+        return;
+      }
+      const controlClick = event.ctrlKey && !event.altKey && (event.button === 0 || event.button === 2);
       if ((event.button !== 0 && !controlClick) || reconnect.value) return;
       event.preventDefault();
       event.stopPropagation();
@@ -704,7 +875,7 @@ createApp({
       gesture.value = {group: cabling || locked ? [] : moveGroup(node), locked, type: cabling ? "cable" : "move", pointer: event.pointerId, nodeID: node.id,
         position: {...node.position}, initial, screen: [event.clientX, event.clientY], moved: false};
       if (cabling) preview.value = {edge: {source: node.id, target: {point: initial}, style: "arrow"}};
-      canvas.value.setPointerCapture(event.pointerId);
+      event.currentTarget.setPointerCapture(event.pointerId);
       if (!cabling && !occupied(node.id)) claimGesture(node);
       else if (!cabling) gesture.value.locked = true;
     }
@@ -734,20 +905,19 @@ createApp({
     }
 
     function pressEndpoint(event, edge, end) {
+      finishField();
       if ((event.button !== 0 && !(event.ctrlKey && event.button === 2)) || reconnect.value) return;
       const original = edgeEndpoint(edge, end);
-      if (original.node && !event.ctrlKey) return;
       const geometry = edgeGeometry(edge, drawnNode);
       const position = end === "source" ? geometry.from : geometry.to;
       event.preventDefault();
       event.stopPropagation();
       menu.value = null;
-      lastClick = null;
       selectNode(null, edge.id);
       selected.value = {kind: "endpoint", id: edge.id, end};
       gesture.value = {type: "endpoint", original: {...original}, pointer: event.pointerId, edgeID: edge.id, end,
         position: {...position}, initial: world(event), screen: [event.clientX, event.clientY], moved: false};
-      canvas.value.setPointerCapture(event.pointerId);
+      event.currentTarget.setPointerCapture(event.pointerId);
     }
 
     function endpointAt(point, edge, end, commit = false) {
@@ -759,7 +929,7 @@ createApp({
         }
         if (!commit) return {point: free.point, junction: free.point};
         const node = {...makeNode(free.point), title: "", kind: "connectionPoint",
-          shape: "ellipse", fill: edgePaint(free.edge).color, width: 14, height: 14, autoSize: false};
+          shape: "ellipse", fill: edgePaint(free.edge).color, width: 14, height: 14};
         board.value.nodes.push(node);
         dropParent(node);
         setEndpoint(free.edge, free.end, {node: node.id});
@@ -774,6 +944,7 @@ createApp({
     }
 
     function pressCorner(event, node, sx, sy) {
+      finishField();
       if (!event.altKey || event.button !== 0 || occupied(node.id) || ancestors(node, nodeMap.value).some(n => n.locked)) return;
       event.preventDefault();
       event.stopPropagation();
@@ -792,15 +963,6 @@ createApp({
       const node = nodeMap.value.get(operation.nodeID);
       const w = limit(width + sx * (point.x-operation.initial.x), 64, 880);
       const h = limit(height + sy * (point.y-operation.initial.y), 40, 680);
-      if (node.autoSize !== false) {
-        const scale = Math.max(0.1, (w*width + h*height)/(width*width + height*height));
-        node.fontSize = limit(original.fontSize*scale, 10, 60);
-        for (const key of ["commentStyle", "markdownStyle"]) {
-          if (original[key]?.size) node[key].size = limit(original[key].size*scale, 10, 60);
-        }
-        node.autoMinWidth = w;
-        node.autoMinHeight = h;
-      }
       node.width = w;
       node.height = h;
       const drawn = drawnNode(node.id);
@@ -822,6 +984,37 @@ createApp({
       const point = world(event);
       if (operation) {
         operation.moved ||= Math.hypot(event.clientX - operation.screen[0], event.clientY - operation.screen[1]) > 3;
+        if (operation.type === "clone" || operation.type === "split") {
+          if (operation.moved) {
+            if (!insertion.value) stageInsertion(cloneBox(nodeMap.value.get(operation.nodeID)));
+            moveInsertion(operation,point);
+          }
+          return;
+        }
+        if (["rectangle","batch","text"].includes(operation.type)) {
+          operation.point = point;
+          const delta = {x: point.x-operation.initial.x, y: point.y-operation.initial.y};
+          if (operation.type === "batch") {
+            if (snapToGrid.value) {
+              const spacing = board.value.gridSpacing ?? 20;
+              for (const k of ["x","y"]) delta[k] = Math.round(delta[k]/spacing)*spacing;
+            }
+            const points = [...operation.members].map(id => nodeMap.value.get(id)?.position).filter(Boolean);
+            for (const edge of board.value.edges) if (batch.value?.edges.has(edge.id)) {
+              if (edge.sourcePoint && !edge.source) points.push(edge.sourcePoint);
+              if (edge.target.point) points.push(edge.target.point);
+            }
+            for (const p of points) for (const k of ["x","y"]) delta[k] = limit(delta[k],-100000-p[k],100000-p[k]);
+          }
+          if (operation.type === "text") {
+            const n = drawnNode(operation.nodeID);
+            const bounds = operation.bounds;
+            delta.x = bounds ? limit(delta.x, Math.min(0,-n.width/2-bounds.left), Math.max(0,n.width/2-bounds.right)) : limit(delta.x,-n.width,n.width);
+            delta.y = bounds ? limit(delta.y, Math.min(0,-n.height/2-bounds.top), Math.max(0,n.height/2-bounds.bottom)) : limit(delta.y,-n.height,n.height);
+          }
+          operation.delta = delta;
+          return;
+        }
         if (operation.type === "resize") {
           if (operation.moved && !operation.locked) resizeCorner(operation, point);
           return;
@@ -865,7 +1058,7 @@ createApp({
     function finishPointer(event, cancel = false) {
       const operation = gesture.value;
       if (!operation || operation.pointer !== event.pointerId) return;
-      // Navigation must keep the browser’s click activation, including during a pending selection.
+      // Handle quick clicks even while the selection request is pending.
       if (operation.waiting && operation.type === "move" && !operation.moved && !cancel &&
           Math.hypot(event.clientX-operation.screen[0], event.clientY-operation.screen[1]) <= 3) operation.waiting = false;
       if (operation.waiting) {
@@ -874,7 +1067,26 @@ createApp({
         return;
       }
       if (!cancel) updatePointer(event);
-      if (operation.type === "resize" && operation.moved && !operation.locked) {
+      if (insertion.value) {
+        if (cancel) insertion.value = null;
+        else commitInsertion();
+      } else if (operation.type === "rectangle" && operation.moved && !cancel) selectRectangle(operation);
+      else if (operation.type === "batch" && operation.moved && !cancel) finishBatch(operation);
+      else if (operation.type === "text" && operation.moved && !cancel && !operation.locked) {
+        const node = nodeMap.value.get(operation.nodeID);
+        const drawn = drawnNode(node.id);
+        const point = operation.point;
+        const slot = (v, size) => v < -size/6 ? 0 : v > size/6 ? 2 : 1;
+        const alignment = ["left","center","right"][slot(point.x-node.position.x,drawn.width)];
+        const verticalAlignment = ["top","middle","bottom"][slot(point.y-node.position.y,drawn.height)];
+        const style = {alignment,verticalAlignment};
+        if (operation.section === "title") Object.assign(node,style);
+        else node[operation.section] = {...node[operation.section], ...style};
+        if (alignment === "center" && verticalAlignment === "middle") {
+          if (operation.section === "title" && node.titleOutside) node.titleOutside = false;
+        }
+        modified();
+      } else if (operation.type === "resize" && operation.moved && !operation.locked) {
         if (cancel) {
           const index = board.value.nodes.findIndex(n => n.id === operation.nodeID);
           board.value.nodes[index] = operation.original;
@@ -885,20 +1097,18 @@ createApp({
         if (cancel && !operation.locked) live.endMotion(node.id, baseline.revision);
         if (cancel && !operation.locked) translateGroup(operation.group, 0, 0);
         else if (!operation.locked) { dropParent(node); modified(); }
-      } else if ((operation.type === "move" || operation.type === "cable") && operation.nodeID && !operation.moved && !cancel) {
+      } else if (!operation.moved && !cancel && (operation.nodeID || operation.edgeID || operation.hitID)) {
+        const kind = operation.hitKind ?? (operation.nodeID ? "node" : "edge");
+        const id = operation.hitID ?? operation.nodeID ?? operation.edgeID;
         const time = performance.now();
-        const [x, y] = operation.screen;
-        if (lastClick?.id === operation.nodeID && lastClick.type === operation.type && time - lastClick.time < 450
-            && Math.hypot(x - lastClick.x, y - lastClick.y) < 10) {
+        const [x,y] = operation.screen;
+        if (lastClick?.id === id && lastClick.kind === kind && time-lastClick.time < 450 &&
+            Math.hypot(x-lastClick.x,y-lastClick.y) < 10) {
           lastClick = null;
-          const node = nodeMap.value.get(operation.nodeID);
-          const destination = worksheetLink(node?.link, path);
-          if (operation.type === "cable") openProperties("node", operation.nodeID);
-          else if (destination) navigate(destination);
-          else openProperties("node", node.id);
+          openProperties(kind,id,event.altKey && kind === "node" ? "text" : true);
         } else {
-          lastClick = {id: operation.nodeID, type: operation.type, time, x, y};
-          if (!editingPanel.value && !manuallyClosed.value && operation.type === "move" && !note.value) showNote(nodeMap.value.get(operation.nodeID), false);
+          lastClick = {id,kind,time,x,y};
+          if (operation.type === "move" && !editingPanel.value && !manuallyClosed.value && !note.value) showNote(nodeMap.value.get(id), false);
         }
       } else if (operation.type === "cable" && operation.moved && !cancel) {
         const edge = {id: id(), ...preview.value.edge};
@@ -933,10 +1143,127 @@ createApp({
       preview.value = null;
     }
 
+    function shifted(point, delta) {
+      return {x: point.x + delta.x, y: point.y + delta.y};
+    }
+
+    function rectangle(a, b) {
+      return {x: Math.min(a.x,b.x), y: Math.min(a.y,b.y), width: Math.abs(a.x-b.x), height: Math.abs(a.y-b.y)};
+    }
+
+    function selectRectangle(drag) {
+      const box = rectangle(drag.initial, drag.point);
+      const inside = p => p.x >= box.x && p.x <= box.x + box.width && p.y >= box.y && p.y <= box.y + box.height;
+      const nodes = new Set(), edges = new Set();
+      for (const {node} of drawings.value.values()) {
+        if ([-1,1].every(k => inside({x: node.position.x+k*node.width/2, y: node.position.y+k*node.height/2}))) nodes.add(node.id);
+      }
+      for (const edge of board.value.edges) {
+        const {from,to,control} = edgeGeometry(edge, drawnNode);
+        if (!inside(from) || !inside(to)) continue;
+        // A quadratic can extend past both endpoints at its interior extrema.
+        const fits = !control || ["x","y"].every(axis => {
+          const t = (from[axis]-control[axis])/(from[axis]-2*control[axis]+to[axis]);
+          if (!(t > 0 && t < 1)) return true;
+          const at = key => (1-t)**2*from[key]+2*(1-t)*t*control[key]+t*t*to[key];
+          return inside({x: at("x"), y: at("y")});
+        });
+        if (fits) edges.add(edge.id);
+      }
+      if (nodes.size || edges.size) {
+        batch.value = {nodes, edges};
+        manuallyClosed.value = false;
+      }
+    }
+
+    watch(board, () => {
+      const group = batch.value;
+      if (!group) return;
+      for (const id of group.nodes) if (!nodeMap.value.has(id)) group.nodes.delete(id);
+      for (const id of group.edges) if (!edgeMap.value.has(id)) group.edges.delete(id);
+      if (!group.nodes.size && !group.edges.size) batch.value = null;
+    });
+
+    function batchBlocked(ids) {
+      const blocked = !online.value || [...ids].some(id => occupied(id) || !nodeMap.value.has(id) ||
+        ancestors(nodeMap.value.get(id), nodeMap.value).some(n => n.locked && !ids.has(n.id)));
+      if (blocked) problem.value = "A kijelölés módosításához aktív kapcsolat és szabadon szerkeszthető objektumok szükségesek.";
+      return blocked;
+    }
+
+    function moveBatchEdge(edge, drag) {
+      const result = {...edge};
+      for (const end of ["source","target"]) {
+        const endpoint = edgeEndpoint(edge,end);
+        if (!endpoint.node) setEndpoint(result,end,{point: shifted(endpoint.point,drag.delta)});
+      }
+      return result;
+    }
+
+    function finishBatch(drag) {
+      if (!batch.value || batchBlocked(drag.members)) return;
+      gesture.value = null;
+      for (const id of drag.members) {
+        const node = nodeMap.value.get(id);
+        node.position = shifted(node.position,drag.delta);
+      }
+      for (const edge of board.value.edges) {
+        if (batch.value.edges.has(edge.id)) Object.assign(edge,moveBatchEdge(edge,drag));
+      }
+      for (const id of batch.value.nodes) {
+        const node = nodeMap.value.get(id);
+        if (!drag.members.has(node.parent)) dropParent(node);
+      }
+      modified();
+    }
+
+    function deleteBatch() {
+      const group = batch.value;
+      if (!group || batchBlocked(group.nodes) || !confirm("Törlöd a kijelölt objektumokat?")) return;
+      board.value.edges = board.value.edges.filter(e => !group.edges.has(e.id));
+      for (const edge of board.value.edges) {
+        const {from,to} = edgeGeometry(edge,drawnNode);
+        if (group.nodes.has(edge.source)) setEndpoint(edge,"source",{point: from});
+        if (group.nodes.has(edge.target.node)) setEndpoint(edge,"target",{point: to});
+      }
+      for (const node of board.value.nodes) {
+        while (node.parent && group.nodes.has(node.parent)) node.parent = nodeMap.value.get(node.parent)?.parent;
+      }
+      board.value.nodes = board.value.nodes.filter(n => !group.nodes.has(n.id));
+      pruneJunctions();
+      modified();
+      clearSelection();
+    }
+
+    function beginDrag(event, type, extra = {}) {
+      event.preventDefault();
+      event.stopPropagation();
+      menu.value = null;
+      const point = world(event);
+      gesture.value = {type, initial: point, point, delta: {x:0,y:0}, screen: [event.clientX,event.clientY],
+        pointer: event.pointerId, moved: false, ...extra};
+      (type === "clone" ? event.currentTarget : canvas.value).setPointerCapture(event.pointerId);
+    }
+
     function pressCanvas(event) {
+      finishField();
+      if (event.target.closest("[role=link]")?.getAttribute?.("role") === "link") return;
+      const hit = event.target.closest("[data-node], [data-edge]");
+      if (event.button === 0 && !event.ctrlKey && !reconnect.value) {
+        if (event.altKey && !hit) {
+          clearSelection();
+          beginDrag(event, "rectangle");
+          return;
+        }
+        if (!event.altKey && batch.value && (batch.value.nodes.has(hit?.dataset?.node) || batch.value.edges.has(hit?.dataset?.edge))) {
+          const members = new Set([...batch.value.nodes].flatMap(id => moveGroup(nodeMap.value.get(id)).map(n => n.id)));
+          beginDrag(event, "batch", {members, hitID: hit.dataset.node ?? hit.dataset.edge, hitKind: hit.dataset.node ? "node" : "edge"});
+          return;
+        }
+      }
       rightPress = event.button === 2 && !event.ctrlKey;
       if (!reconnect.value && !event.target.closest("[data-node], [data-edge]")) {
-        if (event.ctrlKey && [0, 2].includes(event.button) && online.value) {
+        if (event.ctrlKey && !event.altKey && [0, 2].includes(event.button) && online.value) {
           event.preventDefault();
           event.stopPropagation();
           menu.value = null;
@@ -987,12 +1314,12 @@ createApp({
       menu.value = null;
       inspector.value = null;
       const request = ++noteRequest;
-      note.value = {id: node.id, request, loading: Boolean(node.markdown)};
-      if (!node.markdown) return;
+      note.value = {id: node.id, request, loading: Boolean(node.text)};
+      if (!node.text) return;
       try {
-        const rendered = await checked(await fetch("/api/markdown", {method: "POST", headers: {
+        const rendered = await checked(await fetch("/api/text", {method: "POST", headers: {
           "Content-Type": "application/json", "X-CSRF-Token": csrf,
-        }, body: JSON.stringify({markdown: node.markdown})}));
+        }, body: JSON.stringify({text: node.text})}));
         const html = await rendered.text();
         if (note.value?.request === request) note.value = {id: node.id, html, loading: false};
       } catch (error) {
@@ -1024,11 +1351,13 @@ createApp({
             const local = new Map(board.value.nodes.map(n => [n.id, n]));
             for (const node of baseline.nodes) if (foreign.has(node.id)) local.set(node.id, copy(node));
             board.value.nodes = [...local.values()];
+            historyBase.nodes = historyBase.nodes.map(n => foreign.has(n.id) ? copy(local.get(n.id) || n) : n);
             if (gesture.value?.group?.some(n => foreign.has(n.id))) gesture.value = null;
             scheduleSave();
             throw new Error("A közben lefoglalt doboz visszaállt a közös munkalapon látható állapotára.");
           }
           const saved = await (await checked(result)).json();
+          historyBase = rebaseWorksheet(submitted, historyBase, saved);
           board.value = rebaseWorksheet(submitted, copy(board.value), saved);
           baseline = copy(saved);
           savedGeneration.value = version;
@@ -1072,16 +1401,16 @@ createApp({
       } finally { checkpointBusy.value = false; }
     }
 
-    async function navigate(destination) {
+    async function followBoxLink(destination) {
       if (destination.kind === "website") { openExternalLink(destination.href); return; }
       const target = new URL(destination.href, location.href);
-      await save();
+      if (dirty.value) await save();
       if (!dirty.value) location.assign((target.pathname === "/" ? "/" : "/edit" + target.pathname) + target.search + target.hash);
     }
 
     async function exportSVG() {
       if (!board.value || !canvas.value) return;
-      await loadCanvasMarkdown(markdownSources.value).catch(() => {});
+      await loadCanvasText(textSources.value).catch(() => {});
       await nextTick();
       const bounds = drawnBounds();
       const output = document.createElementNS(svgNamespace, "svg");
@@ -1133,6 +1462,12 @@ createApp({
         }
         return;
       }
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && ["z", "y"].includes(event.key.toLowerCase())) {
+        event.preventDefault?.();
+        event.target?.closest?.("input, textarea, select")?.blur();
+        replay(event.key.toLowerCase() === "y" || event.shiftKey);
+        return;
+      }
       if (event.key !== "Escape" && event.target?.closest?.("input, textarea, select, [contenteditable=true]")) return;
       if (event.key === "Enter" && !event.shiftKey && !event.target?.closest?.("button, a")) {
         event.preventDefault?.();
@@ -1142,9 +1477,10 @@ createApp({
         }
         return;
       }
-      if (["Delete", "Backspace"].includes(event.key) && selected.value && !gesture.value) {
+      if (["Delete", "Backspace"].includes(event.key) && (selected.value || batch.value) && !gesture.value) {
         event.preventDefault?.();
         if (event.repeat) return;
+        if (batch.value) { deleteBatch(); return; }
         const {kind, id} = selected.value;
         if (kind === "node" && nodeMap.value.has(id)) deleteNode(nodeMap.value.get(id), event.ctrlKey);
         else if (edgeMap.value.has(id)) removeEdge(edgeMap.value.get(id));
@@ -1178,6 +1514,14 @@ createApp({
       clearModifiers();
     }
 
+    const currentCrumb = document.querySelector(".breadcrumbs a[aria-current=page]");
+    async function switchToViewer(event) {
+      if (!dirty.value || event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      await save();
+      if (!dirty.value) location.assign(currentCrumb.href);
+    }
+
     function beforeUnload(event) {
       if (!dirty.value) return;
       event.preventDefault();
@@ -1185,6 +1529,7 @@ createApp({
     }
 
     onMounted(async () => {
+      currentCrumb?.addEventListener?.("click", switchToViewer);
       window.addEventListener("keydown", keyboard);
       window.addEventListener("keyup", modifiers);
       window.addEventListener("blur", cancelGesture);
@@ -1197,9 +1542,11 @@ createApp({
         const response = await checked(await fetch(endpoint));
         baseline = await response.json();
         board.value = copy(baseline);
+        historyBase = copy(baseline);
         live.start();
         await nextTick();
         initializeZoom();
+        if (canvas.value.querySelector) mouse.bind(canvas.value, canvas.value.querySelector("[data-mouse-layer]"), mount.querySelector(".canvas-controls"));
       } catch (error) {
         problem.value = error.message;
       }
@@ -1208,6 +1555,8 @@ createApp({
     function restore(event) { if (event.persisted) { held.value = null; clearSelection(); live.start(); } }
 
     onUnmounted(() => {
+      currentCrumb?.removeEventListener?.("click", switchToViewer);
+      mouse?.stop();
       live.stop();
       window.removeEventListener("pagehide", live.stop);
       window.removeEventListener("pageshow", restore);
@@ -1227,6 +1576,7 @@ createApp({
       const owner = selectors.find(p => !p.viewing) ?? selectors[0];
       const destination = node.kind === "connectionPoint" ? null : worksheetLink(node.link, path);
 
+      const textDrag = gesture.value?.type === "text" && gesture.value.nodeID === node.id ? gesture.value : null;
       const inset = node.shape === "diamond" ? .45 : node.shape === "ellipse" ? .7 : .94;
       const [outline, dimensions] = selectionOutline(node.kind === "connectionPoint" ? "ellipse" : drawn.shape, drawn.width, drawn.height);
       const snapTarget = preview.value?.target === node.id;
@@ -1234,28 +1584,46 @@ createApp({
         "aria-label": node.title, "data-link": destination ? "" : undefined, class: ["idea", {occupied: occupied(node.id), claimed: !!owner}],
         transform: "translate(" + position.x + " " + position.y + ")",
         onPointerenter: event => {
-          if (!gesture.value && !node.showMarkdown && node.markdown) showTooltip(event, async signal => {
-            const result = await checked(await fetch("/api/markdown", {method: "POST", signal,
-              headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify({markdown: node.markdown})}));
+          if (!gesture.value && node.hideText && node.text) showTooltip(event, async signal => {
+            const result = await checked(await fetch("/api/text", {method: "POST", signal,
+              headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify({text: node.text})}));
             return result.text();
           });
         },
         onPointerleave: hideTooltip,
         onPointerdown: event => { hideTooltip(); pressNode(event, node); },
+        onDblclick: event => { event.stopPropagation(); openProperties("node",node.id,event.altKey ? "text" : true); },
         onContextmenu: event => context(event, "node", node.id),
         onKeydown: event => {
           if (event.key === "Enter" && event.shiftKey) openProperties("node", node.id);
         },
       }, [
-        owner || snapTarget ? h(outline, {"data-editor-only": "", ...dimensions, fill: "none",
+        owner || snapTarget || batch.value?.nodes.has(node.id) ? h(outline, {"data-editor-only": "", ...dimensions, fill: "none",
           stroke: owner?.color ?? "#16a085", "stroke-width": 3, "pointer-events": "none"}) : null,
         shape(drawn, !!destination),
         node.kind === "connectionPoint" && node.title ? h("text", {x: drawn.width/2 + 4, y: 4, fill: node.textColor, "font-size": 14}, node.title) : null,
-        layout.frame ? h("rect", {...layout.frame, "pointer-events": "none"}) : null,
+        layout.frame ? h("rect", {...layout.frame, "pointer-events": "none", transform: textDrag?.section === "textStyle" ?
+          "translate("+textDrag.delta.x+" "+textDrag.delta.y+")" : undefined}) : null,
         h("text", {"font-family": "system-ui, sans-serif", "pointer-events": "none"},
           layout.lines.map(line => h("tspan", {
             class: destination && !line.runs ? "link-label" : undefined,
-            x: line.x, y: line.y, "text-anchor": line.anchor, "font-style": line.italic ? "italic" : undefined,
+            "data-body-row": line.section === "textStyle" ? "" : undefined,
+            "pointer-events": "visiblePainted", cursor: alt.value && ctrl.value ? "grab" : undefined,
+            onPointerdown: e => {
+              if (!e.ctrlKey || !e.altKey || ![0,2].includes(e.button) || occupied(node.id) || ancestors(node,nodeMap.value).some(n => n.locked)) return;
+              let bounds;
+              if (line.section === "textStyle") {
+                const rows = Array.from(e.currentTarget.parentNode.querySelectorAll("[data-body-row]"), row => row.getBBox());
+                if (rows.length) bounds = {
+                  left: Math.min(...rows.map(r => r.x)), right: Math.max(...rows.map(r => r.x+r.width)),
+                  top: Math.min(...rows.map(r => r.y)), bottom: Math.max(...rows.map(r => r.y+r.height)),
+                };
+              }
+              beginDrag(e,"text",{nodeID: node.id, section: line.section, bounds});
+              claimGesture(node);
+            },
+            x: line.x + (textDrag?.section === line.section ? textDrag.delta.x : 0),
+            y: line.y + (textDrag?.section === line.section ? textDrag.delta.y : 0), "text-anchor": line.anchor, "font-style": line.italic ? "italic" : undefined,
             "text-decoration": line.underline ? "underline" : undefined, fill: line.color, "font-size": line.size, "font-weight": line.weight,
             textLength: line.fit, lengthAdjust: line.fit ? "spacingAndGlyphs" : undefined,
           }, line.runs ? line.runs.map(run => {
@@ -1267,9 +1635,13 @@ createApp({
           }) : line.text))),
         destination ? h("svg", {x: drawn.width/2*inset-15, y: drawn.height/2*inset-16, width: 14, height: 14,
           viewBox: "0 0 24 24", fill: "none", stroke: node.textColor, "stroke-width": 1.8,
-          "stroke-linecap": "round", "stroke-linejoin": "round", "pointer-events": "none"},
-          [h("path", {d: linkIcons[destination.kind]})]) : null,
-        ...(alt.value && !occupied(node.id) && node.kind !== "connectionPoint" && !ancestors(node, nodeMap.value).some(n => n.locked)
+          "stroke-linecap": "round", "stroke-linejoin": "round", "pointer-events": "all",
+          role: "link", tabindex: 0, "aria-label": "Hivatkozás megnyitása", cursor: "pointer",
+          onPointerdown: e => { if (!e.altKey) e.stopPropagation(); }, onClick: e => e.stopPropagation(),
+          onDblclick: e => { if (e.altKey) return; e.preventDefault(); e.stopPropagation(); followBoxLink(destination); },
+          onKeydown: e => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); followBoxLink(destination); } }},
+          [h("rect", {width: 24, height: 24, fill: "transparent", stroke: "none"}), h("path", {d: linkIcons[destination.kind]})]) : null,
+        ...(alt.value && !ctrl.value && !occupied(node.id) && node.kind !== "connectionPoint" && !ancestors(node, nodeMap.value).some(n => n.locked)
           ? [[-1,-1], [1,-1], [1,1], [-1,1]].map(([sx, sy]) => {
             const r = 5/view.value.k;
             return h("rect", {"data-editor-only": "", x: sx*drawn.width/2-r, y: sy*drawn.height/2-r,
@@ -1279,32 +1651,33 @@ createApp({
       ]);
     }
 
-    function renderEndpoint(edge, end, point) {
-      const attached = Boolean(edgeEndpoint(edge, end).node);
-      if (attached && !ctrl.value) return null;
-      return h("circle", {
-        key: edge.id + end, "data-edge": edge.id, "data-endpoint": end, cx: point.x, cy: point.y,
-        r: (attached ? 7 : 6) / view.value.k, fill: "transparent", "pointer-events": "all",
+    function renderEndpoint(edge, end, head, color, interactive = true) {
+      const attached = Boolean(edgeEndpoint(edge,end).node);
+      const attrs = {key: edge.id + end, transform: head.transform, stroke: "none",
+        fill: head.visible ? color : "transparent", "pointer-events": interactive ? "all" : "none"};
+      if (interactive) Object.assign(attrs, {"data-edge": edge.id, "data-endpoint": end,
         class: attached ? "detach-endpoint" : "edge-endpoint",
-        onPointerdown: event => pressEndpoint(event, edge, end),
-        onContextmenu: event => context(event, "edge", edge.id),
-        onClick: event => event.stopPropagation(),
-      });
+        onPointerdown: event => pressEndpoint(event,edge,end),
+        onContextmenu: event => context(event,"edge",edge.id),
+        onClick: event => event.stopPropagation()});
+      if (head.visible) return h("path", {...attrs, d: "M0 0L-1 -.5V.5Z"});
+      return interactive ? h("rect", {...attrs, "data-editor-only": "", x:-1, y:-0.5, width:1, height:1}) : null;
     }
 
     function renderEdge(edge) {
       const drag = gesture.value;
+      if (drag?.type === "batch" && batch.value?.edges.has(edge.id)) edge = moveBatchEdge(edge,drag);
       if (drag?.edgeID === edge.id && drag.endPosition) {
         edge = {...edge};
         setEndpoint(edge, drag.end, {point: drag.endPosition});
       }
-      const {d, labelPosition, angle} = edgeGeometry(edge, drawnNode);
-      const paint = edgePaint(edge);
+      const {d, labelPosition, angle, stroke, ends, paint} = wireDrawing(edge, drawnNode);
       const mine = selected.value?.id === edge.id && ["edge","endpoint"].includes(selected.value.kind);
       const colors = peers.value.filter(p => p.mine ? mine : p.edge === edge.id).map(p => p.color);
+      if (batch.value?.edges.has(edge.id)) colors.push("#16a085");
       return h("g", {key: edge.id, "data-edge": edge.id, tabindex: 0, role: "button", "aria-label": edge.label || "Vonal",
         onPointerdown: event => {
-          if (!event.ctrlKey || ![0, 2].includes(event.button) || reconnect.value || !online.value) return;
+          if (!event.ctrlKey || event.button !== 0 || reconnect.value || !online.value) return;
           const pathElement = event.currentTarget.querySelector(".edge-hit");
           const length = pathElement.getTotalLength();
           const point = world(event);
@@ -1322,28 +1695,26 @@ createApp({
           event.stopPropagation();
           const p = pathElement.getPointAtLength(nearest);
           const joint = {...makeNode(clampPoint(p)), title: "", kind: "connectionPoint", shape: "ellipse",
-            width: 14, height: 14, autoSize: false, fill: paint.color};
+            width: 14, height: 14, fill: paint.color};
           const tail = {...edge, id: id(), source: joint.id, sourcePoint: undefined, startArrow: false, label: ""};
-          edge.target = {node: joint.id};
-          edge.endArrow = false;
-          board.value.nodes.push(joint);
-          dropParent(joint);
-          board.value.edges.push(tail);
-          modified();
-          selectNode(joint.id);
+          const head = {...copy(edge), target: {node: joint.id}, endArrow: false};
+          beginDrag(event,"split",{edgeID: edge.id});
+          stageInsertion({nodes: [joint], edges: [head,tail], original: copy(edge)});
         },
-        onClick: event => { if (event?.ctrlKey) return; selectNode(null, edge.id); inspectNothing(); selected.value = {kind: "edge", id: edge.id}; },
+        onClick: event => { if (event?.ctrlKey || batch.value?.edges.has(edge.id)) return; selectNode(null, edge.id); inspectNothing(); selected.value = {kind: "edge", id: edge.id}; },
         onDblclick: event => {
           event.stopPropagation();
-          openProperties("edge", edge.id);
+          openProperties("edge", edge.id, true);
         },
         onContextmenu: event => context(event, "edge", edge.id),
       }, [
-        ...colors.map((color, i) => h("path", {"data-editor-only": "", d, stroke: color,
+        ...colors.map((color, i) => h("path", {"data-editor-only": "", d: stroke.d, "stroke-linecap": "butt", stroke: color,
           "stroke-width": paint.width + 5 * (colors.length-i) / view.value.k, "pointer-events": "none"})),
-        h("path", {d, ...edgeAppearance(edge, "arrow-" + edge.id)}),
+        h("path", stroke),
         h("path", {"data-editor-only": "", d, stroke: "transparent", "stroke-width": Math.max(paint.width + 10, 14 / view.value.k),
           "pointer-events": "stroke", class: "edge-hit"}),
+        renderEndpoint(edge,"source",ends.source,paint.color),
+        renderEndpoint(edge,"target",ends.target,paint.color),
         edge.label?.trim() ? h("text", {transform: "translate(" + labelPosition.x + " " + labelPosition.y + ") rotate(" + angle + ")",
           y: -paint.width / 2 - 6, "font-family": "system-ui, sans-serif", "font-size": 14, "text-anchor": "middle",
           stroke: "none", fill: paint.color, class: "edge-label"}, edge.label) : null,
@@ -1355,7 +1726,7 @@ createApp({
       const spacing = board.value.gridSpacing ?? 20;
       const [left, top] = view.value.invert([0, 0]);
       const cable = preview.value?.edge;
-      const shown = cable ? edgeGeometry(cable, drawnNode) : null;
+      const shown = cable ? wireDrawing({...cable, color: "#4168e9"}, drawnNode) : null;
       return h("div", {class: "canvas-area"}, [
         h("svg", {ref: canvas, class: ctrl.value ? "editor-canvas ctrl-held" : "editor-canvas", "aria-label": "Ötletvászon",
           onContextmenu: event => context(event),
@@ -1370,11 +1741,7 @@ createApp({
             h("pattern", {id: "worksheet-grid", patternUnits: "userSpaceOnUse", width: spacing, height: spacing}, [
               h("circle", {cx: spacing/2, cy: spacing/2, r: 1.1, fill: board.value.gridColor ?? "#ccd7eb"}),
             ]),
-            arrowDefinition("arrow-preview", "#4168e9"),
-            ...board.value.edges.flatMap(edge => {
-              const paint = edgePaint(edge);
-              return paint.startArrow || paint.endArrow ? [arrowDefinition("arrow-" + edge.id, paint.color)] : [];
-            })]),
+          ]),
           h("rect", {width: "100%", height: "100%", fill: board.value.background ?? paper, "pointer-events": "none"}),
           h("g", {transform: view.value + " translate(" + centerX + " " + centerY + ")"}, [
             board.value.gridVisible !== false ? h("rect", {x: left-centerX, y: top-centerY, width: size.value.width/view.value.k,
@@ -1382,18 +1749,17 @@ createApp({
             h("path", {"data-editor-only": "", "pointer-events": "none", stroke: "#aab9cf", "stroke-width": 1,
               d: "M -8 0 H 8 M 0 -8 V 8"}),
             h("g", {"data-scene": ""}, [
-              ...containers.value.map(renderNode),
-              h("g", {fill: "none", "stroke-linecap": "round"}, board.value.edges.map(renderEdge)),
-              ...board.value.nodes.filter(n => n.kind !== "container").map(renderNode),
+              ...layers.value.back.map(renderNode),
+              h("g", {fill: "none", "stroke-linecap": "round"}, sceneEdges.value.map(renderEdge)),
+              ...layers.value.front.map(renderNode),
             ]),
-            h("g", {"data-editor-only": ""}, board.value.edges.flatMap(edge => {
-              if (edge.source && edge.target.node && !ctrl.value) return [];
-              const {from, to} = edgeGeometry(edge, drawnNode);
-              return [renderEndpoint(edge, "source", from), renderEndpoint(edge, "target", to)];
-            })),
             preview.value?.junction ? h("circle", {"data-editor-only": "", cx: preview.value.junction.x, cy: preview.value.junction.y,
               r: 9 / view.value.k, stroke: "#078469", fill: "#b9f3e1", "stroke-width": 2 / view.value.k, "pointer-events": "none"}) : null,
-            shown ? h("path", {d: shown.d, ...edgeAppearance({...cable, color: "#4168e9"}, "arrow-preview"), fill: "none", "pointer-events": "none"}) : null,
+            shown ? h("g", {"pointer-events": "none"}, [h("path", shown.stroke),
+              ...["source","target"].map(end => renderEndpoint(cable,end,shown.ends[end],shown.paint.color,false))]) : null,
+            gesture.value?.type === "rectangle" ? h("rect", {...rectangle(gesture.value.initial,gesture.value.point),
+              fill: "#4168e922", stroke: "#4168e9", "vector-effect": "non-scaling-stroke", "pointer-events": "none"}) : null,
+            mouse ? h("g", {"data-mouse-layer": ""}) : null,
           ]),
         ]),
         h("div", {class: "participants", "aria-label": "Jelenlévők"},
@@ -1440,7 +1806,7 @@ createApp({
           updateItem(current, "link", link);
         }, {symbol: node.link ? "unlink" : "link", disabled: !!occupied(node.id)}) : null,
         button("Szerkesztés", () => openProperties("node", node.id), {symbol: "edit", disabled: !!occupied(node.id)}),
-        button("Markdown megnyitása", () => showNote(node), {symbol: "eye"}),
+        button("Text megnyitása", () => showNote(node), {symbol: "eye"}),
         button("Törlés", () => { menu.value = null; deleteNode(node); }, {class: "button danger", symbol: "trash", disabled: !!occupied(node.id)}),
       ] : type === "edge" && edge ? [
         button("Szerkesztés", () => openProperties("edge", edge.id), {symbol: "edit"}),
@@ -1457,7 +1823,11 @@ createApp({
     }
 
     function sidebar(label, contents, deletion) {
-      return h("aside", {class: "inspector", "aria-label": label}, [
+      return h("aside", {class: "inspector", "aria-label": label,
+        onFocusin: event => { editingField = event.target.matches("textarea,input,select"); },
+        onFocusout: finishField,
+        onChange: event => { if (event.target.matches("select,input[type=checkbox],input[type=range],input[type=color]")) finishField(); },
+        onInputCapture: () => { editingField = true; }}, [
         h("div", {class: "inspector-content stack"}, contents),
         deletion ? h("footer", {class: "inspector-footer"}, deletion) : null,
 
@@ -1509,7 +1879,7 @@ createApp({
       if (searchQuery.value === null) return null;
       const term = searchQuery.value.trim().toLocaleLowerCase("hu");
       const matches = term ? [
-        ...board.value.nodes.filter(n => [n.title, n.comment, n.markdown].some(t => t?.toLocaleLowerCase("hu").includes(term)))
+        ...board.value.nodes.filter(n => [n.title, n.text].some(t => t?.toLocaleLowerCase("hu").includes(term)))
           .map(n => ({id: n.id, kind: "node", title: n.title || "Csomópont", point: n.position})),
         ...board.value.edges.filter(e => e.label?.toLocaleLowerCase("hu").includes(term))
           .map(e => ({id: e.id, kind: "edge", title: e.label, point: edgeGeometry(e, drawnNode).labelPosition})),
@@ -1531,30 +1901,35 @@ createApp({
 
     function renderInspector() {
       if (manuallyClosed.value) return null;
+      if (batch.value) {
+        const nodes = board.value.nodes.filter(n => batch.value.nodes.has(n.id));
+        const joints = nodes.filter(n => n.kind === "connectionPoint").length;
+        const edges = board.value.edges.filter(e => batch.value.edges.has(e.id)).length;
+        return sidebar("Objektumok", [h("h2","Objektumok:"), h("p", (nodes.length-joints)+" doboz, "+edges+" vonal, "+joints+" csomópont")],
+          button("Törlés",deleteBatch,{class: "button danger",symbol: "trash"}));
+      }
       if (note.value) {
         const reading = note.value;
         const node = nodeMap.value.get(reading.id);
         if (!node) return null;
-        return sidebar("Markdown", [
+        return sidebar("Text", [
           button("Szerkesztés", () => openProperties("node", node.id), {symbol: "edit", disabled: !!occupied(node.id)}),
           h("h2", node.title),
-          node.comment ? h("p", {class: "comment", style: {color: node.commentStyle?.color ?? commentColor(node.textColor)}}, node.comment) : null,
           reading.loading ? h("p", "Betöltés…") : null,
           reading.error ? h("p", {class: "error"}, reading.error) : null,
-          !reading.loading && !reading.error ? h("div", {class: "markdown", innerHTML: reading.html || "<p>Még nincs leírás.</p>"}) : null,
+          !reading.loading && !reading.error ? h("div", {class: "formatted-text", innerHTML: reading.html || "<p>Még nincs leírás.</p>"}) : null,
         ], deleteButton(node));
       }
       if (!inspector.value || inspector.value.kind === "worksheet") {
         const sheet = board.value;
         if (!editingPanel.value) return sidebar("Munkalap", [
           button("Szerkesztés", () => openProperties("worksheet"), {symbol: "edit"}),
-          h("h2", sheet.title), sheet.comment && h("p", sheet.comment), sheet.markdown && h("p", sheet.markdown),
+          h("h2", sheet.title), h(FormattedText, {source: sheet.text}),
         ], role === "admin" ? button("Munkalap törlése", deleteBoard, {class: "button danger", symbol: "trash"}) : null);
         return sidebar("Munkalap", [
           button("Előnézet", () => { editingPanel.value = false; }, {symbol: "eye"}),
           field("Cím", input(sheet.title, value => updateItem(sheet, "title", value), {maxlength: 120})),
-          field("Megjegyzés", input(sheet.comment || "", value => updateItem(sheet, "comment", value), {maxlength: 500})),
-          field("Markdown", textarea(sheet.markdown || "", value => updateItem(sheet, "markdown", value))),
+          field("Text", textarea(sheet.text ?? "", value => updateItem(sheet, "text", value))),
           colorPicker("Munkalap háttérszíne", sheet.background ?? paper, value => updateItem(sheet, "background", value), "worksheet/background"),
           colorPicker("Rácspontok színe", sheet.gridColor ?? "#ccd7eb", value => updateItem(sheet, "gridColor", value), "worksheet/grid"),
           checkbox("Pontrács megjelenítése", sheet.gridVisible !== false, v => updateItem(sheet, "gridVisible", v)),
@@ -1563,7 +1938,7 @@ createApp({
           h("div", {class: "inspector-links"}, [
             button("SVG letöltése", exportSVG, {symbol: "download"}),
             link("Mentett JSON letöltése", "/export/json/" + path, "download"),
-            link("Mentett Markdown letöltése", "/export/markdown/" + path, "download"),
+            link("Mentett Text letöltése", "/export/text/" + path, "download"),
           ]),
         ], role === "admin" ? button("Munkalap törlése", deleteBoard, {class: "button danger", symbol: "trash"}) : null);
       }
@@ -1579,7 +1954,7 @@ createApp({
         ], button("Kapcsolat törlése", () => removeEdge(edge), {class: "button danger", symbol: "trash"}));
         return sidebar("Vonal szerkesztése", [
           button("Előnézet", () => { editingPanel.value = false; }, {symbol: "eye"}),
-          field("Címke", input(edge.label || "", value => updateItem(edge, "label", value), {maxlength: 120})),
+          field("Címke", input(edge.label || "", value => updateItem(edge, "label", value), {"data-object-label": "", maxlength: 120})),
           colorPicker("Vonal színe", paint.color, value => updateItem(edge, "color", value), edge.id + "/line"),
           field("Vastagság", numeric(paint.width, value => updateItem(edge, "width", value), 0.5, 24)),
           field("Vonaltípus", select(style, lineStyles, value => changeLineStyle(edge, value))),
@@ -1591,10 +1966,7 @@ createApp({
       const node = nodeMap.value.get(inspector.value.id);
       if (!node || held.value !== node.id || occupied(node.id)) return null;
       const change = (key, value) => updateItem(node, key, value);
-      const autoSize = node.autoSize !== false;
-      const drawn = drawnNode(node.id);
-      const dimension = (key, min, max) => numeric(drawn[key], value => change(key, value), min, max, {disabled: autoSize});
-      const title = field("Címke", input(node.title, value => change("title", value), {maxlength: 120}));
+      const title = field("Címke", input(node.title, value => change("title", value), {"data-object-label": "", maxlength: 120}));
       const color = (label, key, fallback) => colorPicker(label, node[key] ?? fallback, v => change(key, v), node.id + "/" + key);
       if (node.kind === "connectionPoint") return sidebar("Csomópont", [
         button("Előnézet", () => showNote(node), {symbol: "eye"}),
@@ -1605,23 +1977,21 @@ createApp({
       function typography(section) {
         const isTitle = section === "title";
         const style = isTitle ? node : node[section] ?? {};
-        const outsideKey = isTitle ? "titleOutside" : "markdownOutside";
-        const outside = !!node[outsideKey];
+        const outside = isTitle && !!node.titleOutside;
         const sizeKey = isTitle ? "fontSize" : "size";
         const colorKey = isTitle ? "textColor" : "color";
         const update = (key, value) => isTitle ? change(key, value) : change(section, {...node[section], [key]: value});
         return [
-          section !== "commentStyle" ? checkbox("Dobozon kívül", outside, value => {
+          isTitle ? checkbox("Dobozon kívül", outside, value => {
             if (value && (style.verticalAlignment ?? "middle") === "middle" && (style.alignment ?? node.alignment) === "center") {
               update("verticalAlignment", "top");
             }
-            change(outsideKey, value);
+            change("titleOutside", value);
           }) : null,
-          colorPicker("Szövegszín", style[colorKey] ?? (section === "commentStyle" ? commentColor(node.textColor) : node.textColor),
+          colorPicker("Szövegszín", style[colorKey] ?? node.textColor,
             v => update(colorKey, v), node.id + "/" + section + "/text"),
           h("div", {class: "fields-two"}, [
-            field("Betűméret", numeric(style[sizeKey] ?? Math.max(10, node.fontSize*.8), v => update(sizeKey, v), 10, 60)),
-            section === "commentStyle" ? field("Igazítás", select(style.alignment ?? node.alignment, alignments, v => update("alignment", v))) :
+            field("Betűméret", numeric(style[sizeKey] ?? 13, v => update(sizeKey, Math.round(v)), 10, 60, {step: 1})),
               field("Igazítás", select((style.verticalAlignment ?? "middle") + "-" + (style.alignment ?? node.alignment), {
                 "top-left": "Bal felső", "top-center": "Felső közép", "top-right": "Jobb felső",
                 "middle-left": "Bal oldal", ...(outside ? {} : {"middle-center": "Közép"}), "middle-right": "Jobb oldal",
@@ -1647,28 +2017,20 @@ createApp({
       }
       return sidebar("Ötlet szerkesztése", [
         button("Előnézet", () => showNote(node), {symbol: "eye"}),
+        group("Cím", [title, ...typography("title")]),
         group("Doboz", [
           field("Forma", select(node.shape, shapes, value => change("shape", value))),
-          checkbox("Auto size", autoSize, value => {
-            node.width = drawn.width; node.height = drawn.height;
-            delete node.autoMinWidth; delete node.autoMinHeight;
-            change("autoSize", value);
-          }),
-          h("div", {class: "fields-two"}, [field("Szélesség", dimension("width", 64, 880)), field("Magasság", dimension("height", 40, 680))]),
           h("div", {class: "fields-two"}, [field("X", coordinate("x")), field("Y", coordinate("y"))]),
           h("div", {class: "fields-two"}, [color("Háttér", "fill"), color("Keret", "border")]),
           button(node.kind === "container" ? "Konténer feloldása" : "Konténer", () => toggleContainer(node), {symbol: "folder", disabled: locked}),
           node.kind === "container" ? checkbox("Lock · tartalom rögzítése", !!node.locked, v => change("locked", v)) : null,
         ]),
-        group("Cím", [title, ...typography("title")]),
-        group("Megjegyzés", [field("Megjegyzés", input(node.comment || "", v => change("comment", v), {maxlength: 500})),
-          ...typography("commentStyle")]),
-        group("Markdown", [
-          checkbox("Show Markdown", Boolean(node.showMarkdown), value => change("showMarkdown", value)),
-          field("Markdown", textarea(node.markdown, value => change("markdown", value))),
-          ...typography("markdownStyle"),
-          h("div", {class: "fields-two"}, [color("Markdown háttér", "markdownFill", node.fill),
-            color("Markdown keret", "markdownBorder", node.border)]),
+        group("Text", [
+          checkbox("Hide text", Boolean(node.hideText), value => change("hideText", value)),
+          textarea(node.text, value => change("text", value)),
+          ...typography("textStyle"),
+          h("div", {class: "fields-two"}, [color("Text háttér", "textFill", node.fill),
+            color("Text keret", "textBorder", node.border)]),
         ]),
         group("Link", [
           field("Link", input(node.link ?? "", value => change("link", value.trim()), {
@@ -1688,6 +2050,8 @@ createApp({
       const changed = online.value && (dirty.value || (board.value.revision > checkpointState.value.revision
         ? board.value.revision !== checkpointRevision : checkpointState.value.changed));
       const controls = [
+          button("Visszavonás", () => replay(false), {symbol: "undo", disabled: !undo.value.length && !fieldChanged || !online.value || !!gesture.value}),
+          button("Újra", () => replay(true), {symbol: "redo", disabled: !redo.value.length || !online.value || !!gesture.value}),
           button("Mentés", () => sessionAction("checkpoint"), {class: changed ? "button primary" : "button", symbol: "save",
             title: "Közös visszaállítási pont rögzítése", disabled: checkpointBusy.value || !online.value}),
           button("Resign", () => sessionAction("resign"), {symbol: "undo", title: "A közös visszaállítási pont betöltése",

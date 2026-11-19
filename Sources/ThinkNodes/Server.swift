@@ -25,7 +25,7 @@ enum ThinkNodes {
         }
 
         let https = arguments.first == "serve-https"
-        let command = https ? [CommandLine.arguments[0], "serve"] + Array(arguments.dropFirst()) : CommandLine.arguments
+        let command = https ? [CommandLine.arguments[0], "serve"] + Array(arguments.dropFirst()) : [CommandLine.arguments[0]] + arguments
         var environment = try Environment.detect(arguments: command)
         try LoggingSystem.bootstrap(from: &environment)
         let app = try await Application.make(environment)
@@ -71,7 +71,7 @@ private struct LoginForm: Content {
 }
 
 private struct MarkdownForm: Content {
-    var markdown: String
+    var text: String
 }
 
 private struct CanvasMarkdownRequest: Content {
@@ -369,15 +369,15 @@ func configure(_ application: Application, store: WorksheetStore) {
         return try worksheetResponse(worksheet)
     }
 
-    app.post("api", "markdown") { req -> Response in
+    app.post("api", "text") { req -> Response in
         _ = try session(req, store: store).editor()
         try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
-        let source = try req.content.decode(MarkdownForm.self).markdown
+        let source = try req.content.decode(MarkdownForm.self).text
         guard source.utf8.count <= 100_000 else { throw Abort(.payloadTooLarge) }
         return response(markdownHTML(source), type: "text/html; charset=utf-8")
     }
 
-    app.post("api", "markdown", "canvas") { req async throws -> CanvasMarkdownResponse in
+    app.post("api", "text", "canvas") { req async throws -> CanvasMarkdownResponse in
         _ = try session(req, store: store).editor()
         try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
         let sources = try req.content.decode(CanvasMarkdownRequest.self).sources
@@ -402,7 +402,7 @@ func configure(_ application: Application, store: WorksheetStore) {
         case "json":
             return try worksheetResponse(store.access(path, sheet: worksheet, user: identity.user, unlocks: identity.unlocks).editable ? worksheet : worksheet.withoutAccessDetails(),
                                          filename: "\(path.name).json")
-        case "markdown":
+        case "text", "markdown":
             return response(worksheetMarkdown(worksheet), type: "text/markdown; charset=utf-8", filename: "\(path.name).md")
         default:
             throw Abort(.notFound)
@@ -580,7 +580,7 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
     let edit = access.editable
         ? "<a class=\"button small viewer-edit\" href=\"/edit/\(path.url)\" aria-label=\"Szerkesztés\" title=\"Szerkesztés\">\(uiIcon("edit"))</a>" : ""
     let downloads = [
-        ("svg", "SVG"), ("json", "JSON"), ("markdown", "Markdown"),
+        ("svg", "SVG"), ("json", "JSON"), ("text", "Text"),
     ].map { format, title in
         headerLink("/export/" + format + "/" + path.url, title, symbol: "download")
     }.joined()
@@ -590,20 +590,18 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
         note = """
             <article class="panel passive-note"><a class="muted" href="\(base)">Vissza a munkalaphoz</a>
               <h2>\(escaped(node.title))</h2>
-              \(renderedComment(node.comment))
-              <div class="markdown">\(node.markdown.isEmpty ? "<p>Még nincs leírás.</p>" : markdownHTML(node.markdown))</div>
+              <div class="formatted-text">\(node.text.isEmpty ? "<p>Még nincs leírás.</p>" : markdownHTML(node.text))</div>
             </article>
             """
     } else {
         note = ""
     }
-    let tooltips = worksheet.nodes.filter { $0.showMarkdown != true && !$0.markdown.isEmpty }.map {
-        "<template data-tooltip=\"\($0.id)\">\(markdownHTML($0.markdown))</template>"
+    let tooltips = worksheet.nodes.filter { $0.hideText == true && !$0.text.isEmpty }.map {
+        "<template data-tooltip=\"\($0.id)\">\(markdownHTML($0.text))</template>"
     }.joined()
-    let description = renderedComment(worksheet.comment)
-    let introduction = worksheet.markdown.map(markdownHTML) ?? ""
-    let notes = description.isEmpty && introduction.isEmpty ? "" :
-        "<section class=\"panel worksheet-notes\">\(description)<div class=\"markdown\">\(introduction)</div></section>"
+    let introduction = worksheet.text.map(markdownHTML) ?? ""
+    let notes = introduction.isEmpty ? "" :
+        "<section class=\"panel worksheet-notes\"><div class=\"formatted-text\">\(introduction)</div></section>"
     let host = req.headers.first(name: .host)
     let external = worksheet.nodes.compactMap { node -> String? in
         guard let raw = node.link, let link = WorksheetLink(raw), link.isExternal(siteHost: host),
@@ -614,25 +612,25 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
         let name = file.lastPathComponent
         return "<li><a data-scope=\"attachment\" data-manage=\"\(access.manageable)\" data-document=\"\(path.url)\" data-filename=\"\(escaped(name))\" href=\"/api/attachment/\(path.url)?name=\(encodeQuery(name))\">\(escaped(name))</a></li>"
     }.joined()
-    let newPage = access.editable ? "<button type=\"button\" class=\"panel sub-preview new-worksheet\">\(uiIcon("plus"))Új munkalap</button>" : ""
+    let newPage = access.editable ? "<button type=\"button\" class=\"button new-worksheet\">\(uiIcon("plus"))Új munkalap</button>" : ""
     return htmlPage(title: worksheet.title, body: """
-        \(siteHeader(path: path.url, project: worksheet.title, user: session.user, csrf: session.csrf, afterTitle: edit))
+        \(siteHeader(path: path.url, project: worksheet.title, user: session.user, csrf: session.csrf, canEdit: access.editable))
         <script type="module" src="/viewer.js?v=2"></script>
         <main class="shell" id="worksheet-view" data-path="\(path.url)" data-csrf="\(token(req))" data-revision="\(worksheet.revision)" data-editable="\(access.editable)" data-member="\(session.user != nil)">
           <a hidden data-current-document data-scope="sheet" \(menuState(access.sheetRule)) data-manage="\(access.manageable)" href="\(base)">Munkalap</a>
           <div class="passive-frame panel">
             <svg class="passive-backdrop" aria-hidden="true"><rect width="100%" height="100%" fill="\(worksheet.backgroundColor)"/></svg>
             \(boardSVG(worksheet, noteBase: base, siteHost: host))
+            \(edit)
             <button class="button fullscreen" type="button" aria-label="Teljes képernyő">\(uiIcon("fit"))</button>
           </div>
           \(tooltips)
           \(notes)
           \(note)
-          <nav class="viewer-downloads" aria-label="Letöltések">\(downloads)</nav>
+          <nav class="viewer-downloads" aria-label="Letöltések és szerzők">\(downloads)\(credits(worksheet, access))</nav>
           <section class="worksheet-section"><h2>További oldalak:</h2><div class="project-list" data-current-sheet="\(path.url)">\(previews)\(newPage)</div></section>
           <section class="worksheet-section"><h2>Külső hivatkozások</h2>\(external.isEmpty ? "<p>Nincs külső hivatkozás.</p>" : "<ul>\(external)</ul>")</section>
           <section class="worksheet-section"><h2>Mappa tartalma</h2>\(attachments.isEmpty ? "<p>Nincs csatolt fájl.</p>" : "<ul>\(attachments)</ul>")</section>
-          <footer class="worksheet-section">\(credits(worksheet, access))</footer>
         </main>
         """)
 }

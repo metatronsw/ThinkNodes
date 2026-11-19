@@ -16,7 +16,7 @@
 body { margin: 0; min-height: 100dvh; }
 button, input, textarea, select { font: inherit; }
 a { color: var(--accent-ink); text-decoration: none; }
-a:hover { text-decoration: underline; }
+a:hover { text-decoration: none; }
 h1, h2, p { margin-top: 0; }
 h1 { font-weight: 700; line-height: 1.12; letter-spacing: -.038em; }
 h2 { letter-spacing: -.02em; }
@@ -107,14 +107,14 @@ input[type="color"] { height: 37px; padding: 3px; cursor: pointer; }
 .tabs [aria-current] { background: #dee7fd; color: #223d9f; }
 .passive-frame { overflow: hidden; background: var(--paper); }
 .passive-canvas { display: block; width: 100%; max-height: 75vh; }
-.passive-canvas a:not(:has([data-selection], [data-view-selection])):is(:hover, :focus-visible) :is(rect, polygon, ellipse) { stroke: var(--accent); }
+
 .passive-canvas a[data-node]:hover { text-decoration: none; }
-.passive-canvas a[data-link]:hover .link-label, .editor-canvas .idea[data-link]:hover .link-label { text-decoration: underline; }
+.passive-canvas [data-link]:hover [stroke-dasharray="7 4"], .editor-canvas [data-link]:hover > [stroke-dasharray="7 4"] { stroke-dasharray: none; stroke-width: 4; }
 .passive-note { margin-top: 18px; padding: 22px; }
 .passive-note h2 { margin: 14px 0; }
-.markdown { line-height: 1.6; overflow-wrap: anywhere; }
-.markdown pre { overflow: auto; padding: 12px; background: var(--paper); border-radius: 7px; }
-.markdown img { max-width: 100%; }
+.formatted-text { line-height: 1.6; overflow-wrap: anywhere; }
+.formatted-text pre { overflow: auto; padding: 12px; background: var(--paper); border-radius: 7px; }
+.formatted-text img { max-width: 100%; }
 .empty, .editor-loading { padding: 22px; margin: 0; }
 
 .editor-root {
@@ -164,7 +164,7 @@ input[type="color"] { height: 37px; padding: 3px; cursor: pointer; }
 }
 .inspector-content { flex: 1; min-height: 0; overflow: auto; padding: 15px; align-content: start; }
 .inspector-content h2, .inspector-content p { margin: 0; }
-.inspector-content .markdown p { margin: 0 0 .7em; }
+.inspector-content .formatted-text p { margin: 0 0 .7em; }
 .inspector-footer { display: flex; justify-content: flex-end; padding: 7px 15px; border-top: 1px solid var(--line); }
 .inspector-footer .button { min-width: 38px; padding: 4px; }
 .inspector-links { display: grid; gap: 8px; }
@@ -180,7 +180,6 @@ input[type="color"] { height: 37px; padding: 3px; cursor: pointer; }
 .canvas-status { position: absolute; inset: 12px auto auto 14px; max-width: calc(100% - 28px); padding: 6px 9px; margin: 0; border-radius: 5px; background: #fff; color: var(--muted); font-size: .85rem; pointer-events: none; }
 .canvas-status.error { color: #9e2230; }
 .worksheet-notes { margin-top: 18px; padding: 22px; }
-.comment { overflow-wrap: anywhere; color: var(--muted); }
 .context-menu { position: fixed; z-index: 8; width: 228px; padding: 7px; display: grid; gap: 3px; box-shadow: 0 10px 25px #1c315326; }
 .context-menu .button { justify-content: flex-start; border-color: transparent; white-space: normal; }
 
@@ -303,14 +302,21 @@ input[type="color"] { height: 37px; padding: 3px; cursor: pointer; }
 .passive-backdrop { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .passive-canvas { position: relative; }
 .viewer-downloads { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.header-left .viewer-edit { flex-shrink: 0; }
+.passive-frame > .viewer-edit { position: absolute; top: 8px; right: 8px; }
+.viewer-downloads .card-meta { display: inline-flex; align-items: center; margin: 0; padding: 4px 10px; border: 1px solid var(--line); border-radius: 7px; background: white; }
 .project-badges { display: flex; gap: .5rem; }
 .project-badges:not(:empty) { margin-top: .5rem; }
 .project-list[data-current-sheet] { gap: 2rem; align-items: start; }
 .preview-link { padding: 0; min-height: 0; color: inherit; }
-.preview-link :is(img, .locked-preview), [data-current-sheet] .new-worksheet {
+.preview-link :is(img, .locked-preview) {
   width: 100%; height: auto; aspect-ratio: 16 / 9; min-height: 0; border: 1px solid var(--line); border-radius: 8px;
 }
 .preview-link img { display: block; object-fit: cover; }
 .preview-link small { color: var(--muted); }
 .connection-lost, .participants.connection-lost { background: #a62739; color: white; border-radius: 5px; padding: 4px 7px; }
+.passive-frame > .mouse-share { position: absolute; bottom: 12px; left: 12px; z-index: 2; }
+.mouse-share[aria-pressed="true"] { background: var(--accent); color: white; }
+
+.viewer-downloads .card-meta:first-of-type { margin-left: auto; }
+[data-current-sheet] .new-worksheet { justify-self: start; }
+[data-node][data-link]:hover svg { stroke-width: 3; }

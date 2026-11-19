@@ -20,7 +20,20 @@ struct LiveState: Content {
 
 /// Selection, revision checks and writes share one critical section.
 final class Collaboration: @unchecked Sendable {
+    private struct Cursor: Codable {
+        let cursor: String
+        let color: String
+        var point: Point?
+
+        var message: String {
+            String(decoding: try! JSONEncoder().encode(self), as: UTF8.self)
+        }
+    }
+
     private struct Peer {
+        let cursorID = UUID().uuidString
+        var cursor: Cursor?
+
         let name: String?
         let role: Role?
         let color: String
@@ -48,9 +61,17 @@ final class Collaboration: @unchecked Sendable {
             }
         }
 
+        func hideCursor(_ peer: Peer?) {
+            guard var cursor = peer?.cursor else { return }
+            cursor.point = nil
+            let message = cursor.message
+            for recipient in peers.values { recipient.socket?.send(message) }
+        }
+
         mutating func expire() {
             let expired = peers.filter { $0.value.seen.duration(to: .now) > .seconds(45) }
             for (id, peer) in expired {
+                hideCursor(peer)
                 peer.socket?.close(promise: nil)
                 peer.waiter?.succeed(())
                 peers.removeValue(forKey: id)
@@ -85,7 +106,9 @@ final class Collaboration: @unchecked Sendable {
         }
     }
 
-    init(store: WorksheetStore) { self.store = store }
+    init(store: WorksheetStore) {
+        self.store = store
+    }
 
     func presence(_ path: WorksheetPath, user: User?, client: String, action: String, node: String?, edge: String? = nil,
                   since: String?, loop: any EventLoop, editing: Bool = false,
@@ -101,6 +124,7 @@ final class Collaboration: @unchecked Sendable {
             if action == "snapshot" && room.peers[client] == nil { throw Abort(.gone) }
             if action == "leave" {
                 let leaving = room.peers.removeValue(forKey: client)
+                room.hideCursor(leaving)
                 leaving?.socket?.close(promise: nil)
                 leaving?.waiter?.succeed(())
                 if !room.peers.values.contains(where: \.editing) { room.checkpoint = nil }
@@ -245,11 +269,28 @@ final class Collaboration: @unchecked Sendable {
             guard let peer = rooms[path.url]?.peers[client], peer.seen.duration(to: .now) < .seconds(45) else { return false }
             peer.socket?.close(promise: nil)
             rooms[path.url]?.peers[client]?.socket = socket
+            for (id, other) in rooms[path.url]?.peers ?? [:] where id != client {
+                if let cursor = other.cursor { socket.send(cursor.message) }
+            }
             return true
         }
         guard attached else { socket.close(promise: nil); return }
         socket.onText { [weak self] socket, text in
-            struct Motion: Decodable {
+            guard text.utf8.count < 512 else { return }
+            struct Pointer: Decodable { let mouse: Bool; let point: Point? }
+            if let pointer = try? JSONDecoder().decode(Pointer.self, from: Data(text.utf8)) {
+                guard pointer.mouse, pointer.point?.isValid != false else { return }
+                self?.lock.withLock {
+                    guard let room = self?.rooms[path.url], let peer = room.peers[client],
+                          peer.name != nil, peer.socket === socket, peer.seen.duration(to: .now) < .seconds(45) else { return }
+                    let cursor = Cursor(cursor: peer.cursorID, color: peer.color, point: pointer.point)
+                    self?.rooms[path.url]?.peers[client]?.cursor = pointer.point == nil ? nil : cursor
+                    let message = cursor.message
+                    for (id, other) in room.peers where id != client { other.socket?.send(message) }
+                }
+                return
+            }
+            struct Motion: Codable {
                 let node: String
                 let revision: Int
                 let delta: Point?
@@ -260,14 +301,17 @@ final class Collaboration: @unchecked Sendable {
                 guard let room = self?.rooms[path.url], room.revision == frame.revision,
                       let sender = room.peers[client], sender.socket === socket, !sender.viewing, sender.node == frame.node,
                       sender.seen.duration(to: .now) < .seconds(45) else { return }
+                guard let data = try? JSONEncoder().encode(frame) else { return }
                 for (id, peer) in room.peers where id != client && peer.seen.duration(to: .now) < .seconds(45) {
-                    peer.socket?.send(text)
+                    peer.socket?.send(String(decoding: data, as: UTF8.self))
                 }
             }
         }
         socket.onClose.whenComplete { [weak self, weak socket] _ in
             self?.lock.withLock {
                 if self?.rooms[path.url]?.peers[client]?.socket === socket {
+                    self?.rooms[path.url]?.hideCursor(self?.rooms[path.url]?.peers[client])
+                    self?.rooms[path.url]?.peers[client]?.cursor = nil
                     self?.rooms[path.url]?.peers[client]?.socket = nil
                     if let room = self?.rooms[path.url], let node = room.peers[client]?.node {
                         let clear = "{\"node\":\"\(node)\",\"revision\":\(room.revision)}"

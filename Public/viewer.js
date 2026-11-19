@@ -1,10 +1,11 @@
+import {sharedMouse} from "./mouse.js";
 import {contextMenu, documentEntries} from "./cards.js";
 import {openExternalLink} from "./links.js";
 import {flashNode, flashPoint} from "./ping.js";
 import {hideTooltip, showTooltip} from "./tooltip.js";
 import {liveConnection} from "./collaboration.js";
 
-import {edgeGeometry, selectionOutline} from "./geometry.js?v=2";
+import {arrowTransform, edgeGeometry, selectionOutline} from "./geometry.js?v=2";
 import {ancestors} from "./containers.js";
 
 let selection;
@@ -16,7 +17,10 @@ const ns = "http://www.w3.org/2000/svg";
 const roster = document.createElement("div");
 roster.className = "participants";
 roster.setAttribute("aria-label", "Jelenlévők");
+const mouse = sharedMouse(point => live.cursor(point));
 function bindCanvas() {
+  const svg = main.querySelector(".passive-canvas");
+  mouse?.bind(svg, svg, main.dataset.member === "true" ? main.querySelector(".passive-frame") : null);
   hideTooltip();
   main.querySelector(".passive-frame").append(roster);
   for (const template of main.querySelectorAll("template[data-tooltip]")) {
@@ -49,14 +53,21 @@ function previewScene() {
     }
     for (const {path, edge} of wires) {
       if (!changed.has(edge.source) && !changed.has(edge.target.node)) continue;
-      const {d, labelPosition, angle} = edgeGeometry(edge, id => nodes.get(id));
+      const {d, labelPosition, angle, from, to, control} = edgeGeometry(edge, id => nodes.get(id));
       path.setAttribute("d", d);
+      if (path.parentElement.hasAttribute("data-free-arrows")) {
+        for (const arrow of path.parentElement.querySelectorAll("[data-arrow-end]")) {
+          const start = arrow.dataset.arrowEnd === "source";
+          arrow.setAttribute("transform", arrowTransform(start ? from : to, control ?? (start ? to : from), edge.width ?? 2));
+        }
+      }
       let underlay = path.previousElementSibling;
       while (underlay?.hasAttribute("data-wire-highlight")) {
         underlay.setAttribute("d", d);
         underlay = underlay.previousElementSibling;
       }
-      if (edge.label?.trim()) path.nextElementSibling?.setAttribute("transform",
+      const wire = path.parentElement.hasAttribute("data-free-arrows") ? path.parentElement : path;
+      if (edge.label?.trim()) wire.nextElementSibling?.setAttribute("transform",
         "translate(" + labelPosition.x + " " + labelPosition.y + ") rotate(" + angle + ")");
     }
   };
@@ -130,8 +141,8 @@ document.addEventListener("click", async event => {
   const box = event.target.closest(".passive-canvas [data-node]");
   if (box && event.detail) {
     event.preventDefault();
-    selectBox(box, true);
-  } else if (event.target.closest(".passive-canvas")) selectBox(null, true);
+    if (selection !== box.dataset.node) selectBox(box, true);
+  } else if (selection && event.target.closest(".passive-canvas")) selectBox(null, true);
   if (event.target.closest(".fullscreen")) {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
@@ -141,14 +152,11 @@ document.addEventListener("click", async event => {
 
 });
 document.addEventListener("dblclick", event => {
-  const box = event.target.closest(".passive-canvas [data-node]");
-  const wire = event.target.closest(".passive-canvas [data-wire]");
-  if (!box && !wire) return;
-  if (event.ctrlKey && main.dataset.editable === "true") {
-    const target = box ? {node: box.dataset.node} : {edge: JSON.parse(wire.dataset.wire).id};
-    location.assign("/edit/" + path + "?" + new URLSearchParams(target));
-  } else if (box?.getAttribute("target") === "_blank") openExternalLink(box.getAttribute("href"));
-  else if (box) location.assign(box.getAttribute("href"));
+  const box = event.target.closest(".passive-canvas a[data-link]");
+  if (!box) return;
+  event.preventDefault();
+  if (box.getAttribute("target") === "_blank") openExternalLink(box.getAttribute("href"));
+  else location.assign(box.getAttribute("href"));
 });
 document.addEventListener("contextmenu", event => {
   const canvas = event.target.closest(".passive-canvas");
@@ -212,7 +220,7 @@ const live = liveConnection(path, csrf, async state => {
   roster.textContent = "Kapcsolat megszakadt";
   peers = [];
   if (!roster.isConnected) main.prepend(roster);
-}, {onMotion: receiveMotion});
+}, {onMotion: receiveMotion, onCursor: mouse?.receive});
 window.addEventListener("pagehide", live.stop);
 window.addEventListener("pageshow", event => { if (event.persisted) live.start(); });
 live.start();

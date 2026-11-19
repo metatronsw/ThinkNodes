@@ -44,11 +44,10 @@ import VaporTesting
         worksheet.background = "#e7eef3"
         worksheet.isPublic = true
         worksheet.editors = ["shared"]
-        worksheet.comment = "A munkalap megjegyzése"
-        worksheet.markdown = "**A munkalap bevezetője**"
+        worksheet.text = "**A munkalap bevezetője**"
         worksheet.nodes = [
-            Idea(id: "elso", title: "Első <ötlet>", markdown: "## Próba\n\n**Szöveg**",
-                 comment: "A doboz megjegyzése", showMarkdown: true, position: Point(x: -250, y: 0)),
+            Idea(id: "elso", title: "Első <ötlet>", text: "## Próba\n\n**Szöveg**",
+                 hideText: false, position: Point(x: -250, y: 0), height: 140),
             Idea(id: "masodik", title: "Második ötlet", position: Point(x: 250, y: 0), shape: .ellipse)
         ]
         worksheet.edges = [
@@ -107,9 +106,7 @@ import VaporTesting
         #expect(page.body.string.contains("<svg"))
         #expect(page.body.string.contains("Első &lt;ötlet&gt;"))
         #expect(page.body.string.contains("<strong>Szöveg</strong>"))
-        #expect(page.body.string.contains("A munkalap megjegyzése"))
         #expect(page.body.string.contains("<strong>A munkalap bevezetője</strong>"))
-        #expect(page.body.string.contains("A doboz megjegyzése"))
         #expect(page.body.string.contains("/viewer.js"))
         #expect(!page.body.string.contains("<h1>"))
         #expect(page.body.string.contains("/icons.svg#download"))
@@ -123,25 +120,21 @@ import VaporTesting
         #expect(svg.body.string.contains("viewBox=\"-850.000 -240.000 1700.000 480.000\""))
         #expect(svg.body.string.contains("marker-start="))
         #expect(svg.body.string.contains("stroke-dasharray="))
-        #expect(svg.body.string.contains("A doboz megjegyzése"))
         #expect(svg.body.string.contains("font-weight=\"700\">Szöveg</tspan>"))
         #expect(svg.body.string.contains("fill=\"#e7eef3\""))
         #expect(svg.body.string.contains("stroke=\"#6b3273\" stroke-width=\"5.000\""))
         #expect(svg.body.string.contains("rotate(32.005)"))
         #expect(svg.body.string.contains(">Szabad vonal</text>"))
-        #expect(svg.body.string.contains("fill=\"#131d2b\""))
         #expect(!svg.body.string.contains("<a href="))
 
-        let markdown = try await browser.sendRequest(.GET, "/export/markdown/\(path)")
+        let markdown = try await browser.sendRequest(.GET, "/export/text/\(path)")
         #expect(markdown.status == .ok)
         #expect(markdown.body.string.contains("**Szöveg**"))
-        #expect(markdown.body.string.contains("A munkalap megjegyzése"))
         #expect(markdown.body.string.contains("**A munkalap bevezetője**"))
-        #expect(markdown.body.string.contains("A doboz megjegyzése"))
         #expect(markdown.body.string.contains("Kétirányú nyíl"))
         #expect(markdown.body.string.contains("810.000, 12.000"))
 
-        let canvasNotes = try await browser.sendRequest(.POST, "/api/markdown/canvas", headers: [
+        let canvasNotes = try await browser.sendRequest(.POST, "/api/text/canvas", headers: [
             "Cookie": editor.cookie, "X-CSRF-Token": editor.csrf
         ]) { request in
             try request.content.encode(["sources": ["## Próba\n\n**Szöveg**"]])
@@ -289,11 +282,10 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
 @Test func containerStylesAndJunctionsSurviveRoundTrip() throws {
     let origin = Point(x: 0, y: 0)
     var container = Idea(id: "group", title: "Konténer", position: origin, kind: .container, locked: true)
-    let child = Idea(id: "child", title: "Ötlet", markdown: "**törzs**", comment: "jegyzet", showMarkdown: true,
+    let child = Idea(id: "child", title: "Ötlet", text: "**törzs**", hideText: false,
                      position: origin, parent: "group", italic: true, underline: true,
-                     commentStyle: TextStyle(color: "#006688", size: 18, alignment: .right),
-                     markdownStyle: TextStyle(color: "#663300", size: 17, italic: true, alignment: .left),
-                     markdownFill: "#eecc99", markdownBorder: "#663344", autoMinWidth: 320)
+                     textStyle: TextStyle(color: "#663300", size: 17, italic: true, alignment: .left),
+                     textFill: "#eecc99", textBorder: "#663344")
     let junction = Idea(id: "joint", title: "Kapocs", position: Point(x: 200, y: 80), width: 34, height: 34,
                         shape: .ellipse, kind: .connectionPoint)
     let line = Connection(id: "line", source: child.id, target: ConnectionTarget(node: junction.id), style: .arrow)
@@ -312,13 +304,13 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     let saved = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(board))
     try saved.validate()
     #expect(saved.nodes.first?.parent == container.id)
-    #expect(saved.nodes.first?.markdownStyle?.size == 17)
+    #expect(saved.nodes.first?.textStyle?.size == 17)
     #expect(saved.nodes.last?.locked == true)
     let svg = boardSVG(saved)
     #expect(svg.contains("patternUnits=\"userSpaceOnUse\" width=\"32.000\""))
     #expect(svg.contains("fill=\"#006699\""))
     #expect(svg.contains("fill=\"#eecc99\" stroke=\"#663344\""))
-    #expect(svg.contains("text-anchor=\"end\""))
+    #expect(svg.contains("text-anchor=\"start\""))
     #expect(svg.contains("font-style=\"italic\" text-decoration=\"underline\""))
     #expect(svg.contains("r=\"17.000\" fill=\"#dce9ff\" aria-label=\"Kapocs\""))
     #expect(svg.contains(">Kapocs</text>"))
@@ -329,8 +321,8 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     let childStart = try #require(svg.range(of: "aria-label=\"Ötlet\" transform="))
     #expect(groupStart.lowerBound < edgeStart.lowerBound && edgeStart.lowerBound < childStart.lowerBound)
     board.gridVisible = false
-    board.nodes[0].markdownFill = board.nodes[0].fill
-    board.nodes[0].markdownBorder = board.nodes[0].border
+    board.nodes[0].textFill = board.nodes[0].fill
+    board.nodes[0].textBorder = board.nodes[0].border
     let plain = boardSVG(board)
     #expect(!plain.contains("worksheet-grid"))
     #expect(!plain.contains("stroke=\"none\"/>"))
@@ -500,4 +492,18 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     let renamed = try WorksheetPath(["uj", "child"])
     #expect(try store.load(renamed, user: editor, unlocks: keys).creator == creator.name)
     #expect(!((try String(contentsOf: root.appendingPathComponent("uj/child.json"), encoding: .utf8)).contains("\"owner\":")))
+}
+
+@Test func legacyTextFields() throws {
+    let idea = Idea(id: "box", title: "Title", position: Point(x: 0, y: 0))
+    var old = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(idea)) as? [String: Any])
+    old.removeValue(forKey: "text")
+    old["markdown"] = "**body**"
+    old["comment"] = "obsolete"
+    old["showMarkdown"] = false
+    old["fontSize"] = 17.4
+    let decoded = try JSONDecoder().decode(Idea.self, from: JSONSerialization.data(withJSONObject: old))
+    #expect(decoded.text == "**body**" && decoded.hideText == true && decoded.fontSize == 17)
+    let encoded = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(decoded)) as? [String: Any])
+    #expect(encoded["comment"] == nil && encoded["markdown"] == nil && encoded["text"] as? String == "**body**")
 }

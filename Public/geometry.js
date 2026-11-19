@@ -59,13 +59,13 @@ export function edgeGeometry(edge, findNode) {
   const targetNode = findNode(edge.target.node);
   const source = sourceNode?.position ?? edge.sourcePoint;
   const target = targetNode?.position ?? edge.target.point;
-  const from = sourceNode ? borderPoint(sourceNode, target) : source;
-  const to = targetNode ? borderPoint(targetNode, source) : target;
+  const control = edge.style === "rope"
+    ? {x: (source.x + target.x)/2, y: (source.y + target.y)/2 + Math.min(110, Math.hypot(target.x-source.x, target.y-source.y)*0.28)} : null;
+  const from = sourceNode ? borderPoint(sourceNode, control ?? target) : source;
+  const to = targetNode ? borderPoint(targetNode, control ?? source) : target;
   const start = "M " + from.x + " " + from.y;
   const end = to.x + " " + to.y;
   const midpoint = {x: (from.x + to.x) / 2, y: (from.y + to.y) / 2};
-  const control = edge.style === "rope"
-    ? {x: midpoint.x, y: midpoint.y + Math.min(110, Math.hypot(to.x - from.x, to.y - from.y) * 0.28)} : null;
   const labelPosition = control
     ? {x: (from.x + 2 * control.x + to.x) / 4, y: (from.y + 2 * control.y + to.y) / 4} : midpoint;
   let angle = Math.atan2(to.y - from.y, to.x - from.x) * 180 / Math.PI;
@@ -75,6 +75,11 @@ export function edgeGeometry(edge, findNode) {
     from, to, control, labelPosition, angle,
     d: control ? start + " Q " + control.x + " " + control.y + " " + end : start + " L " + end,
   };
+}
+
+export function arrowTransform(tip, toward, width) {
+  const angle = Math.atan2(tip.y-toward.y,tip.x-toward.x)*180/Math.PI;
+  return `translate(${tip.x} ${tip.y}) rotate(${angle}) scale(${width*6.75})`;
 }
 
 export function canvasBounds(board) {
@@ -113,11 +118,6 @@ function textWidth(value, size) {
   return width * size;
 }
 
-export function commentColor(color) {
-  return "#" + color.slice(1).match(/../g).map(channel =>
-    Math.floor(parseInt(channel, 16) * 0.83).toString(16).padStart(2, "0")
-  ).join("");
-}
 
 function wrap(text, columns) {
   const lines = [];
@@ -190,52 +190,43 @@ function wrapRuns(runs, columns) {
   return rows;
 }
 
-export function labelLayout(node, markdown = []) {
+export function labelLayout(node, blocks = []) {
   if (node.kind === "connectionPoint") return {width: node.width, height: node.height, lines: []};
   const widthRatio = node.shape === "diamond" ? 0.50 : node.shape === "ellipse" ? 0.72 : 0.94;
   const heightRatio = node.shape === "diamond" ? 0.47 : node.shape === "ellipse" ? 0.72 : 0.94;
-  const detailSize = Math.max(10, node.fontSize * 0.80);
-  const commentStyle = node.commentStyle ?? {};
-  const markdownStyle = node.markdownStyle ?? {};
-  const commentSize = commentStyle.size ?? detailSize;
-  const bodySize = markdownStyle.size ?? detailSize;
-  const comment = node.comment || "";
-  const automatic = node.autoSize !== false;
-  const hiddenMarkdown = !node.showMarkdown && !!node.markdown?.trim();
-  if (hiddenMarkdown) markdown = [{kind: "body", runs: [{text: "•"}]}];
-  const targetWidth = Math.max(textWidth(node.title, node.fontSize), Math.min(245, textWidth(comment, commentSize)),
-    markdown.length && !hiddenMarkdown ? 200 : 0);
-  const width = automatic ? limit(Math.ceil((targetWidth + 24) / widthRatio), node.autoMinWidth ?? 64, 880) : node.width;
+  const textStyle = node.textStyle ?? {};
+  const bodySize = textStyle.size ?? 13;
+  const hiddenText = node.hideText && !!node.text?.trim();
+  if (hiddenText) blocks = [{kind: "body", runs: [{text: "•••"}]}];
+  const width = node.width;
   const labelWidth = Math.max(12, width * widthRatio - 16);
   const lines = [];
 
-  function add(value, size, weight, color, style) {
+  function add(value, size, weight, color, style, section) {
     const text = value.trim().replace(/\s+/g, " ");
     if (!text) return;
     const wrapped = textWidth(text, size) <= labelWidth
       ? [text] : wrap(text, Math.max(2, Math.floor(labelWidth / (size * 0.65))));
-    for (const text of wrapped) lines.push({text, size, weight, color, italic: style.italic, underline: style.underline, alignment: style.alignment, vertical: style.verticalAlignment, step: size * 1.25});
+    for (const text of wrapped) lines.push({section, text, size, weight, color, italic: style.italic, underline: style.underline, alignment: style.alignment, vertical: style.verticalAlignment, step: size * 1.25});
   }
 
-  add(node.title, node.fontSize, node.bold ? 650 : 400, node.textColor, node);
-  add(comment, commentSize, commentStyle.bold ? 650 : 400, commentStyle.color ?? commentColor(node.textColor), commentStyle);
-  markdown.forEach((block, index) => {
-    const size = block.kind === "heading" ? bodySize * 1.15 : bodySize;
-    const weight = block.kind === "heading" || markdownStyle.bold ? 700 : 400;
+  add(node.title, node.fontSize, node.bold ? 650 : 400, node.textColor, node, "title");
+  blocks.forEach((block, index) => {
+    const size = block.kind === "heading" ? Math.round(bodySize * 1.15) : bodySize;
+    const weight = block.kind === "heading" || textStyle.bold ? 700 : 400;
     const runs = block.kind === "quote" ? [{text: "› "}, ...block.runs] : block.runs;
-    wrapRuns(runs, Math.max(2, Math.floor(labelWidth / (size * 0.65)))).forEach((pieces, row) => {
+    wrapRuns(runs, Math.max(hiddenText ? 3 : 2, Math.floor(labelWidth / (size * 0.65)))).forEach((pieces, row) => {
       const gap = row === 0 ? (index === 0 ? 8 : 3) : 0;
-      lines.push({runs: pieces, text: pieces.map(piece => piece.text).join(""), size, weight,
-        color: markdownStyle.color ?? node.textColor, italic: markdownStyle.italic, underline: markdownStyle.underline, alignment: markdownStyle.alignment, vertical: markdownStyle.verticalAlignment, step: size * 1.25 + gap, gap});
+      lines.push({section: "textStyle", runs: pieces, text: pieces.map(piece => piece.text).join(""), size, weight,
+        color: textStyle.color ?? node.textColor, italic: textStyle.italic, underline: textStyle.underline, alignment: textStyle.alignment, vertical: textStyle.verticalAlignment, step: size * 1.25 + gap, gap});
     });
   });
 
   const external = new Map();
   const inside = lines.filter(line => {
-    if (!(line.runs ? node.markdownOutside : node.titleOutside)) return true;
-    const style = line.runs ? markdownStyle : node;
-    const horizontal = style.alignment ?? node.alignment;
-    let vertical = style.verticalAlignment ?? "middle";
+    if (line.runs || !node.titleOutside) return true;
+    const horizontal = node.alignment;
+    let vertical = node.verticalAlignment ?? "middle";
     if (vertical === "middle" && horizontal === "center") vertical = "top";
     const key = horizontal + "/" + vertical;
     if (!external.has(key)) external.set(key, {horizontal, vertical, rows: []});
@@ -243,8 +234,7 @@ export function labelLayout(node, markdown = []) {
     return false;
   });
   const iconSpace = node.link ? 18 : 0;
-  const heightNeeded = iconSpace + inside.reduce((sum, line) => sum + line.step, 0) + 16;
-  const height = automatic ? limit(Math.ceil(heightNeeded / heightRatio), node.autoMinHeight ?? 40, 680) : node.height;
+  const height = node.height;
   const visible = [];
   let remaining = Math.max(node.fontSize * 1.25, height * heightRatio - 12 - iconSpace);
   const available = remaining;
@@ -259,7 +249,7 @@ export function labelLayout(node, markdown = []) {
     last.runs?.push({text: "…"});
   }
 
-  if (hiddenMarkdown && !node.markdownOutside && !visible.some(line => line.runs)) {
+  if (hiddenText && !visible.some(line => line.runs)) {
     const marker = inside.at(-1);
     while (visible.length && remaining < marker.step) remaining += visible.pop().step;
     visible.push(marker);
@@ -299,8 +289,8 @@ export function labelLayout(node, markdown = []) {
       y += line.step;
     }
   }
-  const fill = node.markdownFill ?? node.fill;
-  const border = node.markdownBorder ?? node.border;
+  const fill = node.textFill ?? node.fill;
+  const border = node.textBorder ?? node.border;
   const framed = bodyTop !== undefined && (fill.toLowerCase() !== node.fill.toLowerCase() || border.toLowerCase() !== node.border.toLowerCase());
   const frame = framed ? {x: bodyX-labelWidth / 2 - 3, y: bodyTop, width: labelWidth + 6, height: bodyEnd + 3 - bodyTop,
     fill, stroke: border.toLowerCase() === node.border.toLowerCase() ? "none" : border} : null;
