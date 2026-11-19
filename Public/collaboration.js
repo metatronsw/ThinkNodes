@@ -68,10 +68,45 @@ export function rebaseWorksheet(base, local, remote) {
   return result;
 }
 
-export function liveConnection(path, csrf, onState, onError) {
+export function liveConnection(path, csrf, onState, onError, {editing = false, onMotion, rate = 100} = {}) {
   const client = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, "0")).join("");
   const headers = {"Content-Type": "application/json", "X-CSRF-Token": csrf, "X-Worksheet-Client": client};
   let controller;
+  let socket;
+  let audience = false;
+  let nextFrame = 0;
+  let timer;
+  let pending;
+  function openSocket() {
+    if (socket || !onMotion || !window.WebSocket) return;
+    const url = new URL("/api/motion/" + path, location.href);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    const opened = socket = new WebSocket(url);
+    opened.onopen = () => opened.send(client);
+    opened.onmessage = event => { if (socket === opened) onMotion(JSON.parse(event.data)); };
+    opened.onclose = () => {
+      if (socket === opened) { socket = null; onMotion(null); }
+    };
+  }
+  function sendPending() {
+    timer = null;
+    const frame = pending;
+    pending = null;
+    if (!frame || socket?.readyState !== 1 || socket.bufferedAmount > 4096) return;
+    socket.send(JSON.stringify(frame));
+    nextFrame = performance.now() + rate;
+  }
+  function motion(frame) {
+    if (!audience || socket?.readyState !== 1) return;
+    pending = frame;
+    if (timer == null) timer = setTimeout(sendPending, Math.max(0, nextFrame - performance.now()));
+  }
+  function endMotion(node, revision) {
+    clearTimeout(timer);
+    timer = null;
+    pending = null;
+    if (socket?.readyState === 1 && audience) socket.send(JSON.stringify({node, revision}));
+  }
   async function request(action, fields, options = {}) {
     const response = await fetch("/api/presence/" + path, {method: "POST", headers,
       body: JSON.stringify({action, ...fields}), ...options});
@@ -87,8 +122,10 @@ export function liveConnection(path, csrf, onState, onError) {
     let since;
     while (!active.signal.aborted) {
       try {
-        const state = await request("poll", {since}, {signal: active.signal});
+        const state = await request("poll", {since, editing}, {signal: active.signal});
         if (active.signal.aborted) return;
+        audience = state.participants.length > 1;
+        openSocket();
         await onState(state);
         since = state.version;
       } catch (error) {
@@ -102,7 +139,14 @@ export function liveConnection(path, csrf, onState, onError) {
   }
   function stop() {
     controller?.abort();
+    clearTimeout(timer);
+    timer = null;
+    pending = null;
+    socket?.close();
+    socket = null;
     request("leave", {}, {keepalive: true}).catch(() => {});
   }
-  return {client, start, stop, snapshot: () => request("poll", {}), select: node => request("select", {node})};
+  return {client, start, stop, motion, endMotion, snapshot: () => request("poll", {editing}),
+    checkpoint: (action, revision, checkpointRevision) => request(action, {revision, checkpointRevision}),
+    select: node => request("select", {node})};
 }

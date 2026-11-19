@@ -89,10 +89,7 @@
       "startArrow" : false,
       "style" : "dashed",
       "target" : {
-        "point" : {
-          "x" : -350,
-          "y" : 322
-        }
+        "node" : "2c801d62bd8e970d20a4ea9837913773"
       },
       "width" : 2
     },
@@ -121,8 +118,8 @@
       "id" : "naplo",
       "label" : "naplózás",
       "sourcePoint" : {
-        "x" : 638,
-        "y" : 295
+        "x" : -354.17455090746057,
+        "y" : 462.55346216083717
       },
       "startArrow" : true,
       "style" : "solid",
@@ -136,7 +133,10 @@
       "source" : "konyvjelzo",
       "style" : "arrow",
       "target" : {
-        "node" : "8f1beeb46b3198ff81f379e3f83ab8f2"
+        "point" : {
+          "x" : -834.7030638746163,
+          "y" : -556.24761560226182
+        }
       }
     },
     {
@@ -144,16 +144,75 @@
       "source" : "olvasok",
       "style" : "arrow",
       "target" : {
-        "node" : "8f1beeb46b3198ff81f379e3f83ab8f2"
+        "point" : {
+          "x" : -829.61520217238399,
+          "y" : -557.21119236100481
+        }
+      }
+    },
+    {
+      "id" : "c4137e9f1259370e7585f18e460a5cad",
+      "source" : "muhely",
+      "style" : "arrow",
+      "target" : {
+        "point" : {
+          "x" : -306.86576831614957,
+          "y" : 392.2755954870006
+        }
+      }
+    },
+    {
+      "id" : "1a31605cc31bde25bb48b5fb2403f1b9",
+      "source" : "szervezok",
+      "style" : "arrow",
+      "target" : {
+        "point" : {
+          "x" : -826.38386162127324,
+          "y" : -562.66830636579994
+        }
+      }
+    },
+    {
+      "id" : "44a1cc73c2cb8afde918670a0da2d753",
+      "source" : "2c801d62bd8e970d20a4ea9837913773",
+      "style" : "arrow",
+      "target" : {
+        "point" : {
+          "x" : -478.71978594111306,
+          "y" : 423.5099212140592
+        }
+      }
+    },
+    {
+      "id" : "8011e60f07b2f55d3d3821eefed3a369",
+      "source" : "szervezok",
+      "style" : "arrow",
+      "target" : {
+        "point" : {
+          "x" : -679.91336155340537,
+          "y" : 178.29394763863058
+        }
+      }
+    },
+    {
+      "id" : "45a6980e87ad80b158750baf0d3f426c",
+      "source" : "7638c90dad220cbd1f0e37aa478691db",
+      "style" : "arrow",
+      "target" : {
+        "point" : {
+          "x" : -67.5,
+          "y" : -429.5
+        }
       }
     }
   ],
   "editors" : [
+    "tablet",
     "test"
   ],
   "gridColor" : "#D5C9B9",
-  "gridSpacing" : 26,
-  "gridVisible" : true,
+  "gridSpacing" : 41,
+  "gridVisible" : false,
   "isPublic" : true,
   "markdown" : "## Próbáld ki a vásznat\n\n- **Mozgatás és zárolás.** Húzd a nagy zöld Műhelyt az üres szélénél fogva. A benne lévő két polccímke a kisebb, zárolt konténerrel együtt mozog. A Polcbeosztás tulajdonságainál a **Lock** feloldásával külön is rendezheted őket. A lila Könyvjelző dobozt húzd több mint félig a Műhelybe, majd mozgasd újra a Műhelyt. A **Konténer feloldása** elengedi a tagokat.\n- **Kábelek.** A türkiz pontnál három kábel találkozik. A pont nevét és színét dupla kattintással szerkesztheted. Egy bekötött vég megfogásához tartsd lenyomva a **Ctrl** gombot, húzás közben már elengedheted. Ha mindhárom kábelt leemeled, a pont eltűnik. A vászon alján húzd a *tartalék* kábel szabad végét a *következő kör* vonal bal végéhez. Ott egy új csomópont keletkezik.\n- **Dobozok és vonalak.** Alt lenyomása közben húzd a Nyitás vagy a Helyszínrajz egyik sarkát. Az előbbin a betűméret is változik. Dupla kattintással nyithatod meg a tulajdonságokat, jobb kattintással a műveleti menüt. Új kábelt a dobozból indított Ctrl + húzással készíthetsz.\n- **Nézet és mentés.** A pontrács a bal alsó sarokban kapcsolható. A Munkalap panelen állíthatod a rácsközt, a színeket és a megosztást. A **Mind** gomb az egész ábrát mutatja. Mentés után a megtekintő fejlécéből a teljes SVG, a JSON és a Markdown-dokumentum is letölthető.",
   "nodes" : [
@@ -171,8 +230,8 @@
       "locked" : false,
       "markdown" : "Helyszín, könyvek és feliratok előkészítése. Húzd a zöld keret mellett, hogy az egész műhelyt elmozdítsd.",
       "position" : {
-        "x" : -161.62797317775858,
-        "y" : -14.373022761425887
+        "x" : -106.62797317775858,
+        "y" : -9.3730227614258865
       },
       "shape" : "rounded",
       "showMarkdown" : false,
@@ -200,8 +259,8 @@
       "markdown" : "A két felirat helyét már kimértük. A **Lock** védi a beosztást.",
       "parent" : "muhely",
       "position" : {
-        "x" : -13.058390966446609,
-        "y" : 66.593438604230869
+        "x" : 45.941609033553391,
+        "y" : 46.593438604230869
       },
       "shape" : "rounded",
       "showMarkdown" : false,
@@ -237,8 +296,8 @@
       },
       "parent" : "muhely",
       "position" : {
-        "x" : -253.62797317775858,
-        "y" : -147.37302276142589
+        "x" : -274.62797317775858,
+        "y" : -135.37302276142589
       },
       "shape" : "rectangle",
       "showMarkdown" : true,
@@ -260,8 +319,8 @@
       "markdown" : "Tegyél félre két üres ládát a később érkező könyveknek.",
       "parent" : "muhely",
       "position" : {
-        "x" : -326.62797317775858,
-        "y" : 118.62697723857411
+        "x" : -316.66251070057342,
+        "y" : 132.70986729332969
       },
       "shape" : "rounded",
       "showMarkdown" : false,
@@ -282,8 +341,8 @@
       "markdown" : "Az alacsony polcra kerülnek, hogy a gyerekek is elérjék őket.",
       "parent" : "polc",
       "position" : {
-        "x" : 16.941609033553391,
-        "y" : -2.4065613957691312
+        "x" : 75.941609033553391,
+        "y" : -22.406561395769131
       },
       "shape" : "rounded",
       "showMarkdown" : false,
@@ -303,8 +362,8 @@
       "markdown" : "A hosszabb olvasmányok a jobb oldali polcra kerülnek.",
       "parent" : "polc",
       "position" : {
-        "x" : 16.941609033553391,
-        "y" : 133.59343860423087
+        "x" : 75.941609033553391,
+        "y" : 113.59343860423087
       },
       "shape" : "rectangle",
       "showMarkdown" : false,
@@ -323,36 +382,39 @@
       "fontSize" : 18,
       "height" : 82,
       "id" : "olvasok",
+      "link" : "",
       "markdown" : "## Mit kértek az olvasók?\n\n> A gyerekek is érjék el a mesekönyveket.\n\n1. Keressünk *árnyékos* helyet a piac mellett.\n2. Hagyjunk elég helyet a babakocsiknak.\n\nA következő találkozóhoz itt a [jegyzetlap](/otletlabor/jegyzetek).",
       "position" : {
-        "x" : -797.83628767323921,
-        "y" : -380.06414543729613
+        "x" : -680.83610724613197,
+        "y" : -323.06404358328405
       },
       "shape" : "ellipse",
       "showMarkdown" : false,
       "textColor" : "#203440",
-      "title" : "Olvasók",
+      "title" : "CINKE CINK",
       "width" : 144
     },
     {
       "alignment" : "center",
-      "autoSize" : false,
+      "autoMinHeight" : 218.00044233742432,
+      "autoMinWidth" : 359.00002037080253,
+      "autoSize" : true,
       "bold" : true,
       "border" : "#588F76",
       "fill" : "#CEE7DD",
-      "fontSize" : 18,
-      "height" : 66,
+      "fontSize" : 38.6778886236159,
+      "height" : 218.00044233742432,
       "id" : "szervezok",
-      "markdown" : "A szervezők a teljes műhely előkészítését vállalták.",
+      "markdown" : "A szervezők a **teljes műhely** előkészítését vállalták.",
       "position" : {
-        "x" : -185,
-        "y" : -335
+        "x" : -310.37860958805015,
+        "y" : -534.26364617140848
       },
       "shape" : "ellipse",
       "showMarkdown" : false,
       "textColor" : "#203440",
       "title" : "Szervezők",
-      "width" : 172
+      "width" : 359.00002037080253
     },
     {
       "alignment" : "center",
@@ -366,8 +428,8 @@
       "id" : "konyvjelzo",
       "markdown" : "A gyerekek pecsételhetnek rá. Próbáld hozzáadni a Műhelyhez.",
       "position" : {
-        "x" : -651.47107838850707,
-        "y" : 348.85937780471284
+        "x" : -898.98805703695757,
+        "y" : -225.03789735121075
       },
       "shape" : "rounded",
       "showMarkdown" : false,
@@ -386,8 +448,8 @@
       "id" : "hely",
       "markdown" : "Elfér egymás mellett a két polc és egy babakocsi? Ha igen, kezdődhet a kipakolás.",
       "position" : {
-        "x" : 359.90927747152909,
-        "y" : -477.12305890944879
+        "x" : 338.12801566906728,
+        "y" : -468.82836538327638
       },
       "shape" : "diamond",
       "showMarkdown" : false,
@@ -407,8 +469,8 @@
       "kind" : "connectionPoint",
       "markdown" : "A helyszín jóváhagyását a polcokhoz és a nyitást végző önkénteshez is továbbítjuk.",
       "position" : {
-        "x" : 350,
-        "y" : 75
+        "x" : 608,
+        "y" : -210
       },
       "shape" : "ellipse",
       "showMarkdown" : false,
@@ -444,14 +506,36 @@
         "underline" : true
       },
       "position" : {
-        "x" : 327.08963294003411,
-        "y" : 376.22647422727687
+        "x" : 414.08963294003411,
+        "y" : 461.22647422727687
       },
       "shape" : "rounded",
       "showMarkdown" : true,
       "textColor" : "#203440",
       "title" : "Nyitás",
       "width" : 230
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : true,
+      "bold" : true,
+      "border" : "#839bbc",
+      "comment" : "",
+      "fill" : "#dce9ff",
+      "fontSize" : 16,
+      "height" : 80,
+      "id" : "7638c90dad220cbd1f0e37aa478691db",
+      "link" : "/sub",
+      "markdown" : "",
+      "position" : {
+        "x" : 20.500186247336615,
+        "y" : -492.50001746068779
+      },
+      "shape" : "rounded",
+      "showMarkdown" : false,
+      "textColor" : "#182335",
+      "title" : "Új ötlet",
+      "width" : 176
     },
     {
       "alignment" : "center",
@@ -462,12 +546,12 @@
       "fill" : "#526982",
       "fontSize" : 16,
       "height" : 14,
-      "id" : "8f1beeb46b3198ff81f379e3f83ab8f2",
+      "id" : "2c801d62bd8e970d20a4ea9837913773",
       "kind" : "connectionPoint",
       "markdown" : "",
       "position" : {
-        "x" : -774.36931328719095,
-        "y" : 77.880622660705853
+        "x" : -477.09653843210697,
+        "y" : 342.11931124430816
       },
       "shape" : "ellipse",
       "showMarkdown" : false,
@@ -477,7 +561,8 @@
     }
   ],
   "owner" : "admin",
-  "revision" : 2,
+  "resetRevision" : 493,
+  "revision" : 568,
   "schemaVersion" : 2,
   "title" : "Könyvcsere a téren"
 }

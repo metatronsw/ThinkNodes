@@ -132,6 +132,7 @@ struct Connection: Codable, Sendable {
 struct Worksheet: Content {
     var schemaVersion = 2
     var revision = 1
+    var resetRevision: Int?
     var title: String
     var comment: String?
     var markdown: String?
@@ -353,7 +354,7 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    func update(_ path: WorksheetPath, worksheet: Worksheet, user: User,
+    func update(_ path: WorksheetPath, worksheet: Worksheet, user: User, restoring: Bool = false,
                 checkSelection: (Worksheet) throws -> Void = { _ in }) throws -> Worksheet {
         try lock.withLock {
             let url = try worksheetURL(path)
@@ -387,6 +388,7 @@ final class WorksheetStore: @unchecked Sendable {
                 }
             }
             updated.revision = current.revision + 1
+            updated.resetRevision = restoring ? updated.revision : current.resetRevision
             try updated.validate()
             updated.schemaVersion = 2
             try write(updated, to: url)

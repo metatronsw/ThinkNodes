@@ -11,9 +11,29 @@ Futtasd a projekt könyvtárából.
 ./run.sh
 ~~~
 
-Nyisd meg a [http://127.0.0.1:8080/admin](http://127.0.0.1:8080/admin) oldalt. Az első helyi megnyitáskor itt hozható létre az adminfiók. Az adminoldalon állítható a hozzáférés és kezelhetők a felhasználók. Adminfiókot parancssorból is létrehozhatsz a **./run.sh user admin admin** paranccsal, amely jelszót kér.
+Nyisd meg a [https://localhost:8443/admin](https://localhost:8443/admin) oldalt. Az első helyi megnyitáskor itt hozható létre az adminfiók. Az adminoldalon állítható a hozzáférés és kezelhetők a felhasználók. Adminfiókot parancssorból is létrehozhatsz a **./run.sh user admin admin** paranccsal, amely jelszót kér.
 
 A build először a **~/X-Code/Swift/6.0.3/usr/bin/swift** binárist keresi. A **THINKNODES_SWIFT** változóval megadható másik útvonal. Az első teljes build letölti a rögzített Vue- és D3-verziót a **Public/vendor/** könyvtárba. Utána a böngésző helyben tölti be őket. A **./build.sh --server-only** csak a szervert építi. A **THINKNODES_DATA**, **THINKNODES_HOST**, **THINKNODES_PORT** és **THINKNODES_CONFIGURATION** változók felülírják az alapértékeket. HTTPS mögött állítsd a **THINKNODES_SECURE_COOKIES=1** változót.
+
+### HTTPS a belső hálózaton
+
+Indítás a szervergépen:
+
+~~~sh
+./run.sh
+~~~
+
+A szerver alapból minden IPv4-hálózati interfészen a **8443**-as porton figyel. A másik eszköz böngészőjében nyisd meg az indításkor kiírt, közös hálózathoz tartozó HTTPS-címet. A szervergépen a **https://localhost:8443/admin** címen végezhető el az első adminisztrátori beállítás. A közös szerkesztés ugyanazon a porton használja a titkosított WebSocket-kapcsolatot.
+
+A szkript OpenSSL-lel helyi hitelesítőt hoz létre a **.thinknodes-tls/** könyvtárban. Az eléréshez használt eszközökön egyszer telepítsd a **ca.crt** fájlt megbízható gyökértanúsítványként. A **.key** fájlok a szerveren maradjanak. Az indításkor kiadott szervertanúsítvány a felismert LAN-címekre is érvényes. IP-címváltozás után indítsd újra a szervert.
+
+Saját PEM-tanúsítványlánc és hozzá tartozó, jelszó nélküli privát kulcs is használható:
+
+~~~sh
+THINKNODES_TLS_CERT=/utvonal/fullchain.pem THINKNODES_TLS_KEY=/utvonal/server.key ./run.sh
+~~~
+
+A **THINKNODES_HOST** és a **THINKNODES_PORT** HTTPS módban is felülírja a kötési címet és a portot. A **THINKNODES_TLS_DIR** a helyben előállított tanúsítványok könyvtárát adja meg. A **./run.sh --http** HTTP-n, alapból a **127.0.0.1:8080** címen indul. A **--port:8000** mindkét módban felülírja a portot, a **--rate:100** pedig milliszekundumban adja meg a húzás közbeni előnézet két küldése közötti minimális időt. Az alapérték **100 ms**.
 
 ## Munkalapok és fájlok
 
@@ -33,7 +53,9 @@ A mintalap közvetlen címe **/otletlabor/tervezes**. A mentés atomi fájlcser�
 
 A jobb felső névsor mutatja, kik vannak a munkalapon. A név melletti szín a kijelölt doboz körüli keret színe is. A kijelölés a szerkesztő böngészőfülhöz tartozik. Másik szerkesztő közben kábelt köthet a dobozhoz és le is választhat róla kábelt. Üres területre kattintás, az Escape vagy másik elem kiválasztása elengedi a kijelölést. Lapváltáskor és a fül bezárásakor is felszabadul a doboz. Megszakadt kapcsolat esetén a szerver időkorláttal oldja fel a zárolást.
 
-A szerkesztő automatikusan ment. A szöveg, a formázás, a doboz húzása és a kábel csatlakoztatása megjelenik a többi megnyitott nézetben. Külön dobozok egyidejű szerkesztésekor mindkét felhasználó módosításai bekerülnek a munkalapba.
+A vászon módosításai automatikusan szinkronizálódnak. Húzáskor a saját doboz folyamatosan követi az egeret. A többi résztvevő egy WebSocket-kapcsolaton, alapból legfeljebb 100 milliszekundumonként kap pozíció-előnézetet. Az elengedés egy munkalapírást indít, az Escape megszakítja a húzást. A végleges hely WebSocket nélkül is megjelenik a többi résztvevőnél.
+
+Az első szerkesztő csatlakozásakor a szerver visszaállítási pontot készít a munkalapról. A később csatlakozó szerkesztők ugyanezt használják. A **Mentés** és a **Ctrl+S** az aktuális közös állapotot rögzíti új visszaállítási pontként. A **Resign** megerősítés után ebből állítja vissza a vásznat minden résztvevőnél, az aktuális megosztási jogosultságokkal. A munkamenet az utolsó szerkesztő kilépéséig vagy kapcsolatának lejártáig tart. A következő munkamenet a lemezen lévő aktuális munkalapról indul.
 
 ## Dobozlinkek és allapok
 

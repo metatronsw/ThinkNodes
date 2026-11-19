@@ -1,4 +1,5 @@
 import Foundation
+import NIOSSL
 import Vapor
 
 @main
@@ -22,10 +23,25 @@ enum ThinkNodes {
             return
         }
 
-        var environment = try Environment.detect()
+        let https = arguments.first == "serve-https"
+        let command = https ? [CommandLine.arguments[0], "serve"] + Array(arguments.dropFirst()) : CommandLine.arguments
+        var environment = try Environment.detect(arguments: command)
         try LoggingSystem.bootstrap(from: &environment)
         let app = try await Application.make(environment)
         do {
+            if https {
+                guard let cert = Environment.get("THINKNODES_TLS_CERT"), let key = Environment.get("THINKNODES_TLS_KEY") else {
+                    throw Abort(.internalServerError, reason: "HTTPS-indításhoz használd a ./run.sh parancsot.")
+                }
+                let chain = try NIOSSLCertificate.fromPEMFile(cert)
+                guard !chain.isEmpty else { throw Abort(.internalServerError, reason: "Üres TLS-tanúsítványlánc.") }
+                let tls = TLSConfiguration.makeServerConfiguration(
+                    certificateChain: chain.map { .certificate($0) },
+                    privateKey: .privateKey(try NIOSSLPrivateKey(file: key, format: .pem))
+                )
+                _ = try NIOSSLContext(configuration: tls)
+                app.http.server.configuration.tlsConfiguration = tls
+            }
             configure(app, store: store)
             try await app.execute()
         } catch {
@@ -155,7 +171,9 @@ private func loginPage(_ req: Request, next: String, message: String? = nil) -> 
 func configure(_ application: Application, store: WorksheetStore) {
     let live = Collaboration(store: store)
     let assets = application.directory.publicDirectory
-    let secure = Environment.get("THINKNODES_SECURE_COOKIES") == "1"
+    let rate = Int(Environment.get("THINKNODES_MOTION_RATE") ?? "") ?? 100
+    let motionRate = (1...999_999_999).contains(rate) ? rate : 100
+    let secure = application.http.server.configuration.tlsConfiguration != nil || Environment.get("THINKNODES_SECURE_COOKIES") == "1"
     application.sessions.use(.memory)
     application.sessions.configuration = .init(cookieName: "thinknodes_session") { sessionID in
         .init(string: sessionID.string, path: "/", isSecure: secure, isHTTPOnly: true, sameSite: .lax)
@@ -222,7 +240,7 @@ func configure(_ application: Application, store: WorksheetStore) {
         let local = [assets + "vendor/vue.js", assets + "vendor/d3.js"].allSatisfy { FileManager.default.fileExists(atPath: $0) }
         let loading = local ? "Szerkesztő betöltése…" : "A szerkesztőhöz futtasd a teljes ./build.sh parancsot."
         return htmlPage(title: worksheet.title, body: """
-            <main id="editor" class="editor-root" data-path="\(path.url)" data-csrf="\(csrf)" data-role="\(user.role.rawValue)" data-user="\(escaped(user.name))">
+            <main id="editor" class="editor-root" data-path="\(path.url)" data-csrf="\(csrf)" data-motion-rate="\(motionRate)" data-role="\(user.role.rawValue)" data-user="\(escaped(user.name))">
               <p class="editor-loading">\(loading)</p>
               <noscript><p>A szerkesztőhöz JavaScript szükséges.</p><a href="/\(path.url)">Megtekintés</a></noscript>
             </main>
@@ -248,14 +266,26 @@ func configure(_ application: Application, store: WorksheetStore) {
         }
     }
 
+    application.webSocket("api", "motion", "**", maxFrameSize: 512) { req, socket in
+        guard let path = try? WorksheetPath(req.parameters.getCatchall()) else { socket.close(promise: nil); return }
+        socket.onText { socket, client in live.attach(socket, path: path, client: client) }
+    }
+
     application.post("api", "presence", "**") { req async throws -> Response in
-        struct Form: Content { let action: String; let node: String?; let since: String? }
+        struct Form: Content {
+            let action: String
+            let node: String?
+            let since: String?
+            let editing: Bool?
+            let revision: Int?
+            let checkpointRevision: Int?
+        }
         let path = try WorksheetPath(req.parameters.getCatchall())
         let sessions = req.application.sessions
         guard let cookie = req.cookies[sessions.configuration.cookieName],
               let token = req.headers.first(name: "X-CSRF-Token") else { throw Abort(.forbidden) }
         let form = try req.content.decode(Form.self)
-        guard ["poll", "select", "leave"].contains(form.action),
+        guard ["poll", "select", "leave", "checkpoint", "resign"].contains(form.action),
               let client = req.headers.first(name: "X-Worksheet-Client"),
               client.count == 32, validSlug(client) else { throw Abort(.badRequest) }
         @Sendable func state(_ action: String, since: String?) async throws -> (LiveState, EventLoopFuture<Void>?) {
@@ -267,7 +297,8 @@ func configure(_ application: Application, store: WorksheetStore) {
                 let user = try authenticatedUser(data, store: store)
                 if data["user"] != nil && user == nil { throw Abort(.unauthorized) }
                 return try live.presence(path, user: user, client: client, action: action,
-                                  node: form.node, since: since, loop: req.eventLoop)
+                                  node: form.node, since: since, loop: req.eventLoop, editing: form.editing == true,
+                                  revision: form.revision, checkpointRevision: form.checkpointRevision)
             }
         }
         var (snapshot, wait) = try await state(form.action, since: form.since)

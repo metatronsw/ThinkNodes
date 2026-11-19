@@ -358,3 +358,42 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     sheet.nodes[0].position.x = 40
     #expect(try live.update(path, sheet: sheet, user: b, client: b.name).nodes[0].position.x == 40)
 }
+
+@Test func sharedSessionCheckpoint() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-checkpoint-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    let live = Collaboration(store: store)
+    let path = try WorksheetPath(["snapshot"])
+    let user = User(name: "anna", role: .admin, passwordHash: "")
+    var sheet = try store.open(path, user: user)
+    let loop = MultiThreadedEventLoopGroup.singleton.next()
+    func action(_ client: String, _ action: String, _ checkpoint: Int? = nil) throws -> LiveState {
+        try live.presence(path, user: user, client: client, action: action, node: nil, since: nil,
+                          loop: loop, editing: client != "viewer", revision: sheet.revision, checkpointRevision: checkpoint).0
+    }
+    #expect(try action("viewer", "poll").checkpointRevision == nil)
+    let initial = sheet
+    _ = try action("first", "poll")
+    sheet.title = "Piszkozat"
+    sheet = try live.update(path, sheet: sheet, user: user, client: "first")
+    #expect(try action("second", "poll").checkpointRevision == initial.revision)
+    _ = try action("second", "resign", initial.revision)
+    sheet = try store.load(path, user: user)
+    #expect(sheet.title == initial.title && sheet.resetRevision == sheet.revision)
+    let restored = sheet.revision
+    sheet.title = "Rögzített"
+    sheet = try live.update(path, sheet: sheet, user: user, client: "first")
+    let pinned = try action("first", "checkpoint", restored)
+    sheet.title = "Eldobott"
+    sheet.isPublic = true
+    sheet = try live.update(path, sheet: sheet, user: user, client: "second")
+    #expect(throws: Abort.self) { try action("viewer", "resign", pinned.checkpointRevision) }
+    #expect(throws: Abort.self) { try action("first", "resign", restored) }
+    _ = try action("second", "resign", pinned.checkpointRevision)
+    sheet = try store.load(path, user: user)
+    #expect(sheet.title == "Rögzített" && sheet.isPublic == true)
+    _ = try action("first", "leave")
+    #expect(try action("second", "leave").checkpointRevision == nil)
+    #expect(try action("new", "poll").checkpointRevision == sheet.revision)
+}

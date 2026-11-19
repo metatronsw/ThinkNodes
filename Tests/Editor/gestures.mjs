@@ -56,12 +56,20 @@ let sheet = {title: "Próba", revision: 1, nodes: [
   node("outside", 340, 0, 100, 80), {...node("auto", -420, 0, 120, 60), autoSize: true},
 ], edges: [{id: "one", source: "outside", target: {point: {x: 400, y: 230}}, style: "arrow"}]};
 let selectedNode;
+let writes = 0;
+let checkpoint = structuredClone(sheet);
 globalThis.fetch = async (url, options) => {
   if (url.includes("/presence/")) {
     const {action, node, since} = JSON.parse(options.body);
     if (since) return new Promise(() => {});
     if (action === "select") selectedNode = node;
-    return Response.json({version: "1", revision: sheet.revision,
+    if (action === "checkpoint") checkpoint = structuredClone(sheet);
+    if (action === "resign") {
+      const revision = sheet.revision + 1;
+      sheet = {...structuredClone(checkpoint), revision, resetRevision: revision};
+      checkpoint = structuredClone(sheet);
+    }
+    return Response.json({version: "1", revision: sheet.revision, checkpointRevision: checkpoint.revision,
       participants: [{mine: true, name: "admin", color: "#365bd6", node: selectedNode}]});
   }
   if (url.includes("worksheet-users")) return Response.json(["admin"]);
@@ -69,6 +77,7 @@ globalThis.fetch = async (url, options) => {
     blocks: JSON.parse(options.body).sources.map(source => [{kind: "body", runs: [{text: source}]}]),
   });
   if (options?.method === "PUT") {
+    writes++;
     sheet = JSON.parse(options.body);
     sheet.revision++;
   }
@@ -117,6 +126,28 @@ async function detachDrag(id, end, x, y, cancel = false) {
   await drag(handle, handle.props.cx, handle.props.cy, x, y, {ctrlKey: true}, cancel);
   toggle("Control", false); await tick();
 }
+
+const down = event(graphic("outer"), 0, 0);
+graphic("outer").props.onPointerdown(down);
+await tick();
+const beforeDrag = writes;
+for (let x = 1; x <= 24; x++) {
+  canvas().props.onPointermove(event(canvas(), x, 20));
+  assert.equal(button("Mentés").props.disabled, false);
+  await new Promise(resolve => setTimeout(resolve, 8));
+}
+assert.equal(writes, beforeDrag, "holding and moving must not write the worksheet");
+canvas().props.onPointerup(event(canvas(), 24, 20));
+await new Promise(resolve => setTimeout(resolve, 150));
+assert.equal(writes, beforeDrag + 1);
+await save();
+await drag(graphic("outer"), 24, 20, 80, 70);
+await new Promise(resolve => setTimeout(resolve, 150));
+await button("Resign").props.onClick();
+await tick();
+assert.deepEqual(model("outer").position, {x: 24, y: 20});
+await drag(graphic("outer"), 24, 20, 0, 0);
+await save();
 
 await properties("outer");
 await press("Konténer");

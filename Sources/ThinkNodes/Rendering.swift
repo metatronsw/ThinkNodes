@@ -370,7 +370,11 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
         if edge.hasStartArrow { markers += " marker-start=\"url(#\(marker))\"" }
         if edge.hasEndArrow { markers += " marker-end=\"url(#\(marker))\"" }
         if edge.style == .dashed { markers += " stroke-dasharray=\"\(number(edge.strokeWidth * 3.5)) \(number(edge.strokeWidth * 2.5))\"" }
-        let path = "<path d=\"\(drawing.path)\" stroke=\"\(color)\" stroke-width=\"\(number(edge.strokeWidth))\"\(markers)/>"
+        let wire: String
+        if noteBase != nil, let data = try? JSONEncoder().encode(edge) {
+            wire = " data-wire=\"\(escaped(String(decoding: data, as: UTF8.self)))\""
+        } else { wire = "" }
+        let path = "<path\(wire) d=\"\(drawing.path)\" stroke=\"\(color)\" stroke-width=\"\(number(edge.strokeWidth))\"\(markers)/>"
         guard let label = edge.label, !label.trimmingCharacters(in: .whitespaces).isEmpty else { return path }
         let center = drawing.control.map {
             Point(x: (beginning.x + 2 * $0.x + ending.x) / 4, y: (beginning.y + 2 * $0.y + ending.y) / 4)
@@ -396,7 +400,8 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
         let destination = node.link.flatMap(WorksheetLink.init).flatMap { link in path.flatMap { link.destination(from: $0) } }
         let url = destination.map(escaped) ?? (escaped(noteBase) + separator + "note=\(node.id)")
         let linked = destination == nil ? "" : " data-link=\"true\""
-        return "<a data-node=\"\(node.id)\"\(linked) href=\"\(url)\" aria-label=\"\(escaped(node.title))\">\(graphic)</a>"
+        let geometry = "data-x=\"\(node.position.x)\" data-y=\"\(node.position.y)\" data-width=\"\(node.width)\" data-height=\"\(node.height)\" data-shape=\"\(node.shape.rawValue)\" data-parent=\"\(node.parent ?? "")\""
+        return "<a data-node=\"\(node.id)\" \(geometry)\(linked) href=\"\(url)\" aria-label=\"\(escaped(node.title))\">\(graphic)</a>"
     }
     var depths: [String: Int] = [:]
     func depth(_ node: Idea) -> Int {

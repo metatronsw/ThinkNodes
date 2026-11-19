@@ -1,5 +1,8 @@
 import {liveConnection} from "./collaboration.js";
 
+import {edgeGeometry} from "./geometry.js";
+import {ancestors} from "./containers.js";
+
 let main = document.querySelector("#worksheet-view");
 const {path, csrf} = main.dataset;
 const ns = "http://www.w3.org/2000/svg";
@@ -7,6 +10,43 @@ const roster = document.createElement("div");
 roster.className = "participants";
 roster.setAttribute("aria-label", "Jelenlévők");
 document.querySelector(".site-header").append(roster);
+
+const motions = new Map();
+function previewScene() {
+  const nodes = new Map([...main.querySelectorAll("[data-node]")].map(anchor => {
+    const {node, x, y, width, height, shape, parent} = anchor.dataset;
+    return [node, {id: node, anchor, parent, shape, width: +width, height: +height,
+      origin: {x: +x, y: +y}, position: {x: +x, y: +y}}];
+  }));
+  const wires = [...main.querySelectorAll("[data-wire]")].map(path => ({path, edge: JSON.parse(path.dataset.wire)}));
+  return () => {
+    const changed = new Set();
+    for (const node of nodes.values()) {
+      const delta = [node, ...ancestors(node, nodes)].map(n => motions.get(n.id)).find(Boolean);
+      const x = node.origin.x + (delta?.x ?? 0), y = node.origin.y + (delta?.y ?? 0);
+      if (x === node.position.x && y === node.position.y) continue;
+      node.position = {x, y};
+      changed.add(node.id);
+      if (delta) node.anchor.setAttribute("transform", "translate(" + delta.x + " " + delta.y + ")");
+      else node.anchor.removeAttribute("transform");
+    }
+    for (const {path, edge} of wires) {
+      if (!changed.has(edge.source) && !changed.has(edge.target.node)) continue;
+      const {d, labelPosition, angle} = edgeGeometry(edge, id => nodes.get(id));
+      path.setAttribute("d", d);
+      if (edge.label?.trim()) path.nextElementSibling?.setAttribute("transform",
+        "translate(" + labelPosition.x + " " + labelPosition.y + ") rotate(" + angle + ")");
+    }
+  };
+}
+let drawPreview = previewScene();
+function receiveMotion(frame) {
+  if (!frame) motions.clear();
+  else if (frame.revision !== Number(main.dataset.revision)) return;
+  else if (frame.delta) motions.set(frame.node, frame.delta);
+  else motions.delete(frame.node);
+  drawPreview();
+}
 
 function paint(peers) {
   roster.replaceChildren();
@@ -53,16 +93,22 @@ const live = liveConnection(path, csrf, async state => {
     if (!next) { location.reload(); return; }
     main.replaceWith(next);
     main = next;
+    motions.clear();
+    drawPreview = previewScene();
     document.title = page.title;
     const header = page.querySelector(".site-header");
     document.querySelector(".site-header").replaceWith(header);
     header.append(roster);
   }
+  for (const id of motions.keys()) {
+    if (!state.participants.some(p => p.node === id)) motions.delete(id);
+  }
+  drawPreview();
   paint(state.participants);
 }, error => {
   if ([401, 403, 404].includes(error.status)) main.textContent = error.message;
   roster.textContent = "Kapcsolat megszakadt";
-});
+}, {onMotion: receiveMotion});
 window.addEventListener("pagehide", live.stop);
 window.addEventListener("pageshow", event => { if (event.persisted) live.start(); });
 live.start();

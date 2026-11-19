@@ -11,6 +11,7 @@ struct Participant: Content {
 struct LiveState: Content {
     let version: String
     let revision: Int
+    let checkpointRevision: Int?
     let participants: [Participant]
 }
 
@@ -20,12 +21,16 @@ final class Collaboration: @unchecked Sendable {
         let name: String?
         let role: Role?
         let color: String
+        var editing = false
+        var socket: WebSocket?
         var node: String?
         var seen = ContinuousClock.now
         var waiter: EventLoopPromise<Void>?
     }
 
     private struct Room {
+        var checkpoint: Worksheet?
+        var revision = 0
         var version = UUID().uuidString
         var peers: [String: Peer] = [:]
 
@@ -40,9 +45,11 @@ final class Collaboration: @unchecked Sendable {
         mutating func expire() {
             let expired = peers.filter { $0.value.seen.duration(to: .now) > .seconds(45) }
             for (id, peer) in expired {
+                peer.socket?.close(promise: nil)
                 peer.waiter?.succeed(())
                 peers.removeValue(forKey: id)
             }
+            if !peers.values.contains(where: \.editing) { checkpoint = nil }
             if !expired.isEmpty { changed() }
         }
 
@@ -75,21 +82,49 @@ final class Collaboration: @unchecked Sendable {
     init(store: WorksheetStore) { self.store = store }
 
     func presence(_ path: WorksheetPath, user: User?, client: String, action: String, node: String?,
-                  since: String?, loop: any EventLoop) throws -> (LiveState, EventLoopFuture<Void>?) {
+                  since: String?, loop: any EventLoop, editing: Bool = false,
+                  revision: Int? = nil, checkpointRevision: Int? = nil) throws -> (LiveState, EventLoopFuture<Void>?) {
         try lock.withLock {
             expireInactiveRooms()
-            let board = try store.load(path, user: user)
+            var board = try store.load(path, user: user)
             var room = rooms[path.url] ?? Room()
             room.expire()
+            room.revision = board.revision
             if let existing = room.peers[client], existing.name != user?.name { throw Abort(.forbidden) }
             if action == "snapshot" && room.peers[client] == nil { throw Abort(.gone) }
             if action == "leave" {
-                room.peers.removeValue(forKey: client)?.waiter?.succeed(())
+                let leaving = room.peers.removeValue(forKey: client)
+                leaving?.socket?.close(promise: nil)
+                leaving?.waiter?.succeed(())
+                if !room.peers.values.contains(where: \.editing) { room.checkpoint = nil }
                 room.changed()
             } else {
+                if action == "checkpoint" || action == "resign" {
+                    guard let user, board.canEdit(user), room.peers[client]?.editing == true,
+                          var checkpoint = room.checkpoint else { throw Abort(.forbidden) }
+                    guard revision == board.revision, checkpointRevision == checkpoint.revision else {
+                        throw Abort(.preconditionFailed, reason: "A munkalap vagy a visszaállítási pont megváltozott. Ellenőrizd, majd próbáld újra.")
+                    }
+                    if action == "resign" {
+                        checkpoint.revision = board.revision
+                        checkpoint.owner = board.owner
+                        checkpoint.editors = board.editors
+                        checkpoint.isPublic = board.isPublic
+                        board = try store.update(path, worksheet: checkpoint, user: user, restoring: true)
+                        room.revision = board.revision
+                        for id in Array(room.peers.keys) { room.peers[id]?.node = nil }
+                    }
+                    room.checkpoint = board
+                    room.changed()
+                }
                 if room.peers[client] == nil {
                     room.peers[client] = Peer(name: user?.name, role: user?.role, color: room.color(for: user?.name))
                     room.changed()
+                }
+                if editing && action == "poll" {
+                    guard board.canEdit(user) else { throw Abort(.forbidden) }
+                    room.peers[client]?.editing = true
+                    if room.checkpoint == nil { room.checkpoint = board; room.changed() }
                 }
                 room.peers[client]?.seen = .now
                 if action == "select" {
@@ -115,7 +150,7 @@ final class Collaboration: @unchecked Sendable {
                 promise.futureResult.whenComplete { _ in timeout.cancel() }
                 wait = promise.futureResult
             }
-            let state = LiveState(version: room.version, revision: board.revision, participants: room.peers.map {
+            let state = LiveState(version: room.version, revision: board.revision, checkpointRevision: room.checkpoint?.revision, participants: room.peers.map {
                 Participant(name: $0.value.name ?? "Vendég", color: $0.value.color, node: $0.value.node, mine: $0.key == client)
             }.sorted { $0.name < $1.name })
             rooms[path.url] = room.peers.isEmpty ? nil : room
@@ -141,12 +176,24 @@ final class Collaboration: @unchecked Sendable {
                 }
             }
             if var room = rooms[path.url] {
+                room.revision = saved.revision
                 let ids = Set(saved.nodes.map(\.id))
                 for (id, peer) in room.peers {
+                    let allowed = peer.role == .admin || (peer.name != nil &&
+                        (peer.name == saved.owner || (saved.editors ?? []).contains(peer.name ?? "")))
+                    if !allowed && saved.isPublic == false {
+                        peer.socket?.close(promise: nil)
+                        peer.waiter?.succeed(())
+                        room.peers.removeValue(forKey: id)
+                        continue
+                    }
                     if let node = peer.node, !ids.contains(node) { room.peers[id]?.node = nil }
-                    if peer.node != nil, peer.role != .admin, let name = peer.name,
-                       name != saved.owner, saved.editors?.contains(name) != true { room.peers[id]?.node = nil }
+                    if !allowed {
+                        room.peers[id]?.editing = false
+                        room.peers[id]?.node = nil
+                    }
                 }
+                if !room.peers.values.contains(where: \.editing) { room.checkpoint = nil }
                 room.changed()
                 rooms[path.url] = room
             }
@@ -154,10 +201,53 @@ final class Collaboration: @unchecked Sendable {
         }
     }
 
+    // The first socket frame carries the private capability established by the
+    // authenticated presence request. Preview frames never enter the worksheet store.
+    func attach(_ socket: WebSocket, path: WorksheetPath, client: String) {
+        let attached = lock.withLock {
+            guard let peer = rooms[path.url]?.peers[client], peer.seen.duration(to: .now) < .seconds(45) else { return false }
+            peer.socket?.close(promise: nil)
+            rooms[path.url]?.peers[client]?.socket = socket
+            return true
+        }
+        guard attached else { socket.close(promise: nil); return }
+        socket.onText { [weak self] socket, text in
+            struct Motion: Decodable {
+                let node: String
+                let revision: Int
+                let delta: Point?
+            }
+            guard text.utf8.count < 512, let frame = try? JSONDecoder().decode(Motion.self, from: Data(text.utf8)),
+                  frame.delta.map({ abs($0.x) <= 200_000 && abs($0.y) <= 200_000 }) ?? true else { return }
+            self?.lock.withLock {
+                guard let room = self?.rooms[path.url], room.revision == frame.revision,
+                      let sender = room.peers[client], sender.socket === socket, sender.node == frame.node,
+                      sender.seen.duration(to: .now) < .seconds(45) else { return }
+                for (id, peer) in room.peers where id != client && peer.seen.duration(to: .now) < .seconds(45) {
+                    peer.socket?.send(text)
+                }
+            }
+        }
+        socket.onClose.whenComplete { [weak self, weak socket] _ in
+            self?.lock.withLock {
+                if self?.rooms[path.url]?.peers[client]?.socket === socket {
+                    self?.rooms[path.url]?.peers[client]?.socket = nil
+                    if let room = self?.rooms[path.url], let node = room.peers[client]?.node {
+                        let clear = "{\"node\":\"\(node)\",\"revision\":\(room.revision)}"
+                        for peer in room.peers.values { peer.socket?.send(clear) }
+                    }
+                }
+            }
+        }
+    }
+
     func archive(_ path: WorksheetPath, expected: Int) throws {
         try lock.withLock {
             try store.archive(path, expected: expected)
-            rooms.removeValue(forKey: path.url)?.peers.values.forEach { $0.waiter?.succeed(()) }
+            rooms.removeValue(forKey: path.url)?.peers.values.forEach {
+                $0.socket?.close(promise: nil)
+                $0.waiter?.succeed(())
+            }
         }
     }
 }

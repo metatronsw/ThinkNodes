@@ -5,7 +5,7 @@ import {canvasBounds, commentColor, edgeEndpoint, edgeGeometry, edgePaint, edgeS
 import {ancestors, containerOrder, overlapFraction} from "./containers.js";
 
 const mount = document.querySelector("#editor");
-const {path, csrf, role, user} = mount.dataset;
+const {path, csrf, role, user, motionRate} = mount.dataset;
 const d3 = window.d3;
 const {createApp, computed, h, nextTick, onMounted, onUnmounted, ref, shallowRef, watch} = window.Vue;
 const endpoint = "/api/worksheet/" + path;
@@ -180,13 +180,33 @@ createApp({
     const markdownSources = computed(() => [...new Set(
       board.value?.nodes.filter(node => node.showMarkdown && node.markdown).map(node => node.markdown)
     )]);
+    const motions = shallowRef(new Map());
+    function receiveMotion(frame) {
+      if (!frame) { motions.value = new Map(); return; }
+      if (frame.revision !== board.value?.revision) return;
+      const next = new Map(motions.value);
+      if (frame.delta) next.set(frame.node, frame);
+      else next.delete(frame.node);
+      motions.value = next;
+    }
     const drawings = computed(() => new Map(board.value?.nodes.map(node => {
       const markdown = node.showMarkdown && node.markdown
         ? canvasMarkdown.value.get(node.markdown) ?? draftMarkdown(node.markdown) : [];
       const layout = labelLayout(node, markdown);
       return [node.id, {node: {...node, width: layout.width, height: layout.height}, layout}];
     })));
-    const drawnNode = id => drawings.value.get(id)?.node;
+    function displayPosition(node) {
+      if (motions.value.size) {
+        const motion = [node, ...ancestors(node, nodeMap.value)].map(n => motions.value.get(n.id))
+          .find(m => m && m.revision === board.value.revision);
+        if (motion) return {x: node.position.x + motion.delta.x, y: node.position.y + motion.delta.y};
+      }
+      return node.position;
+    }
+    function drawnNode(id) {
+      const node = drawings.value.get(id)?.node;
+      return node && motions.value.size ? {...node, position: displayPosition(node)} : node;
+    }
     const drawnBounds = () => canvasBounds({
       nodes: [...drawings.value.values()].map(drawing => drawing.node), edges: board.value.edges,
     });
@@ -217,6 +237,22 @@ createApp({
     const held = ref(null);
     const online = ref(false);
     let baseline;
+    let checkpointRevision;
+    const checkpointBusy = ref(false);
+    function discardDrafts(latest) {
+      generation.value = savedGeneration.value;
+      gesture.value = null;
+      reconnect.value = null;
+      preview.value = null;
+      motions.value = new Map();
+      selected.value = null;
+      held.value = null;
+      selectionRequest++;
+      inspectNothing();
+      board.value = copy(latest);
+      baseline = copy(latest);
+      status.value = "Munkalap visszaállítva";
+    }
     let queued = Promise.resolve();
     let saveTimer;
     let selectionRequest = 0;
@@ -233,6 +269,7 @@ createApp({
     async function refresh() {
       const latest = await (await checked(await fetch(endpoint))).json();
       if (latest.revision <= baseline.revision) return;
+      if (latest.resetRevision > baseline.revision) { discardDrafts(latest); return; }
       board.value = rebaseWorksheet(baseline, copy(board.value), latest);
       baseline = copy(latest);
       if ((gesture.value?.nodeID && !nodeMap.value.has(gesture.value.nodeID)) ||
@@ -253,7 +290,10 @@ createApp({
         held.value = state.participants.find(p => p.mine)?.node ?? null;
       }
       online.value = true;
+      checkpointRevision = state.checkpointRevision;
       peers.value = state.participants;
+      motions.value = new Map([...motions.value].filter(([id, frame]) =>
+        frame.revision === state.revision && occupied(id)));
       if (state.revision > baseline.revision) await enqueue(async () => {
         if (state.revision > baseline.revision) await refresh();
       });
@@ -269,7 +309,7 @@ createApp({
       if (gesture.value) finishPointer({pointerId: gesture.value.pointer}, true);
       if (inspector.value?.kind === "node") inspectNothing();
       problem.value = error.message;
-    });
+    }, {editing: true, onMotion: receiveMotion, rate: Number(motionRate) || 100});
 
     function scheduleSave() {
       if (saveTimer) return;
@@ -693,7 +733,7 @@ createApp({
       if (operation) {
         operation.moved ||= Math.hypot(event.clientX - operation.screen[0], event.clientY - operation.screen[1]) > 3;
         if (operation.type === "resize") {
-          if (operation.moved && !operation.locked) { resizeCorner(operation, point); modified(); }
+          if (operation.moved && !operation.locked) resizeCorner(operation, point);
           return;
         }
         if (operation.type === "move" || operation.type === "endpoint") {
@@ -703,7 +743,9 @@ createApp({
           if (operation.type === "move") {
             if (!operation.locked && !operation.group.some(member => occupied(member.id))) {
               translateGroup(operation.group, position.x-operation.position.x, position.y-operation.position.y);
-              modified();
+              const current = nodeMap.value.get(operation.nodeID).position;
+              live.motion({node: operation.nodeID, revision: baseline.revision,
+                delta: {x: current.x-operation.position.x, y: current.y-operation.position.y}});
             }
           } else {
             const edge = edgeMap.value.get(operation.edgeID);
@@ -737,12 +779,12 @@ createApp({
         if (cancel) {
           const index = board.value.nodes.findIndex(n => n.id === operation.nodeID);
           board.value.nodes[index] = operation.original;
-        }
-        modified();
+        } else modified();
       } else if (operation.type === "move" && operation.moved) {
         lastClick = null;
         const node = nodeMap.value.get(operation.nodeID);
-        if (cancel && !operation.locked) { translateGroup(operation.group, 0, 0); modified(); }
+        if (cancel && !operation.locked) live.endMotion(node.id, baseline.revision);
+        if (cancel && !operation.locked) translateGroup(operation.group, 0, 0);
         else if (!operation.locked) { dropParent(node); modified(); }
       } else if ((operation.type === "move" || operation.type === "cable") && !operation.moved && !cancel) {
         const time = performance.now();
@@ -779,6 +821,7 @@ createApp({
       }
       gesture.value = null;
       preview.value = null;
+      if (dirty.value && !saveTimer) scheduleSave();
     }
 
     function retarget(edge, end) {
@@ -844,6 +887,7 @@ createApp({
       saving.value = true;
       try {
         for (let attempt = 0; attempt < 4; attempt++) {
+          if (!dirty.value || (gesture.value?.moved && ["move", "resize"].includes(gesture.value.type))) return;
           const version = generation.value;
           const submitted = copy(board.value);
           const result = await fetch(endpoint, {method: "PUT", headers: {"Content-Type": "application/json",
@@ -869,7 +913,7 @@ createApp({
           board.value = rebaseWorksheet(submitted, copy(board.value), saved);
           baseline = copy(saved);
           savedGeneration.value = version;
-          status.value = "Mentve";
+          status.value = "";
           problem.value = "";
           if (dirty.value) scheduleSave();
           return;
@@ -883,9 +927,32 @@ createApp({
       if (!online.value || gesture.value?.type === "endpoint") return;
       try { await enqueue(commit); }
       catch (error) {
+        if (held.value) live.endMotion(held.value, baseline.revision);
         problem.value = error.message;
         if (!error.status || error.status >= 500) setTimeout(() => { if (dirty.value) save(); }, 1200);
       }
+    }
+
+    async function sessionAction(action) {
+      if (!online.value || checkpointBusy.value || gesture.value) return;
+      if (action === "resign" && !confirm("Visszaállítod a közös munkalapot a legutóbbi Mentéshez vagy a munkamenet elejéhez? Ez minden résztvevő vásznára érvényes.")) return;
+      checkpointBusy.value = true;
+      problem.value = "";
+      const expectedCheckpoint = checkpointRevision;
+      const observedRevision = baseline.revision;
+      try {
+        await enqueue(async () => {
+          if (action === "checkpoint") await commit();
+          const revision = action === "resign" ? observedRevision : baseline.revision;
+          const state = await live.checkpoint(action, revision, expectedCheckpoint);
+          checkpointRevision = state.checkpointRevision;
+          if (action === "resign") await refresh();
+          status.value = action === "resign" ? "Munkalap visszaállítva" : "Visszaállítási pont rögzítve";
+        });
+      } catch (error) {
+        problem.value = error.message;
+        if (error.status === 412) await enqueue(refresh).catch(() => {});
+      } finally { checkpointBusy.value = false; }
     }
 
     async function navigate(href) {
@@ -938,7 +1005,7 @@ createApp({
       modifiers(event);
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
-        save();
+        sessionAction("checkpoint");
       }
       if (event.key === "Escape") {
         const active = gesture.value;
@@ -1008,13 +1075,14 @@ createApp({
 
     function renderNode(node) {
       const {node: drawn, layout} = drawings.value.get(node.id);
+      const position = displayPosition(node);
       const owner = peers.value.find(p => p.node === node.id);
       const destination = worksheetLink(node.link, path);
       const inset = node.shape === "diamond" ? .45 : node.shape === "ellipse" ? .7 : .94;
       const snapTarget = preview.value?.target === node.id;
       return h("g", {key: node.id, "data-node": node.id, tabindex: 0, role: "button",
         "aria-label": node.title, class: occupied(node.id) ? "idea occupied" : "idea",
-        transform: "translate(" + node.position.x + " " + node.position.y + ")",
+        transform: "translate(" + position.x + " " + position.y + ")",
         onPointerdown: event => pressNode(event, node),
         onContextmenu: event => context(event, "node", node.id),
         onKeydown: event => {
@@ -1361,7 +1429,10 @@ createApp({
           }),
           button("SVG letöltése", exportSVG, {symbol: "download"}),
           link("Megtekintés", "/" + path, "eye"),
-          button(saving.value ? "Mentés…" : "Mentés", save, {class: "button primary", symbol: "save", disabled: saving.value || !dirty.value}),
+          button("Mentés", () => sessionAction("checkpoint"), {class: "button primary", symbol: "save",
+            title: "Közös visszaállítási pont rögzítése", disabled: checkpointBusy.value || !online.value}),
+          button("Resign", () => sessionAction("resign"), {symbol: "undo", title: "A közös visszaállítási pont betöltése",
+            disabled: checkpointBusy.value || !online.value}),
           role === "admin" ? link("Admin", "/admin", "settings") : null,
           h("form", {method: "post", action: "/logout"}, [
             h("input", {type: "hidden", name: "csrf", value: csrf}),
