@@ -74,14 +74,23 @@ func headerLink(_ url: String, _ label: String, symbol: String) -> String {
     "<a class=\"button small\" href=\"\(escaped(url))\">\(uiIcon(symbol))\(escaped(label))</a>"
 }
 
-func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: String?, actions: String = "") -> String {
-    let crumb = path.map { "<span class=\"slash\">/</span><a href=\"/\($0)\">\(escaped(project ?? $0))</a>" } ?? ""
+func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: String?, actions: String = "", editing: Bool = false) -> String {
+    let parts = path?.split(separator: "/").map(String.init) ?? []
+    let base = editing ? "/edit/" : "/"
+    let crumb = parts.indices.map { i in
+        let url = base + parts[...i].joined(separator: "/")
+        let last = i == parts.count - 1
+        let label = last ? (project ?? parts[i]) : (parts[i].removingPercentEncoding ?? parts[i])
+        return "<span class=\"slash\" aria-hidden=\"true\">/</span><a \(last ? "aria-current='page'" : "") href=\"\(escaped(url))\">\(escaped(label))</a>"
+    }.joined()
+    let parent = parts.count > 1 ? "<a class=\"button small\" aria-label=\"Szülő munkalap\" href=\"\(escaped(base + parts.dropLast().joined(separator: "/")))\">\(uiIcon("up"))</a>" : ""
     let session: String
     if let user, let csrf {
         session = """
             <form method="post" action="/logout" class="account">
               \(csrfInput(csrf))
-              <span>\(escaped(user.name))</span><button class="button small" type="submit">\(uiIcon("logout"))Kijelentkezés</button>
+              \(isTesterName(user.name) ? headerLink("/login", "Bejelentkezés", symbol: "login") : "")
+              \(user.role == .admin && user.name.lowercased() == "admin" ? "" : "<span>\(escaped(user.name))</span>")<button class="button small" type="submit">\(uiIcon("logout"))Kijelentkezés</button>
             </form>
             """
     } else {
@@ -90,10 +99,10 @@ func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: 
             """
     }
     return """
-        <header class="site-header"><nav aria-label="Fő navigáció" class="breadcrumbs">
+        <header class="site-header"><div class="header-left"><nav aria-label="Fő navigáció" class="breadcrumbs">
           <a class="brand" href="/"><span class="brand-icon" aria-hidden="true"><span></span><span></span><span></span></span>ThinkNodes</a>
           \(crumb)
-        </nav><div class="header-user">\(actions)\(user?.role == .admin ? headerLink("/admin", "Admin", symbol: "settings") : "")\(session)</div></header>
+        </nav><div class="header-user">\(user?.role == .admin ? headerLink("/admin", "Admin", symbol: "settings") : "")\(session)</div></div><div class="header-parent">\(parent)</div><div class="header-actions">\(actions)</div></header>
         """
 }
 
@@ -149,6 +158,8 @@ private struct IdeaLabelLine {
     let weight: Int
     let color: String
     var runs: [MarkdownRun] = []
+    var outsideX: Double?
+    var outsideTop: Double?
     var gap: Double = 0
     var style: TextStyle?
 
@@ -161,6 +172,8 @@ private struct IdeaDrawing {
     var iconSpace: Double = 0
     var available: Double = 0
     let lines: [IdeaLabelLine]
+    var extentX: Double = 0
+    var extentY: Double = 0
 }
 
 private func textWidth(_ value: String, size: Double) -> Double {
@@ -182,8 +195,6 @@ private func darker(_ color: String) -> String {
 private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
     var node = idea
     if node.kind == .connectionPoint {
-        node.width = 14
-        node.height = 14
         node.shape = .ellipse
         return IdeaDrawing(node: node, labelWidth: 0, lines: [])
     }
@@ -193,11 +204,12 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
     let commentSize = node.commentStyle?.size ?? detailSize
     let bodySize = node.markdownStyle?.size ?? detailSize
     let comment = node.comment ?? ""
-    let markdown = node.showMarkdown == true ? canvasMarkdown(node.markdown) : []
+    let markdown = node.showMarkdown == true ? canvasMarkdown(node.markdown) :
+        (node.markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? [] : [MarkdownBlock(kind: .body, runs: [MarkdownRun(text: "•")])])
     if node.autoSize != false {
         let targetWidth = max(textWidth(node.title, size: node.fontSize),
                               min(245, textWidth(comment, size: commentSize)),
-                              markdown.isEmpty ? 0 : 200)
+                              markdown.isEmpty || node.showMarkdown != true ? 0 : 200)
         node.width = min(880, max(node.autoMinWidth ?? 64, ceil((targetWidth + 24) / widthRatio)))
     }
     let labelWidth = max(12, node.width * widthRatio - 16)
@@ -225,6 +237,16 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
                                        color: node.markdownStyle?.color ?? node.textColor, runs: pieces, gap: gap, style: node.markdownStyle))
         }
     }
+    var groups: [String: [IdeaLabelLine]] = [:]
+    lines.removeAll { line in
+        let body = !line.runs.isEmpty
+        guard (body ? node.markdownOutside : node.titleOutside) == true else { return false }
+        let horizontal = (body ? node.markdownStyle?.alignment : nil) ?? node.alignment
+        var vertical = (body ? node.markdownStyle?.verticalAlignment : node.verticalAlignment) ?? .middle
+        if horizontal == .center && vertical == .middle { vertical = .top }
+        groups[horizontal.rawValue + "/" + vertical.rawValue, default: []].append(line)
+        return true
+    }
     let iconSpace: Double = (node.link ?? "").isEmpty ? 0 : 18
     if node.autoSize != false {
         let targetHeight = iconSpace + lines.reduce(0) { $0 + $1.step } + 16
@@ -243,14 +265,37 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
         visible[last].text += "…"
         if !visible[last].runs.isEmpty { visible[last].runs.append(MarkdownRun(text: "…")) }
     }
-    return IdeaDrawing(node: node, labelWidth: labelWidth, iconSpace: iconSpace, available: available, lines: visible)
+    if node.showMarkdown != true, node.markdownOutside != true,
+       let marker = lines.last, !marker.runs.isEmpty, !visible.contains(where: { !$0.runs.isEmpty }) {
+        while !visible.isEmpty && remaining < marker.step { remaining += visible.removeLast().step }
+        visible.append(marker)
+    }
+    var extentX = node.width / 2, extentY = node.height / 2
+    for key in groups.keys.sorted() {
+        let rows = groups[key] ?? []
+        let total = rows.reduce(0) { $0 + $1.step }
+        let side: Double = key.hasPrefix("left/") ? -1 : key.hasPrefix("right/") ? 1 : 0
+        let center = side * (node.width/2 + 8 + labelWidth/2)
+        var top = key.hasSuffix("/top") ? -node.height/2-8-total : key.hasSuffix("/bottom") ? node.height/2+8 : -total/2
+        extentX = max(extentX, abs(center) + labelWidth/2 + 4)
+        extentY = max(extentY, abs(top), abs(top+total))
+        for var line in rows {
+            line.outsideX = center
+            line.outsideTop = top
+            visible.append(line)
+            top += line.step
+        }
+    }
+    return IdeaDrawing(node: node, labelWidth: labelWidth, iconSpace: iconSpace, available: available,
+                       lines: visible, extentX: extentX, extentY: extentY)
 }
 
 private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
     let node = drawing.node
     if node.kind == .connectionPoint {
+        let label = node.title.isEmpty ? "" : "<text x=\"\(number(node.position.x + node.width/2 + 4))\" y=\"\(number(node.position.y + 4))\" font-size=\"14\" fill=\"\(node.textColor)\">\(escaped(node.title))</text>"
         return """
-            <circle cx="\(number(node.position.x))" cy="\(number(node.position.y))" r="7" fill="\(escaped(node.fill))" aria-label="\(escaped(node.title))"/>
+            <circle cx="\(number(node.position.x))" cy="\(number(node.position.y))" r="\(number(node.width/2))" fill="\(escaped(node.fill))" aria-label="\(escaped(node.title))"/>\(label)
             """
     }
     let width = node.width
@@ -277,26 +322,30 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
         default: 0.5
         }
     }
-    let extra = drawing.available - drawing.lines.reduce(0) { $0 + $1.step }
+    let extra = drawing.available - drawing.lines.filter { $0.outsideTop == nil }.reduce(0) { $0 + $1.step }
     var offset = -(drawing.available + drawing.iconSpace) / 2
-    var bodyEnd: Double = 0
+    var bodyEnd: Double?
+    var bodyX: Double = 0
     var bodyTop: Double?
     let spans = drawing.lines.sorted { rank($0) < rank($1) }.map { line in
-        let top = offset + extra * rank(line)
-        if !line.runs.isEmpty { bodyEnd = top + line.step }
+        let top = line.outsideTop ?? (offset + extra * rank(line))
+        if !line.runs.isEmpty { bodyEnd = max(bodyEnd ?? -Double.infinity, top + line.step); bodyX = line.outsideX ?? 0 }
         let textX: Double
         let anchor: String
-        switch line.style?.alignment ?? node.alignment {
+        if let center = line.outsideX {
+            let side: Double = center < 0 ? -1 : center > 0 ? 1 : 0
+            (textX, anchor) = (center - side * labelWidth/2, side < 0 ? "end" : side > 0 ? "start" : "middle")
+        } else { switch line.style?.alignment ?? node.alignment {
         case .left: (textX, anchor) = (-labelWidth / 2, "start")
         case .right: (textX, anchor) = (labelWidth / 2, "end")
         case .center: (textX, anchor) = (0, "middle")
-        }
+        } }
         var style = ""
         if line.style?.italic == true { style += " font-style=\"italic\"" }
         if line.style?.underline == true { style += " text-decoration=\"underline\"" }
         if !line.runs.isEmpty && bodyTop == nil { bodyTop = top + line.gap - 3 }
         let baseline = top + line.gap + line.size * (1.25 / 2 + 0.33)
-        offset += line.step
+        if line.outsideTop == nil { offset += line.step }
         let fit = textWidth(line.text, size: line.size) > labelWidth
             ? " textLength=\"\(number(labelWidth))\" lengthAdjust=\"spacingAndGlyphs\"" : ""
         let content = line.runs.isEmpty ? escaped(line.text) : line.runs.map { run in
@@ -316,9 +365,9 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
     let fill = node.markdownFill ?? node.fill
     let border = node.markdownBorder ?? node.border
     let distinctBorder = border.lowercased() != node.border.lowercased()
-    if let bodyTop, distinctBorder || fill.lowercased() != node.fill.lowercased() {
+    if let bodyTop, let bodyEnd, distinctBorder || fill.lowercased() != node.fill.lowercased() {
         frame = """
-            <rect x="\(number(-labelWidth/2-3))" y="\(number(bodyTop))" width="\(number(labelWidth+6))" height="\(number(bodyEnd+3-bodyTop))" fill="\(fill)" stroke="\(distinctBorder ? border : "none")"/>
+            <rect x="\(number(bodyX-labelWidth/2-3))" y="\(number(bodyTop))" width="\(number(labelWidth+6))" height="\(number(bodyEnd+3-bodyTop))" fill="\(fill)" stroke="\(distinctBorder ? border : "none")"/>
             """
     }
     let symbol = node.link.flatMap(WorksheetLink.init).map { link in
@@ -328,8 +377,7 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
             """
     } ?? ""
     return """
-        <g transform="translate(\(number(node.position.x)) \(number(node.position.y)))">
-          <title>\(escaped(node.title))</title>
+        <g aria-label="\(escaped(node.title))" transform="translate(\(number(node.position.x)) \(number(node.position.y)))">
           \(geometry)
           \(frame)
           <text font-family="system-ui, sans-serif" pointer-events="none">\(spans)</text>
@@ -344,9 +392,14 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
     let nodes = Dictionary(uniqueKeysWithValues: renderedIdeas.map { ($0.id, $0) })
     var halfWidth = 360.0
     var halfHeight = 240.0
-    for node in renderedIdeas {
-        halfWidth = max(halfWidth, abs(node.position.x) + node.width / 2 + 40)
-        halfHeight = max(halfHeight, abs(node.position.y) + node.height / 2 + 40)
+    for drawing in drawings {
+        let node = drawing.node
+        halfWidth = max(halfWidth, abs(node.position.x) + max(node.width/2, drawing.extentX) + 40)
+        if node.kind == .connectionPoint && !node.title.isEmpty {
+            let labelEnd = node.position.x + node.width / 2 + 4 + textWidth(node.title, size: 14)
+            halfWidth = max(halfWidth, labelEnd + 40)
+        }
+        halfHeight = max(halfHeight, abs(node.position.y) + max(node.height/2, drawing.extentY) + 40)
     }
     var definitions: [String] = []
     let edges = board.edges.compactMap { edge -> String? in
@@ -399,7 +452,10 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
         let path = try? WorksheetPath(parts)
         let destination = node.link.flatMap(WorksheetLink.init).flatMap { link in path.flatMap { link.destination(from: $0) } }
         let url = destination.map(escaped) ?? (escaped(noteBase) + separator + "note=\(node.id)")
-        let linked = destination == nil ? "" : " data-link=\"true\""
+        var linked = destination == nil ? "" : " data-link=\"true\""
+        if let raw = node.link, let link = WorksheetLink(raw), link.isExternal(siteHost: siteHost) {
+            linked += " target=\"_blank\" rel=\"noopener noreferrer\""
+        }
         let geometry = "data-x=\"\(node.position.x)\" data-y=\"\(node.position.y)\" data-width=\"\(node.width)\" data-height=\"\(node.height)\" data-shape=\"\(node.shape.rawValue)\" data-parent=\"\(node.parent ?? "")\""
         return "<a data-node=\"\(node.id)\" \(geometry)\(linked) href=\"\(url)\" aria-label=\"\(escaped(node.title))\">\(graphic)</a>"
     }
@@ -433,7 +489,7 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
     }
     return """
         <svg xmlns="http://www.w3.org/2000/svg" class="passive-canvas" role="img" aria-label="\(escaped(board.title))" width="\(width)" height="\(height)" viewBox="\(number(-halfWidth)) \(number(-halfHeight)) \(width) \(height)">
-          <title>\(escaped(board.title))</title>
+          \(noteBase == nil ? "<title>\(escaped(board.title))</title>" : "")
           <defs>\(definitions.joined())</defs>
           <rect x="\(number(-halfWidth))" y="\(number(-halfHeight))" width="\(width)" height="\(height)" fill="\(escaped(board.backgroundColor))"/>
           \(grid)

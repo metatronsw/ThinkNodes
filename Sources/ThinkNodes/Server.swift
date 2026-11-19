@@ -16,7 +16,8 @@ enum ThinkNodes {
 
     private static func run() async throws {
         let directory = Environment.get("THINKNODES_DATA") ?? "Data"
-        let store = try WorksheetStore(root: URL(fileURLWithPath: directory, isDirectory: true))
+        let store = try WorksheetStore(root: URL(fileURLWithPath: directory, isDirectory: true),
+                                       testMode: Environment.get("THINKNODES_TEST_MODE") == "1")
         let arguments = Array(CommandLine.arguments.dropFirst())
         if arguments.first == "user" {
             try addUser(arguments, store: store)
@@ -92,6 +93,7 @@ private struct SessionInfo: Sendable {
 }
 
 private func authenticatedUser(_ data: SessionData, store: WorksheetStore) throws -> User? {
+    if store.testMode, let name = data["tester"], isTesterName(name) { return User(name: name, role: .admin, passwordHash: "") }
     guard let name = data["user"], let user = try store.user(named: name),
           data["credential"] == user.passwordHash else { return nil }
     return user
@@ -99,6 +101,11 @@ private func authenticatedUser(_ data: SessionData, store: WorksheetStore) throw
 
 private func session(_ req: Request, store: WorksheetStore) throws -> SessionInfo {
     guard req.hasSession, let user = try authenticatedUser(req.session.data, store: store) else {
+        if store.testMode {
+            let name = store.nextTester()
+            req.session.data["tester"] = name
+            return SessionInfo(user: User(name: name, role: .admin, passwordHash: ""), csrf: token(req))
+        }
         return SessionInfo(user: nil, csrf: nil)
     }
     return SessionInfo(user: user, csrf: token(req))
@@ -239,11 +246,14 @@ func configure(_ application: Application, store: WorksheetStore) {
         guard worksheet.canEdit(user) else { throw Abort(.forbidden) }
         let local = [assets + "vendor/vue.js", assets + "vendor/d3.js"].allSatisfy { FileManager.default.fileExists(atPath: $0) }
         let loading = local ? "Szerkesztő betöltése…" : "A szerkesztőhöz futtasd a teljes ./build.sh parancsot."
+        let actions = "<div id='editor-tools'></div>" + headerLink("/" + path.url, "Megtekintés", symbol: "eye")
         return htmlPage(title: worksheet.title, body: """
-            <main id="editor" class="editor-root" data-path="\(path.url)" data-csrf="\(csrf)" data-motion-rate="\(motionRate)" data-role="\(user.role.rawValue)" data-user="\(escaped(user.name))">
+            <div class="editor-root">
+            \(siteHeader(path: path.url, project: worksheet.title, user: user, csrf: csrf, actions: actions, editing: true))
+            <main id="editor" data-path="\(path.url)" data-csrf="\(csrf)" data-motion-rate="\(motionRate)" data-role="\(user.role.rawValue)" data-user="\(escaped(user.name))">
               <p class="editor-loading">\(loading)</p>
               <noscript><p>A szerkesztőhöz JavaScript szükséges.</p><a href="/\(path.url)">Megtekintés</a></noscript>
-            </main>
+            </main></div>
             """, scripts: local)
     }
 
@@ -275,6 +285,7 @@ func configure(_ application: Application, store: WorksheetStore) {
         struct Form: Content {
             let action: String
             let node: String?
+            let edge: String?
             let since: String?
             let editing: Bool?
             let revision: Int?
@@ -297,7 +308,7 @@ func configure(_ application: Application, store: WorksheetStore) {
                 let user = try authenticatedUser(data, store: store)
                 if data["user"] != nil && user == nil { throw Abort(.unauthorized) }
                 return try live.presence(path, user: user, client: client, action: action,
-                                  node: form.node, since: since, loop: req.eventLoop, editing: form.editing == true,
+                                  node: form.node, edge: form.edge, since: since, loop: req.eventLoop, editing: form.editing == true,
                                   revision: form.revision, checkpointRevision: form.checkpointRevision)
             }
         }
@@ -310,6 +321,18 @@ func configure(_ application: Application, store: WorksheetStore) {
         try result.content.encode(snapshot)
         result.headers.replaceOrAdd(name: .cacheControl, value: "no-store")
         return result
+    }
+
+    app.post("api", "subworksheet", "**") { req async throws -> Response in
+        let identity = try session(req, store: store)
+        guard let user = identity.user else { throw Abort(.unauthorized) }
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        guard path.parts.count >= 2 else { throw Abort(.badRequest) }
+        let sheet = try await req.application.threadPool.runIfActive {
+            try store.open(path, user: user, createOnly: true)
+        }
+        return try worksheetResponse(sheet)
     }
 
     app.put("api", "worksheet", "**") { req async throws -> Response in
@@ -368,6 +391,13 @@ func configure(_ application: Application, store: WorksheetStore) {
         }
     }
 
+    app.get("api", "preview", "**") { req async throws -> Response in
+        let user = try session(req, store: store).user
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        let svg = try await req.application.threadPool.runIfActive { try store.previewSVG(path, user: user) }
+        return response(svg, type: "image/svg+xml; charset=utf-8")
+    }
+
     app.get("**") { req async throws -> Response in
         let path = try WorksheetPath(req.parameters.getCatchall())
         let identity = try session(req, store: store)
@@ -379,7 +409,10 @@ func configure(_ application: Application, store: WorksheetStore) {
         } catch let error as Abort where error.status == .unauthorized {
             return redirect("/login?next=/" + path.url)
         }
-        return try passivePage(req, path: path, worksheet: worksheet, session: identity)
+        let children = try await req.application.threadPool.runIfActive {
+            try store.list(user: identity.user, childrenOf: path)
+        }
+        return try passivePage(req, path: path, worksheet: worksheet, session: identity, children: children)
     }
 }
 
@@ -395,29 +428,43 @@ private func worksheetResponse(_ worksheet: Worksheet, filename: String? = nil) 
 }
 
 private func indexPage(_ items: [(path: WorksheetPath, worksheet: Worksheet)], session: SessionInfo) -> Response {
+    let items = items.filter { $0.worksheet.hidden != true || (session.user != nil && $0.worksheet.creator == session.user?.name) }
+    let counts = Dictionary(grouping: items, by: { Array($0.path.parts.dropLast()) }).mapValues(\.count)
     let cards = items.map { item in
-        """
-        <a class="project-card panel" href="/\(item.path.url)">
+        let count = counts[item.path.parts] ?? 0
+        let children = count > 0 ? "<span>\(count) allap</span>" : ""
+        return """
+        <a class="project-card panel layers-\(min(count, 2))" data-color="\(escaped(item.worksheet.backgroundColor))" data-revision="\(item.worksheet.revision)" href="/\(item.path.url)">
           <span class="project-glyph" aria-hidden="true">◇</span>
           <div><h2>\(escaped(item.worksheet.title))</h2>
-          <span class="muted">/\(escaped(item.path.parts.joined(separator: "/")))</span></div>
+          <span class="muted">/\(escaped(item.path.parts.joined(separator: "/")))</span><div class="card-meta">Létrehozó: \(escaped(item.worksheet.creator ?? "ismeretlen")) \(children)</div></div>
         </a>
         """
     }.joined()
     return htmlPage(title: "Munkalapok", body: """
         \(siteHeader(user: session.user, csrf: session.csrf))
         <main class="shell">
+          <script type="module" src="/cards.js"></script>
           <div class="page-heading"><h1>Munkalapok</h1></div>
           <form class="open-path panel" method="get" action="/open">
             <label>Munkalap útvonala<input name="path" placeholder="gondolatok/otletek1" required></label>
             <button class="button primary" type="submit">\(uiIcon("folder"))Megnyitás</button>
           </form>
-          <div class="project-list">\(cards.isEmpty ? "<p class=\"muted\">Még nincs munkalap.</p>" : cards)</div>
+          <div class="project-list" id="worksheet-cards" data-delete="\(session.user?.role == .admin)" data-csrf="\(session.csrf ?? "")">\(cards.isEmpty ? "<p class=\"muted\">Még nincs munkalap.</p>" : cards)</div>
         </main>
         """)
 }
 
-private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Worksheet, session: SessionInfo) throws -> Response {
+private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Worksheet, session: SessionInfo, children: [(path: WorksheetPath, worksheet: Worksheet)]) throws -> Response {
+    let previews = children.map { child in
+        """
+        <a class="panel sub-preview" href="/\(child.path.url)">
+          <img loading="lazy" alt="" src="/api/preview/\(child.path.url)?v=\(child.worksheet.revision)">
+          <strong>\(escaped(child.worksheet.title))</strong>
+          <small>Létrehozó: \(escaped(child.worksheet.creator ?? "ismeretlen"))</small>
+        </a>
+        """
+    }.joined()
     let base = "/" + path.url
     let edit = worksheet.canEdit(session.user)
         ? headerLink("/edit/" + path.url, "Szerkesztés", symbol: "edit") : ""
@@ -439,17 +486,22 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
     } else {
         note = ""
     }
+    let tooltips = worksheet.nodes.filter { $0.showMarkdown != true && !$0.markdown.isEmpty }.map {
+        "<template data-tooltip=\"\($0.id)\">\(markdownHTML($0.markdown))</template>"
+    }.joined()
     let description = renderedComment(worksheet.comment)
     let introduction = worksheet.markdown.map(markdownHTML) ?? ""
     let notes = description.isEmpty && introduction.isEmpty ? "" :
         "<section class=\"panel worksheet-notes\">\(description)<div class=\"markdown\">\(introduction)</div></section>"
     return htmlPage(title: worksheet.title, body: """
-        \(siteHeader(path: path.url, project: worksheet.title, user: session.user, csrf: session.csrf, actions: edit + downloads))
+        \(siteHeader(path: path.url, project: worksheet.title, user: session.user, csrf: session.csrf, actions: downloads + edit))
         <script type="module" src="/viewer.js"></script>
         <main class="shell" id="worksheet-view" data-path="\(path.url)" data-csrf="\(token(req))" data-revision="\(worksheet.revision)" data-editable="\(worksheet.canEdit(session.user))">
           <div class="passive-frame panel">\(boardSVG(worksheet, noteBase: base, siteHost: req.headers.first(name: .host)))</div>
+          \(tooltips)
           \(notes)
           \(note)
+          <section><h2>Allapok (\(children.count))</h2><div class="project-list">\(previews)</div></section>
         </main>
         """)
 }
@@ -485,7 +537,7 @@ private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, liv
     app.get("admin") { req async throws -> Response in
         let identity = try session(req, store: store)
         let users = try store.allUsers()
-        if users.isEmpty {
+        if users.isEmpty && !store.testMode {
             let form = localSetup(req) ? """
                 <form method="post" action="/admin/setup" class="stack panel">
                   \(csrfInput(token(req)))

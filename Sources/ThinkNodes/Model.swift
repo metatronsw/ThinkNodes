@@ -56,6 +56,8 @@ struct Idea: Codable, Equatable, Sendable {
     var bold = true
     var alignment: LabelAlignment = .center
     var verticalAlignment: VerticalAlignment?
+    var titleOutside: Bool?
+    var markdownOutside: Bool?
     var link: String?
 
     var kind: IdeaKind?
@@ -71,13 +73,15 @@ struct Idea: Codable, Equatable, Sendable {
     var autoMinHeight: Double?
 
     var isValid: Bool {
-        let sizeValid = kind == .connectionPoint ? width == 14 && height == 14 :
+        let sizeValid = kind == .connectionPoint ? (4...128).contains(width) && height == width :
             (64...880).contains(width) && (40...680).contains(height)
-        return validSlug(id) && validTitle(title) && markdown.utf8.count <= 100_000
-            && validComment(comment) && position.isValid && (link.map { $0.isEmpty || WorksheetLink($0) != nil } ?? true)
-            && sizeValid && (autoMinWidth.map { (64...880).contains($0) } ?? true)
+        guard validSlug(id), validTitle(title) || (kind == .connectionPoint && title.isEmpty),
+              markdown.utf8.count <= 100_000, sizeValid else { return false }
+        let validContent = validComment(comment) && position.isValid
+            && (link.map { $0.isEmpty || WorksheetLink($0) != nil } ?? true)
+        let validMinimum = (autoMinWidth.map { (64...880).contains($0) } ?? true)
             && (autoMinHeight.map { (40...680).contains($0) } ?? true)
-            && (commentStyle?.isValid ?? true) && (markdownStyle?.isValid ?? true)
+        return validContent && validMinimum && (commentStyle?.isValid ?? true) && (markdownStyle?.isValid ?? true)
             && [markdownFill, markdownBorder].compactMap { $0 }.allSatisfy(validColor)
             && (10...60).contains(fontSize)
             && [fill, textColor, border].allSatisfy(validColor)
@@ -98,7 +102,7 @@ enum ConnectionStyle: String, Codable, Sendable {
     }
 }
 
-struct ConnectionTarget: Codable, Sendable {
+struct ConnectionTarget: Equatable, Codable, Sendable {
     var node: String?
     var point: Point?
 
@@ -110,7 +114,7 @@ struct ConnectionTarget: Codable, Sendable {
     }
 }
 
-struct Connection: Codable, Sendable {
+struct Connection: Equatable, Codable, Sendable {
     var id: String
     var source: String?
     var sourcePoint: Point?
@@ -129,7 +133,7 @@ struct Connection: Codable, Sendable {
     var hasEndArrow: Bool { endArrow ?? (style != .rope && style != .solid) }
 }
 
-struct Worksheet: Content {
+struct Worksheet: Content, Equatable {
     var schemaVersion = 2
     var revision = 1
     var resetRevision: Int?
@@ -140,8 +144,10 @@ struct Worksheet: Content {
     var gridColor: String?
     var gridSpacing: Double?
     var gridVisible: Bool?
+    var creator: String?
     var owner: String?
     var editors: [String]?
+    var hidden: Bool?
     var isPublic: Bool?
     var nodes: [Idea] = []
     var edges: [Connection] = []
@@ -169,12 +175,61 @@ struct Worksheet: Content {
         return copy
     }
 
+    private var junctionDegrees: [String: Int] {
+        var counts: [String: Int] = [:]
+        for edge in edges {
+            if let source = edge.source { counts[source, default: 0] += 1 }
+            if let target = edge.target.node, target != edge.source { counts[target, default: 0] += 1 }
+        }
+        return counts
+    }
+
+    mutating func dissolveUnusedJunctions() {
+        let degrees = junctionDegrees
+        var removed: [String: Point] = [:]
+        nodes.removeAll { node in
+            guard node.kind == .connectionPoint, degrees[node.id, default: 0] < 2 else { return false }
+            removed[node.id] = node.position
+            return true
+        }
+        guard !removed.isEmpty else { return }
+        for i in edges.indices {
+            if let source = edges[i].source, let point = removed[source] {
+                edges[i].source = nil
+                edges[i].sourcePoint = point
+            }
+            if let target = edges[i].target.node, let point = removed[target] {
+                edges[i].target = ConnectionTarget(point: point)
+            }
+        }
+    }
+
+    private var duplicateConnections: [Int] {
+        var pairs = Set<[String]>()
+        return edges.indices.filter { i in
+            guard let from = edges[i].source, let to = edges[i].target.node else { return false }
+            return !pairs.insert([from, to]).inserted
+        }
+    }
+
+    mutating func detachLegacyDuplicateConnections() {
+        let positions = Dictionary(nodes.map { ($0.id, $0.position) }, uniquingKeysWith: { first, _ in first })
+        for i in duplicateConnections {
+            if let id = edges[i].target.node, let point = positions[id] {
+                edges[i].target = ConnectionTarget(point: point)
+            }
+        }
+    }
+
     func validate() throws {
+        guard duplicateConnections.isEmpty else {
+            throw Abort(.unprocessableEntity, reason: "Ezen az útvonalon már van kábel.")
+        }
         let nodeIDs = Set(nodes.map(\.id))
         guard (1...2).contains(schemaVersion), revision > 0, revision < Int.max, validTitle(title),
               validComment(comment), (markdown?.utf8.count ?? 0) <= 100_000, validColor(backgroundColor),
               validColor(gridColor ?? "#ccd7eb"), (6...160).contains(gridSpacing ?? 20),
-              owner.map(validSlug) ?? true,
+              owner.map({ validSlug($0) || isTesterName($0) }) ?? true,
               (editors?.count ?? 0) <= 2_000, editors?.allSatisfy(validSlug) ?? true,
               nodes.count <= 2_000, edges.count <= 4_000,
               nodeIDs.count == nodes.count, Set(edges.map(\.id)).count == edges.count,
@@ -188,11 +243,11 @@ struct Worksheet: Content {
             throw Abort(.unprocessableEntity, reason: "Érvénytelen munkalapadat.")
         }
         let byID = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0) })
-        let attached = Set(edges.flatMap { [$0.source, $0.target.node].compactMap { $0 } })
+        let degrees = junctionDegrees
         var checked = Set<String>()
         for node in nodes {
-            if node.kind == .connectionPoint && !attached.contains(node.id) {
-                throw Abort(.unprocessableEntity, reason: "Üres csomópont.")
+            if node.kind == .connectionPoint && degrees[node.id, default: 0] < 2 {
+                throw Abort(.unprocessableEntity, reason: "A csomóponthoz legalább két vonal szükséges.")
             }
             var path = Set<String>()
             var current = node
@@ -219,6 +274,11 @@ struct User: Codable, Sendable {
     var name: String
     var role: Role
     var passwordHash: String
+}
+
+func isTesterName(_ value: String) -> Bool {
+    guard value.hasPrefix("Tester"), let number = Int(value.dropFirst(6)), number > 0 else { return false }
+    return value == "Tester" + String(number)
 }
 
 func validSlug(_ value: String) -> Bool {
@@ -278,6 +338,13 @@ struct WorksheetPath: Sendable {
 
 final class WorksheetStore: @unchecked Sendable {
     private let root: URL
+    let testMode: Bool
+    private var testerCount = 0
+
+    func nextTester() -> String {
+        lock.withLock { testerCount += 1; return "Tester" + String(testerCount) }
+    }
+
     private let files = FileManager.default
     private let lock = NSLock()
     private let encoder: JSONEncoder = {
@@ -286,26 +353,35 @@ final class WorksheetStore: @unchecked Sendable {
         return encoder
     }()
 
-    init(root: URL) throws {
+    init(root: URL, testMode: Bool = false) throws {
+        self.testMode = testMode
         self.root = root.standardizedFileURL.resolvingSymlinksInPath()
         try files.createDirectory(at: self.root, withIntermediateDirectories: true)
     }
 
-    func list(user: User?) throws -> [(path: WorksheetPath, worksheet: Worksheet)] {
+    func list(user: User?, childrenOf parent: WorksheetPath? = nil) throws -> [(path: WorksheetPath, worksheet: Worksheet)] {
         try lock.withLock {
-            guard let paths = files.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
-                                               options: [.skipsHiddenFiles]) else { return [] }
+            let start = try parent.map { try worksheetURL($0).deletingPathExtension() } ?? root
+            try rejectLink(start)
+            guard files.fileExists(atPath: start.path) else { return [] }
+            let keys: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey]
+            var pending = [(start, parent?.parts ?? [])]
             var result: [(path: WorksheetPath, worksheet: Worksheet)] = []
-            for case let url as URL in paths {
-                let properties = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
-                if properties.isSymbolicLink == true {
-                    paths.skipDescendants()
-                    continue
+            while let (directory, parts) = pending.popLast() {
+                let entries = try files.contentsOfDirectory(at: directory, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles])
+                for url in entries {
+                    let properties = try url.resourceValues(forKeys: keys)
+                    if properties.isSymbolicLink == true { continue }
+                    if properties.isDirectory == true {
+                        let nested = parts + [url.lastPathComponent]
+                        if parent == nil, nested.count < 12, (try? WorksheetPath(nested)) != nil { pending.append((url, nested)) }
+                        continue
+                    }
+                    guard properties.isRegularFile == true, url.pathExtension == "json",
+                          let path = try? WorksheetPath(parts + [url.deletingPathExtension().lastPathComponent]),
+                          let worksheet = try? read(url), worksheet.canRead(user) else { continue }
+                    result.append((path, worksheet))
                 }
-                guard properties.isRegularFile == true, url.pathExtension == "json" else { continue }
-                let segments = Array(url.deletingPathExtension().pathComponents.dropFirst(root.pathComponents.count))
-                guard let path = try? WorksheetPath(segments), let worksheet = try? read(url), worksheet.canRead(user) else { continue }
-                result.append((path, worksheet))
             }
             return result.sorted { $0.path.parts.lexicographicallyPrecedes($1.path.parts) }
         }
@@ -322,26 +398,59 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    func open(_ path: WorksheetPath, user: User?) throws -> Worksheet {
+    func open(_ path: WorksheetPath, user: User?, createOnly: Bool = false) throws -> Worksheet {
+        try lock.withLock { try openLocked(path, user: user, createOnly: createOnly) }
+    }
+
+    private func openLocked(_ path: WorksheetPath, user: User?, createOnly: Bool) throws -> Worksheet {
+        if try readSettings().requireLogin && user == nil { throw Abort(.unauthorized) }
+        let url = try worksheetURL(path)
+        if files.fileExists(atPath: url.path) {
+            let worksheet = try read(url)
+            try ensureReadable(worksheet, user: user)
+            if createOnly { throw Abort(.conflict, reason: "Ilyen nevű munkalap már létezik.") }
+            return worksheet
+        }
+        guard let user else {
+            throw Abort(.unauthorized, reason: "A munkalap létrehozásához be kell jelentkezni.")
+        }
+        let rawTitle = path.name.replacingOccurrences(of: "-", with: " ").replacingOccurrences(of: "_", with: " ")
+            .trimmingCharacters(in: .whitespaces)
+        var worksheet = Worksheet(title: rawTitle.isEmpty ? path.name : String(rawTitle.prefix(120)),
+                                  creator: user.name, owner: user.name, isPublic: false)
+        if path.parts.count > 1 {
+            let parentPath = try WorksheetPath(Array(path.parts.dropLast()))
+            let parent = try openLocked(parentPath, user: user, createOnly: false)
+            guard parent.canEdit(user) else { throw Abort(.forbidden) }
+            worksheet.background = parent.background
+            worksheet.gridColor = parent.gridColor
+            worksheet.gridSpacing = parent.gridSpacing
+            worksheet.gridVisible = parent.gridVisible
+            worksheet.owner = parent.owner
+            worksheet.editors = parent.editors
+            worksheet.isPublic = parent.isPublic
+            worksheet.hidden = parent.hidden
+        }
+        try worksheet.validate()
+        try files.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try write(worksheet, to: url)
+        return worksheet
+    }
+
+    func previewSVG(_ path: WorksheetPath, user: User?) throws -> String {
         try lock.withLock {
             if try readSettings().requireLogin && user == nil { throw Abort(.unauthorized) }
             let url = try worksheetURL(path)
-            if files.fileExists(atPath: url.path) {
-                let worksheet = try read(url)
-                try ensureReadable(worksheet, user: user)
-                return worksheet
-            }
-            guard let user else {
-                throw Abort(.unauthorized, reason: "A munkalap létrehozásához be kell jelentkezni.")
-            }
-            let rawTitle = path.name.replacingOccurrences(of: "-", with: " ").replacingOccurrences(of: "_", with: " ")
-                .trimmingCharacters(in: .whitespaces)
-            let worksheet = Worksheet(title: rawTitle.isEmpty ? path.name : String(rawTitle.prefix(120)),
-                                      owner: user.name, isPublic: false)
-            try worksheet.validate()
-            try files.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try write(worksheet, to: url)
-            return worksheet
+            let sheet = try read(url)
+            try ensureReadable(sheet, user: user)
+            let cache = url.deletingLastPathComponent().appendingPathComponent("." + path.name + ".preview.svg")
+            try rejectLink(cache)
+            let modified = try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+            if let modified, let cached = try? cache.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+               cached > modified { return try String(contentsOf: cache, encoding: .utf8) }
+            let svg = boardSVG(sheet)
+            try Data(svg.utf8).write(to: cache, options: .atomic)
+            return svg
         }
     }
 
@@ -370,13 +479,14 @@ final class WorksheetStore: @unchecked Sendable {
                 }
             }
             var updated = worksheet
+            updated.creator = current.creator
             if current.owner != updated.owner {
                 guard user.role == .admin else { throw Abort(.forbidden) }
                 guard let owner = updated.owner, try readUsers().contains(where: { $0.name == owner }) else {
                     throw Abort(.unprocessableEntity, reason: "Válassz létező tulajdonost.")
                 }
             }
-            if current.editors != updated.editors || current.isPublic != updated.isPublic {
+            if current.editors != updated.editors || current.isPublic != updated.isPublic || current.hidden != updated.hidden {
                 guard current.canManage(user) else { throw Abort(.forbidden) }
                 if current.editors != updated.editors {
                     let accounts = Set(try readUsers().map(\.name))
@@ -471,7 +581,9 @@ final class WorksheetStore: @unchecked Sendable {
 
     private func read(_ url: URL) throws -> Worksheet {
         guard files.fileExists(atPath: url.path) else { throw Abort(.notFound, reason: "A munkalap nem található.") }
-        let worksheet = try JSONDecoder().decode(Worksheet.self, from: Data(contentsOf: url))
+        var worksheet = try JSONDecoder().decode(Worksheet.self, from: Data(contentsOf: url))
+        worksheet.detachLegacyDuplicateConnections()
+        worksheet.dissolveUnusedJunctions()
         try worksheet.validate()
         return worksheet
     }

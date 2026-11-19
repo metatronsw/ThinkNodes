@@ -26,9 +26,11 @@ fi
 command=serve-https
 port=""
 rate=100
+test_mode=0
 server_args=()
 while (( $# )); do
     case "$1" in
+        --test) test_mode=1 ;;
         --http) command=serve ;;
         --port:*)
             port="${1#--port:}"
@@ -57,7 +59,8 @@ while (( $# )); do
     esac
     shift
 done
-export THINKNODES_MOTION_RATE="$rate"
+export THINKNODES_MOTION_RATE="$rate" THINKNODES_TEST_MODE="$test_mode"
+if [[ "$test_mode" == 1 ]]; then echo "Tesztmód: minden csatlakozó adminisztrátori jogot kap."; fi
 
 if [[ ! -x "$executable" || ( -z "${THINKNODES_EXECUTABLE:-}" && Sources/ThinkNodes/Server.swift -nt "$executable" ) ]]; then
     if [[ ! -x "$swift_bin" ]]; then

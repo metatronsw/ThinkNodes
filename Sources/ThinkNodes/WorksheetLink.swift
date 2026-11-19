@@ -47,6 +47,11 @@ enum WorksheetLink {
         return iconPath
     }
 
+    func isExternal(siteHost: String?) -> Bool {
+        if case .website = self { return iconPath(siteHost: siteHost) != Self.chain }
+        return false
+    }
+
     private static let chain = "m10 13 4-4m-5 6-2 2a3.5 3.5 0 0 1-5-5l5-5a3.5 3.5 0 0 1 5 0m0 10a3.5 3.5 0 0 0 5 0l5-5a3.5 3.5 0 0 0-5-5l-2 2"
 
     private var iconPath: String {

@@ -1,3 +1,6 @@
+import {openExternalLink} from "./links.js";
+import {flashNode} from "./ping.js";
+import {hideTooltip, showTooltip} from "./tooltip.js";
 import {liveConnection} from "./collaboration.js";
 
 import {edgeGeometry} from "./geometry.js";
@@ -9,7 +12,17 @@ const ns = "http://www.w3.org/2000/svg";
 const roster = document.createElement("div");
 roster.className = "participants";
 roster.setAttribute("aria-label", "Jelenlévők");
-document.querySelector(".site-header").append(roster);
+function bindCanvas() {
+  hideTooltip();
+  main.querySelector(".passive-frame").append(roster);
+  for (const template of main.querySelectorAll("template[data-tooltip]")) {
+    const box = main.querySelector('[data-node="' + CSS.escape(template.dataset.tooltip) + '"]');
+    box?.addEventListener("pointerenter", event => showTooltip(event, () => template.innerHTML));
+    box?.addEventListener("pointerleave", hideTooltip);
+    box?.addEventListener("pointerdown", hideTooltip);
+  }
+}
+bindCanvas();
 
 const motions = new Map();
 function previewScene() {
@@ -34,6 +47,11 @@ function previewScene() {
       if (!changed.has(edge.source) && !changed.has(edge.target.node)) continue;
       const {d, labelPosition, angle} = edgeGeometry(edge, id => nodes.get(id));
       path.setAttribute("d", d);
+      let underlay = path.previousElementSibling;
+      while (underlay?.hasAttribute("data-wire-highlight")) {
+        underlay.setAttribute("d", d);
+        underlay = underlay.previousElementSibling;
+      }
       if (edge.label?.trim()) path.nextElementSibling?.setAttribute("transform",
         "translate(" + labelPosition.x + " " + labelPosition.y + ") rotate(" + angle + ")");
     }
@@ -43,6 +61,7 @@ let drawPreview = previewScene();
 function receiveMotion(frame) {
   if (!frame) motions.clear();
   else if (frame.revision !== Number(main.dataset.revision)) return;
+  else if (frame.ping) { flashNode(main, frame.node); return; }
   else if (frame.delta) motions.set(frame.node, frame.delta);
   else motions.delete(frame.node);
   drawPreview();
@@ -50,13 +69,25 @@ function receiveMotion(frame) {
 
 function paint(peers) {
   roster.replaceChildren();
-  for (const peer of new Map(peers.map(p => [p.name, p])).values()) {
+  for (const peer of peers) {
     const label = document.createElement("span");
     label.style.setProperty("--peer", peer.color);
     label.textContent = peer.name;
     roster.append(label);
   }
   main.querySelectorAll("[data-selection]").forEach(frame => frame.remove());
+  main.querySelectorAll("[data-wire-highlight]").forEach(line => line.remove());
+  for (const wire of main.querySelectorAll("[data-wire]")) {
+    const id = JSON.parse(wire.dataset.wire).id;
+    const owners = peers.filter(p => p.edge === id);
+    owners.forEach((peer, i) => {
+      const line = document.createElementNS(ns, "path");
+      for (const [key, value] of Object.entries({"data-wire-highlight": "", d: wire.getAttribute("d"),
+        stroke: peer.color, "stroke-width": Number(wire.getAttribute("stroke-width")) + (owners.length-i)*5,
+        fill: "none", "pointer-events": "none"})) line.setAttribute(key, value);
+      wire.before(line);
+    });
+  }
   for (const peer of peers) {
     if (!peer.node) continue;
     const anchor = main.querySelector('[data-node="' + CSS.escape(peer.node) + '"]');
@@ -71,18 +102,35 @@ function paint(peers) {
 }
 
 // Anchors retain keyboard activation and work without JavaScript.
+let noteTimer;
 document.addEventListener("click", event => {
   const box = event.target.closest?.(".passive-canvas [data-node]");
-  if (box && event.detail && (box.hasAttribute("data-link") || event.ctrlKey && main.dataset.editable === "true")) {
+  if (!box || !event.detail) return;
+  if (box.hasAttribute("data-link") && !event.ctrlKey) {
+    if (box.getAttribute("target") === "_blank") {
+      event.preventDefault();
+      if (event.detail === 1) openExternalLink(box.getAttribute("href"));
+    }
+    return;
+  }
+  if (main.dataset.editable === "true") {
     event.preventDefault();
+    clearTimeout(noteTimer);
+    if (event.detail === 1 && !event.ctrlKey && !box.hasAttribute("data-link")) {
+      noteTimer = setTimeout(() => location.assign(box.getAttribute("href")), 500);
+    }
   }
 });
 document.addEventListener("dblclick", event => {
   const box = event.target.closest?.(".passive-canvas [data-node]");
-  if (!box) return;
-  if (event.ctrlKey && main.dataset.editable === "true") {
-    location.assign("/edit/" + path + "?node=" + encodeURIComponent(box.dataset.node));
-  } else if (box.hasAttribute("data-link")) location.assign(box.getAttribute("href"));
+  const wire = event.target.closest?.(".passive-canvas [data-wire]");
+  if (!box && !wire) return;
+  clearTimeout(noteTimer);
+  if (box?.hasAttribute("data-link") && !event.ctrlKey) return;
+  if (main.dataset.editable === "true") {
+    const target = box ? {node: box.dataset.node} : {edge: JSON.parse(wire.dataset.wire).id};
+    location.assign("/edit/" + path + "?" + new URLSearchParams(target));
+  }
 });
 const live = liveConnection(path, csrf, async state => {
   if (Number(main.dataset.revision) !== state.revision) {
@@ -98,7 +146,7 @@ const live = liveConnection(path, csrf, async state => {
     document.title = page.title;
     const header = page.querySelector(".site-header");
     document.querySelector(".site-header").replaceWith(header);
-    header.append(roster);
+    bindCanvas();
   }
   for (const id of motions.keys()) {
     if (!state.participants.some(p => p.node === id)) motions.delete(id);

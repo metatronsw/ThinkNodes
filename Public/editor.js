@@ -1,6 +1,8 @@
+import {flashNode} from "./ping.js";
+import {showTooltip, hideTooltip} from "./tooltip.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
-import {worksheetLink, linkIcons} from "./links.js";
-import {canvasBounds, commentColor, edgeEndpoint, edgeGeometry, edgePaint, edgeStyles, labelLayout, limit, lineStyles, paper, shapeDistance, shapes} from "./geometry.js";
+import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
+import {canvasBounds, commentColor, edgeEndpoint, edgeGeometry, edgePaint, labelLayout, limit, lineStyles, paper, shapeDistance, shapes} from "./geometry.js";
 
 import {ancestors, containerOrder, overlapFraction} from "./containers.js";
 
@@ -104,7 +106,7 @@ function numeric(value, change, min, max, props = {}) {
 function checkbox(label, checked, change) {
   return h("label", {class: "check"}, [
     h("input", {type: "checkbox", checked, onChange: event => change(event.target.checked)}),
-    label,
+    h("span", label),
   ]);
 }
 
@@ -123,7 +125,7 @@ function draftMarkdown(source) {
 function shape(node) {
   const x = node.width / 2;
   const y = node.height / 2;
-  if (node.kind === "connectionPoint") return h("circle", {r: 7, fill: node.fill});
+  if (node.kind === "connectionPoint") return h("circle", {r: node.width / 2, fill: node.fill});
   const style = {fill: node.fill, stroke: node.border, "stroke-width": 1.6};
   if (node.shape === "ellipse") return h("ellipse", {...style, rx: x, ry: y});
   if (node.shape === "diamond") return h("polygon", {...style, points: ["0," + -y, x + ",0", "0," + y, -x + ",0"].join(" ")});
@@ -184,6 +186,7 @@ createApp({
     function receiveMotion(frame) {
       if (!frame) { motions.value = new Map(); return; }
       if (frame.revision !== board.value?.revision) return;
+      if (frame.ping) { flashNode(canvas.value, frame.node); return; }
       const next = new Map(motions.value);
       if (frame.delta) next.set(frame.node, frame);
       else next.delete(frame.node);
@@ -208,10 +211,14 @@ createApp({
       return node && motions.value.size ? {...node, position: displayPosition(node)} : node;
     }
     const drawnBounds = () => canvasBounds({
-      nodes: [...drawings.value.values()].map(drawing => drawing.node), edges: board.value.edges,
+      nodes: [...drawings.value.values()].map(({node, layout}) => ({...node, extentX: layout.extentX, extentY: layout.extentY})), edges: board.value.edges,
     });
+    const snapToGrid = ref(false);
     const selected = ref(null);
-    const pendingStyle = ref("arrow");
+    const editingPanel = ref(false);
+    const searchQuery = ref(null);
+    const searchInput = ref(null);
+    const manuallyClosed = ref(false);
     const reconnect = ref(null);
     const menu = ref(null);
     const inspector = ref(null);
@@ -221,7 +228,7 @@ createApp({
     const size = ref({width: 0, height: 0});
     const gesture = ref(null);
     const preview = ref(null);
-    const status = ref("");
+    const checkpointState = ref({revision: 0, changed: false});
     const problem = ref("");
     const saving = ref(false);
     const generation = ref(0);
@@ -235,9 +242,14 @@ createApp({
 
     const peers = ref([]);
     const held = ref(null);
+    let heldEdge = null;
     const online = ref(false);
     let baseline;
     let checkpointRevision;
+    function receiveCheckpoint(state) {
+      checkpointRevision = state.checkpointRevision;
+      checkpointState.value = {revision: state.revision, changed: state.checkpointChanged};
+    }
     const checkpointBusy = ref(false);
     function discardDrafts(latest) {
       generation.value = savedGeneration.value;
@@ -247,16 +259,17 @@ createApp({
       motions.value = new Map();
       selected.value = null;
       held.value = null;
+      heldEdge = null;
       selectionRequest++;
       inspectNothing();
       board.value = copy(latest);
       baseline = copy(latest);
-      status.value = "Munkalap visszaállítva";
     }
     let queued = Promise.resolve();
     let saveTimer;
     let selectionRequest = 0;
-    let initialNode = new URLSearchParams(window.location?.search).get("node");
+    const params = new URLSearchParams(window.location?.search);
+    let initialNode = params.get("node"), initialEdge = params.get("edge");
     const copy = value => JSON.parse(JSON.stringify(value));
     const occupied = id => peers.value.find(p => !p.mine && p.node === id);
     const groupBlocked = node => moveGroup(node).some(member => occupied(member.id));
@@ -281,16 +294,19 @@ createApp({
         reconnect.value = null;
         preview.value = null;
       }
-      if (note.value) showNote(nodeMap.value.get(note.value.id), false);
+      if (selected.value && !(selected.value.kind === "node" ? nodeMap : edgeMap).value.has(selected.value.id)) clearSelection();
+      else if (note.value) showNote(nodeMap.value.get(note.value.id), false);
     }
 
     const live = liveConnection(path, csrf, async state => {
       if (!online.value) {
         problem.value = "";
-        held.value = state.participants.find(p => p.mine)?.node ?? null;
+        const mine = state.participants.find(p => p.mine);
+        held.value = mine?.node ?? null;
+        heldEdge = mine?.edge ?? null;
       }
       online.value = true;
-      checkpointRevision = state.checkpointRevision;
+      receiveCheckpoint(state);
       peers.value = state.participants;
       motions.value = new Map([...motions.value].filter(([id, frame]) =>
         frame.revision === state.revision && occupied(id)));
@@ -301,6 +317,10 @@ createApp({
         const id = initialNode;
         initialNode = null;
         if (nodeMap.value.has(id)) openProperties("node", id);
+      } else if (initialEdge) {
+        const id = initialEdge;
+        initialEdge = null;
+        if (edgeMap.value.has(id)) openProperties("edge", id);
       }
       if (dirty.value && !saveTimer && !saving.value && !problem.value) scheduleSave();
     }, error => {
@@ -316,7 +336,7 @@ createApp({
       saveTimer = setTimeout(() => { saveTimer = null; save(); }, 70);
     }
 
-    async function selectNode(id) {
+    async function selectNode(id, edge = null) {
       const ticket = ++selectionRequest;
       if (!online.value) return false;
       if (id && occupied(id)) {
@@ -326,9 +346,10 @@ createApp({
       try {
         return await enqueue(async () => {
           if (ticket !== selectionRequest) return false;
-          if (held.value !== id) {
+          if (held.value !== id || heldEdge !== edge) {
             if (dirty.value) await commit();
-            const state = await live.select(id);
+            const state = await live.select(id, edge);
+            heldEdge = edge;
             held.value = id;
             peers.value = state.participants;
             if (state.revision > baseline.revision) await refresh();
@@ -343,6 +364,21 @@ createApp({
       }
     }
 
+    watch(selected, item => {
+      if (!item || manuallyClosed.value) return;
+      if (item.kind === "node") {
+        if (editingPanel.value) {
+          inspector.value = item;
+          note.value = null;
+        } else if (note.value?.id !== item.id) showNote(nodeMap.value.get(item.id), false);
+      } else {
+        inspector.value = {kind: "edge", id: item.id};
+        note.value = null;
+      }
+    });
+    watch(() => editingPanel.value && !manuallyClosed.value && !selected.value && canManage.value, visible => {
+      if (visible && !accounts.value) loadAccounts();
+    });
     function clearSelection() {
       selected.value = null;
       inspectNothing();
@@ -384,7 +420,6 @@ createApp({
       generation.value += 1;
       scheduleSave();
       problem.value = "";
-      status.value = "";
     }
 
     const center = () => [size.value.width / 2, size.value.height / 2];
@@ -468,13 +503,30 @@ createApp({
         shape: "rounded", fill: "#dce9ff", textColor: "#182335", border: "#839bbc", fontSize: 16, bold: true, alignment: "center"};
     }
 
-    function addNode(position = worldAtCenter()) {
+    function addNode(position = worldAtCenter(), properties = {}) {
       if (!board.value || !online.value) return;
-      const node = makeNode(position);
+      const node = {...makeNode(position), ...properties};
       board.value.nodes.push(node);
       modified();
-      if (inspector.value || note.value) openProperties("node", node.id);
-      else selectNode(node.id);
+      selectNode(node.id);
+    }
+
+    async function addSubworksheet(position) {
+      menu.value = null;
+      const name = window.prompt("Új munkalap útvonalneve")?.trim();
+      if (!name) return;
+      if (!/^[\p{L}\p{M}\p{N}_-]+$/u.test(name)) {
+        problem.value = "A név betűt, számot, kötőjelet és aláhúzást tartalmazhat.";
+        return;
+      }
+      try {
+        await enqueue(commit);
+        const response = await checked(await fetch("/api/subworksheet/" + path + "/" + encodeURIComponent(name), {
+          method: "POST", headers: {"X-CSRF-Token": csrf},
+        }));
+        const sheet = await response.json();
+        addNode(position, {title: sheet.title, link: name});
+      } catch (error) { problem.value = error.message; }
     }
 
     async function loadAccounts() {
@@ -488,33 +540,40 @@ createApp({
 
     async function openProperties(kind, itemID) {
       if (kind === "node" && !(await selectNode(itemID))) return;
-      if (kind !== "node") selectNode(null);
-      if (kind === "worksheet" && canManage.value && !accounts.value) loadAccounts();
+      manuallyClosed.value = false;
+      editingPanel.value = true;
+      if (kind !== "node") selectNode(null, kind === "edge" ? itemID : null);
       selected.value = kind === "worksheet" ? null : {kind, id: itemID};
       inspector.value = {kind, id: itemID};
       note.value = null;
       menu.value = null;
     }
 
-    async function deleteNode(node) {
+    async function deleteNode(node, cascade = false) {
       if (!(await selectNode(node.id)) || groupBlocked(node)) return;
-      if (!confirm("Törlöd ezt a dobozt? A kábelek végpontjai a helyükön maradnak.")) return;
-      for (const edge of board.value.edges) {
-        if (edge.source === node.id) detach(edge, "source");
-        if (edge.target.node === node.id) detach(edge, "target");
+      const ids = new Set(cascade && node.kind === "container" ? moveGroup(node).map(n => n.id) : [node.id]);
+      const connected = board.value.edges.filter(edge => ids.has(edge.source) || ids.has(edge.target.node));
+      if (!connected.length && node.kind !== "connectionPoint" && !confirm("Törlöd a kijelölt objektumot?")) return;
+      if (cascade && ["connectionPoint", "container"].includes(node.kind)) {
+        board.value.edges = board.value.edges.filter(edge => !connected.includes(edge));
+      } else {
+        for (const edge of connected) {
+          const {from, to} = edgeGeometry(edge, drawnNode);
+          if (ids.has(edge.source)) setEndpoint(edge, "source", {point: clampPoint(from)});
+          if (ids.has(edge.target.node)) setEndpoint(edge, "target", {point: clampPoint(to)});
+        }
       }
       releaseChildren(node);
-      board.value.nodes = board.value.nodes.filter(item => item.id !== node.id);
-      selected.value = null;
-      inspectNothing();
+      board.value.nodes = board.value.nodes.filter(item => !ids.has(item.id));
+      pruneJunctions();
       modified();
+      clearSelection();
     }
 
     function removeEdge(edge) {
       board.value.edges = board.value.edges.filter(item => item.id !== edge.id);
       pruneJunctions();
-      selected.value = null;
-      inspectNothing();
+      clearSelection();
       modified();
     }
 
@@ -527,9 +586,11 @@ createApp({
     }
 
     function openSidebar() {
+      manuallyClosed.value = false;
       const item = selected.value;
-      if (!item) openProperties("worksheet");
-      else openProperties(item.kind === "endpoint" ? "edge" : item.kind, item.id);
+      if (!item) return;
+      if (item.kind === "node" && !editingPanel.value) showNote(nodeMap.value.get(item.id));
+      else inspector.value = {kind: item.kind === "endpoint" ? "edge" : item.kind, id: item.id};
     }
 
     function inspectNothing() {
@@ -581,10 +642,22 @@ createApp({
     }
 
     function pruneJunctions() {
-      const attached = new Set(board.value.edges.flatMap(e => [e.source, e.target.node]));
-      const orphan = n => n.kind === "connectionPoint" && !attached.has(n.id);
-      if (!board.value.nodes.some(orphan)) return;
-      board.value.nodes = board.value.nodes.filter(n => !orphan(n));
+      const counts = new Map();
+      for (const edge of board.value.edges) {
+        for (const id of new Set([edge.source, edge.target.node])) {
+          if (id) counts.set(id, (counts.get(id) ?? 0) + 1);
+        }
+      }
+      const removed = new Map(board.value.nodes.filter(n => n.kind === "connectionPoint" && (counts.get(n.id) ?? 0) < 2)
+        .map(n => [n.id, n.position]));
+      if (!removed.size) return;
+      for (const edge of board.value.edges) {
+        for (const end of ["source", "target"]) {
+          const point = removed.get(edgeEndpoint(edge, end).node);
+          if (point) setEndpoint(edge, end, {point: {...point}});
+        }
+      }
+      board.value.nodes = board.value.nodes.filter(n => !removed.has(n.id));
       if (selected.value?.kind === "node" && !nodeMap.value.has(selected.value.id)) selected.value = null;
       if ((inspector.value?.kind === "node" && !nodeMap.value.has(inspector.value.id)) ||
           (note.value && !nodeMap.value.has(note.value.id))) inspectNothing();
@@ -625,7 +698,7 @@ createApp({
       const locked = ancestors(node, nodeMap.value).some(parent => parent.locked);
       gesture.value = {group: cabling || locked ? [] : moveGroup(node), locked, type: cabling ? "cable" : "move", pointer: event.pointerId, nodeID: node.id,
         position: {...node.position}, initial, screen: [event.clientX, event.clientY], moved: false};
-      if (cabling) preview.value = {edge: {source: node.id, target: {point: initial}, style: pendingStyle.value}};
+      if (cabling) preview.value = {edge: {source: node.id, target: {point: initial}, style: "arrow"}};
       canvas.value.setPointerCapture(event.pointerId);
       if (!cabling && !occupied(node.id)) claimGesture(node);
       else if (!cabling) gesture.value.locked = true;
@@ -665,7 +738,7 @@ createApp({
       event.stopPropagation();
       menu.value = null;
       lastClick = null;
-      selectNode(null);
+      selectNode(null, edge.id);
       selected.value = {kind: "endpoint", id: edge.id, end};
       gesture.value = {type: "endpoint", original: {...original}, pointer: event.pointerId, edgeID: edge.id, end,
         position: {...position}, initial: world(event), screen: [event.clientX, event.clientY], moved: false};
@@ -673,17 +746,25 @@ createApp({
     }
 
     function endpointAt(point, edge, end, commit = false) {
+      const opposite = edgeEndpoint(edge, otherEnd(end)).node;
       const free = nearbyEnd(point, edge);
       if (free) {
-        if (!commit) return {point: free.point};
-        const node = {...makeNode(free.point), title: "Csomópont", kind: "connectionPoint",
+        if (opposite && end === free.end && edgeEndpoint(free.edge, otherEnd(free.end)).node === opposite) {
+          return {point, blocked: true};
+        }
+        if (!commit) return {point: free.point, junction: free.point};
+        const node = {...makeNode(free.point), title: "", kind: "connectionPoint",
           shape: "ellipse", fill: edgePaint(free.edge).color, width: 14, height: 14, autoSize: false};
         board.value.nodes.push(node);
         dropParent(node);
         setEndpoint(free.edge, free.end, {node: node.id});
         return {node: node.id};
       }
-      const node = snap(point, edgeEndpoint(edge, otherEnd(end)).node);
+      const node = snap(point, opposite);
+      if (node && opposite && board.value.edges.some(candidate => candidate.id !== edge.id &&
+          edgeEndpoint(candidate, end).node === node.id && edgeEndpoint(candidate, otherEnd(end)).node === opposite)) {
+        return {point, blocked: true};
+      }
       return node ? {node: node.id} : {point: clampPoint(point)};
     }
 
@@ -728,7 +809,11 @@ createApp({
       const operation = gesture.value;
       if (!operation && !reconnect.value) return;
       if (operation && operation.pointer !== event.pointerId) return;
-      if (operation?.waiting) { operation.latest = event; return; }
+      if (operation?.waiting) {
+        operation.latest = event;
+        operation.moved ||= Math.hypot(event.clientX-operation.screen[0], event.clientY-operation.screen[1]) > 3;
+        return;
+      }
       const point = world(event);
       if (operation) {
         operation.moved ||= Math.hypot(event.clientX - operation.screen[0], event.clientY - operation.screen[1]) > 3;
@@ -742,6 +827,10 @@ createApp({
             y: operation.position.y + point.y - operation.initial.y});
           if (operation.type === "move") {
             if (!operation.locked && !operation.group.some(member => occupied(member.id))) {
+              if (snapToGrid.value) {
+                const spacing = board.value.gridSpacing ?? 20;
+                for (const axis of ["x", "y"]) position[axis] = (Math.round(position[axis] / spacing - .5) + .5) * spacing;
+              }
               translateGroup(operation.group, position.x-operation.position.x, position.y-operation.position.y);
               const current = nodeMap.value.get(operation.nodeID).position;
               live.motion({node: operation.nodeID, revision: baseline.revision,
@@ -750,25 +839,30 @@ createApp({
           } else {
             const edge = edgeMap.value.get(operation.edgeID);
             operation.endPosition = position;
-            preview.value = {target: endpointAt(position, edge, operation.end).node};
+            const endpoint = endpointAt(position, edge, operation.end);
+            operation.endPosition = endpoint.point ?? position;
+            preview.value = {target: endpoint.node, junction: endpoint.junction};
           }
           return;
         }
-        const edge = {source: operation.nodeID, target: {point}, style: pendingStyle.value};
+        const edge = {source: operation.nodeID, sourcePoint: operation.nodeID ? undefined : operation.initial, target: {point}, style: "arrow"};
         edge.target = endpointAt(point, edge, "target");
-        preview.value = {edge, target: edge.target.node};
+        preview.value = {edge, target: edge.target.node, junction: edge.target.junction};
       } else {
         const {edgeID, end} = reconnect.value;
         const edge = {...edgeMap.value.get(edgeID)};
         const endpoint = endpointAt(point, edge, end);
         setEndpoint(edge, end, endpoint);
-        preview.value = {edge, target: endpoint.node};
+        preview.value = {edge, target: endpoint.node, junction: endpoint.junction};
       }
     }
 
     function finishPointer(event, cancel = false) {
       const operation = gesture.value;
       if (!operation || operation.pointer !== event.pointerId) return;
+      // Navigation must keep the browser’s click activation, including during a pending selection.
+      if (operation.waiting && operation.type === "move" && !operation.moved && !cancel &&
+          Math.hypot(event.clientX-operation.screen[0], event.clientY-operation.screen[1]) <= 3) operation.waiting = false;
       if (operation.waiting) {
         // Pointer capture can end before the server acknowledges the selection.
         operation.done ??= {event, cancel};
@@ -786,7 +880,7 @@ createApp({
         if (cancel && !operation.locked) live.endMotion(node.id, baseline.revision);
         if (cancel && !operation.locked) translateGroup(operation.group, 0, 0);
         else if (!operation.locked) { dropParent(node); modified(); }
-      } else if ((operation.type === "move" || operation.type === "cable") && !operation.moved && !cancel) {
+      } else if ((operation.type === "move" || operation.type === "cable") && operation.nodeID && !operation.moved && !cancel) {
         const time = performance.now();
         const [x, y] = operation.screen;
         if (lastClick?.id === operation.nodeID && lastClick.type === operation.type && time - lastClick.time < 450
@@ -795,25 +889,29 @@ createApp({
           const node = nodeMap.value.get(operation.nodeID);
           const destination = worksheetLink(node?.link, path);
           if (operation.type === "cable") openProperties("node", operation.nodeID);
-          else if (destination) navigate(destination.href);
-          else showNote(node);
+          else if (destination) navigate(destination);
+          else openProperties("node", node.id);
         } else {
           lastClick = {id: operation.nodeID, type: operation.type, time, x, y};
-          if (inspector.value || note.value) showNote(nodeMap.value.get(operation.nodeID));
+          if (!editingPanel.value && !manuallyClosed.value && operation.type === "move" && !note.value) showNote(nodeMap.value.get(operation.nodeID), false);
         }
       } else if (operation.type === "cable" && operation.moved && !cancel) {
         const edge = {id: id(), ...preview.value.edge};
         edge.target = endpointAt(world(event), edge, "target", true);
-        board.value.edges.push(edge);
-        modified();
-        selectNode(null);
-        selected.value = {kind: "edge", id: edge.id};
+        if (edge.target.blocked) problem.value = "Ezen az útvonalon már van kábel.";
+        else {
+          board.value.edges.push(edge);
+          modified();
+          selectNode(null, edge.id);
+          selected.value = {kind: "edge", id: edge.id};
+        }
       } else if (operation.type === "endpoint" && operation.moved) {
         const edge = edgeMap.value.get(operation.edgeID);
         const endpoint = cancel ? operation.original
           : endpointAt(operation.endPosition, edge, operation.end, true);
-        setEndpoint(edge, operation.end, endpoint);
-        if (!cancel) {
+        if (endpoint.blocked) problem.value = "Ezen az útvonalon már van kábel.";
+        else setEndpoint(edge, operation.end, endpoint);
+        if (!cancel && !endpoint.blocked) {
           pruneJunctions();
           if (endpoint.node) selected.value = {kind: "edge", id: edge.id};
           modified();
@@ -832,13 +930,27 @@ createApp({
 
     function pressCanvas(event) {
       rightPress = event.button === 2 && !event.ctrlKey;
-      if (event.button === 0 && !reconnect.value && !event.target.closest("[data-node], [data-edge]")) clearSelection();
+      if (!reconnect.value && !event.target.closest("[data-node], [data-edge]")) {
+        if (event.ctrlKey && [0, 2].includes(event.button) && online.value) {
+          event.preventDefault();
+          event.stopPropagation();
+          menu.value = null;
+          const initial = clampPoint(world(event));
+          gesture.value = {type: "cable", pointer: event.pointerId, initial, screen: [event.clientX, event.clientY], moved: false};
+          preview.value = {edge: {sourcePoint: initial, target: {point: initial}, style: "arrow"}};
+          canvas.value.setPointerCapture(event.pointerId);
+          return;
+        }
+        if (event.button === 0) clearSelection();
+      }
       if (event.button !== 0 || event.ctrlKey || !reconnect.value) return;
       event.preventDefault();
       event.stopPropagation();
       const {edgeID, end} = reconnect.value;
       const edge = edgeMap.value.get(edgeID);
-      setEndpoint(edge, end, endpointAt(world(event), edge, end, true));
+      const endpoint = endpointAt(world(event), edge, end, true);
+      if (endpoint.blocked) { problem.value = "Ezen az útvonalon már van kábel."; return; }
+      setEndpoint(edge, end, endpoint);
       pruneJunctions();
       reconnect.value = null;
       preview.value = null;
@@ -865,6 +977,7 @@ createApp({
 
     async function showNote(node, select = true) {
       if (!node || reconnect.value) return;
+      if (select) { editingPanel.value = false; manuallyClosed.value = false; }
       if (select && !occupied(node.id) && held.value !== node.id) selectNode(node.id);
       menu.value = null;
       inspector.value = null;
@@ -889,6 +1002,7 @@ createApp({
         for (let attempt = 0; attempt < 4; attempt++) {
           if (!dirty.value || (gesture.value?.moved && ["move", "resize"].includes(gesture.value.type))) return;
           const version = generation.value;
+          pruneJunctions();
           const submitted = copy(board.value);
           const result = await fetch(endpoint, {method: "PUT", headers: {"Content-Type": "application/json",
             "X-CSRF-Token": csrf, "X-Worksheet-Client": live.client, "If-Match": '"' + baseline.revision + '"'},
@@ -913,7 +1027,6 @@ createApp({
           board.value = rebaseWorksheet(submitted, copy(board.value), saved);
           baseline = copy(saved);
           savedGeneration.value = version;
-          status.value = "";
           problem.value = "";
           if (dirty.value) scheduleSave();
           return;
@@ -945,9 +1058,8 @@ createApp({
           if (action === "checkpoint") await commit();
           const revision = action === "resign" ? observedRevision : baseline.revision;
           const state = await live.checkpoint(action, revision, expectedCheckpoint);
-          checkpointRevision = state.checkpointRevision;
+          receiveCheckpoint(state);
           if (action === "resign") await refresh();
-          status.value = action === "resign" ? "Munkalap visszaállítva" : "Visszaállítási pont rögzítve";
         });
       } catch (error) {
         problem.value = error.message;
@@ -955,9 +1067,11 @@ createApp({
       } finally { checkpointBusy.value = false; }
     }
 
-    async function navigate(href) {
+    async function navigate(destination) {
+      if (destination.kind === "website") { openExternalLink(destination.href); return; }
+      const target = new URL(destination.href, location.href);
       await save();
-      if (!dirty.value) location.assign(href);
+      if (!dirty.value) location.assign((target.pathname === "/" ? "/" : "/edit" + target.pathname) + target.search + target.hash);
     }
 
     async function exportSVG() {
@@ -1007,12 +1121,40 @@ createApp({
         event.preventDefault();
         sessionAction("checkpoint");
       }
+      if (searchQuery.value !== null) {
+        if (event.key === "Escape" || event.key === "Enter") {
+          event.preventDefault?.();
+          searchQuery.value = null;
+        }
+        return;
+      }
+      if (event.key !== "Escape" && event.target?.closest?.("input, textarea, select, [contenteditable=true]")) return;
+      if (event.key === "Enter" && !event.shiftKey && !event.target?.closest?.("button, a")) {
+        event.preventDefault?.();
+        if (!event.repeat) {
+          searchQuery.value = "";
+          nextTick(() => searchInput.value?.focus());
+        }
+        return;
+      }
+      if (["Delete", "Backspace"].includes(event.key) && selected.value && !gesture.value) {
+        event.preventDefault?.();
+        if (event.repeat) return;
+        const {kind, id} = selected.value;
+        if (kind === "node" && nodeMap.value.has(id)) deleteNode(nodeMap.value.get(id), event.ctrlKey);
+        else if (edgeMap.value.has(id)) removeEdge(edgeMap.value.get(id));
+        return;
+      }
       if (event.key === "Escape") {
         const active = gesture.value;
         if (active) {
           finishPointer({pointerId: active.pointer}, true);
-          if (canvas.value.hasPointerCapture(active.pointer)) canvas.value.releasePointerCapture(active.pointer);
+          if (canvas.value.hasPointerCapture?.(active.pointer)) canvas.value.releasePointerCapture(active.pointer);
         }
+        if (!selected.value && !active && !reconnect.value) manuallyClosed.value = true;
+        if (active?.waiting) gesture.value = null;
+        document.activeElement?.closest?.("[data-node], [data-edge]")?.blur();
+        lastClick = null;
         clearSelection();
         reconnect.value = null;
         preview.value = null;
@@ -1076,28 +1218,32 @@ createApp({
     function renderNode(node) {
       const {node: drawn, layout} = drawings.value.get(node.id);
       const position = displayPosition(node);
-      const owner = peers.value.find(p => p.node === node.id);
+      const owner = peers.value.find(p => p.node === node.id && (!p.mine || (selected.value?.kind === "node" && selected.value.id === node.id)));
       const destination = worksheetLink(node.link, path);
       const inset = node.shape === "diamond" ? .45 : node.shape === "ellipse" ? .7 : .94;
       const snapTarget = preview.value?.target === node.id;
-      return h("g", {key: node.id, "data-node": node.id, tabindex: 0, role: "button",
-        "aria-label": node.title, class: occupied(node.id) ? "idea occupied" : "idea",
+      return h("g", {key: node.id, "data-node": node.id, "data-width": drawn.width, "data-height": drawn.height, tabindex: 0, role: "button",
+        "aria-label": node.title, class: ["idea", {occupied: occupied(node.id), claimed: !!owner}],
         transform: "translate(" + position.x + " " + position.y + ")",
-        onPointerdown: event => pressNode(event, node),
+        onPointerenter: event => {
+          if (!gesture.value && !node.showMarkdown && node.markdown) showTooltip(event, async signal => {
+            const result = await checked(await fetch("/api/markdown", {method: "POST", signal,
+              headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify({markdown: node.markdown})}));
+            return result.text();
+          });
+        },
+        onPointerleave: hideTooltip,
+        onPointerdown: event => { hideTooltip(); pressNode(event, node); },
         onContextmenu: event => context(event, "node", node.id),
         onKeydown: event => {
-          if (event.key === "Enter") {
-            if (event.shiftKey) openProperties("node", node.id);
-            else if (destination) navigate(destination.href);
-            else showNote(node);
-          }
+          if (event.key === "Enter" && event.shiftKey) openProperties("node", node.id);
         },
       }, [
-        node.kind === "connectionPoint" ? null : h("title", node.title),
         owner || snapTarget ? h("rect", {"data-editor-only": "", x: -drawn.width / 2 - 10, y: -drawn.height / 2 - 10,
           width: drawn.width + 20, height: drawn.height + 20, rx: 15, fill: "none",
           stroke: owner?.color ?? "#16a085", "stroke-width": 3, "pointer-events": "none"}) : null,
         shape(drawn),
+        node.kind === "connectionPoint" && node.title ? h("text", {x: drawn.width/2 + 4, y: 4, fill: node.textColor, "font-size": 14}, node.title) : null,
         layout.frame ? h("rect", {...layout.frame, "pointer-events": "none"}) : null,
         h("text", {"font-family": "system-ui, sans-serif", "pointer-events": "none"},
           layout.lines.map(line => h("tspan", {
@@ -1146,17 +1292,47 @@ createApp({
       }
       const {d, labelPosition, angle} = edgeGeometry(edge, drawnNode);
       const paint = edgePaint(edge);
-      const highlighted = (selected.value?.kind === "edge" || selected.value?.kind === "endpoint") && selected.value.id === edge.id;
+      const mine = selected.value?.id === edge.id && ["edge","endpoint"].includes(selected.value.kind);
+      const colors = peers.value.filter(p => p.mine ? mine : p.edge === edge.id).map(p => p.color);
       return h("g", {key: edge.id, "data-edge": edge.id, tabindex: 0, role: "button", "aria-label": edge.label || "Vonal",
-        onClick: () => { selectNode(null); inspectNothing(); selected.value = {kind: "edge", id: edge.id}; },
+        onPointerdown: event => {
+          if (!event.ctrlKey || ![0, 2].includes(event.button) || reconnect.value || !online.value) return;
+          const pathElement = event.currentTarget.querySelector(".edge-hit");
+          const length = pathElement.getTotalLength();
+          const point = world(event);
+          const distance = t => {
+            const p = pathElement.getPointAtLength(t);
+            return Math.hypot(p.x-point.x, p.y-point.y);
+          };
+          let nearest = 0;
+          for (let i = 1; i <= 16; i++) if (distance(length*i/16) < distance(nearest)) nearest = length*i/16;
+          for (let step = length/32; step > .1/view.value.k; step /= 2) {
+            for (const t of [Math.max(0,nearest-step), Math.min(length,nearest+step)]) if (distance(t) < distance(nearest)) nearest = t;
+          }
+          if (Math.min(nearest, length-nearest) < 8/view.value.k) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const p = pathElement.getPointAtLength(nearest);
+          const joint = {...makeNode(clampPoint(p)), title: "", kind: "connectionPoint", shape: "ellipse",
+            width: 14, height: 14, autoSize: false, fill: paint.color};
+          const tail = {...edge, id: id(), source: joint.id, sourcePoint: undefined, startArrow: false, label: ""};
+          edge.target = {node: joint.id};
+          edge.endArrow = false;
+          board.value.nodes.push(joint);
+          dropParent(joint);
+          board.value.edges.push(tail);
+          modified();
+          selectNode(joint.id);
+        },
+        onClick: event => { if (event?.ctrlKey) return; selectNode(null, edge.id); inspectNothing(); selected.value = {kind: "edge", id: edge.id}; },
         onDblclick: event => {
           event.stopPropagation();
           openProperties("edge", edge.id);
         },
         onContextmenu: event => context(event, "edge", edge.id),
-        onKeydown: event => { if (event.key === "Enter") openProperties("edge", edge.id); },
       }, [
-        highlighted ? h("path", {"data-editor-only": "", d, stroke: "#aab9fc", "stroke-width": paint.width + 5}) : null,
+        ...colors.map((color, i) => h("path", {"data-editor-only": "", d, stroke: color,
+          "stroke-width": paint.width + 5 * (colors.length-i) / view.value.k, "pointer-events": "none"})),
         h("path", {d, ...edgeAppearance(edge, "arrow-" + edge.id)}),
         h("path", {"data-editor-only": "", d, stroke: "transparent", "stroke-width": Math.max(paint.width + 10, 14 / view.value.k),
           "pointer-events": "stroke", class: "edge-hit"}),
@@ -1207,9 +1383,14 @@ createApp({
               const {from, to} = edgeGeometry(edge, drawnNode);
               return [renderEndpoint(edge, "source", from), renderEndpoint(edge, "target", to)];
             })),
+            preview.value?.junction ? h("circle", {"data-editor-only": "", cx: preview.value.junction.x, cy: preview.value.junction.y,
+              r: 9 / view.value.k, stroke: "#078469", fill: "#b9f3e1", "stroke-width": 2 / view.value.k, "pointer-events": "none"}) : null,
             shown ? h("path", {d: shown.d, ...edgeAppearance({...cable, color: "#4168e9"}, "arrow-preview"), fill: "none", "pointer-events": "none"}) : null,
           ]),
         ]),
+        h("div", {class: "participants", "aria-label": "Jelenlévők"},
+          peers.value.map((p, index) =>
+            h("span", {key: index, style: {"--peer": p.color}}, p.name))),
         h("div", {class: "canvas-controls"}, [
           button("", () => zoomBy(0.8), {"aria-label": "Kicsinyítés", title: "Kicsinyítés", symbol: "minus"}),
           h("span", Math.round(view.value.k * 100) + "%"),
@@ -1218,9 +1399,10 @@ createApp({
           button("Mind", fit, {title: "A teljes vászon megjelenítése", symbol: "fit"}),
           button("", () => updateItem(board.value, "gridVisible", board.value.gridVisible === false), {
             title: "Pontrács", "aria-label": "Pontrács", "aria-pressed": board.value.gridVisible !== false, symbol: "grid"}),
+          button("", () => { snapToGrid.value = !snapToGrid.value; }, {title: "Rácsra igazítás", "aria-label": "Rácsra igazítás", "aria-pressed": snapToGrid.value, symbol: "snap"}),
 
         ]),
-        board.value && !board.value.nodes.length ? h("p", {class: "canvas-empty"}, "A vászon üres. Adj hozzá egy ötletet.") : null,
+        board.value && !board.value.nodes.length ? h("p", {class: "canvas-empty"}, "Új doboz hozzáadásához kattints jobb gombbal a vászonra.") : null,
       ]);
     }
 
@@ -1231,6 +1413,22 @@ createApp({
       const edge = board.value?.edges.find(item => item.id === open.id);
       const type = open.kind;
       const entries = type === "node" && node ? [
+        button("Ping", async () => {
+          menu.value = null;
+          if (!await selectNode(node.id)) return;
+          flashNode(canvas.value, node.id);
+          live.ping(node.id, board.value.revision);
+        }, {symbol: "center", disabled: !!occupied(node.id)}),
+        button(node.link ? "Link feloldása" : "Link", async () => {
+          menu.value = null;
+          if (!await selectNode(node.id)) return;
+          const current = nodeMap.value.get(node.id);
+          if (!current) return;
+          const link = current.link ? "" : window.prompt("Hivatkozás (allap, ../ vagy https://…)")?.trim();
+          if (link == null) return;
+          if (link && !worksheetLink(link, path)) { problem.value = "Érvénytelen hivatkozás."; return; }
+          updateItem(current, "link", link);
+        }, {symbol: node.link ? "unlink" : "link", disabled: !!occupied(node.id)}),
         button("Szerkesztés", () => openProperties("node", node.id), {symbol: "edit", disabled: !!occupied(node.id)}),
         button("Markdown megnyitása", () => showNote(node), {symbol: "eye"}),
         button("Törlés", () => { menu.value = null; deleteNode(node); }, {class: "button danger", symbol: "trash", disabled: !!occupied(node.id)}),
@@ -1239,19 +1437,19 @@ createApp({
         ...endpointActions(edge),
         button("Kapcsolat törlése", () => removeEdge(edge), {class: "button danger", symbol: "trash"}),
       ] : [
-        button("Új ötlet ide", () => { menu.value = null; addNode(open.position); }, {disabled: !board.value, symbol: "plus"}),
+        button("Objektum létrehozása", () => { menu.value = null; addNode(open.position); }, {disabled: !board.value, symbol: "plus"}),
+        button("Új munkalap", () => addSubworksheet(open.position), {symbol: "plus", disabled: !online.value}),
         button("Középre állítás", () => { menu.value = null; centerOrigin(); }, {symbol: "center"}),
       ];
       return h("div", {class: "context-menu panel", "aria-label": "Műveletek",
         style: {left: open.x + "px", top: open.y + "px"}}, entries);
     }
 
-    function sidebar(label, contents) {
+    function sidebar(label, contents, deletion) {
       return h("aside", {class: "inspector", "aria-label": label}, [
         h("div", {class: "inspector-content stack"}, contents),
-        h("div", {class: "inspector-footer"}, [
-          button("", inspectNothing, {"aria-label": "Oldalsáv bezárása", title: "Oldalsáv bezárása", symbol: "right"}),
-        ]),
+        deletion ? h("footer", {class: "inspector-footer"}, deletion) : null,
+
       ]);
     }
 
@@ -1278,6 +1476,7 @@ createApp({
       return [
         role === "admin" ? field("Tulajdonos", select(sheet.owner ?? "", {"": "Nincs kijelölve", ...ownerChoices},
           name => { if (name) updateItem(sheet, "owner", name); })) : h("p", "Tulajdonos · " + sheet.owner),
+        checkbox("Rejtett a főoldalon", !!sheet.hidden, value => updateItem(sheet, "hidden", value)),
         checkbox("Nyilvános munkalap", sheet.isPublic !== false, value => updateItem(sheet, "isPublic", value)),
         h("fieldset", {class: "access-editors"}, [
           h("legend", "Szerkesztők"),
@@ -1291,44 +1490,85 @@ createApp({
       ];
     }
 
+    function deleteButton(node) {
+      return button("Törlés", () => deleteNode(node), {class: "button danger", symbol: "trash", disabled: !!occupied(node.id)});
+    }
+
+    function renderSearch() {
+      if (searchQuery.value === null) return null;
+      const term = searchQuery.value.trim().toLocaleLowerCase("hu");
+      const matches = term ? [
+        ...board.value.nodes.filter(n => [n.title, n.comment, n.markdown].some(t => t?.toLocaleLowerCase("hu").includes(term)))
+          .map(n => ({id: n.id, kind: "node", title: n.title || "Csomópont", point: n.position})),
+        ...board.value.edges.filter(e => e.label?.toLocaleLowerCase("hu").includes(term))
+          .map(e => ({id: e.id, kind: "edge", title: e.label, point: edgeGeometry(e, drawnNode).labelPosition})),
+      ] : [];
+      return h("div", {class: "quick-search panel stack", role: "dialog", "aria-label": "Gyorskereső"}, [
+        h("input", {ref: searchInput, type: "search", value: searchQuery.value, placeholder: "Keresés a munkalapon",
+          "aria-label": "Keresés a munkalapon", onInput: e => { searchQuery.value = e.target.value; }}),
+        ...matches.map(m => button(m.title, () => {
+          searchQuery.value = null;
+          const [cx, cy] = center();
+          const k = view.value.k;
+          d3.select(canvas.value).call(zoom.transform, d3.zoomIdentity.translate(cx-(cx+m.point.x)*k, cy-(cy+m.point.y)*k).scale(k));
+          if (m.kind === "node") selectNode(m.id);
+          else { selectNode(null, m.id); selected.value = {kind: "edge", id: m.id}; }
+        })),
+        term && !matches.length ? h("p", "Nincs találat.") : null,
+      ]);
+    }
+
     function renderInspector() {
+      if (manuallyClosed.value) return null;
       if (note.value) {
         const reading = note.value;
         const node = nodeMap.value.get(reading.id);
         if (!node) return null;
         return sidebar("Markdown", [
+          button("Szerkesztés", () => openProperties("node", node.id), {symbol: "edit", disabled: !!occupied(node.id)}),
           h("h2", node.title),
           node.comment ? h("p", {class: "comment", style: {color: node.commentStyle?.color ?? commentColor(node.textColor)}}, node.comment) : null,
           reading.loading ? h("p", "Betöltés…") : null,
           reading.error ? h("p", {class: "error"}, reading.error) : null,
           !reading.loading && !reading.error ? h("div", {class: "markdown", innerHTML: reading.html || "<p>Még nincs leírás.</p>"}) : null,
-          button("Szerkesztés", () => openProperties("node", node.id), {symbol: "edit", disabled: !!occupied(node.id)}),
-        ]);
+        ], deleteButton(node));
       }
-      if (!inspector.value) return null;
-      if (inspector.value.kind === "worksheet") {
+      if (!inspector.value || inspector.value.kind === "worksheet") {
         const sheet = board.value;
+        if (!editingPanel.value) return sidebar("Munkalap", [
+          button("Szerkesztés", () => openProperties("worksheet"), {symbol: "edit"}),
+          h("h2", sheet.title), sheet.comment && h("p", sheet.comment), sheet.markdown && h("p", sheet.markdown),
+          h("p", sheet.gridVisible === false ? "Pontrács kikapcsolva" : "Rácsköz: " + (sheet.gridSpacing ?? 20)),
+        ], role === "admin" ? button("Munkalap törlése", deleteBoard, {class: "button danger", symbol: "trash"}) : null);
         return sidebar("Munkalap", [
+          button("Előnézet", () => { editingPanel.value = false; }, {symbol: "eye"}),
           field("Cím", input(sheet.title, value => updateItem(sheet, "title", value), {maxlength: 120})),
           field("Megjegyzés", input(sheet.comment || "", value => updateItem(sheet, "comment", value), {maxlength: 500})),
           field("Markdown", textarea(sheet.markdown || "", value => updateItem(sheet, "markdown", value))),
           colorPicker("Munkalap háttérszíne", sheet.background ?? paper, value => updateItem(sheet, "background", value), "worksheet/background"),
           colorPicker("Rácspontok színe", sheet.gridColor ?? "#ccd7eb", value => updateItem(sheet, "gridColor", value), "worksheet/grid"),
+          checkbox("Pontrács megjelenítése", sheet.gridVisible !== false, v => updateItem(sheet, "gridVisible", v)),
           field("Rácsköz", numeric(sheet.gridSpacing ?? 20, value => updateItem(sheet, "gridSpacing", value), 6, 160)),
           ...(canManage.value ? worksheetAccess(sheet) : []),
           h("div", {class: "inspector-links"}, [
+            button("SVG letöltése", exportSVG, {symbol: "download"}),
             link("Mentett JSON letöltése", "/export/json/" + path, "download"),
             link("Mentett Markdown letöltése", "/export/markdown/" + path, "download"),
           ]),
-          role === "admin" ? button("Munkalap törlése", deleteBoard, {class: "button danger", symbol: "trash"}) : null,
-        ]);
+        ], role === "admin" ? button("Munkalap törlése", deleteBoard, {class: "button danger", symbol: "trash"}) : null);
       }
       if (inspector.value.kind === "edge") {
         const edge = board.value.edges.find(item => item.id === inspector.value.id);
         if (!edge) return null;
         const paint = edgePaint(edge);
         const style = edge.style === "dashed" || edge.style === "rope" ? edge.style : "solid";
+        if (!editingPanel.value) return sidebar("Vonal", [
+          button("Szerkesztés", () => openProperties("edge", edge.id), {symbol: "edit"}),
+          h("h2", edge.label || "Vonal"),
+          h("p", (nodeMap.value.get(edge.source)?.title || "Szabad kezdőpont") + " → " + (nodeMap.value.get(edge.target.node)?.title || "Szabad végpont")),
+        ], button("Kapcsolat törlése", () => removeEdge(edge), {class: "button danger", symbol: "trash"}));
         return sidebar("Vonal szerkesztése", [
+          button("Előnézet", () => { editingPanel.value = false; }, {symbol: "eye"}),
           field("Címke", input(edge.label || "", value => updateItem(edge, "label", value), {maxlength: 120})),
           colorPicker("Vonal színe", paint.color, value => updateItem(edge, "color", value), edge.id + "/line"),
           field("Vastagság", numeric(paint.width, value => updateItem(edge, "width", value), 0.5, 24)),
@@ -1336,8 +1576,7 @@ createApp({
           checkbox("Nyíl a vonal elején", paint.startArrow, value => updateItem(edge, "startArrow", value)),
           checkbox("Nyíl a vonal végén", paint.endArrow, value => updateItem(edge, "endArrow", value)),
           ...endpointActions(edge),
-          button("Kapcsolat törlése", () => removeEdge(edge), {class: "button danger", symbol: "trash"}),
-        ]);
+        ], button("Kapcsolat törlése", () => removeEdge(edge), {class: "button danger", symbol: "trash"}));
       }
       const node = nodeMap.value.get(inspector.value.id);
       if (!node || held.value !== node.id || occupied(node.id)) return null;
@@ -1348,16 +1587,26 @@ createApp({
       const title = field("Címke", input(node.title, value => change("title", value), {maxlength: 120}));
       const color = (label, key, fallback) => colorPicker(label, node[key] ?? fallback, v => change(key, v), node.id + "/" + key);
       if (node.kind === "connectionPoint") return sidebar("Csomópont", [
-        title, color("Szín", "fill"), button("Törlés", () => deleteNode(node), {symbol: "trash"}),
-      ]);
+        button("Előnézet", () => showNote(node), {symbol: "eye"}),
+        field("Átmérő", numeric(node.width, size => { node.height = size; change("width", size); }, 4, 128)),
+        title, color("Szín", "fill"),
+      ], deleteButton(node));
       const alignments = {left: "Balra", center: "Középre", right: "Jobbra"};
       function typography(section) {
         const isTitle = section === "title";
         const style = isTitle ? node : node[section] ?? {};
+        const outsideKey = isTitle ? "titleOutside" : "markdownOutside";
+        const outside = !!node[outsideKey];
         const sizeKey = isTitle ? "fontSize" : "size";
         const colorKey = isTitle ? "textColor" : "color";
         const update = (key, value) => isTitle ? change(key, value) : change(section, {...node[section], [key]: value});
         return [
+          section !== "commentStyle" ? checkbox("Dobozon kívül", outside, value => {
+            if (value && (style.verticalAlignment ?? "middle") === "middle" && (style.alignment ?? node.alignment) === "center") {
+              update("verticalAlignment", "top");
+            }
+            change(outsideKey, value);
+          }) : null,
           colorPicker("Szövegszín", style[colorKey] ?? (section === "commentStyle" ? commentColor(node.textColor) : node.textColor),
             v => update(colorKey, v), node.id + "/" + section + "/text"),
           h("div", {class: "fields-two"}, [
@@ -1365,7 +1614,7 @@ createApp({
             section === "commentStyle" ? field("Igazítás", select(style.alignment ?? node.alignment, alignments, v => update("alignment", v))) :
               field("Igazítás", select((style.verticalAlignment ?? "middle") + "-" + (style.alignment ?? node.alignment), {
                 "top-left": "Bal felső", "top-center": "Felső közép", "top-right": "Jobb felső",
-                "middle-left": "Bal oldal", "middle-center": "Közép", "middle-right": "Jobb oldal",
+                "middle-left": "Bal oldal", ...(outside ? {} : {"middle-center": "Közép"}), "middle-right": "Jobb oldal",
                 "bottom-left": "Bal alsó", "bottom-center": "Alsó közép", "bottom-right": "Jobb alsó",
               }, value => {
                 const [verticalAlignment, alignment] = value.split("-");
@@ -1387,10 +1636,8 @@ createApp({
         }, -100000, 100000, {disabled: locked});
       }
       return sidebar("Ötlet szerkesztése", [
+        button("Előnézet", () => showNote(node), {symbol: "eye"}),
         group("Doboz", [
-          field("Link", input(node.link ?? "", value => change("link", value.trim()), {
-            maxlength: 2048, placeholder: "allap, ../ vagy https://…",
-          })),
           field("Forma", select(node.shape, shapes, value => change("shape", value))),
           checkbox("Auto size", autoSize, value => {
             node.width = drawn.width; node.height = drawn.height;
@@ -1412,51 +1659,54 @@ createApp({
           ...typography("markdownStyle"),
           h("div", {class: "fields-two"}, [color("Markdown háttér", "markdownFill", node.fill),
             color("Markdown keret", "markdownBorder", node.border)]),
-          button("Előnézet", () => showNote(node), {symbol: "eye"}),
         ]),
-      ]);
+        group("Link", [
+          field("Link", input(node.link ?? "", value => change("link", value.trim()), {
+            maxlength: 2048, placeholder: "allap, ../ vagy https://…",
+          })),
+        ]),
+      ], deleteButton(node));
     }
 
+    const toolbar = document.getElementById?.("editor-tools");
+    watch(() => board.value?.title, title => {
+      const current = toolbar?.closest("header")?.querySelector("[aria-current=page]");
+      if (current && title) current.textContent = title;
+    });
+
     function renderHeader() {
-      return h("header", {class: "editor-header"}, [
-        h("div", {class: "editor-actions"}, [
-          h("a", {class: "brand", href: "/"}, "ThinkNodes"),
-          h("h1", {title: board.value.title}, board.value.title),
-          button("", () => addNode(), {class: "button soft icon-button", symbol: "plus", "aria-label": "Új ötlet", title: "Új ötlet"}),
-          select(pendingStyle.value, edgeStyles, value => { pendingStyle.value = value; }, {"aria-label": "Új vonal típusa"}),
+      const changed = online.value && (dirty.value || (board.value.revision > checkpointState.value.revision
+        ? board.value.revision !== checkpointRevision : checkpointState.value.changed));
+      const controls = [
           button("Munkalap", () => openProperties("worksheet"), {
             "aria-pressed": inspector.value?.kind === "worksheet", symbol: "settings",
           }),
-          button("SVG letöltése", exportSVG, {symbol: "download"}),
-          link("Megtekintés", "/" + path, "eye"),
-          button("Mentés", () => sessionAction("checkpoint"), {class: "button primary", symbol: "save",
+          button("Mentés", () => sessionAction("checkpoint"), {class: changed ? "button primary" : "button", symbol: "save",
             title: "Közös visszaállítási pont rögzítése", disabled: checkpointBusy.value || !online.value}),
           button("Resign", () => sessionAction("resign"), {symbol: "undo", title: "A közös visszaállítási pont betöltése",
             disabled: checkpointBusy.value || !online.value}),
-          role === "admin" ? link("Admin", "/admin", "settings") : null,
-          h("form", {method: "post", action: "/logout"}, [
-            h("input", {type: "hidden", name: "csrf", value: csrf}),
-            h("button", {class: "button", type: "submit"}, [icon("logout"), "Kijelentkezés"]),
-          ]),
-        ]),
-        h("div", {class: "participants", "aria-label": "Jelenlévők"},
-          [...new Map(peers.value.map(p => [p.name, p])).values()].map(p =>
-            h("span", {key: p.name, style: {"--peer": p.color}}, p.name))),
-      ]);
+      ];
+      return toolbar ? h(window.Vue.Teleport, {to: toolbar}, controls) : h("div", controls);
     }
 
     return () => {
       if (!board.value) return h("p", {class: problem.value ? "error editor-loading" : "editor-loading"}, problem.value || "Szerkesztő betöltése…");
       const currentStatus = reconnect.value ? "Kattints az új célra vagy a vászonra. Esc a megszakításhoz."
-        : dirty.value ? "Mentetlen változtatások" : status.value;
+        : "";
       return [
         renderHeader(),
         h("div", {class: "editor-workspace"}, [
           renderCanvas(),
           problem.value || currentStatus ? h("p", {class: ["canvas-status", {error: problem.value}], role: "status"}, problem.value || currentStatus) : null,
           renderInspector(),
-          !inspector.value && !note.value ? button("", openSidebar, {class: "button sidebar-open",
-            "aria-label": "Oldalsáv megnyitása", title: "Oldalsáv megnyitása", symbol: "left"}) : null,
+          renderSearch(),
+          button("", () => {
+            if (!manuallyClosed.value) { manuallyClosed.value = true; inspectNothing(); }
+            else openSidebar();
+          }, {class: ["button", "sidebar-open", {active: selected.value && manuallyClosed.value}],
+            "aria-expanded": !manuallyClosed.value,
+            "aria-label": !manuallyClosed.value ? "Oldalsáv bezárása" : "Oldalsáv megnyitása",
+            symbol: !manuallyClosed.value ? "right" : "left"}),
         ]),
         renderMenu(),
       ];

@@ -5,6 +5,7 @@ struct Participant: Content {
     let name: String
     let color: String
     let node: String?
+    let edge: String?
     let mine: Bool
 }
 
@@ -12,6 +13,7 @@ struct LiveState: Content {
     let version: String
     let revision: Int
     let checkpointRevision: Int?
+    let checkpointChanged: Bool
     let participants: [Participant]
 }
 
@@ -24,6 +26,8 @@ final class Collaboration: @unchecked Sendable {
         var editing = false
         var socket: WebSocket?
         var node: String?
+        var edge: String?
+        let joined = ContinuousClock.now
         var seen = ContinuousClock.now
         var waiter: EventLoopPromise<Void>?
     }
@@ -81,7 +85,7 @@ final class Collaboration: @unchecked Sendable {
 
     init(store: WorksheetStore) { self.store = store }
 
-    func presence(_ path: WorksheetPath, user: User?, client: String, action: String, node: String?,
+    func presence(_ path: WorksheetPath, user: User?, client: String, action: String, node: String?, edge: String? = nil,
                   since: String?, loop: any EventLoop, editing: Bool = false,
                   revision: Int? = nil, checkpointRevision: Int? = nil) throws -> (LiveState, EventLoopFuture<Void>?) {
         try lock.withLock {
@@ -110,9 +114,13 @@ final class Collaboration: @unchecked Sendable {
                         checkpoint.owner = board.owner
                         checkpoint.editors = board.editors
                         checkpoint.isPublic = board.isPublic
+                        checkpoint.hidden = board.hidden
                         board = try store.update(path, worksheet: checkpoint, user: user, restoring: true)
                         room.revision = board.revision
-                        for id in Array(room.peers.keys) { room.peers[id]?.node = nil }
+                        for id in Array(room.peers.keys) {
+                            room.peers[id]?.node = nil
+                            room.peers[id]?.edge = nil
+                        }
                     }
                     room.checkpoint = board
                     room.changed()
@@ -135,7 +143,11 @@ final class Collaboration: @unchecked Sendable {
                             throw Abort(.locked, reason: "\(owner.value.name ?? "Vendég") már kijelölte ezt a dobozt.")
                         }
                     }
-                    if room.peers[client]?.node != node {
+                    if let edge {
+                        guard node == nil, board.edges.contains(where: { $0.id == edge }) else { throw Abort(.notFound) }
+                    }
+                    if room.peers[client]?.node != node || room.peers[client]?.edge != edge {
+                        room.peers[client]?.edge = edge
                         room.peers[client]?.node = node
                         room.changed()
                     }
@@ -150,9 +162,14 @@ final class Collaboration: @unchecked Sendable {
                 promise.futureResult.whenComplete { _ in timeout.cancel() }
                 wait = promise.futureResult
             }
-            let state = LiveState(version: room.version, revision: board.revision, checkpointRevision: room.checkpoint?.revision, participants: room.peers.map {
-                Participant(name: $0.value.name ?? "Vendég", color: $0.value.color, node: $0.value.node, mine: $0.key == client)
-            }.sorted { $0.name < $1.name })
+            var comparable = board
+            comparable.revision = room.checkpoint?.revision ?? board.revision
+            comparable.resetRevision = room.checkpoint?.resetRevision
+            comparable.schemaVersion = room.checkpoint?.schemaVersion ?? board.schemaVersion
+            let changed = room.checkpoint.map { $0 != comparable } ?? false
+            let state = LiveState(version: room.version, revision: board.revision, checkpointRevision: room.checkpoint?.revision, checkpointChanged: changed, participants: room.peers.sorted { $0.value.joined < $1.value.joined }.map {
+                Participant(name: $0.value.name ?? "Vendég", color: $0.value.color, node: $0.value.node, edge: $0.value.edge, mine: $0.key == client)
+            })
             rooms[path.url] = room.peers.isEmpty ? nil : room
             return (state, wait)
         }
@@ -178,6 +195,7 @@ final class Collaboration: @unchecked Sendable {
             if var room = rooms[path.url] {
                 room.revision = saved.revision
                 let ids = Set(saved.nodes.map(\.id))
+                let edges = Set(saved.edges.map(\.id))
                 for (id, peer) in room.peers {
                     let allowed = peer.role == .admin || (peer.name != nil &&
                         (peer.name == saved.owner || (saved.editors ?? []).contains(peer.name ?? "")))
@@ -188,6 +206,7 @@ final class Collaboration: @unchecked Sendable {
                         continue
                     }
                     if let node = peer.node, !ids.contains(node) { room.peers[id]?.node = nil }
+                    if let edge = peer.edge, !edges.contains(edge) || !allowed { room.peers[id]?.edge = nil }
                     if !allowed {
                         room.peers[id]?.editing = false
                         room.peers[id]?.node = nil
@@ -216,8 +235,10 @@ final class Collaboration: @unchecked Sendable {
                 let node: String
                 let revision: Int
                 let delta: Point?
+                let ping: Bool?
             }
             guard text.utf8.count < 512, let frame = try? JSONDecoder().decode(Motion.self, from: Data(text.utf8)),
+                  (frame.ping != true || frame.delta == nil),
                   frame.delta.map({ abs($0.x) <= 200_000 && abs($0.y) <= 200_000 }) ?? true else { return }
             self?.lock.withLock {
                 guard let room = self?.rooms[path.url], room.revision == frame.revision,

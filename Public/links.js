@@ -29,3 +29,7 @@ export function worksheetLink(raw, currentPath) {
     return {kind: "worksheet", href: "/" + parts.map(encodeURIComponent).join("/")};
   } catch { return null; }
 }
+
+export function openExternalLink(href) {
+  window.open(href, "_blank", "popup,noopener,noreferrer");
+}

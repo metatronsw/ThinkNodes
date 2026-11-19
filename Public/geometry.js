@@ -75,8 +75,12 @@ export function canvasBounds(board) {
   let halfHeight = 240;
   const nodes = new Map(board.nodes.map(node => [node.id, node]));
   for (const node of board.nodes) {
-    halfWidth = Math.max(halfWidth, Math.abs(node.position.x) + node.width / 2 + 40);
-    halfHeight = Math.max(halfHeight, Math.abs(node.position.y) + node.height / 2 + 40);
+    halfWidth = Math.max(halfWidth, Math.abs(node.position.x) + (node.extentX ?? node.width / 2) + 40);
+    if (node.kind === "connectionPoint" && node.title) {
+      const labelEnd = node.position.x + node.width / 2 + 4 + textWidth(node.title, 14);
+      halfWidth = Math.max(halfWidth, labelEnd + 40);
+    }
+    halfHeight = Math.max(halfHeight, Math.abs(node.position.y) + (node.extentY ?? node.height / 2) + 40);
   }
   for (const edge of board.edges) {
     const {from, to, control, labelPosition, angle} = edgeGeometry(edge, id => nodes.get(id));
@@ -180,7 +184,7 @@ function wrapRuns(runs, columns) {
 }
 
 export function labelLayout(node, markdown = []) {
-  if (node.kind === "connectionPoint") return {width: 14, height: 14, lines: []};
+  if (node.kind === "connectionPoint") return {width: node.width, height: node.height, lines: []};
   const widthRatio = node.shape === "diamond" ? 0.50 : node.shape === "ellipse" ? 0.72 : 0.94;
   const heightRatio = node.shape === "diamond" ? 0.47 : node.shape === "ellipse" ? 0.72 : 0.94;
   const detailSize = Math.max(10, node.fontSize * 0.80);
@@ -190,8 +194,10 @@ export function labelLayout(node, markdown = []) {
   const bodySize = markdownStyle.size ?? detailSize;
   const comment = node.comment || "";
   const automatic = node.autoSize !== false;
+  const hiddenMarkdown = !node.showMarkdown && !!node.markdown?.trim();
+  if (hiddenMarkdown) markdown = [{kind: "body", runs: [{text: "•"}]}];
   const targetWidth = Math.max(textWidth(node.title, node.fontSize), Math.min(245, textWidth(comment, commentSize)),
-    markdown.length ? 200 : 0);
+    markdown.length && !hiddenMarkdown ? 200 : 0);
   const width = automatic ? limit(Math.ceil((targetWidth + 24) / widthRatio), node.autoMinWidth ?? 64, 880) : node.width;
   const labelWidth = Math.max(12, width * widthRatio - 16);
   const lines = [];
@@ -217,21 +223,40 @@ export function labelLayout(node, markdown = []) {
     });
   });
 
+  const external = new Map();
+  const inside = lines.filter(line => {
+    if (!(line.runs ? node.markdownOutside : node.titleOutside)) return true;
+    const style = line.runs ? markdownStyle : node;
+    const horizontal = style.alignment ?? node.alignment;
+    let vertical = style.verticalAlignment ?? "middle";
+    if (vertical === "middle" && horizontal === "center") vertical = "top";
+    const key = horizontal + "/" + vertical;
+    if (!external.has(key)) external.set(key, {horizontal, vertical, rows: []});
+    external.get(key).rows.push(line);
+    return false;
+  });
   const iconSpace = node.link ? 18 : 0;
-  const heightNeeded = iconSpace + lines.reduce((sum, line) => sum + line.step, 0) + 16;
+  const heightNeeded = iconSpace + inside.reduce((sum, line) => sum + line.step, 0) + 16;
   const height = automatic ? limit(Math.ceil(heightNeeded / heightRatio), node.autoMinHeight ?? 40, 680) : node.height;
   const visible = [];
   let remaining = Math.max(node.fontSize * 1.25, height * heightRatio - 12 - iconSpace);
   const available = remaining;
-  for (const line of lines) {
+  for (const line of inside) {
     if (remaining < line.step) break;
     visible.push(line);
     remaining -= line.step;
   }
-  if (visible.length && visible.length < lines.length) {
+  if (visible.length && visible.length < inside.length) {
     const last = visible.at(-1);
     last.text += "…";
     last.runs?.push({text: "…"});
+  }
+
+  if (hiddenMarkdown && !node.markdownOutside && !visible.some(line => line.runs)) {
+    const marker = inside.at(-1);
+    while (visible.length && remaining < marker.step) remaining += visible.pop().step;
+    visible.push(marker);
+    remaining = Math.max(0, remaining-marker.step);
   }
 
   const rank = line => ({top: 0, bottom: 1}[line.vertical] ?? 0.5);
@@ -250,10 +275,27 @@ export function labelLayout(node, markdown = []) {
     return {...line, x, y, anchor: {left: "start", center: "middle", right: "end"}[align],
       fit: textWidth(line.text, line.size) > labelWidth ? labelWidth : undefined};
   });
+  let bodyX = 0;
+  let extentX = width / 2, extentY = height / 2;
+  for (const {horizontal, vertical, rows} of external.values()) {
+    const total = rows.reduce((sum, line) => sum + line.step, 0);
+    const side = horizontal === "left" ? -1 : horizontal === "right" ? 1 : 0;
+    const centerX = side * (width / 2 + 8 + labelWidth / 2);
+    let y = vertical === "top" ? -height/2-8-total : vertical === "bottom" ? height/2+8 : -total/2;
+    extentX = Math.max(extentX, Math.abs(centerX) + labelWidth/2 + 4);
+    extentY = Math.max(extentY, Math.abs(y), Math.abs(y + total));
+    for (const line of rows) {
+      const anchor = horizontal === "left" ? "end" : horizontal === "right" ? "start" : "middle";
+      positioned.push({...line, anchor, x: centerX - side * labelWidth/2,
+        y: y + (line.gap ?? 0) + line.size * .955, fit: textWidth(line.text, line.size) > labelWidth ? labelWidth : undefined});
+      if (line.runs) { bodyX = centerX; bodyTop ??= y + line.gap - 3; bodyEnd = y + line.step; }
+      y += line.step;
+    }
+  }
   const fill = node.markdownFill ?? node.fill;
   const border = node.markdownBorder ?? node.border;
   const framed = bodyTop !== undefined && (fill.toLowerCase() !== node.fill.toLowerCase() || border.toLowerCase() !== node.border.toLowerCase());
-  const frame = framed ? {x: -labelWidth / 2 - 3, y: bodyTop, width: labelWidth + 6, height: bodyEnd + 3 - bodyTop,
+  const frame = framed ? {x: bodyX-labelWidth / 2 - 3, y: bodyTop, width: labelWidth + 6, height: bodyEnd + 3 - bodyTop,
     fill, stroke: border.toLowerCase() === node.border.toLowerCase() ? "none" : border} : null;
-  return {width, height, lines: positioned, frame};
+  return {width, height, extentX, extentY, lines: positioned, frame};
 }

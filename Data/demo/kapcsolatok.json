@@ -1,0 +1,218 @@
+{
+  "background" : "#e8edfb",
+  "creator" : "admin",
+  "edges" : [
+    {
+      "color" : "#3f695c",
+      "id" : "entry",
+      "source" : "idea",
+      "style" : "solid",
+      "target" : {
+        "node" : "joint"
+      },
+      "width" : 4
+    },
+    {
+      "id" : "dual",
+      "label" : "kétirányú",
+      "source" : "joint",
+      "style" : "both",
+      "target" : {
+        "node" : "goal"
+      }
+    },
+    {
+      "color" : "#884c80",
+      "id" : "curve",
+      "source" : "joint",
+      "style" : "rope",
+      "target" : {
+        "node" : "back"
+      }
+    },
+    {
+      "id" : "loose",
+      "label" : "szabad vég",
+      "source" : "goal",
+      "style" : "dashed",
+      "target" : {
+        "point" : {
+          "x" : 390,
+          "y" : -170
+        }
+      }
+    },
+    {
+      "id" : "floating",
+      "sourcePoint" : {
+        "x" : 45,
+        "y" : 245
+      },
+      "style" : "arrow",
+      "target" : {
+        "point" : {
+          "x" : 218,
+          "y" : 285
+        }
+      },
+      "width" : 3
+    }
+  ],
+  "editors" : [
+
+  ],
+  "gridColor" : "#bdcbd1",
+  "gridSpacing" : 20,
+  "gridVisible" : true,
+  "isPublic" : true,
+  "markdown" : "**Próbáld ki:** Ctrl + kattintás egy vonal közepére csomópontot szúr be. A rácsra igazítást a mágnessel kapcsolhatod be.",
+  "nodes" : [
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#567282",
+      "fill" : "#dae4f5",
+      "fontSize" : 17,
+      "height" : 300,
+      "id" : "group",
+      "kind" : "container",
+      "locked" : true,
+      "markdown" : "",
+      "position" : {
+        "x" : -266,
+        "y" : -51
+      },
+      "shape" : "rectangle",
+      "textColor" : "#193744",
+      "title" : "Műhely",
+      "verticalAlignment" : "top",
+      "width" : 420
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#567282",
+      "fill" : "#edf1fa",
+      "fontSize" : 17,
+      "height" : 174,
+      "id" : "team",
+      "kind" : "container",
+      "markdown" : "",
+      "parent" : "group",
+      "position" : {
+        "x" : -266,
+        "y" : -33
+      },
+      "shape" : "rounded",
+      "textColor" : "#193744",
+      "title" : "Csoport",
+      "verticalAlignment" : "top",
+      "width" : 325
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#567282",
+      "fill" : "#c3dccd",
+      "fontSize" : 17,
+      "height" : 62,
+      "id" : "idea",
+      "markdown" : "",
+      "parent" : "team",
+      "position" : {
+        "x" : -266,
+        "y" : -5
+      },
+      "shape" : "rounded",
+      "textColor" : "#193744",
+      "title" : "Forrás",
+      "width" : 144
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#567282",
+      "fill" : "#ffffff",
+      "fontSize" : 17,
+      "height" : 18,
+      "id" : "joint",
+      "kind" : "connectionPoint",
+      "markdown" : "",
+      "position" : {
+        "x" : 160,
+        "y" : -36
+      },
+      "shape" : "ellipse",
+      "textColor" : "#193744",
+      "title" : "Elágazás",
+      "width" : 18
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#567282",
+      "fill" : "#f5e8c8",
+      "fontSize" : 17,
+      "height" : 102,
+      "id" : "goal",
+      "markdown" : "",
+      "position" : {
+        "x" : 142.99169950618898,
+        "y" : -314.14110839478843
+      },
+      "shape" : "ellipse",
+      "textColor" : "#193744",
+      "title" : "Cél",
+      "width" : 218
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#567282",
+      "fill" : "#ffffff",
+      "fontSize" : 17,
+      "height" : 102,
+      "id" : "back",
+      "link" : "/demo",
+      "markdown" : "",
+      "position" : {
+        "x" : 378.92529555570013,
+        "y" : 142.01660098762216
+      },
+      "shape" : "rounded",
+      "textColor" : "#193744",
+      "title" : "Vissza",
+      "width" : 218
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#567282",
+      "fill" : "#ffffff",
+      "fontSize" : 17,
+      "height" : 102,
+      "id" : "next",
+      "link" : "../formak",
+      "markdown" : "",
+      "position" : {
+        "x" : -161.28636703648249,
+        "y" : 260.91284481498371
+      },
+      "shape" : "rounded",
+      "textColor" : "#193744",
+      "title" : "Formák és szöveg",
+      "width" : 218
+    }
+  ],
+  "owner" : "admin",
+  "revision" : 10,
+  "schemaVersion" : 2,
+  "title" : "Kapcsolatok és konténerek"
+}

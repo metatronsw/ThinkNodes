@@ -1,0 +1,175 @@
+{
+  "background" : "#eaf4f3",
+  "creator" : "admin",
+  "edges" : [
+    {
+      "id" : "lead",
+      "source" : "start",
+      "style" : "solid",
+      "target" : {
+        "node" : "branch"
+      }
+    },
+    {
+      "id" : "choose",
+      "label" : "tovább",
+      "source" : "branch",
+      "style" : "arrow",
+      "target" : {
+        "node" : "decision"
+      }
+    },
+    {
+      "id" : "down",
+      "source" : "branch",
+      "style" : "rope",
+      "target" : {
+        "node" : "layout"
+      }
+    },
+    {
+      "id" : "second",
+      "source" : "decision",
+      "style" : "dashed",
+      "target" : {
+        "node" : "cables"
+      }
+    }
+  ],
+  "editors" : [
+
+  ],
+  "gridColor" : "#bdcbd1",
+  "gridSpacing" : 20,
+  "gridVisible" : true,
+  "isPublic" : true,
+  "markdown" : "**Próba:** jobb kattintás egy dobozon → Ping. Szerkesztésben dupla kattintással kövesd az allaplinkeket. Megtekintésben egy kattintás elég.",
+  "nodes" : [
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#567282",
+      "fill" : "#ccede3",
+      "fontSize" : 17,
+      "height" : 130,
+      "id" : "start",
+      "markdown" : "**Két allap** vár lent. Válassz közülük!",
+      "position" : {
+        "x" : -300,
+        "y" : -115
+      },
+      "shape" : "rounded",
+      "showMarkdown" : true,
+      "textColor" : "#193744",
+      "title" : "Indulj innen",
+      "width" : 218
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#567282",
+      "fill" : "#456b76",
+      "fontSize" : 17,
+      "height" : 16,
+      "id" : "branch",
+      "kind" : "connectionPoint",
+      "markdown" : "",
+      "position" : {
+        "x" : -40,
+        "y" : -115
+      },
+      "shape" : "ellipse",
+      "textColor" : "#193744",
+      "title" : "",
+      "width" : 16
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#567282",
+      "fill" : "#ffffff",
+      "fontSize" : 17,
+      "height" : 148,
+      "id" : "decision",
+      "markdown" : "A pont mögött részletes **Markdown** van. Tartsd itt az egeret!",
+      "position" : {
+        "x" : 185,
+        "y" : -115
+      },
+      "shape" : "diamond",
+      "textColor" : "#193744",
+      "title" : "Döntési pont",
+      "width" : 230
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#567282",
+      "comment" : "Első allap",
+      "fill" : "#fff0d1",
+      "fontSize" : 17,
+      "height" : 102,
+      "id" : "layout",
+      "link" : "formak",
+      "markdown" : "",
+      "position" : {
+        "x" : -165,
+        "y" : 145
+      },
+      "shape" : "rounded",
+      "textColor" : "#193744",
+      "title" : "Formák és szöveg",
+      "width" : 218
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#567282",
+      "comment" : "Második allap",
+      "fill" : "#dce7fc",
+      "fontSize" : 17,
+      "height" : 102,
+      "id" : "cables",
+      "link" : "kapcsolatok",
+      "markdown" : "",
+      "position" : {
+        "x" : 157,
+        "y" : 170
+      },
+      "shape" : "rounded",
+      "textColor" : "#193744",
+      "title" : "Kapcsolatok",
+      "width" : 218
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#567282",
+      "fill" : "#f3e4f3",
+      "fontSize" : 17,
+      "height" : 112,
+      "id" : "external",
+      "link" : "https://commonmark.org/help/",
+      "markdown" : "",
+      "position" : {
+        "x" : 461,
+        "y" : -81
+      },
+      "shape" : "ellipse",
+      "textColor" : "#193744",
+      "title" : "Markdown útmutató",
+      "width" : 218
+    }
+  ],
+  "owner" : "admin",
+  "resetRevision" : 75,
+  "revision" : 75,
+  "schemaVersion" : 2,
+  "title" : "ThinkNodes bemutató"
+}

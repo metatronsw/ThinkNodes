@@ -41,6 +41,7 @@ import VaporTesting
         #expect(worksheet.revision == 1)
         #expect(worksheet.owner == "editor")
         #expect(worksheet.isPublic == false)
+        worksheet.hidden = true
         worksheet.background = "#e7eef3"
         worksheet.isPublic = true
         worksheet.editors = ["shared"]
@@ -70,6 +71,25 @@ import VaporTesting
 
         let shared = try await login(browser, name: "shared", password: password, path: path)
         let outsider = try await login(browser, name: "outsider", password: password, path: path, canEdit: false)
+        let childURL = "/api/subworksheet/" + path + "/terv"
+        let headers: HTTPHeaders = ["Cookie": shared.cookie, "X-CSRF-Token": shared.csrf]
+        let created = try await browser.sendRequest(.POST, childURL, headers: headers)
+        #expect(created.status == .ok)
+        let child = try created.content.decode(Worksheet.self)
+        #expect(child.title == "terv" && child.nodes.isEmpty && child.edges.isEmpty)
+        #expect(child.owner == owner.name && child.editors == ["shared"] && child.isPublic == true)
+        #expect(child.background == worksheet.background)
+        #expect(child.creator == "shared")
+        let preview = try await browser.sendRequest(.GET, "/api/preview/" + path + "/terv")
+        #expect(preview.status == .ok && preview.body.string.contains("<svg"))
+        #expect(FileManager.default.fileExists(atPath: file.deletingPathExtension().appendingPathComponent(".terv.preview.svg").path))
+        let parent = try await browser.sendRequest(.GET, "/" + path)
+        #expect(parent.body.string.contains("Allapok (1)") && parent.body.string.contains("Létrehozó: shared"))
+        #expect(try await browser.sendRequest(.POST, childURL, headers: headers).status == .conflict)
+        for (cookie, visible) in [(editor.cookie, true), (admin.cookie, false), (shared.cookie, false)] {
+            let home = try await browser.sendRequest(.GET, "/", headers: ["Cookie": cookie])
+            #expect(home.body.string.contains("href=\"/" + path + "\"") == visible)
+        }
         let outsidersView = try await browser.sendRequest(.GET, "/\(path)", headers: ["Cookie": outsider.cookie])
         #expect(outsidersView.status == .ok)
         #expect(!outsidersView.body.string.contains(">Szerkesztés"))
@@ -206,7 +226,8 @@ private func login(_ browser: some TestingApplicationTester, name: String, passw
         return (signedInCookie, "")
     }
     #expect(editor.status == .ok)
-    #expect(!editor.body.string.contains("site-header"))
+    #expect(editor.body.string.contains("site-header"))
+    #expect(editor.body.string.contains("brand-icon"))
     let token = try attribute("data-csrf=\"", in: editor.body.string)
     return (signedInCookie, token)
 }
@@ -271,12 +292,21 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
                      commentStyle: TextStyle(color: "#006688", size: 18, alignment: .right),
                      markdownStyle: TextStyle(color: "#663300", size: 17, italic: true, alignment: .left),
                      markdownFill: "#eecc99", markdownBorder: "#663344", autoMinWidth: 320)
-    let junction = Idea(id: "joint", title: "Kapocs", position: Point(x: 200, y: 80), width: 14, height: 14,
+    let junction = Idea(id: "joint", title: "Kapocs", position: Point(x: 200, y: 80), width: 34, height: 34,
                         shape: .ellipse, kind: .connectionPoint)
     let line = Connection(id: "line", source: child.id, target: ConnectionTarget(node: junction.id), style: .arrow)
+    let second = Connection(id: "other-line", source: junction.id, target: ConnectionTarget(point: origin), style: .solid)
     var board = Worksheet(schemaVersion: 1, title: "Ábra", gridColor: "#006699", gridSpacing: 32,
-                          nodes: [child, junction, container], edges: [line])
+                          nodes: [child, junction, container], edges: [line, second])
     try board.validate()
+    var legacy = board
+    var duplicate = line
+    duplicate.id = "parallel"
+    legacy.edges.append(duplicate)
+    #expect(throws: Abort.self) { try legacy.validate() }
+    legacy.detachLegacyDuplicateConnections()
+    try legacy.validate()
+    #expect(legacy.edges.last?.target.point == junction.position)
     let saved = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(board))
     try saved.validate()
     #expect(saved.nodes.first?.parent == container.id)
@@ -288,10 +318,13 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     #expect(svg.contains("fill=\"#eecc99\" stroke=\"#663344\""))
     #expect(svg.contains("text-anchor=\"end\""))
     #expect(svg.contains("font-style=\"italic\" text-decoration=\"underline\""))
-    #expect(svg.contains("r=\"7\" fill=\"#dce9ff\" aria-label=\"Kapocs\""))
-    let groupStart = try #require(svg.range(of: "<title>Konténer</title>"))
+    #expect(svg.contains("r=\"17.000\" fill=\"#dce9ff\" aria-label=\"Kapocs\""))
+    #expect(svg.contains(">Kapocs</text>"))
+    board.nodes[1].title = ""
+    try board.validate()
+    let groupStart = try #require(svg.range(of: "aria-label=\"Konténer\" transform="))
     let edgeStart = try #require(svg.range(of: "marker-end=\"url(#arrow-line)"))
-    let childStart = try #require(svg.range(of: "<title>Ötlet</title>"))
+    let childStart = try #require(svg.range(of: "aria-label=\"Ötlet\" transform="))
     #expect(groupStart.lowerBound < edgeStart.lowerBound && edgeStart.lowerBound < childStart.lowerBound)
     board.gridVisible = false
     board.nodes[0].markdownFill = board.nodes[0].fill
@@ -299,8 +332,12 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     let plain = boardSVG(board)
     #expect(!plain.contains("worksheet-grid"))
     #expect(!plain.contains("stroke=\"none\"/>"))
-    board.edges = []
+    board.edges = [line]
     #expect(throws: Abort.self) { try board.validate() }
+    board.dissolveUnusedJunctions()
+    try board.validate()
+    #expect(board.edges.first?.target.point == junction.position)
+    board.edges = []
     board.nodes = [container]
     container.parent = container.id
     board.nodes[0] = container
@@ -377,6 +414,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     _ = try action("first", "poll")
     sheet.title = "Piszkozat"
     sheet = try live.update(path, sheet: sheet, user: user, client: "first")
+    #expect(try action("second", "poll").checkpointChanged)
     #expect(try action("second", "poll").checkpointRevision == initial.revision)
     _ = try action("second", "resign", initial.revision)
     sheet = try store.load(path, user: user)
@@ -385,6 +423,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     sheet.title = "Rögzített"
     sheet = try live.update(path, sheet: sheet, user: user, client: "first")
     let pinned = try action("first", "checkpoint", restored)
+    #expect(!pinned.checkpointChanged)
     sheet.title = "Eldobott"
     sheet.isPublic = true
     sheet = try live.update(path, sheet: sheet, user: user, client: "second")
@@ -396,4 +435,21 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     _ = try action("first", "leave")
     #expect(try action("second", "leave").checkpointRevision == nil)
     #expect(try action("new", "poll").checkpointRevision == sheet.revision)
+}
+
+@Test func testerSessions() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-testers-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try WorksheetStore(root: root, testMode: true)
+    try await withApp(configure: { app in configure(app, store: store) }) { app in
+        let browser = try app.testing()
+        let first = try await browser.sendRequest(.GET, "/")
+        let second = try await browser.sendRequest(.GET, "/")
+        #expect(first.body.string.contains("Tester1") && second.body.string.contains("Tester2"))
+        let cookie = try cookie(first)
+        let page = try await browser.sendRequest(.GET, "/edit/proba", headers: ["Cookie": cookie])
+        #expect(page.status == .ok && page.body.string.contains("data-user=\"Tester1\""))
+        #expect(page.body.string.contains("data-role=\"admin\""))
+        #expect(try store.allUsers().isEmpty)
+    }
 }

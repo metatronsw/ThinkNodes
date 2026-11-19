@@ -1,0 +1,25 @@
+let timer, request, tooltip;
+export function hideTooltip() {
+  clearTimeout(timer);
+  request?.abort();
+  tooltip?.remove();
+}
+export function showTooltip(event, render) {
+  hideTooltip();
+  const {clientX, clientY, currentTarget} = event;
+  const signal = (request = new AbortController()).signal;
+  timer = setTimeout(async () => {
+    try {
+      const html = await render(signal);
+      if (signal.aborted || !currentTarget.isConnected) return;
+      tooltip = document.createElement("div");
+      tooltip.className = "markdown canvas-tooltip";
+      tooltip.setAttribute("role", "tooltip");
+      tooltip.innerHTML = html;
+      document.body.append(tooltip);
+      const {width, height} = tooltip.getBoundingClientRect();
+      tooltip.style.left = Math.max(4, Math.min(clientX+12, innerWidth-width-4)) + "px";
+      tooltip.style.top = Math.max(4, Math.min(clientY+16, innerHeight-height-4)) + "px";
+    } catch { /* Hover previews are optional when disconnected. */ }
+  }, 350);
+}

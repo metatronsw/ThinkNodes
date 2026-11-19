@@ -70,6 +70,7 @@ globalThis.fetch = async (url, options) => {
       checkpoint = structuredClone(sheet);
     }
     return Response.json({version: "1", revision: sheet.revision, checkpointRevision: checkpoint.revision,
+      checkpointChanged: sheet.revision !== checkpoint.revision,
       participants: [{mine: true, name: "admin", color: "#365bd6", node: selectedNode}]});
   }
   if (url.includes("worksheet-users")) return Response.json(["admin"]);
@@ -127,10 +128,44 @@ async function detachDrag(id, end, x, y, cancel = false) {
   toggle("Control", false); await tick();
 }
 
+const oneWire = () => find(n => n.tag === "g" && n.props["data-edge"] === "one");
+const panel = () => find(n => n.tag === "aside");
+const sidebarToggle = () => find(n => n.tag === "button" && n.props["aria-label"]?.startsWith("Oldalsáv "));
+oneWire().props.onClick();
+await tick();
+assert.ok(panel(), "selecting a wire opens the panel");
+toggle("Escape", true); await tick();
+assert.equal(panel()?.props["aria-label"], "Munkalap");
+toggle("Escape", true); await tick();
+assert.ok(!panel(), "Escape without a selection collapses the panel");
+sidebarToggle().props.onClick(); await tick();
+oneWire().props.onClick(); await tick();
+assert.ok(panel(), "reselecting a wire reopens the panel");
+sidebarToggle().props.onClick(); await tick();
+oneWire().props.onClick(); await tick();
+assert.ok(!panel(), "an explicit collapse survives selection");
+oneWire().props.onDblclick({stopPropagation() {}}); await tick();
+assert.ok(panel(), "double-click reopens a manually collapsed panel");
+toggle("Escape", true); await tick();
+
+for (const ctrlKey of [false, true]) {
+  await properties("outer");
+  sidebarToggle().props.onClick(); await tick();
+  for (let click = 0; click < 2; click++) {
+    const target = graphic("outer");
+    target.props.onPointerdown(event(target, 0, 0, {ctrlKey}));
+    canvas().props.onPointerup(event(canvas(), 0, 0, {ctrlKey}));
+    await tick();
+  }
+  assert.equal(panel()?.props["aria-label"], "Ötlet szerkesztése");
+  toggle("Escape", true); await tick();
+}
+
 const down = event(graphic("outer"), 0, 0);
 graphic("outer").props.onPointerdown(down);
 await tick();
 const beforeDrag = writes;
+assert.ok(!button("Mentés").props.class.includes("primary"));
 for (let x = 1; x <= 24; x++) {
   canvas().props.onPointermove(event(canvas(), x, 20));
   assert.equal(button("Mentés").props.disabled, false);
@@ -140,7 +175,9 @@ assert.equal(writes, beforeDrag, "holding and moving must not write the workshee
 canvas().props.onPointerup(event(canvas(), 24, 20));
 await new Promise(resolve => setTimeout(resolve, 150));
 assert.equal(writes, beforeDrag + 1);
+assert.ok(button("Mentés").props.class.includes("primary"));
 await save();
+assert.ok(!button("Mentés").props.class.includes("primary"));
 await drag(graphic("outer"), 24, 20, 80, 70);
 await new Promise(resolve => setTimeout(resolve, 150));
 await button("Resign").props.onClick();
@@ -178,6 +215,9 @@ const free = endpoint("one", "target");
 assert.equal(free.props.fill, "transparent");
 await drag(graphic("outside"), 180, 30, 400, 230, {ctrlKey: true});
 await save();
+assert.equal(sheet.nodes.some(n => n.kind === "connectionPoint"), false, "duplicate route cannot create a junction");
+await drag(graphic("auto"), -420, 0, 400, 230, {ctrlKey: true});
+await save();
 const junction = sheet.nodes.find(n => n.kind === "connectionPoint");
 assert.equal(edge("one").target.node, junction.id);
 const secondID = sheet.edges.at(-1).id;
@@ -192,9 +232,31 @@ await save();
 assert.ok(edge("one").target.point);
 assert.ok(model(junction.id));
 await detachDrag(secondID, "target", 430, 290);
-await detachDrag(sheet.edges.at(-1).id, "target", 470, 310);
+
 await save();
 assert.equal(model(junction.id), undefined);
+assert.deepEqual(sheet.edges.at(-1).target.point, junction.position);
+const originBox = graphic("outside");
+originBox.props.onPointerdown(event(originBox, 180, 30, {ctrlKey: true}));
+canvas().props.onPointermove(event(canvas(), 434, 292));
+await tick();
+const marker = find(n => n.tag === "circle" && n.props.stroke === "#078469");
+assert.deepEqual([marker.props.cx, marker.props.cy], [430, 290]);
+canvas().props.onPointerup(event(canvas(), 434, 292));
+await save();
+const joint = sheet.nodes.find(n => n.kind === "connectionPoint");
+const incident = sheet.edges.filter(e => e.source === joint.id || e.target.node === joint.id).map(e => e.id);
+assert.equal(incident.length, 2);
+await properties(joint.id);
+listeners.keydown({key: "Backspace", ctrlKey: true}); await tick(); await save();
+assert.ok(!model(joint.id) && incident.every(id => !edge(id)));
+const freeStart = event(canvas(), -600, -320, {ctrlKey: true, target: {closest: () => null}});
+canvas().props.onPointerdownCapture(freeStart);
+canvas().props.onPointermove(event(canvas(), -510, -315));
+canvas().props.onPointerup(event(canvas(), -510, -315));
+await save();
+assert.deepEqual(sheet.edges.at(-1).sourcePoint, {x: -600, y: -320});
+assert.deepEqual(sheet.edges.at(-1).target.point, {x: -510, y: -315});
 
 for (const [id, x, y, automatic] of [["outside",180,30,false], ["auto",-420,0,true]]) {
   toggle("Alt", true); await tick();
@@ -245,6 +307,14 @@ await press("Munkalap");
 const spacing = find(n => n.tag === "label" && n.children[0]?.text === "Rácsköz").children[1];
 spacing.props.onInput({target: {value: "36"}}); await tick();
 assert.equal(prop("id", "worksheet-grid").props.width, 36);
+const snapSwitch = () => prop("aria-label", "Rácsra igazítás");
+assert.equal(snapSwitch().props["aria-pressed"], false);
+snapSwitch().props.onClick(); await tick();
+const start = model("auto").position;
+await drag(graphic("auto"), start.x, start.y, 121, -83);
+await save();
+assert.deepEqual(model("auto").position, {x:126, y:-90});
+snapSwitch().props.onClick(); await tick();
 const transform = d3.zoomIdentity.translate(35, 75).scale(2);
 zoomEvents.zoom({transform}); await tick();
 const grid = prop("fill", "url(#worksheet-grid)");
@@ -252,6 +322,27 @@ assert.equal(grid.parent.props.transform, transform + " translate(600 400)");
 prop("aria-label", "Pontrács").props.onClick(); await tick(); await save();
 assert.equal(sheet.gridVisible, false);
 assert.equal(prop("fill", "url(#worksheet-grid)"), undefined);
+toggle("Enter", true); await tick();
+const search = prop("aria-label", "Keresés a munkalapon");
+assert.ok(search);
+search.props.onInput({target: {value: "child"}}); await tick();
+assert.ok(button("child"));
+toggle("Enter", true); await tick();
+assert.ok(!prop("aria-label", "Keresés a munkalapon"));
+await properties("outside");
+await drag(graphic("inner"), 50, 40, 50, 40);
+assert.equal(panel()?.props["aria-label"], "Ötlet szerkesztése");
+await drag(graphic("child"), 50, 40, 50, 40, {ctrlKey: true});
+await properties("inner");
+listeners.keydown({key: "Delete", ctrlKey: true}); await tick(); await save();
+assert.ok(!model("inner") && !model("child"));
+assert.ok(!sheet.edges.some(e => [e.source,e.target.node].includes("child")));
+await properties("outside");
+await press("Előnézet");
+assert.equal(text(panel().children.at(-1)), "Törlés");
+globalThis.confirm = () => { throw Error("Connected nodes must delete without a prompt"); };
+listeners.keydown({key: "Backspace"}); await tick(); await save();
+assert.ok(!model("outside") && edge("one").sourcePoint);
 console.log("Passed editor gestures, junction cleanup, container nesting and lock, text scaling, palette, HEX and world grid.");
 
 const {worksheetLink} = await import("../../Public/links.js");
@@ -263,6 +354,11 @@ assert.equal(worksheetLink("javascript:alert(1)", "main"), null);
 
 const {labelLayout} = await import("../../Public/geometry.js");
 const sample = {...node("label", 0, 0, 240, 200), showMarkdown: true};
+const hiddenNote = labelLayout({...sample, markdown: "**Szöveg**", showMarkdown: false, markdownStyle: {alignment: "right", verticalAlignment: "bottom"}});
+const dot = hiddenNote.lines.find(l => l.runs);
+assert.equal(dot.text, "•");
+assert.equal(dot.anchor, "end");
+assert.ok(dot.y > 0);
 const blocks = [{kind: "body", runs: [{text: "Markdown"}]}];
 for (const vertical of ["top", "middle", "bottom"]) {
   for (const align of ["left", "center", "right"]) {
@@ -273,6 +369,12 @@ for (const vertical of ["top", "middle", "bottom"]) {
 }
 const layout = labelLayout({...sample, verticalAlignment: "bottom", markdownStyle: {verticalAlignment: "top"}}, blocks);
 assert.ok(layout.lines.find(l => l.text === "Markdown").y < layout.lines.find(l => l.text === "label").y);
+
+const outside = labelLayout({...sample, titleOutside: true, alignment: "left", verticalAlignment: "top",
+  comment: "Megjegyzés", markdownOutside: true, markdownStyle: {alignment: "center", verticalAlignment: "bottom"}}, blocks);
+assert.ok(outside.lines.filter(l => !l.runs).every(l => l.x < -outside.width/2 && l.y < -outside.height/2));
+assert.ok(outside.lines.find(l => l.runs).y > outside.height/2);
+assert.ok(outside.extentX > outside.width/2 && outside.extentY > outside.height/2);
 
 const {rebaseWorksheet} = await import("../../Public/collaboration.js");
 const base = {revision: 1, nodes: [node("a", 0, 0), node("b", 40, 10)], edges: []};

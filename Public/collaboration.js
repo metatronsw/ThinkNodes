@@ -41,14 +41,16 @@ export function rebaseWorksheet(base, local, remote) {
   const lastKnown = new Map([...nodes, ...localNodes, ...remote.nodes].map(n => [n.id, n]));
   // A concurrent deletion can race with an attachment or a container drop.
   // Keep the wire at its last known location and the surviving child on the board.
+  const pairs = new Set();
   for (const edge of result.edges) {
     if (edge.source && !present.has(edge.source)) {
       edge.sourcePoint = lastKnown.get(edge.source).position;
       delete edge.source;
     }
-    if (edge.target.node && (!present.has(edge.target.node) || edge.target.node === edge.source)) {
+    const pair = edge.source && edge.target.node ? JSON.stringify([edge.source, edge.target.node]) : null;
+    if (edge.target.node && (!present.has(edge.target.node) || edge.target.node === edge.source || pairs.has(pair))) {
       edge.target = {point: lastKnown.get(edge.target.node).position};
-    }
+    } else if (pair) pairs.add(pair);
   }
   for (const node of result.nodes) {
     if (!node.parent) continue;
@@ -146,7 +148,10 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
     socket = null;
     request("leave", {}, {keepalive: true}).catch(() => {});
   }
-  return {client, start, stop, motion, endMotion, snapshot: () => request("poll", {editing}),
+  function ping(node, revision) {
+    if (socket?.readyState === 1 && audience) socket.send(JSON.stringify({node, revision, ping: true}));
+  }
+  return {client, start, stop, motion, endMotion, ping, snapshot: () => request("poll", {editing}),
     checkpoint: (action, revision, checkpointRevision) => request(action, {revision, checkpointRevision}),
-    select: node => request("select", {node})};
+    select: (node, edge) => request("select", {node, edge})};
 }

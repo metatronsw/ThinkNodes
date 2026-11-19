@@ -6,3 +6,4 @@ Data/.trash/
 .DS_Store
 Data/.settings.json
 /.thinknodes-tls/
+Data/**/.*.preview.svg
