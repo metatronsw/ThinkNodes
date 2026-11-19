@@ -132,7 +132,8 @@ input[type="color"] { height: 37px; padding: 3px; cursor: pointer; }
   background: #fff;
   border-bottom: 1px solid var(--line);
 }
-.editor-header > * { flex: 0 0 auto; }
+.editor-actions { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; overflow-x: auto; }
+.editor-actions > * { flex: 0 0 auto; }
 .editor-header .brand { color: var(--ink); margin-right: 5px; }
 .editor-header h1 { flex: 1 1 200px; min-width: 110px; margin: 0 8px 0 0; font-size: 1.18rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .editor-header select { width: auto; max-width: 155px; font-size: .9rem; }
@@ -223,3 +224,12 @@ input[type="color"] { height: 37px; padding: 3px; cursor: pointer; }
 .color-tools { display: grid; gap: 5px; }
 .color-presets { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; }
 .color-tools input[type="range"] { padding: 0; }
+
+.participants { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-left: auto; max-width: 32vw; }
+.participants span { display: inline-flex; align-items: center; gap: 5px; font-size: .83rem; font-weight: 650; }
+.participants span::before { content: ""; width: .72em; height: .72em; border-radius: 50%; background: var(--peer); }
+.idea.occupied { cursor: default; }
+@media (max-width: 680px) {
+  .editor-header { flex-wrap: wrap; }
+  .editor-header .participants { order: -1; max-width: 100%; width: 100%; justify-content: flex-end; }
+}

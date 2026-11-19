@@ -75,10 +75,14 @@ private struct SessionInfo: Sendable {
     }
 }
 
+private func authenticatedUser(_ data: SessionData, store: WorksheetStore) throws -> User? {
+    guard let name = data["user"], let user = try store.user(named: name),
+          data["credential"] == user.passwordHash else { return nil }
+    return user
+}
+
 private func session(_ req: Request, store: WorksheetStore) throws -> SessionInfo {
-    guard req.hasSession else { return SessionInfo(user: nil, csrf: nil) }
-    guard let name = req.session.data["user"], let user = try store.user(named: name),
-          req.session.data["credential"] == user.passwordHash else {
+    guard req.hasSession, let user = try authenticatedUser(req.session.data, store: store) else {
         return SessionInfo(user: nil, csrf: nil)
     }
     return SessionInfo(user: user, csrf: token(req))
@@ -148,16 +152,17 @@ private func loginPage(_ req: Request, next: String, message: String? = nil) -> 
         """)
 }
 
-func configure(_ app: Application, store: WorksheetStore) {
-    let assets = app.directory.publicDirectory
+func configure(_ application: Application, store: WorksheetStore) {
+    let live = Collaboration(store: store)
+    let assets = application.directory.publicDirectory
     let secure = Environment.get("THINKNODES_SECURE_COOKIES") == "1"
-    app.sessions.use(.memory)
-    app.sessions.configuration = .init(cookieName: "thinknodes_session") { sessionID in
+    application.sessions.use(.memory)
+    application.sessions.configuration = .init(cookieName: "thinknodes_session") { sessionID in
         .init(string: sessionID.string, path: "/", isSecure: secure, isHTTPOnly: true, sameSite: .lax)
     }
-    app.middleware.use(FileMiddleware(publicDirectory: assets))
-    app.middleware.use(app.sessions.middleware)
-    app.routes.defaultMaxBodySize = "16mb"
+    application.middleware.use(FileMiddleware(publicDirectory: assets))
+    let app = application.grouped(application.sessions.middleware)
+    application.routes.defaultMaxBodySize = "16mb"
 
     app.get("health") { _ in "ok" }
 
@@ -204,7 +209,7 @@ func configure(_ app: Application, store: WorksheetStore) {
         return redirect("/" + path.url)
     }
 
-    configureAdmin(app, store: store)
+    configureAdmin(app, store: store, live: live)
 
     app.get("edit", "**") { req async throws -> Response in
         let path = try WorksheetPath(req.parameters.getCatchall())
@@ -243,6 +248,39 @@ func configure(_ app: Application, store: WorksheetStore) {
         }
     }
 
+    application.post("api", "presence", "**") { req async throws -> Response in
+        struct Form: Content { let action: String; let node: String?; let since: String? }
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        let sessions = req.application.sessions
+        guard let cookie = req.cookies[sessions.configuration.cookieName],
+              let token = req.headers.first(name: "X-CSRF-Token") else { throw Abort(.forbidden) }
+        let form = try req.content.decode(Form.self)
+        guard ["poll", "select", "leave"].contains(form.action),
+              let client = req.headers.first(name: "X-Worksheet-Client"),
+              client.count == 32, validSlug(client) else { throw Abort(.badRequest) }
+        @Sendable func state(_ action: String, since: String?) async throws -> (LiveState, EventLoopFuture<Void>?) {
+            // A long poll can outlive logout. Read the current session on wake and
+            // keep polling responses from refreshing or rewriting session cookies.
+            guard let data = try await sessions.driver.readSession(.init(string: cookie.string), for: req).get(),
+                  data["csrf"] == token else { throw Abort(.forbidden) }
+            return try await req.application.threadPool.runIfActive {
+                let user = try authenticatedUser(data, store: store)
+                if data["user"] != nil && user == nil { throw Abort(.unauthorized) }
+                return try live.presence(path, user: user, client: client, action: action,
+                                  node: form.node, since: since, loop: req.eventLoop)
+            }
+        }
+        var (snapshot, wait) = try await state(form.action, since: form.since)
+        if let wait {
+            try await wait.get()
+            snapshot = try await state("snapshot", since: nil).0
+        }
+        let result = Response()
+        try result.content.encode(snapshot)
+        result.headers.replaceOrAdd(name: .cacheControl, value: "no-store")
+        return result
+    }
+
     app.put("api", "worksheet", "**") { req async throws -> Response in
         let user = try session(req, store: store).editor()
         try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
@@ -254,7 +292,8 @@ func configure(_ app: Application, store: WorksheetStore) {
             throw Abort(.badRequest, reason: "Érvénytelen mentési revízió.")
         }
         let path = try WorksheetPath(req.parameters.getCatchall())
-        let worksheet = try await req.application.threadPool.runIfActive { try store.update(path, worksheet: submitted, user: user) }
+        let client = req.headers.first(name: "X-Worksheet-Client")
+        let worksheet = try await req.application.threadPool.runIfActive { try live.update(path, sheet: submitted, user: user, client: client) }
         return try worksheetResponse(worksheet)
     }
 
@@ -286,7 +325,7 @@ func configure(_ app: Application, store: WorksheetStore) {
         }
         switch req.parameters.get("format") {
         case "svg":
-            return response("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + boardSVG(worksheet),
+            return response("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + boardSVG(worksheet, siteHost: req.headers.first(name: .host)),
                             type: "image/svg+xml; charset=utf-8", filename: "\(path.name).svg")
         case "json":
             return try worksheetResponse(worksheet.canEdit(identity.user) ? worksheet : worksheet.withoutAccessDetails(),
@@ -375,8 +414,9 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
         "<section class=\"panel worksheet-notes\">\(description)<div class=\"markdown\">\(introduction)</div></section>"
     return htmlPage(title: worksheet.title, body: """
         \(siteHeader(path: path.url, project: worksheet.title, user: session.user, csrf: session.csrf, actions: edit + downloads))
-        <main class="shell">
-          <div class="passive-frame panel">\(boardSVG(worksheet, noteBase: base))</div>
+        <script type="module" src="/viewer.js"></script>
+        <main class="shell" id="worksheet-view" data-path="\(path.url)" data-csrf="\(token(req))" data-revision="\(worksheet.revision)" data-editable="\(worksheet.canEdit(session.user))">
+          <div class="passive-frame panel">\(boardSVG(worksheet, noteBase: base, siteHost: req.headers.first(name: .host)))</div>
           \(notes)
           \(note)
         </main>
@@ -410,7 +450,7 @@ private func hashPassword(_ input: String?) throws -> String? {
     return try Bcrypt.hash(input)
 }
 
-private func configureAdmin(_ app: Application, store: WorksheetStore) {
+private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, live: Collaboration) {
     app.get("admin") { req async throws -> Response in
         let identity = try session(req, store: store)
         let users = try store.allUsers()
@@ -482,7 +522,7 @@ private func configureAdmin(_ app: Application, store: WorksheetStore) {
         guard let match = req.headers.first(name: .ifMatch), match.hasPrefix("\""), match.hasSuffix("\""),
               let revision = Int(match.dropFirst().dropLast()) else { throw Abort(.preconditionRequired) }
         let path = try WorksheetPath(req.parameters.getCatchall())
-        try await req.application.threadPool.runIfActive { try store.archive(path, expected: revision) }
+        try await req.application.threadPool.runIfActive { try live.archive(path, expected: revision) }
         return Response(status: .noContent)
     }
 }

@@ -201,7 +201,7 @@ export function labelLayout(node, markdown = []) {
     if (!text) return;
     const wrapped = textWidth(text, size) <= labelWidth
       ? [text] : wrap(text, Math.max(2, Math.floor(labelWidth / (size * 0.65))));
-    for (const text of wrapped) lines.push({text, size, weight, color, italic: style.italic, underline: style.underline, alignment: style.alignment, step: size * 1.25});
+    for (const text of wrapped) lines.push({text, size, weight, color, italic: style.italic, underline: style.underline, alignment: style.alignment, vertical: style.verticalAlignment, step: size * 1.25});
   }
 
   add(node.title, node.fontSize, node.bold ? 650 : 400, node.textColor, node);
@@ -213,14 +213,16 @@ export function labelLayout(node, markdown = []) {
     wrapRuns(runs, Math.max(2, Math.floor(labelWidth / (size * 0.65)))).forEach((pieces, row) => {
       const gap = row === 0 ? (index === 0 ? 8 : 3) : 0;
       lines.push({runs: pieces, text: pieces.map(piece => piece.text).join(""), size, weight,
-        color: markdownStyle.color ?? node.textColor, italic: markdownStyle.italic, underline: markdownStyle.underline, alignment: markdownStyle.alignment, step: size * 1.25 + gap, gap});
+        color: markdownStyle.color ?? node.textColor, italic: markdownStyle.italic, underline: markdownStyle.underline, alignment: markdownStyle.alignment, vertical: markdownStyle.verticalAlignment, step: size * 1.25 + gap, gap});
     });
   });
 
-  const heightNeeded = lines.reduce((sum, line) => sum + line.step, 0) + 16;
+  const iconSpace = node.link ? 18 : 0;
+  const heightNeeded = iconSpace + lines.reduce((sum, line) => sum + line.step, 0) + 16;
   const height = automatic ? limit(Math.ceil(heightNeeded / heightRatio), node.autoMinHeight ?? 40, 680) : node.height;
   const visible = [];
-  let remaining = Math.max(node.fontSize * 1.25, height * heightRatio - 12);
+  let remaining = Math.max(node.fontSize * 1.25, height * heightRatio - 12 - iconSpace);
+  const available = remaining;
   for (const line of lines) {
     if (remaining < line.step) break;
     visible.push(line);
@@ -232,12 +234,17 @@ export function labelLayout(node, markdown = []) {
     last.runs?.push({text: "…"});
   }
 
-  let top = -visible.reduce((sum, line) => sum + line.step, 0) / 2;
+  const rank = line => ({top: 0, bottom: 1}[line.vertical] ?? 0.5);
+  visible.sort((a, b) => rank(a) - rank(b));
+  let offset = -(available + iconSpace) / 2;
+  let bodyEnd;
   let bodyTop;
   const positioned = visible.map(line => {
+    const top = offset + remaining * rank(line);
+    if (line.runs) bodyEnd = top + line.step;
     if (line.runs && bodyTop === undefined) bodyTop = top + line.gap - 3;
     const y = top + (line.gap ?? 0) + line.size * (1.25 / 2 + 0.33);
-    top += line.step;
+    offset += line.step;
     const align = line.alignment ?? node.alignment;
     const x = align === "left" ? -labelWidth / 2 : align === "right" ? labelWidth / 2 : 0;
     return {...line, x, y, anchor: {left: "start", center: "middle", right: "end"}[align],
@@ -246,7 +253,7 @@ export function labelLayout(node, markdown = []) {
   const fill = node.markdownFill ?? node.fill;
   const border = node.markdownBorder ?? node.border;
   const framed = bodyTop !== undefined && (fill.toLowerCase() !== node.fill.toLowerCase() || border.toLowerCase() !== node.border.toLowerCase());
-  const frame = framed ? {x: -labelWidth / 2 - 3, y: bodyTop, width: labelWidth + 6, height: top + 3 - bodyTop,
+  const frame = framed ? {x: -labelWidth / 2 - 3, y: bodyTop, width: labelWidth + 6, height: bodyEnd + 3 - bodyTop,
     fill, stroke: border.toLowerCase() === node.border.toLowerCase() ? "none" : border} : null;
   return {width, height, lines: positioned, frame};
 }

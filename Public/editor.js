@@ -1,3 +1,5 @@
+import {liveConnection, rebaseWorksheet} from "./collaboration.js";
+import {worksheetLink, linkIcons} from "./links.js";
 import {canvasBounds, commentColor, edgeEndpoint, edgeGeometry, edgePaint, edgeStyles, labelLayout, limit, lineStyles, paper, shapeDistance, shapes} from "./geometry.js";
 
 import {ancestors, containerOrder, overlapFraction} from "./containers.js";
@@ -161,7 +163,7 @@ function otherEnd(end) {
 async function checked(response) {
   if (response.ok) return response;
   const detail = await response.json().catch(() => ({}));
-  throw new Error(detail.reason || "A kérés nem sikerült (" + response.status + ").");
+  throw Object.assign(new Error(detail.reason || "A kérés nem sikerült (" + response.status + ")."), {status: response.status});
 }
 
 createApp({
@@ -211,6 +213,102 @@ createApp({
     let rightPress = false;
     let noteRequest = 0;
 
+    const peers = ref([]);
+    const held = ref(null);
+    const online = ref(false);
+    let baseline;
+    let queued = Promise.resolve();
+    let saveTimer;
+    let selectionRequest = 0;
+    let initialNode = new URLSearchParams(window.location?.search).get("node");
+    const copy = value => JSON.parse(JSON.stringify(value));
+    const occupied = id => peers.value.find(p => !p.mine && p.node === id);
+    const groupBlocked = node => moveGroup(node).some(member => occupied(member.id));
+    function enqueue(task) {
+      const next = queued.then(task);
+      queued = next.catch(() => {});
+      return next;
+    }
+
+    async function refresh() {
+      const latest = await (await checked(await fetch(endpoint))).json();
+      if (latest.revision <= baseline.revision) return;
+      board.value = rebaseWorksheet(baseline, copy(board.value), latest);
+      baseline = copy(latest);
+      if ((gesture.value?.nodeID && !nodeMap.value.has(gesture.value.nodeID)) ||
+          (gesture.value?.edgeID && !edgeMap.value.has(gesture.value.edgeID))) {
+        gesture.value = null;
+        preview.value = null;
+      }
+      if (reconnect.value && !edgeMap.value.has(reconnect.value.edgeID)) {
+        reconnect.value = null;
+        preview.value = null;
+      }
+      if (note.value) showNote(nodeMap.value.get(note.value.id), false);
+    }
+
+    const live = liveConnection(path, csrf, async state => {
+      if (!online.value) {
+        problem.value = "";
+        held.value = state.participants.find(p => p.mine)?.node ?? null;
+      }
+      online.value = true;
+      peers.value = state.participants;
+      if (state.revision > baseline.revision) await enqueue(async () => {
+        if (state.revision > baseline.revision) await refresh();
+      });
+      if (initialNode) {
+        const id = initialNode;
+        initialNode = null;
+        if (nodeMap.value.has(id)) openProperties("node", id);
+      }
+      if (dirty.value && !saveTimer && !saving.value && !problem.value) scheduleSave();
+    }, error => {
+      online.value = false;
+      held.value = null;
+      if (gesture.value) finishPointer({pointerId: gesture.value.pointer}, true);
+      if (inspector.value?.kind === "node") inspectNothing();
+      problem.value = error.message;
+    });
+
+    function scheduleSave() {
+      if (saveTimer) return;
+      saveTimer = setTimeout(() => { saveTimer = null; save(); }, 70);
+    }
+
+    async function selectNode(id) {
+      const ticket = ++selectionRequest;
+      if (!online.value) return false;
+      if (id && occupied(id)) {
+        problem.value = occupied(id).name + " már kijelölte ezt a dobozt.";
+        return false;
+      }
+      try {
+        return await enqueue(async () => {
+          if (ticket !== selectionRequest) return false;
+          if (held.value !== id) {
+            if (dirty.value) await commit();
+            const state = await live.select(id);
+            held.value = id;
+            peers.value = state.participants;
+            if (state.revision > baseline.revision) await refresh();
+          }
+          if (ticket !== selectionRequest) return false;
+          if (id) selected.value = {kind: "node", id};
+          return true;
+        });
+      } catch (error) {
+        problem.value = error.message;
+        return false;
+      }
+    }
+
+    function clearSelection() {
+      selected.value = null;
+      inspectNothing();
+      selectNode(null);
+    }
+
     async function loadCanvasMarkdown(sources, signal) {
       const missing = sources.filter(source => !canvasMarkdown.value.has(source));
       let blocks = [];
@@ -244,6 +342,7 @@ createApp({
 
     function modified() {
       generation.value += 1;
+      scheduleSave();
       problem.value = "";
       status.value = "";
     }
@@ -330,12 +429,12 @@ createApp({
     }
 
     function addNode(position = worldAtCenter()) {
-      if (!board.value) return;
+      if (!board.value || !online.value) return;
       const node = makeNode(position);
       board.value.nodes.push(node);
       modified();
-      selected.value = {kind: "node", id: node.id};
       if (inspector.value || note.value) openProperties("node", node.id);
+      else selectNode(node.id);
     }
 
     async function loadAccounts() {
@@ -347,15 +446,18 @@ createApp({
       }
     }
 
-    function openProperties(kind, itemID) {
+    async function openProperties(kind, itemID) {
+      if (kind === "node" && !(await selectNode(itemID))) return;
+      if (kind !== "node") selectNode(null);
       if (kind === "worksheet" && canManage.value && !accounts.value) loadAccounts();
-      if (kind !== "worksheet") selected.value = {kind, id: itemID};
+      selected.value = kind === "worksheet" ? null : {kind, id: itemID};
       inspector.value = {kind, id: itemID};
       note.value = null;
       menu.value = null;
     }
 
-    function deleteNode(node) {
+    async function deleteNode(node) {
+      if (!(await selectNode(node.id)) || groupBlocked(node)) return;
       if (!confirm("Törlöd ezt a dobozt? A kábelek végpontjai a helyükön maradnak.")) return;
       for (const edge of board.value.edges) {
         if (edge.source === node.id) detach(edge, "source");
@@ -404,13 +506,14 @@ createApp({
 
     function toggleContainer(node) {
       if (node.kind === "container") {
+        if (groupBlocked(node)) return;
         releaseChildren(node);
         delete node.kind;
         delete node.locked;
       } else {
         node.kind = "container";
         for (const child of board.value.nodes) {
-          if (child.id !== node.id && child.parent === node.parent &&
+          if (!occupied(child.id) && child.id !== node.id && child.parent === node.parent &&
               overlapFraction(drawnNode(child.id), drawnNode(node.id)) > 0) child.parent = node.id;
         }
       }
@@ -476,16 +579,40 @@ createApp({
       event.preventDefault();
       event.stopPropagation();
       menu.value = null;
-      selected.value = {kind: "node", id: node.id};
       event.currentTarget.focus({preventScroll: true});
       const initial = world(event);
       const cabling = controlClick;
-      if (cabling) lastClick = null;
       const locked = ancestors(node, nodeMap.value).some(parent => parent.locked);
       gesture.value = {group: cabling || locked ? [] : moveGroup(node), locked, type: cabling ? "cable" : "move", pointer: event.pointerId, nodeID: node.id,
         position: {...node.position}, initial, screen: [event.clientX, event.clientY], moved: false};
       if (cabling) preview.value = {edge: {source: node.id, target: {point: initial}, style: pendingStyle.value}};
       canvas.value.setPointerCapture(event.pointerId);
+      if (!cabling && !occupied(node.id)) claimGesture(node);
+      else if (!cabling) gesture.value.locked = true;
+    }
+
+    function claimGesture(node) {
+      const operation = gesture.value;
+      operation.waiting = true;
+      if (inspector.value?.kind === "node" && inspector.value.id !== node.id) inspectNothing();
+      selectNode(node.id).then(granted => {
+        if (gesture.value !== operation) return;
+        operation.waiting = false;
+        operation.locked ||= !granted || groupBlocked(node);
+        if (operation.type === "resize" && granted) {
+          const current = nodeMap.value.get(node.id);
+          operation.original = copy(current);
+          operation.width = drawnNode(node.id).width;
+          operation.height = drawnNode(node.id).height;
+        }
+        if (operation.type === "move" && granted) {
+          const current = nodeMap.value.get(node.id);
+          operation.group = moveGroup(current);
+          operation.position = {...current.position};
+        }
+        if (operation.done) finishPointer(operation.done.event, operation.done.cancel);
+        else if (operation.latest) updatePointer(operation.latest);
+      });
     }
 
     function pressEndpoint(event, edge, end) {
@@ -498,6 +625,7 @@ createApp({
       event.stopPropagation();
       menu.value = null;
       lastClick = null;
+      selectNode(null);
       selected.value = {kind: "endpoint", id: edge.id, end};
       gesture.value = {type: "endpoint", original: {...original}, pointer: event.pointerId, edgeID: edge.id, end,
         position: {...position}, initial: world(event), screen: [event.clientX, event.clientY], moved: false};
@@ -520,17 +648,17 @@ createApp({
     }
 
     function pressCorner(event, node, sx, sy) {
-      if (!event.altKey || event.button !== 0 || ancestors(node, nodeMap.value).some(n => n.locked)) return;
+      if (!event.altKey || event.button !== 0 || occupied(node.id) || ancestors(node, nodeMap.value).some(n => n.locked)) return;
       event.preventDefault();
       event.stopPropagation();
       lastClick = null;
       menu.value = null;
-      selected.value = {kind: "node", id: node.id};
       const drawn = drawnNode(node.id);
       gesture.value = {type: "resize", pointer: event.pointerId, nodeID: node.id, sx, sy,
         original: JSON.parse(JSON.stringify(node)), width: drawn.width, height: drawn.height,
         initial: world(event), screen: [event.clientX, event.clientY], moved: false};
       canvas.value.setPointerCapture(event.pointerId);
+      claimGesture(node);
     }
 
     function resizeCorner(operation, point) {
@@ -560,11 +688,12 @@ createApp({
       const operation = gesture.value;
       if (!operation && !reconnect.value) return;
       if (operation && operation.pointer !== event.pointerId) return;
+      if (operation?.waiting) { operation.latest = event; return; }
       const point = world(event);
       if (operation) {
         operation.moved ||= Math.hypot(event.clientX - operation.screen[0], event.clientY - operation.screen[1]) > 3;
         if (operation.type === "resize") {
-          if (operation.moved) resizeCorner(operation, point);
+          if (operation.moved && !operation.locked) { resizeCorner(operation, point); modified(); }
           return;
         }
         if (operation.type === "move" || operation.type === "endpoint") {
@@ -572,10 +701,13 @@ createApp({
           const position = clampPoint({x: operation.position.x + point.x - operation.initial.x,
             y: operation.position.y + point.y - operation.initial.y});
           if (operation.type === "move") {
-            if (!operation.locked) translateGroup(operation.group, position.x-operation.position.x, position.y-operation.position.y);
+            if (!operation.locked && !operation.group.some(member => occupied(member.id))) {
+              translateGroup(operation.group, position.x-operation.position.x, position.y-operation.position.y);
+              modified();
+            }
           } else {
             const edge = edgeMap.value.get(operation.edgeID);
-            setEndpoint(edge, operation.end, {point: position});
+            operation.endPosition = position;
             preview.value = {target: endpointAt(position, edge, operation.end).node};
           }
           return;
@@ -595,26 +727,36 @@ createApp({
     function finishPointer(event, cancel = false) {
       const operation = gesture.value;
       if (!operation || operation.pointer !== event.pointerId) return;
+      if (operation.waiting) {
+        // Pointer capture can end before the server acknowledges the selection.
+        operation.done ??= {event, cancel};
+        return;
+      }
       if (!cancel) updatePointer(event);
-      if (operation.type === "resize" && operation.moved) {
+      if (operation.type === "resize" && operation.moved && !operation.locked) {
         if (cancel) {
           const index = board.value.nodes.findIndex(n => n.id === operation.nodeID);
           board.value.nodes[index] = operation.original;
-        } else modified();
+        }
+        modified();
       } else if (operation.type === "move" && operation.moved) {
         lastClick = null;
         const node = nodeMap.value.get(operation.nodeID);
-        if (cancel) translateGroup(operation.group, 0, 0);
+        if (cancel && !operation.locked) { translateGroup(operation.group, 0, 0); modified(); }
         else if (!operation.locked) { dropParent(node); modified(); }
-      } else if (operation.type === "move" && !cancel) {
+      } else if ((operation.type === "move" || operation.type === "cable") && !operation.moved && !cancel) {
         const time = performance.now();
         const [x, y] = operation.screen;
-        if (lastClick?.id === operation.nodeID && time - lastClick.time < 450
+        if (lastClick?.id === operation.nodeID && lastClick.type === operation.type && time - lastClick.time < 450
             && Math.hypot(x - lastClick.x, y - lastClick.y) < 10) {
           lastClick = null;
-          openProperties("node", operation.nodeID);
+          const node = nodeMap.value.get(operation.nodeID);
+          const destination = worksheetLink(node?.link, path);
+          if (operation.type === "cable") openProperties("node", operation.nodeID);
+          else if (destination) navigate(destination.href);
+          else showNote(node);
         } else {
-          lastClick = {id: operation.nodeID, time, x, y};
+          lastClick = {id: operation.nodeID, type: operation.type, time, x, y};
           if (inspector.value || note.value) showNote(nodeMap.value.get(operation.nodeID));
         }
       } else if (operation.type === "cable" && operation.moved && !cancel) {
@@ -622,11 +764,12 @@ createApp({
         edge.target = endpointAt(world(event), edge, "target", true);
         board.value.edges.push(edge);
         modified();
+        selectNode(null);
         selected.value = {kind: "edge", id: edge.id};
       } else if (operation.type === "endpoint" && operation.moved) {
         const edge = edgeMap.value.get(operation.edgeID);
         const endpoint = cancel ? operation.original
-          : endpointAt(edgeEndpoint(edge, operation.end).point, edge, operation.end, true);
+          : endpointAt(operation.endPosition, edge, operation.end, true);
         setEndpoint(edge, operation.end, endpoint);
         if (!cancel) {
           pruneJunctions();
@@ -646,6 +789,7 @@ createApp({
 
     function pressCanvas(event) {
       rightPress = event.button === 2 && !event.ctrlKey;
+      if (event.button === 0 && !reconnect.value && !event.target.closest("[data-node], [data-edge]")) clearSelection();
       if (event.button !== 0 || event.ctrlKey || !reconnect.value) return;
       event.preventDefault();
       event.stopPropagation();
@@ -676,9 +820,9 @@ createApp({
       modified();
     }
 
-    async function showNote(node) {
+    async function showNote(node, select = true) {
       if (!node || reconnect.value) return;
-      selected.value = {kind: "node", id: node.id};
+      if (select && !occupied(node.id) && held.value !== node.id) selectNode(node.id);
       menu.value = null;
       inspector.value = null;
       const request = ++noteRequest;
@@ -695,28 +839,58 @@ createApp({
       }
     }
 
-    async function save() {
-      if (saving.value || gesture.value || !dirty.value) return;
+    async function commit() {
+      if (!dirty.value) return;
       saving.value = true;
-      problem.value = "";
-      const version = generation.value;
-      const payload = JSON.stringify({...board.value, schemaVersion: 2});
       try {
-        const result = await checked(await fetch(endpoint, {
-          method: "PUT",
-          headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf, "If-Match": '"' + board.value.revision + '"'},
-          body: payload,
-        }));
-        const saved = await result.json();
-        if (generation.value === version && !gesture.value) board.value = saved;
-        else board.value.revision = saved.revision;
-        savedGeneration.value = version;
-        status.value = "Mentve";
-      } catch (error) {
+        for (let attempt = 0; attempt < 4; attempt++) {
+          const version = generation.value;
+          const submitted = copy(board.value);
+          const result = await fetch(endpoint, {method: "PUT", headers: {"Content-Type": "application/json",
+            "X-CSRF-Token": csrf, "X-Worksheet-Client": live.client, "If-Match": '"' + baseline.revision + '"'},
+            body: JSON.stringify({...submitted, schemaVersion: 2})});
+          if (result.status === 412) { await refresh(); continue; }
+          if (result.status === 409 || result.status === 423) {
+            const state = await live.snapshot();
+            peers.value = state.participants;
+            held.value = state.participants.find(p => p.mine)?.node ?? null;
+            await refresh();
+            if (result.status === 409) continue;
+            // A lease may have changed owners while this tab was disconnected.
+            const foreign = new Set(peers.value.filter(p => !p.mine && p.node).map(p => p.node));
+            const local = new Map(board.value.nodes.map(n => [n.id, n]));
+            for (const node of baseline.nodes) if (foreign.has(node.id)) local.set(node.id, copy(node));
+            board.value.nodes = [...local.values()];
+            if (gesture.value?.group?.some(n => foreign.has(n.id))) gesture.value = null;
+            scheduleSave();
+            throw new Error("A közben lefoglalt doboz visszaállt a közös munkalapon látható állapotára.");
+          }
+          const saved = await (await checked(result)).json();
+          board.value = rebaseWorksheet(submitted, copy(board.value), saved);
+          baseline = copy(saved);
+          savedGeneration.value = version;
+          status.value = "Mentve";
+          problem.value = "";
+          if (dirty.value) scheduleSave();
+          return;
+        }
+        scheduleSave();
+        throw new Error("Párhuzamos mentés, újrapróbálkozás…");
+      } finally { saving.value = false; }
+    }
+
+    async function save() {
+      if (!online.value || gesture.value?.type === "endpoint") return;
+      try { await enqueue(commit); }
+      catch (error) {
         problem.value = error.message;
-      } finally {
-        saving.value = false;
+        if (!error.status || error.status >= 500) setTimeout(() => { if (dirty.value) save(); }, 1200);
       }
+    }
+
+    async function navigate(href) {
+      await save();
+      if (!dirty.value) location.assign(href);
     }
 
     async function exportSVG() {
@@ -772,10 +946,22 @@ createApp({
           finishPointer({pointerId: active.pointer}, true);
           if (canvas.value.hasPointerCapture(active.pointer)) canvas.value.releasePointerCapture(active.pointer);
         }
-        menu.value = null;
+        clearSelection();
         reconnect.value = null;
         preview.value = null;
       }
+    }
+
+    // macOS can release pointer capture when Ctrl+click dispatches contextmenu.
+    function outsideMove(event) {
+      if (gesture.value && !canvas.value?.contains(event.target)) updatePointer(event);
+    }
+    function outsideUp(event) {
+      if (gesture.value && !canvas.value?.contains(event.target)) finishPointer(event);
+    }
+    function cancelGesture() {
+      if (gesture.value) finishPointer({pointerId: gesture.value.pointer}, true);
+      clearModifiers();
     }
 
     function beforeUnload(event) {
@@ -787,11 +973,17 @@ createApp({
     onMounted(async () => {
       window.addEventListener("keydown", keyboard);
       window.addEventListener("keyup", modifiers);
-      window.addEventListener("blur", clearModifiers);
+      window.addEventListener("blur", cancelGesture);
+      window.addEventListener("pointermove", outsideMove);
+      window.addEventListener("pointerup", outsideUp);
       window.addEventListener("beforeunload", beforeUnload);
+      window.addEventListener("pagehide", live.stop);
+      window.addEventListener("pageshow", restore);
       try {
         const response = await checked(await fetch(endpoint));
-        board.value = await response.json();
+        baseline = await response.json();
+        board.value = copy(baseline);
+        live.start();
         await nextTick();
         initializeZoom();
       } catch (error) {
@@ -799,34 +991,44 @@ createApp({
       }
     });
 
+    function restore(event) { if (event.persisted) { held.value = null; clearSelection(); live.start(); } }
+
     onUnmounted(() => {
+      live.stop();
+      window.removeEventListener("pagehide", live.stop);
+      window.removeEventListener("pageshow", restore);
       resizeObserver?.disconnect();
       window.removeEventListener("keydown", keyboard);
       window.removeEventListener("keyup", modifiers);
-      window.removeEventListener("blur", clearModifiers);
+      window.removeEventListener("blur", cancelGesture);
+      window.removeEventListener("pointermove", outsideMove);
+      window.removeEventListener("pointerup", outsideUp);
       window.removeEventListener("beforeunload", beforeUnload);
     });
 
     function renderNode(node) {
       const {node: drawn, layout} = drawings.value.get(node.id);
-      const highlighted = selected.value?.kind === "node" && selected.value.id === node.id;
+      const owner = peers.value.find(p => p.node === node.id);
+      const destination = worksheetLink(node.link, path);
+      const inset = node.shape === "diamond" ? .45 : node.shape === "ellipse" ? .7 : .94;
       const snapTarget = preview.value?.target === node.id;
       return h("g", {key: node.id, "data-node": node.id, tabindex: 0, role: "button",
-        "aria-label": node.title, class: "idea",
+        "aria-label": node.title, class: occupied(node.id) ? "idea occupied" : "idea",
         transform: "translate(" + node.position.x + " " + node.position.y + ")",
         onPointerdown: event => pressNode(event, node),
         onContextmenu: event => context(event, "node", node.id),
         onKeydown: event => {
           if (event.key === "Enter") {
             if (event.shiftKey) openProperties("node", node.id);
+            else if (destination) navigate(destination.href);
             else showNote(node);
           }
         },
       }, [
         node.kind === "connectionPoint" ? null : h("title", node.title),
-        highlighted || snapTarget ? h("rect", {"data-editor-only": "", x: -drawn.width / 2 - 4, y: -drawn.height / 2 - 4,
-          width: drawn.width + 8, height: drawn.height + 8, rx: 15, fill: "none",
-          stroke: snapTarget ? "#16a085" : "#4168e9", "stroke-width": 2, "pointer-events": "none"}) : null,
+        owner || snapTarget ? h("rect", {"data-editor-only": "", x: -drawn.width / 2 - 10, y: -drawn.height / 2 - 10,
+          width: drawn.width + 20, height: drawn.height + 20, rx: 15, fill: "none",
+          stroke: owner?.color ?? "#16a085", "stroke-width": 3, "pointer-events": "none"}) : null,
         shape(drawn),
         layout.frame ? h("rect", {...layout.frame, "pointer-events": "none"}) : null,
         h("text", {"font-family": "system-ui, sans-serif", "pointer-events": "none"},
@@ -841,7 +1043,11 @@ createApp({
               "font-style": format.italic ? "italic" : undefined, "font-family": format.code ? "monospace" : undefined,
               "text-decoration": format.link ? "underline" : undefined}, run.text);
           }) : line.text))),
-        ...(alt.value && node.kind !== "connectionPoint" && !ancestors(node, nodeMap.value).some(n => n.locked)
+        destination ? h("svg", {x: drawn.width/2*inset-15, y: drawn.height/2*inset-16, width: 14, height: 14,
+          viewBox: "0 0 24 24", fill: "none", stroke: node.textColor, "stroke-width": 1.8,
+          "stroke-linecap": "round", "stroke-linejoin": "round", "pointer-events": "none"},
+          [h("path", {d: linkIcons[destination.kind]})]) : null,
+        ...(alt.value && !occupied(node.id) && node.kind !== "connectionPoint" && !ancestors(node, nodeMap.value).some(n => n.locked)
           ? [[-1,-1], [1,-1], [1,1], [-1,1]].map(([sx, sy]) => {
             const r = 5/view.value.k;
             return h("rect", {"data-editor-only": "", x: sx*drawn.width/2-r, y: sy*drawn.height/2-r,
@@ -865,11 +1071,16 @@ createApp({
     }
 
     function renderEdge(edge) {
+      const drag = gesture.value;
+      if (drag?.edgeID === edge.id && drag.endPosition) {
+        edge = {...edge};
+        setEndpoint(edge, drag.end, {point: drag.endPosition});
+      }
       const {d, labelPosition, angle} = edgeGeometry(edge, drawnNode);
       const paint = edgePaint(edge);
       const highlighted = (selected.value?.kind === "edge" || selected.value?.kind === "endpoint") && selected.value.id === edge.id;
       return h("g", {key: edge.id, "data-edge": edge.id, tabindex: 0, role: "button", "aria-label": edge.label || "Vonal",
-        onClick: () => { selected.value = {kind: "edge", id: edge.id}; },
+        onClick: () => { selectNode(null); inspectNothing(); selected.value = {kind: "edge", id: edge.id}; },
         onDblclick: event => {
           event.stopPropagation();
           openProperties("edge", edge.id);
@@ -900,10 +1111,8 @@ createApp({
           onPointermove: updatePointer,
           onPointerup: event => finishPointer(event),
           onPointercancel: event => finishPointer(event, true),
-          onLostpointercapture: event => finishPointer(event, true),
-          onClick: event => {
-            if (!event.target.closest("[data-node], [data-edge]")) menu.value = null;
-          },
+
+
         }, [
           h("defs", [
             h("pattern", {id: "worksheet-grid", patternUnits: "userSpaceOnUse", width: spacing, height: spacing}, [
@@ -954,9 +1163,9 @@ createApp({
       const edge = board.value?.edges.find(item => item.id === open.id);
       const type = open.kind;
       const entries = type === "node" && node ? [
-        button("Szerkesztés", () => openProperties("node", node.id), {symbol: "edit"}),
+        button("Szerkesztés", () => openProperties("node", node.id), {symbol: "edit", disabled: !!occupied(node.id)}),
         button("Markdown megnyitása", () => showNote(node), {symbol: "eye"}),
-        button("Törlés", () => { menu.value = null; deleteNode(node); }, {class: "button danger", symbol: "trash"}),
+        button("Törlés", () => { menu.value = null; deleteNode(node); }, {class: "button danger", symbol: "trash", disabled: !!occupied(node.id)}),
       ] : type === "edge" && edge ? [
         button("Szerkesztés", () => openProperties("edge", edge.id), {symbol: "edit"}),
         ...endpointActions(edge),
@@ -1025,7 +1234,7 @@ createApp({
           reading.loading ? h("p", "Betöltés…") : null,
           reading.error ? h("p", {class: "error"}, reading.error) : null,
           !reading.loading && !reading.error ? h("div", {class: "markdown", innerHTML: reading.html || "<p>Még nincs leírás.</p>"}) : null,
-          button("Szerkesztés", () => openProperties("node", node.id), {symbol: "edit"}),
+          button("Szerkesztés", () => openProperties("node", node.id), {symbol: "edit", disabled: !!occupied(node.id)}),
         ]);
       }
       if (!inspector.value) return null;
@@ -1063,7 +1272,7 @@ createApp({
         ]);
       }
       const node = nodeMap.value.get(inspector.value.id);
-      if (!node) return null;
+      if (!node || held.value !== node.id || occupied(node.id)) return null;
       const change = (key, value) => updateItem(node, key, value);
       const autoSize = node.autoSize !== false;
       const drawn = drawnNode(node.id);
@@ -1085,14 +1294,23 @@ createApp({
             v => update(colorKey, v), node.id + "/" + section + "/text"),
           h("div", {class: "fields-two"}, [
             field("Betűméret", numeric(style[sizeKey] ?? Math.max(10, node.fontSize*.8), v => update(sizeKey, v), 10, 60)),
-            field("Igazítás", select(style.alignment ?? node.alignment, alignments, v => update("alignment", v))),
+            section === "commentStyle" ? field("Igazítás", select(style.alignment ?? node.alignment, alignments, v => update("alignment", v))) :
+              field("Igazítás", select((style.verticalAlignment ?? "middle") + "-" + (style.alignment ?? node.alignment), {
+                "top-left": "Bal felső", "top-center": "Felső közép", "top-right": "Jobb felső",
+                "middle-left": "Bal oldal", "middle-center": "Közép", "middle-right": "Jobb oldal",
+                "bottom-left": "Bal alsó", "bottom-center": "Alsó közép", "bottom-right": "Jobb alsó",
+              }, value => {
+                const [verticalAlignment, alignment] = value.split("-");
+                update("verticalAlignment", verticalAlignment);
+                update("alignment", alignment);
+              })),
           ]),
           h("div", {class: "font-switches"}, [["bold","Félkövér"],["italic","Dőlt"],["underline","Aláhúzott"]]
             .map(([key, label]) => checkbox(label, !!style[key], v => update(key, v)))),
         ];
       }
       const group = (label, children) => h("fieldset", {class: "property-group stack"}, [h("legend", label), ...children]);
-      const locked = ancestors(node, nodeMap.value).some(n => n.locked);
+      const locked = groupBlocked(node) || ancestors(node, nodeMap.value).some(n => n.locked);
       function coordinate(axis) {
         return numeric(node.position[axis], v => {
           const delta = v - node.position[axis];
@@ -1102,6 +1320,9 @@ createApp({
       }
       return sidebar("Ötlet szerkesztése", [
         group("Doboz", [
+          field("Link", input(node.link ?? "", value => change("link", value.trim()), {
+            maxlength: 2048, placeholder: "allap, ../ vagy https://…",
+          })),
           field("Forma", select(node.shape, shapes, value => change("shape", value))),
           checkbox("Auto size", autoSize, value => {
             node.width = drawn.width; node.height = drawn.height;
@@ -1130,21 +1351,26 @@ createApp({
 
     function renderHeader() {
       return h("header", {class: "editor-header"}, [
-        h("a", {class: "brand", href: "/"}, "ThinkNodes"),
-        h("h1", {title: board.value.title}, board.value.title),
-        button("", () => addNode(), {class: "button soft icon-button", symbol: "plus", "aria-label": "Új ötlet", title: "Új ötlet"}),
-        select(pendingStyle.value, edgeStyles, value => { pendingStyle.value = value; }, {"aria-label": "Új vonal típusa"}),
-        button("Munkalap", () => openProperties("worksheet"), {
-          "aria-pressed": inspector.value?.kind === "worksheet", symbol: "settings",
-        }),
-        button("SVG letöltése", exportSVG, {symbol: "download"}),
-        link("Megtekintés", "/" + path, "eye"),
-        button(saving.value ? "Mentés…" : "Mentés", save, {class: "button primary", symbol: "save", disabled: saving.value || !dirty.value}),
-        role === "admin" ? link("Admin", "/admin", "settings") : null,
-        h("form", {method: "post", action: "/logout"}, [
-          h("input", {type: "hidden", name: "csrf", value: csrf}),
-          h("button", {class: "button", type: "submit"}, [icon("logout"), "Kijelentkezés"]),
+        h("div", {class: "editor-actions"}, [
+          h("a", {class: "brand", href: "/"}, "ThinkNodes"),
+          h("h1", {title: board.value.title}, board.value.title),
+          button("", () => addNode(), {class: "button soft icon-button", symbol: "plus", "aria-label": "Új ötlet", title: "Új ötlet"}),
+          select(pendingStyle.value, edgeStyles, value => { pendingStyle.value = value; }, {"aria-label": "Új vonal típusa"}),
+          button("Munkalap", () => openProperties("worksheet"), {
+            "aria-pressed": inspector.value?.kind === "worksheet", symbol: "settings",
+          }),
+          button("SVG letöltése", exportSVG, {symbol: "download"}),
+          link("Megtekintés", "/" + path, "eye"),
+          button(saving.value ? "Mentés…" : "Mentés", save, {class: "button primary", symbol: "save", disabled: saving.value || !dirty.value}),
+          role === "admin" ? link("Admin", "/admin", "settings") : null,
+          h("form", {method: "post", action: "/logout"}, [
+            h("input", {type: "hidden", name: "csrf", value: csrf}),
+            h("button", {class: "button", type: "submit"}, [icon("logout"), "Kijelentkezés"]),
+          ]),
         ]),
+        h("div", {class: "participants", "aria-label": "Jelenlévők"},
+          [...new Map(peers.value.map(p => [p.name, p])).values()].map(p =>
+            h("span", {key: p.name, style: {"--peer": p.color}}, p.name))),
       ]);
     }
 

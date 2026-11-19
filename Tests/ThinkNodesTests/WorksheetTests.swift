@@ -91,7 +91,7 @@ import VaporTesting
         #expect(page.body.string.contains("A munkalap megjegyzése"))
         #expect(page.body.string.contains("<strong>A munkalap bevezetője</strong>"))
         #expect(page.body.string.contains("A doboz megjegyzése"))
-        #expect(!page.body.string.contains("<script"))
+        #expect(page.body.string.contains("/viewer.js"))
         #expect(!page.body.string.contains("<h1>"))
         #expect(page.body.string.contains("/icons.svg#download"))
 
@@ -307,4 +307,54 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     #expect(throws: Abort.self) { try board.validate() }
     board.nodes[0].parent = "missing"
     #expect(throws: Abort.self) { try board.validate() }
+}
+
+@Test func worksheetLinkPaths() throws {
+    let path = try WorksheetPath(["main", "lab"])
+    for (value, expected) in [("notes", "/main/lab/notes"), ("./ötlet", "/main/lab/%C3%B6tlet"),
+                              ("/..", "/main"), ("../other", "/main/other"), ("/top", "/top"),
+                              ("../../..", "/"), ("https://example.org", "https://example.org")] {
+        #expect(WorksheetLink(value)?.destination(from: path) == expected)
+    }
+    for value in ["javascript:alert(1)", "//example.org", "data:text/html,test", "foo%2Fbar", "a\\b"] {
+        #expect(WorksheetLink(value) == nil)
+    }
+}
+
+@Test func exclusiveSelectionAndCableChanges() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-live-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    let live = Collaboration(store: store)
+    let path = try WorksheetPath(["main", "lab"])
+    let a = User(name: "anna", role: .admin, passwordHash: "")
+    let b = User(name: "bela", role: .admin, passwordHash: "")
+    var sheet = try store.open(path, user: a)
+    sheet.nodes = [Idea(id: "box", title: "Doboz", position: Point(x: 0, y: 0))]
+    sheet = try store.update(path, worksheet: sheet, user: a)
+    let eventLoop = MultiThreadedEventLoopGroup.singleton.next()
+    func select(_ user: User, node: String?) throws -> LiveState {
+        try live.presence(path, user: user, client: user.name, action: "select", node: node, since: nil, loop: eventLoop).0
+    }
+    let first = try select(a, node: "box")
+    let poll = try #require(try live.presence(path, user: a, client: a.name, action: "poll", node: nil,
+                                             since: first.version, loop: eventLoop).1)
+    let both = try select(b, node: nil)
+    try await poll.get()
+    #expect(Set(both.participants.map(\.color)).count == 2)
+    #expect(throws: Abort.self) { try select(b, node: "box") }
+    var moved = sheet
+    moved.nodes[0].position.x = 40
+    #expect(throws: Abort.self) { try live.update(path, sheet: moved, user: b, client: b.name) }
+    #expect(throws: Abort.self) { try live.update(path, sheet: moved, user: b, client: nil) }
+    #expect(throws: Abort.self) { try live.update(path, sheet: moved, user: b, client: a.name) }
+    sheet.edges = [Connection(id: "wire", source: "box", target: ConnectionTarget(point: Point(x: 0, y: 50)), style: .solid)]
+    sheet = try live.update(path, sheet: sheet, user: b, client: b.name)
+    sheet.edges[0].source = nil
+    sheet.edges[0].sourcePoint = Point(x: 0, y: 10)
+    sheet = try live.update(path, sheet: sheet, user: b, client: b.name)
+    _ = try live.presence(path, user: a, client: a.name, action: "leave", node: nil, since: nil, loop: eventLoop)
+    #expect(try select(b, node: "box").participants.first?.mine == true)
+    sheet.nodes[0].position.x = 40
+    #expect(try live.update(path, sheet: sheet, user: b, client: b.name).nodes[0].position.x == 40)
 }

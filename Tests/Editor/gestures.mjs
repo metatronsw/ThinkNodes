@@ -55,7 +55,15 @@ let sheet = {title: "Próba", revision: 1, nodes: [
   node("outer", 0, 0, 300, 240), node("inner", 10, 10, 160, 120), node("child", 10, 10, 64, 40),
   node("outside", 340, 0, 100, 80), {...node("auto", -420, 0, 120, 60), autoSize: true},
 ], edges: [{id: "one", source: "outside", target: {point: {x: 400, y: 230}}, style: "arrow"}]};
+let selectedNode;
 globalThis.fetch = async (url, options) => {
+  if (url.includes("/presence/")) {
+    const {action, node, since} = JSON.parse(options.body);
+    if (since) return new Promise(() => {});
+    if (action === "select") selectedNode = node;
+    return Response.json({version: "1", revision: sheet.revision,
+      participants: [{mine: true, name: "admin", color: "#365bd6", node: selectedNode}]});
+  }
   if (url.includes("worksheet-users")) return Response.json(["admin"]);
   if (url.includes("markdown/canvas")) return Response.json({
     blocks: JSON.parse(options.body).sources.map(source => [{kind: "body", runs: [{text: source}]}]),
@@ -214,3 +222,36 @@ prop("aria-label", "Pontrács").props.onClick(); await tick(); await save();
 assert.equal(sheet.gridVisible, false);
 assert.equal(prop("fill", "url(#worksheet-grid)"), undefined);
 console.log("Passed editor gestures, junction cleanup, container nesting and lock, text scaling, palette, HEX and world grid.");
+
+const {worksheetLink} = await import("../../Public/links.js");
+assert.deepEqual(worksheetLink("../közös", "main/lab"), {kind: "worksheet", href: "/main/k%C3%B6z%C3%B6s"});
+assert.equal(worksheetLink("/..", "main/lab").href, "/main");
+assert.equal(worksheetLink("sub/one", "main").href, "/main/sub/one");
+assert.equal(worksheetLink("https://example.org", "main").kind, "website");
+assert.equal(worksheetLink("javascript:alert(1)", "main"), null);
+
+const {labelLayout} = await import("../../Public/geometry.js");
+const sample = {...node("label", 0, 0, 240, 200), showMarkdown: true};
+const blocks = [{kind: "body", runs: [{text: "Markdown"}]}];
+for (const vertical of ["top", "middle", "bottom"]) {
+  for (const align of ["left", "center", "right"]) {
+    const layout = labelLayout({...sample, alignment: align, verticalAlignment: vertical}, []);
+    assert.equal(layout.lines[0].anchor, {left: "start", center: "middle", right: "end"}[align]);
+    assert.equal(Math.sign(Math.round(layout.lines[0].y - 5.28)) || 0, {top: -1, middle: 0, bottom: 1}[vertical]);
+  }
+}
+const layout = labelLayout({...sample, verticalAlignment: "bottom", markdownStyle: {verticalAlignment: "top"}}, blocks);
+assert.ok(layout.lines.find(l => l.text === "Markdown").y < layout.lines.find(l => l.text === "label").y);
+
+const {rebaseWorksheet} = await import("../../Public/collaboration.js");
+const base = {revision: 1, nodes: [node("a", 0, 0), node("b", 40, 10)], edges: []};
+const local = structuredClone(base), remote = structuredClone(base);
+local.nodes[0].title = "Anna";
+remote.nodes[1].title = "Béla";
+remote.revision++;
+const merged = rebaseWorksheet(base, local, remote);
+assert.deepEqual(merged.nodes.map(n => n.title), ["Anna", "Béla"]);
+local.edges.push({id: "added", source: "a", target: {node: "b"}});
+remote.nodes.pop();
+assert.deepEqual(rebaseWorksheet(base, local, remote).edges[0].target, {point: {x: 40, y: 10}});
+console.log("Passed link resolution, nine alignments and concurrent worksheet edits.");

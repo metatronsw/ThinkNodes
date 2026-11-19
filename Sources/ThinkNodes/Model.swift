@@ -18,24 +18,27 @@ enum LabelAlignment: String, Codable, Sendable {
     case left, center, right
 }
 
+enum VerticalAlignment: String, Codable, Sendable { case top, middle, bottom }
+
 enum IdeaKind: String, Codable, Sendable {
     case container, connectionPoint
 }
 
-struct TextStyle: Codable, Sendable {
+struct TextStyle: Codable, Equatable, Sendable {
     var color: String?
     var size: Double?
     var bold: Bool?
     var italic: Bool?
     var underline: Bool?
     var alignment: LabelAlignment?
+    var verticalAlignment: VerticalAlignment?
 
     var isValid: Bool {
         (color.map(validColor) ?? true) && (size.map { (10...60).contains($0) } ?? true)
     }
 }
 
-struct Idea: Codable, Sendable {
+struct Idea: Codable, Equatable, Sendable {
     var id: String
     var title: String
     var markdown = ""
@@ -52,6 +55,8 @@ struct Idea: Codable, Sendable {
     var fontSize: Double = 16
     var bold = true
     var alignment: LabelAlignment = .center
+    var verticalAlignment: VerticalAlignment?
+    var link: String?
 
     var kind: IdeaKind?
     var parent: String?
@@ -69,7 +74,7 @@ struct Idea: Codable, Sendable {
         let sizeValid = kind == .connectionPoint ? width == 14 && height == 14 :
             (64...880).contains(width) && (40...680).contains(height)
         return validSlug(id) && validTitle(title) && markdown.utf8.count <= 100_000
-            && validComment(comment) && position.isValid
+            && validComment(comment) && position.isValid && (link.map { $0.isEmpty || WorksheetLink($0) != nil } ?? true)
             && sizeValid && (autoMinWidth.map { (64...880).contains($0) } ?? true)
             && (autoMinHeight.map { (40...680).contains($0) } ?? true)
             && (commentStyle?.isValid ?? true) && (markdownStyle?.isValid ?? true)
@@ -348,13 +353,20 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    func update(_ path: WorksheetPath, worksheet: Worksheet, user: User) throws -> Worksheet {
+    func update(_ path: WorksheetPath, worksheet: Worksheet, user: User,
+                checkSelection: (Worksheet) throws -> Void = { _ in }) throws -> Worksheet {
         try lock.withLock {
             let url = try worksheetURL(path)
             let current = try read(url)
             guard current.canEdit(user) else { throw Abort(.forbidden) }
             guard worksheet.revision == current.revision else {
                 throw Abort(.preconditionFailed, reason: "A munkalapot közben más módosította. A helyi változtatásaid megmaradtak.")
+            }
+            try checkSelection(current)
+            for node in worksheet.nodes {
+                if let value = node.link, !value.isEmpty, WorksheetLink(value)?.destination(from: path) == nil {
+                    throw Abort(.unprocessableEntity, reason: "Érvénytelen link. Adj meg egy munkalapútvonalat vagy HTTP(S) webcímet.")
+                }
             }
             var updated = worksheet
             if current.owner != updated.owner {
