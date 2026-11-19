@@ -1,0 +1,483 @@
+{
+  "background" : "#FBF8F1",
+  "comment" : "Egy szombati könyvcsere megszervezése az első helyszínjavaslattól a nyitásig.",
+  "edges" : [
+    {
+      "color" : "#526D91",
+      "endArrow" : true,
+      "id" : "javaslat",
+      "label" : "javaslat",
+      "source" : "olvasok",
+      "startArrow" : false,
+      "style" : "arrow",
+      "target" : {
+        "node" : "helyszin"
+      },
+      "width" : 2
+    },
+    {
+      "color" : "#46755F",
+      "endArrow" : false,
+      "id" : "vallalas",
+      "label" : "vállalás",
+      "source" : "szervezok",
+      "startArrow" : false,
+      "style" : "solid",
+      "target" : {
+        "node" : "muhely"
+      },
+      "width" : 3
+    },
+    {
+      "color" : "#996622",
+      "endArrow" : true,
+      "id" : "bejaras",
+      "label" : "közös bejárás",
+      "source" : "helyszin",
+      "startArrow" : true,
+      "style" : "both",
+      "target" : {
+        "node" : "hely"
+      },
+      "width" : 3
+    },
+    {
+      "color" : "#9D6726",
+      "endArrow" : true,
+      "id" : "igen",
+      "label" : "igen",
+      "source" : "hely",
+      "startArrow" : false,
+      "style" : "dashed",
+      "target" : {
+        "node" : "eloszto"
+      },
+      "width" : 2.5
+    },
+    {
+      "color" : "#76608F",
+      "endArrow" : false,
+      "id" : "polcjel",
+      "label" : "polcnyitás",
+      "source" : "eloszto",
+      "startArrow" : false,
+      "style" : "rope",
+      "target" : {
+        "node" : "mese"
+      },
+      "width" : 3
+    },
+    {
+      "color" : "#16746F",
+      "endArrow" : true,
+      "id" : "indulas",
+      "label" : "kezdhetünk",
+      "source" : "eloszto",
+      "startArrow" : false,
+      "style" : "arrow",
+      "target" : {
+        "node" : "nyitas"
+      },
+      "width" : 4
+    },
+    {
+      "color" : "#977039",
+      "endArrow" : true,
+      "id" : "tartalek",
+      "label" : "tartalék",
+      "source" : "dobozok",
+      "startArrow" : false,
+      "style" : "dashed",
+      "target" : {
+        "point" : {
+          "x" : -350,
+          "y" : 322
+        }
+      },
+      "width" : 2
+    },
+    {
+      "color" : "#58687D",
+      "endArrow" : false,
+      "id" : "kovetkezo",
+      "label" : "következő kör",
+      "sourcePoint" : {
+        "x" : -278,
+        "y" : 322
+      },
+      "startArrow" : false,
+      "style" : "solid",
+      "target" : {
+        "point" : {
+          "x" : -44,
+          "y" : 322
+        }
+      },
+      "width" : 2
+    },
+    {
+      "color" : "#547F81",
+      "endArrow" : false,
+      "id" : "naplo",
+      "label" : "naplózás",
+      "sourcePoint" : {
+        "x" : 638,
+        "y" : 295
+      },
+      "startArrow" : true,
+      "style" : "solid",
+      "target" : {
+        "node" : "nyitas"
+      },
+      "width" : 2
+    },
+    {
+      "id" : "33a1ff922e125926350076e42e56062d",
+      "source" : "konyvjelzo",
+      "style" : "arrow",
+      "target" : {
+        "node" : "8f1beeb46b3198ff81f379e3f83ab8f2"
+      }
+    },
+    {
+      "id" : "bba693b9c8c3d691ddf2398a662a9316",
+      "source" : "olvasok",
+      "style" : "arrow",
+      "target" : {
+        "node" : "8f1beeb46b3198ff81f379e3f83ab8f2"
+      }
+    }
+  ],
+  "editors" : [
+    "test"
+  ],
+  "gridColor" : "#D5C9B9",
+  "gridSpacing" : 26,
+  "gridVisible" : true,
+  "isPublic" : true,
+  "markdown" : "## Próbáld ki a vásznat\n\n- **Mozgatás és zárolás.** Húzd a nagy zöld Műhelyt az üres szélénél fogva. A benne lévő két polccímke a kisebb, zárolt konténerrel együtt mozog. A Polcbeosztás tulajdonságainál a **Lock** feloldásával külön is rendezheted őket. A lila Könyvjelző dobozt húzd több mint félig a Műhelybe, majd mozgasd újra a Műhelyt. A **Konténer feloldása** elengedi a tagokat.\n- **Kábelek.** A türkiz pontnál három kábel találkozik. A pont nevét és színét dupla kattintással szerkesztheted. Egy bekötött vég megfogásához tartsd lenyomva a **Ctrl** gombot, húzás közben már elengedheted. Ha mindhárom kábelt leemeled, a pont eltűnik. A vászon alján húzd a *tartalék* kábel szabad végét a *következő kör* vonal bal végéhez. Ott egy új csomópont keletkezik.\n- **Dobozok és vonalak.** Alt lenyomása közben húzd a Nyitás vagy a Helyszínrajz egyik sarkát. Az előbbin a betűméret is változik. Dupla kattintással nyithatod meg a tulajdonságokat, jobb kattintással a műveleti menüt. Új kábelt a dobozból indított Ctrl + húzással készíthetsz.\n- **Nézet és mentés.** A pontrács a bal alsó sarokban kapcsolható. A Munkalap panelen állíthatod a rácsközt, a színeket és a megosztást. A **Mind** gomb az egész ábrát mutatja. Mentés után a megtekintő fejlécéből a teljes SVG, a JSON és a Markdown-dokumentum is letölthető.",
+  "nodes" : [
+    {
+      "alignment" : "left",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#6C927D",
+      "comment" : "Szervezőasztal",
+      "fill" : "#E6F0E8",
+      "fontSize" : 22,
+      "height" : 440,
+      "id" : "muhely",
+      "kind" : "container",
+      "locked" : false,
+      "markdown" : "Helyszín, könyvek és feliratok előkészítése. Húzd a zöld keret mellett, hogy az egész műhelyt elmozdítsd.",
+      "position" : {
+        "x" : -161.62797317775858,
+        "y" : -14.373022761425887
+      },
+      "shape" : "rounded",
+      "showMarkdown" : false,
+      "textColor" : "#254638",
+      "title" : "Műhely",
+      "width" : 680
+    },
+    {
+      "alignment" : "left",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#7799B7",
+      "comment" : "Rögzített csoport",
+      "commentStyle" : {
+        "color" : "#4B6380",
+        "italic" : true,
+        "size" : 12
+      },
+      "fill" : "#E5EDF8",
+      "fontSize" : 16,
+      "height" : 236,
+      "id" : "polc",
+      "kind" : "container",
+      "locked" : true,
+      "markdown" : "A két felirat helyét már kimértük. A **Lock** védi a beosztást.",
+      "parent" : "muhely",
+      "position" : {
+        "x" : -13.058390966446609,
+        "y" : 66.593438604230869
+      },
+      "shape" : "rounded",
+      "showMarkdown" : false,
+      "textColor" : "#203440",
+      "title" : "Polcbeosztás",
+      "width" : 306
+    },
+    {
+      "alignment" : "left",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#648E77",
+      "comment" : "Bejárás pénteken",
+      "commentStyle" : {
+        "alignment" : "right",
+        "color" : "#385C50",
+        "italic" : true,
+        "size" : 14
+      },
+      "fill" : "#CFE5DA",
+      "fontSize" : 18,
+      "height" : 140,
+      "id" : "helyszin",
+      "markdown" : "- **Árnyék** a polcoknak\n- Szabad út a kapuig",
+      "markdownBorder" : "#87AC95",
+      "markdownFill" : "#F6FCF7",
+      "markdownStyle" : {
+        "alignment" : "left",
+        "bold" : false,
+        "color" : "#284D3E",
+        "italic" : false,
+        "size" : 15
+      },
+      "parent" : "muhely",
+      "position" : {
+        "x" : -253.62797317775858,
+        "y" : -147.37302276142589
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : true,
+      "textColor" : "#174E39",
+      "title" : "Helyszínrajz",
+      "underline" : true,
+      "width" : 278
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#BB9558",
+      "comment" : "Két tartalék láda",
+      "fill" : "#FBEBD0",
+      "fontSize" : 18,
+      "height" : 72,
+      "id" : "dobozok",
+      "markdown" : "Tegyél félre két üres ládát a később érkező könyveknek.",
+      "parent" : "muhely",
+      "position" : {
+        "x" : -326.62797317775858,
+        "y" : 118.62697723857411
+      },
+      "shape" : "rounded",
+      "showMarkdown" : false,
+      "textColor" : "#203440",
+      "title" : "Könyvesládák",
+      "width" : 190
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#AE8BC0",
+      "fill" : "#F5ECFC",
+      "fontSize" : 18,
+      "height" : 56,
+      "id" : "mese",
+      "italic" : true,
+      "markdown" : "Az alacsony polcra kerülnek, hogy a gyerekek is elérjék őket.",
+      "parent" : "polc",
+      "position" : {
+        "x" : 16.941609033553391,
+        "y" : -2.4065613957691312
+      },
+      "shape" : "rounded",
+      "showMarkdown" : false,
+      "textColor" : "#203440",
+      "title" : "Mesekönyvek",
+      "width" : 160
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#B59B5B",
+      "fill" : "#FFF4D9",
+      "fontSize" : 18,
+      "height" : 56,
+      "id" : "regeny",
+      "markdown" : "A hosszabb olvasmányok a jobb oldali polcra kerülnek.",
+      "parent" : "polc",
+      "position" : {
+        "x" : 16.941609033553391,
+        "y" : 133.59343860423087
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#203440",
+      "title" : "Regények",
+      "width" : 160
+    },
+    {
+      "alignment" : "center",
+      "autoMinHeight" : 82,
+      "autoMinWidth" : 144,
+      "autoSize" : true,
+      "bold" : true,
+      "border" : "#849DC0",
+      "fill" : "#E3EAF9",
+      "fontSize" : 18,
+      "height" : 82,
+      "id" : "olvasok",
+      "markdown" : "## Mit kértek az olvasók?\n\n> A gyerekek is érjék el a mesekönyveket.\n\n1. Keressünk *árnyékos* helyet a piac mellett.\n2. Hagyjunk elég helyet a babakocsiknak.\n\nA következő találkozóhoz itt a [jegyzetlap](/otletlabor/jegyzetek).",
+      "position" : {
+        "x" : -797.83628767323921,
+        "y" : -380.06414543729613
+      },
+      "shape" : "ellipse",
+      "showMarkdown" : false,
+      "textColor" : "#203440",
+      "title" : "Olvasók",
+      "width" : 144
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#588F76",
+      "fill" : "#CEE7DD",
+      "fontSize" : 18,
+      "height" : 66,
+      "id" : "szervezok",
+      "markdown" : "A szervezők a teljes műhely előkészítését vállalták.",
+      "position" : {
+        "x" : -185,
+        "y" : -335
+      },
+      "shape" : "ellipse",
+      "showMarkdown" : false,
+      "textColor" : "#203440",
+      "title" : "Szervezők",
+      "width" : 172
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#A880B1",
+      "comment" : "Húzd a Műhelybe",
+      "fill" : "#EEDFF5",
+      "fontSize" : 16,
+      "height" : 72,
+      "id" : "konyvjelzo",
+      "markdown" : "A gyerekek pecsételhetnek rá. Próbáld hozzáadni a Műhelyhez.",
+      "position" : {
+        "x" : -651.47107838850707,
+        "y" : 348.85937780471284
+      },
+      "shape" : "rounded",
+      "showMarkdown" : false,
+      "textColor" : "#203440",
+      "title" : "Könyvjelző",
+      "width" : 152
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#BE8F42",
+      "fill" : "#FFEDC4",
+      "fontSize" : 18,
+      "height" : 134,
+      "id" : "hely",
+      "markdown" : "Elfér egymás mellett a két polc és egy babakocsi? Ha igen, kezdődhet a kipakolás.",
+      "position" : {
+        "x" : 359.90927747152909,
+        "y" : -477.12305890944879
+      },
+      "shape" : "diamond",
+      "showMarkdown" : false,
+      "textColor" : "#5D431A",
+      "title" : "Van hely?",
+      "width" : 236
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#16746F",
+      "fill" : "#16746F",
+      "fontSize" : 18,
+      "height" : 14,
+      "id" : "eloszto",
+      "kind" : "connectionPoint",
+      "markdown" : "A helyszín jóváhagyását a polcokhoz és a nyitást végző önkénteshez is továbbítjuk.",
+      "position" : {
+        "x" : 350,
+        "y" : 75
+      },
+      "shape" : "ellipse",
+      "showMarkdown" : false,
+      "textColor" : "#203440",
+      "title" : "Nyitási jel",
+      "width" : 14
+    },
+    {
+      "alignment" : "right",
+      "autoMinHeight" : 126,
+      "autoMinWidth" : 220,
+      "autoSize" : true,
+      "bold" : true,
+      "border" : "#4F938E",
+      "comment" : "Szombat délelőtt",
+      "commentStyle" : {
+        "alignment" : "center",
+        "bold" : true,
+        "color" : "#315C59",
+        "size" : 13,
+        "underline" : true
+      },
+      "fill" : "#D0E9E6",
+      "fontSize" : 18,
+      "height" : 124,
+      "id" : "nyitas",
+      "markdown" : "Kapunyitás `10:00`-kor.",
+      "markdownStyle" : {
+        "alignment" : "center",
+        "color" : "#174F50",
+        "italic" : true,
+        "size" : 15,
+        "underline" : true
+      },
+      "position" : {
+        "x" : 327.08963294003411,
+        "y" : 376.22647422727687
+      },
+      "shape" : "rounded",
+      "showMarkdown" : true,
+      "textColor" : "#203440",
+      "title" : "Nyitás",
+      "width" : 230
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#839bbc",
+      "comment" : "",
+      "fill" : "#526982",
+      "fontSize" : 16,
+      "height" : 14,
+      "id" : "8f1beeb46b3198ff81f379e3f83ab8f2",
+      "kind" : "connectionPoint",
+      "markdown" : "",
+      "position" : {
+        "x" : -774.36931328719095,
+        "y" : 77.880622660705853
+      },
+      "shape" : "ellipse",
+      "showMarkdown" : false,
+      "textColor" : "#182335",
+      "title" : "Csomópont",
+      "width" : 14
+    }
+  ],
+  "owner" : "admin",
+  "revision" : 2,
+  "schemaVersion" : 2,
+  "title" : "Könyvcsere a téren"
+}

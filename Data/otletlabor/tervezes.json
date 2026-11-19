@@ -1,142 +1,176 @@
 {
-  "schemaVersion": 1,
-  "revision": 1,
-  "title": "Közös ötletlabor",
-  "nodes": [
+  "background" : "#2d3b4d",
+  "edges" : [
     {
-      "id": "otlet",
-      "title": "Közös ötlet",
-      "position": {
-        "x": -250,
-        "y": -55
-      },
-      "width": 162,
-      "height": 75,
-      "shape": "rounded",
-      "fill": "#e2eaff",
-      "border": "#839be0",
-      "textColor": "#182335",
-      "fontSize": 16,
-      "bold": true,
-      "alignment": "center",
-      "markdown": "## Kiindulópont\n\nMit szeretnénk együtt megoldani?\n\n- Gyűjtsük össze az ötleteket.\n- Jelöljük a függőségeket."
+      "id" : "otlettol",
+      "source" : "otlet",
+      "style" : "arrow",
+      "target" : {
+        "node" : "kerdes"
+      }
     },
     {
-      "id": "kerdes",
-      "title": "Kipróbálható?",
-      "position": {
-        "x": 0,
-        "y": -55
-      },
-      "width": 168,
-      "height": 112,
-      "shape": "diamond",
-      "fill": "#fff0c7",
-      "border": "#d4a750",
-      "textColor": "#182335",
-      "fontSize": 15,
-      "bold": true,
-      "alignment": "center",
-      "markdown": "## Döntés\n\nFogalmazzunk meg **egy ellenőrizhető feltevést**."
+      "id" : "dontes",
+      "source" : "kerdes",
+      "style" : "arrow",
+      "target" : {
+        "node" : "proba"
+      }
     },
     {
-      "id": "proba",
-      "title": "Első próba",
-      "position": {
-        "x": 255,
-        "y": -55
-      },
-      "width": 167,
-      "height": 76,
-      "shape": "rounded",
-      "fill": "#d7f1e8",
-      "border": "#76b8a4",
-      "textColor": "#182335",
-      "fontSize": 16,
-      "bold": true,
-      "alignment": "center",
-      "markdown": "## Feladat\n\nKészítsünk egy egyszerű prototípust."
+      "id" : "tanulas",
+      "source" : "proba",
+      "style" : "both",
+      "target" : {
+        "node" : "tanulsag"
+      }
     },
     {
-      "id": "tanulsag",
-      "title": "Tanulságok",
-      "position": {
-        "x": 255,
-        "y": 130
-      },
-      "width": 164,
-      "height": 78,
-      "shape": "ellipse",
-      "fill": "#f0e4fb",
-      "border": "#ae92ca",
-      "textColor": "#182335",
-      "fontSize": 16,
-      "bold": true,
-      "alignment": "center",
-      "markdown": "Jegyezzük fel, mi működött, és mi igényel további munkát."
+      "id" : "visszacsatolas",
+      "source" : "tanulsag",
+      "style" : "rope",
+      "target" : {
+        "node" : "visszajelzes"
+      }
     },
     {
-      "id": "visszajelzes",
-      "title": "Visszajelzés",
-      "position": {
-        "x": -125,
-        "y": 130
+      "id" : "nyitott",
+      "source" : "visszajelzes",
+      "style" : "dashed",
+      "target" : {
+        "node" : "otlet"
       },
-      "width": 172,
-      "height": 72,
-      "shape": "rectangle",
-      "fill": "#ffe4ec",
-      "border": "#ce99ab",
-      "textColor": "#182335",
-      "fontSize": 16,
-      "bold": true,
-      "alignment": "center",
-      "markdown": "## Kérdés a csapathoz\n\nMelyik lépést egyszerűsíthetjük?"
+      "width" : 11
+    },
+    {
+      "id" : "23b724e5e6345186a31b5ee144017a59",
+      "source" : "kerdes",
+      "style" : "arrow",
+      "target" : {
+        "node" : "visszajelzes"
+      }
+    },
+    {
+      "color" : "#ffffff",
+      "id" : "7f0b91bb31f8b1a092007341995e5371",
+      "label" : "fasz",
+      "source" : "otlet",
+      "style" : "arrow",
+      "target" : {
+        "point" : {
+          "x" : -546.8123779296875,
+          "y" : -195.68426513671875
+        }
+      }
+    },
+    {
+      "id" : "e0e0df20fc35202663b332e67c3a44b8",
+      "label" : "pina",
+      "source" : "visszajelzes",
+      "style" : "arrow",
+      "target" : {
+        "point" : {
+          "x" : -547.9627685546875,
+          "y" : -195.631591796875
+        }
+      }
     }
   ],
-  "edges": [
+  "nodes" : [
     {
-      "id": "otlettol",
-      "source": "otlet",
-      "target": {
-        "node": "kerdes"
+      "alignment" : "center",
+      "bold" : true,
+      "border" : "#839be0",
+      "fill" : "#e2eaff",
+      "fontSize" : 16,
+      "height" : 75,
+      "id" : "otlet",
+      "markdown" : "## Kiindulópont\n\nMit szeretnénk együtt megoldani?\n\n- Gyűjtsük össze az ötleteket.\n- Jelöljük a függőségeket.",
+      "position" : {
+        "x" : -246.91748046875,
+        "y" : -243.64166259765625
       },
-      "style": "arrow"
+      "shape" : "rounded",
+      "textColor" : "#182335",
+      "title" : "Közös ötlet",
+      "width" : 162
     },
     {
-      "id": "dontes",
-      "source": "kerdes",
-      "target": {
-        "node": "proba"
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#d4a750",
+      "fill" : "#fff0c7",
+      "fontSize" : 15,
+      "height" : 112,
+      "id" : "kerdes",
+      "markdown" : "## Döntés\n\nFogalmazzunk meg **egy ellenőrizhető feltevést**.",
+      "position" : {
+        "x" : -25.4129638671875,
+        "y" : -349.44146728515625
       },
-      "style": "arrow"
+      "shape" : "diamond",
+      "showMarkdown" : true,
+      "textColor" : "#182335",
+      "title" : "Kipróbálható?",
+      "width" : 455
     },
     {
-      "id": "tanulas",
-      "source": "proba",
-      "target": {
-        "node": "tanulsag"
+      "alignment" : "center",
+      "bold" : true,
+      "border" : "#76b8a4",
+      "fill" : "#d7f1e8",
+      "fontSize" : 16,
+      "height" : 76,
+      "id" : "proba",
+      "markdown" : "## Feladat\n\nKészítsünk egy egyszerű prototípust.",
+      "position" : {
+        "x" : 157.67626953125,
+        "y" : -247.61138916015625
       },
-      "style": "both"
+      "shape" : "rounded",
+      "textColor" : "#182335",
+      "title" : "Első próba",
+      "width" : 167
     },
     {
-      "id": "visszacsatolas",
-      "source": "tanulsag",
-      "target": {
-        "node": "visszajelzes"
+      "alignment" : "center",
+      "bold" : true,
+      "border" : "#ae92ca",
+      "fill" : "#f0e4fb",
+      "fontSize" : 16,
+      "height" : 78,
+      "id" : "tanulsag",
+      "markdown" : "Jegyezzük fel, mi működött, és mi igényel további munkát.",
+      "position" : {
+        "x" : 282.54345703125,
+        "y" : 177.845703125
       },
-      "style": "rope"
+      "shape" : "ellipse",
+      "textColor" : "#182335",
+      "title" : "Tanulságok",
+      "width" : 164
     },
     {
-      "id": "nyitott",
-      "source": "visszajelzes",
-      "target": {
-        "point": {
-          "x": -300,
-          "y": 159
-        }
+      "alignment" : "center",
+      "bold" : true,
+      "border" : "#ce99ab",
+      "fill" : "#ffe4ec",
+      "fontSize" : 16,
+      "height" : 72,
+      "id" : "visszajelzes",
+      "markdown" : "## Kérdés a csapathoz\n\nMelyik lépést egyszerűsíthetjük?",
+      "position" : {
+        "x" : -97.14306640625,
+        "y" : 289.6453857421875
       },
-      "style": "dashed"
+      "shape" : "rectangle",
+      "textColor" : "#182335",
+      "title" : "Visszajelzés",
+      "width" : 172
     }
-  ]
+  ],
+  "revision" : 3,
+  "schemaVersion" : 1,
+  "title" : "Közös ötletlabor"
 }

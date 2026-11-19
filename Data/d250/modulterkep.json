@@ -1,0 +1,848 @@
+{
+  "background" : "#ffffff",
+  "edges" : [
+    {
+      "id" : "100056b196c4397554df74ad41af6d04",
+      "source" : "modosito",
+      "style" : "arrow",
+      "target" : {
+        "node" : "receptura-840"
+      }
+    },
+    {
+      "id" : "8b04350562bcee8d45b64b2253024a45",
+      "source" : "nav-szamla-import",
+      "style" : "arrow",
+      "target" : {
+        "point" : {
+          "x" : -782.41049120846208,
+          "y" : -231.72808164879405
+        }
+      }
+    },
+    {
+      "id" : "4ac4a687e5ed0690c3e628127bb220b2",
+      "source" : "napi-zarasok",
+      "style" : "arrow",
+      "target" : {
+        "point" : {
+          "x" : 1073.18560876109,
+          "y" : -50.139782111454451
+        }
+      }
+    },
+    {
+      "id" : "5e5ad4cbe4fb56041f3f957493971fe8",
+      "source" : "napi-zarasok",
+      "style" : "arrow",
+      "target" : {
+        "node" : "elszamolas-keret"
+      }
+    },
+    {
+      "id" : "b82214262f008cf24467ab3e27231c52",
+      "source" : "termekek",
+      "style" : "arrow",
+      "target" : {
+        "node" : "receptura-837"
+      }
+    }
+  ],
+  "editors" : [
+
+  ],
+  "gridVisible" : false,
+  "isPublic" : false,
+  "nodes" : [
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#dedede",
+      "fill" : "#ffffff",
+      "fontSize" : 14,
+      "height" : 231,
+      "id" : "elszamolas-keret",
+      "kind" : "container",
+      "locked" : false,
+      "markdown" : "",
+      "position" : {
+        "x" : -92.5,
+        "y" : 432
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#ffffff",
+      "title" : "Elszámolás",
+      "width" : 821
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#a07fb8",
+      "fill" : "#c181fc",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "stand",
+      "markdown" : "",
+      "position" : {
+        "x" : -403,
+        "y" : -491
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#63398c",
+      "title" : "Stand",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#4693af",
+      "fill" : "#01a7ee",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "felkesz-termek",
+      "markdown" : "",
+      "position" : {
+        "x" : -403,
+        "y" : -411
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#004b6b",
+      "title" : "Félkész termék",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#a0d563",
+      "fill" : "#fffe04",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "receptura",
+      "markdown" : "",
+      "position" : {
+        "x" : -362,
+        "y" : -368
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#6e6b00",
+      "title" : "Receptúra",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#2f94be",
+      "fill" : "#02a6ed",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "beszallitok",
+      "markdown" : "",
+      "position" : {
+        "x" : -615,
+        "y" : -320
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#004d6b",
+      "title" : "Beszállítók",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#739944",
+      "fill" : "#6fb604",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "gyartas",
+      "markdown" : "",
+      "position" : {
+        "x" : -403,
+        "y" : -303
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#356700",
+      "title" : "Gyártás",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#60acc6",
+      "fill" : "#01a8ed",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "modosito",
+      "markdown" : "",
+      "position" : {
+        "x" : -133.56233476413979,
+        "y" : -406.92101780029594
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#004b6e",
+      "title" : "Módosító",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#8cc36f",
+      "fill" : "#fdff04",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "receptura-840",
+      "markdown" : "",
+      "position" : {
+        "x" : -109.44087078060636,
+        "y" : -329.98911524242021
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#6b6b00",
+      "title" : "Receptúra",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#59b2d4",
+      "fill" : "#02a6eb",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "termekek",
+      "markdown" : "",
+      "position" : {
+        "x" : -150.44087078060636,
+        "y" : -253.94640950830268
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#004a6e",
+      "title" : "Termékek",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#a8d151",
+      "fill" : "#fefe02",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "receptura-837",
+      "markdown" : "",
+      "position" : {
+        "x" : -101.91595373890993,
+        "y" : -189.76429545471427
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#6f6b00",
+      "title" : "Receptúra",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#bc8387",
+      "fill" : "#ea818d",
+      "fontSize" : 12.6,
+      "height" : 43,
+      "id" : "nav-szamla-import",
+      "markdown" : "",
+      "position" : {
+        "x" : -1007.7274668104899,
+        "y" : -230.75160254030021
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#722e30",
+      "title" : "NAV számla import",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#79a439",
+      "fill" : "#73b502",
+      "fontSize" : 11.4,
+      "height" : 43,
+      "id" : "beszallitoi-szamlak",
+      "markdown" : "",
+      "position" : {
+        "x" : -615,
+        "y" : -228
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#305e00",
+      "title" : "Beszállítói számlák",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#3794bf",
+      "fill" : "#01a7eb",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "alapanyagok",
+      "markdown" : "",
+      "position" : {
+        "x" : -403,
+        "y" : -228
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#00476a",
+      "title" : "Alapanyagok",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#3e90a8",
+      "fill" : "#03a5ed",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "raktarak",
+      "markdown" : "",
+      "position" : {
+        "x" : -403,
+        "y" : -125
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#00496b",
+      "title" : "Raktárak",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#74943f",
+      "fill" : "#70b605",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "atvetelezes",
+      "markdown" : "",
+      "position" : {
+        "x" : -567,
+        "y" : -29
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#316100",
+      "title" : "Átvételezés",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#74943f",
+      "fill" : "#70b605",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "kivetelezes",
+      "markdown" : "",
+      "position" : {
+        "x" : -403,
+        "y" : -29
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#326200",
+      "title" : "Kivételezés",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#74943f",
+      "fill" : "#70b605",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "raktari-eladas",
+      "markdown" : "",
+      "position" : {
+        "x" : -240,
+        "y" : -29
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#316000",
+      "title" : "Raktári eladás",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#7aab2e",
+      "fill" : "#70b703",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "selejtezes",
+      "markdown" : "",
+      "position" : {
+        "x" : -403,
+        "y" : 23
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#346300",
+      "title" : "Selejtezés",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#ba7d85",
+      "fill" : "#eb818d",
+      "fontSize" : 13.4,
+      "height" : 43,
+      "id" : "tranzakcio-lista",
+      "markdown" : "",
+      "position" : {
+        "x" : -404,
+        "y" : 106
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#732a2f",
+      "title" : "Tranzakció lista",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#e0cfb3",
+      "fill" : "#fbcd91",
+      "fontSize" : 13.5,
+      "height" : 43,
+      "id" : "hazhozszallitas",
+      "markdown" : "",
+      "position" : {
+        "x" : 180,
+        "y" : -381
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#634517",
+      "title" : "Házhozszállítás",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#e6cca4",
+      "fill" : "#face90",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "azonnali-eladas",
+      "markdown" : "",
+      "position" : {
+        "x" : 180,
+        "y" : -315
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#6a4d21",
+      "title" : "Azonnali eladás",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#aa82c9",
+      "fill" : "#c280fc",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "eladofelulet",
+      "markdown" : "",
+      "position" : {
+        "x" : 88,
+        "y" : -249
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#582d80",
+      "title" : "Eladófelület",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#ceb891",
+      "fill" : "#f8ce91",
+      "fontSize" : 13,
+      "height" : 43,
+      "id" : "rendelesfelvetel",
+      "markdown" : "",
+      "position" : {
+        "x" : 282,
+        "y" : -249
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#624418",
+      "title" : "Rendelésfelvétel",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#c9b086",
+      "fill" : "#f9cf8f",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "asztalterkep",
+      "markdown" : "",
+      "position" : {
+        "x" : 180,
+        "y" : -180
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#66471c",
+      "title" : "Asztaltérkép",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#caae86",
+      "fill" : "#f7d08d",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "nyomtatas",
+      "markdown" : "",
+      "position" : {
+        "x" : 393,
+        "y" : -180
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#64441a",
+      "title" : "Nyomtatás",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#4192b0",
+      "fill" : "#03a6ee",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "felszolgalok",
+      "markdown" : "",
+      "position" : {
+        "x" : 398,
+        "y" : -316
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#00496c",
+      "title" : "Felszolgálók",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#a884cc",
+      "fill" : "#c280fc",
+      "fontSize" : 10.5,
+      "height" : 43,
+      "id" : "beleptetes-munkaido",
+      "markdown" : "",
+      "position" : {
+        "x" : 472,
+        "y" : -378
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#582f7e",
+      "title" : "Beléptetés/munkaidő",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#b08042",
+      "fill" : "#f49c23",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "rendelesblokk",
+      "markdown" : "",
+      "position" : {
+        "x" : 413,
+        "y" : -112
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#733e00",
+      "title" : "Rendelésblokk",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#cb9c4f",
+      "fill" : "#f59b23",
+      "fontSize" : 13,
+      "height" : 43,
+      "id" : "szamlanyomtatas",
+      "markdown" : "",
+      "position" : {
+        "x" : 413,
+        "y" : -47
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#7c4200",
+      "title" : "Számlanyomtatás",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#79a335",
+      "fill" : "#71b504",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "flexpont-szamla",
+      "markdown" : "",
+      "position" : {
+        "x" : 596,
+        "y" : -47
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#2e6000",
+      "title" : "Flexpont számla",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#91dcd8",
+      "fill" : "#82fffc",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "napi-zarasok",
+      "markdown" : "",
+      "position" : {
+        "x" : 851.66568762872316,
+        "y" : -63.644358665166578
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#166968",
+      "title" : "Napi zárások",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#8483d3",
+      "fill" : "#8080fc",
+      "fontSize" : 13.5,
+      "height" : 43,
+      "id" : "termek-forgalom",
+      "markdown" : "",
+      "position" : {
+        "x" : 851,
+        "y" : 23
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#34378d",
+      "title" : "Termék forgalom",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#8484c0",
+      "fill" : "#8080fe",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "szamla-lista",
+      "markdown" : "",
+      "position" : {
+        "x" : 851,
+        "y" : 86
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#393b8f",
+      "title" : "Számla lista",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#8382c8",
+      "fill" : "#807ffe",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "asztaltortenet",
+      "markdown" : "",
+      "position" : {
+        "x" : 851,
+        "y" : 153
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#353687",
+      "title" : "Asztaltörténet",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#8785ce",
+      "fill" : "#807ffe",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "sztorno-lista",
+      "markdown" : "",
+      "position" : {
+        "x" : 851,
+        "y" : 217
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#3a3e94",
+      "title" : "Sztornó lista",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#a1a1a1",
+      "fill" : "#ababab",
+      "fontSize" : 14,
+      "height" : 78,
+      "id" : "elszamolas-elszamolas",
+      "markdown" : "",
+      "parent" : "elszamolas-keret",
+      "position" : {
+        "x" : -434,
+        "y" : 355.5
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#353535",
+      "title" : "Elszámolás",
+      "width" : 138
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#bb9fd0",
+      "fill" : "#c280fc",
+      "fontSize" : 10.5,
+      "height" : 43,
+      "id" : "elszamolas-beleptetes-munkaido",
+      "markdown" : "",
+      "parent" : "elszamolas-keret",
+      "position" : {
+        "x" : -187,
+        "y" : 403
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#562a7c",
+      "title" : "Beléptetés/munkaidő",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#8dc9c7",
+      "fill" : "#81fefd",
+      "fontSize" : 14,
+      "height" : 43,
+      "id" : "elszamolas-napi-zarasok",
+      "markdown" : "",
+      "parent" : "elszamolas-keret",
+      "position" : {
+        "x" : 98,
+        "y" : 477
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#156564",
+      "title" : "Napi zárások",
+      "width" : 148
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : false,
+      "border" : "#7da439",
+      "fill" : "#70b504",
+      "fontSize" : 11.4,
+      "height" : 43,
+      "id" : "elszamolas-beszallitoi-szamlak",
+      "markdown" : "",
+      "parent" : "elszamolas-keret",
+      "position" : {
+        "x" : -404,
+        "y" : 511
+      },
+      "shape" : "rectangle",
+      "showMarkdown" : false,
+      "textColor" : "#2d5f00",
+      "title" : "Beszállítói számlák",
+      "width" : 148
+    }
+  ],
+  "owner" : "admin",
+  "revision" : 2,
+  "schemaVersion" : 2,
+  "title" : "D250 – Vendéglátási modulok"
+}

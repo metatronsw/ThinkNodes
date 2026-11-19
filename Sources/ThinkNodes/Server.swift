@@ -62,7 +62,7 @@ private struct CanvasMarkdownRequest: Content {
 }
 
 private struct CanvasMarkdownResponse: Content {
-    var text: [String]
+    var blocks: [[MarkdownBlock]]
 }
 
 private struct SessionInfo: Sendable {
@@ -142,7 +142,7 @@ private func loginPage(_ req: Request, next: String, message: String? = nil) -> 
             <input type="hidden" name="next" value="\(escaped(next))">
             <label>Felhasználónév<input name="name" autocomplete="username" required autofocus></label>
             <label>Jelszó<input name="password" type="password" autocomplete="current-password" required></label>
-            <button class="button primary" type="submit">Belépés</button>
+            <button class="button primary" type="submit">\(uiIcon("login"))Belépés</button>
           </form>
         </main>
         """)
@@ -194,7 +194,7 @@ func configure(_ app: Application, store: WorksheetStore) {
     app.get { req async throws -> Response in
         let identity = try session(req, store: store)
         if try store.settings().requireLogin && identity.user == nil { return redirect("/login") }
-        let worksheets = try await req.application.threadPool.runIfActive { try store.list() }
+        let worksheets = try await req.application.threadPool.runIfActive { try store.list(user: identity.user) }
         return indexPage(worksheets, session: identity)
     }
 
@@ -212,11 +212,12 @@ func configure(_ app: Application, store: WorksheetStore) {
         guard let user = identity.user, let csrf = identity.csrf else {
             return redirect("/login?next=/edit/" + path.url)
         }
-        let worksheet = try await req.application.threadPool.runIfActive { try store.open(path, authenticated: true) }
+        let worksheet = try await req.application.threadPool.runIfActive { try store.open(path, user: user) }
+        guard worksheet.canEdit(user) else { throw Abort(.forbidden) }
         let local = [assets + "vendor/vue.js", assets + "vendor/d3.js"].allSatisfy { FileManager.default.fileExists(atPath: $0) }
         let loading = local ? "Szerkesztő betöltése…" : "A szerkesztőhöz futtasd a teljes ./build.sh parancsot."
         return htmlPage(title: worksheet.title, body: """
-            <main id="editor" class="editor-root" data-path="\(path.url)" data-csrf="\(csrf)" data-role="\(user.role.rawValue)">
+            <main id="editor" class="editor-root" data-path="\(path.url)" data-csrf="\(csrf)" data-role="\(user.role.rawValue)" data-user="\(escaped(user.name))">
               <p class="editor-loading">\(loading)</p>
               <noscript><p>A szerkesztőhöz JavaScript szükséges.</p><a href="/\(path.url)">Megtekintés</a></noscript>
             </main>
@@ -227,13 +228,23 @@ func configure(_ app: Application, store: WorksheetStore) {
         let identity = try session(req, store: store)
         let path = try WorksheetPath(req.parameters.getCatchall())
         let worksheet = try await req.application.threadPool.runIfActive {
-            try store.load(path, authenticated: identity.user != nil)
+            try store.load(path, user: identity.user)
         }
-        return try worksheetResponse(worksheet)
+        return try worksheetResponse(worksheet.canEdit(identity.user) ? worksheet : worksheet.withoutAccessDetails())
+    }
+
+    app.get("api", "worksheet-users", "**") { req async throws -> [String] in
+        let user = try session(req, store: store).editor()
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        return try await req.application.threadPool.runIfActive {
+            let worksheet = try store.load(path, user: user)
+            guard worksheet.canManage(user) else { throw Abort(.forbidden) }
+            return try store.allUsers().map(\.name)
+        }
     }
 
     app.put("api", "worksheet", "**") { req async throws -> Response in
-        _ = try session(req, store: store).editor()
+        let user = try session(req, store: store).editor()
         try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
         let submitted = try req.content.decode(Worksheet.self)
         guard let match = req.headers.first(name: .ifMatch) else {
@@ -243,7 +254,7 @@ func configure(_ app: Application, store: WorksheetStore) {
             throw Abort(.badRequest, reason: "Érvénytelen mentési revízió.")
         }
         let path = try WorksheetPath(req.parameters.getCatchall())
-        let worksheet = try await req.application.threadPool.runIfActive { try store.update(path, worksheet: submitted) }
+        let worksheet = try await req.application.threadPool.runIfActive { try store.update(path, worksheet: submitted, user: user) }
         return try worksheetResponse(worksheet)
     }
 
@@ -263,7 +274,7 @@ func configure(_ app: Application, store: WorksheetStore) {
             throw Abort(.payloadTooLarge)
         }
         return try await req.application.threadPool.runIfActive {
-            CanvasMarkdownResponse(text: sources.map(canvasMarkdown))
+            CanvasMarkdownResponse(blocks: sources.map(canvasMarkdown))
         }
     }
 
@@ -271,14 +282,15 @@ func configure(_ app: Application, store: WorksheetStore) {
         let path = try WorksheetPath(req.parameters.getCatchall())
         let identity = try session(req, store: store)
         let worksheet = try await req.application.threadPool.runIfActive {
-            try store.load(path, authenticated: identity.user != nil)
+            try store.load(path, user: identity.user)
         }
         switch req.parameters.get("format") {
         case "svg":
             return response("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + boardSVG(worksheet),
                             type: "image/svg+xml; charset=utf-8", filename: "\(path.name).svg")
         case "json":
-            return try worksheetResponse(worksheet, filename: "\(path.name).json")
+            return try worksheetResponse(worksheet.canEdit(identity.user) ? worksheet : worksheet.withoutAccessDetails(),
+                                         filename: "\(path.name).json")
         case "markdown":
             return response(worksheetMarkdown(worksheet), type: "text/markdown; charset=utf-8", filename: "\(path.name).md")
         default:
@@ -292,7 +304,7 @@ func configure(_ app: Application, store: WorksheetStore) {
         let worksheet: Worksheet
         do {
             worksheet = try await req.application.threadPool.runIfActive {
-                try store.open(path, authenticated: identity.user != nil)
+                try store.open(path, user: identity.user)
             }
         } catch let error as Abort where error.status == .unauthorized {
             return redirect("/login?next=/" + path.url)
@@ -328,7 +340,7 @@ private func indexPage(_ items: [(path: WorksheetPath, worksheet: Worksheet)], s
           <div class="page-heading"><h1>Munkalapok</h1></div>
           <form class="open-path panel" method="get" action="/open">
             <label>Munkalap útvonala<input name="path" placeholder="gondolatok/otletek1" required></label>
-            <button class="button primary" type="submit">Megnyitás</button>
+            <button class="button primary" type="submit">\(uiIcon("folder"))Megnyitás</button>
           </form>
           <div class="project-list">\(cards.isEmpty ? "<p class=\"muted\">Még nincs munkalap.</p>" : cards)</div>
         </main>
@@ -337,7 +349,13 @@ private func indexPage(_ items: [(path: WorksheetPath, worksheet: Worksheet)], s
 
 private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Worksheet, session: SessionInfo) throws -> Response {
     let base = "/" + path.url
-    let edit = session.user == nil ? "" : "<a class=\"button primary\" href=\"/edit/\(path.url)\">Szerkesztés</a>"
+    let edit = worksheet.canEdit(session.user)
+        ? headerLink("/edit/" + path.url, "Szerkesztés", symbol: "edit") : ""
+    let downloads = [
+        ("svg", "SVG"), ("json", "JSON"), ("markdown", "Markdown"),
+    ].map { format, title in
+        headerLink("/export/" + format + "/" + path.url, title, symbol: "download")
+    }.joined()
     let note: String
     if let noteID = req.query[String.self, at: "note"] {
         guard let node = worksheet.nodes.first(where: { $0.id == noteID }) else { throw Abort(.notFound) }
@@ -356,13 +374,9 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
     let notes = description.isEmpty && introduction.isEmpty ? "" :
         "<section class=\"panel worksheet-notes\">\(description)<div class=\"markdown\">\(introduction)</div></section>"
     return htmlPage(title: worksheet.title, body: """
-        \(siteHeader(path: path.url, project: worksheet.title, user: session.user, csrf: session.csrf))
+        \(siteHeader(path: path.url, project: worksheet.title, user: session.user, csrf: session.csrf, actions: edit + downloads))
         <main class="shell">
-          <div class="page-heading"><h1>\(escaped(worksheet.title))</h1>\(edit)</div>
-          <div class="browse-bar"><span class="muted">/\(escaped(path.parts.joined(separator: "/")))</span>
-            <nav class="exports" aria-label="Letöltések"><a href="/export/svg/\(path.url)">SVG</a><a href="/export/json/\(path.url)">JSON</a><a href="/export/markdown/\(path.url)">Markdown</a></nav>
-          </div>
-          <div class="passive-frame panel">\(worksheet.nodes.isEmpty ? "<p class=\"muted empty\">A munkalap üres.</p>" : boardSVG(worksheet, noteBase: base))</div>
+          <div class="passive-frame panel">\(boardSVG(worksheet, noteBase: base))</div>
           \(notes)
           \(note)
         </main>
@@ -406,7 +420,7 @@ private func configureAdmin(_ app: Application, store: WorksheetStore) {
                   \(csrfInput(token(req)))
                   <label>Felhasználónév<input name="name" autocomplete="username" pattern="[a-z0-9-]+" required></label>
                   <label>Jelszó<input name="password" type="password" autocomplete="new-password" minlength="10" required></label>
-                  <button class="button primary" type="submit">Adminisztrátor létrehozása</button>
+                  <button class="button primary" type="submit">\(uiIcon("plus"))Adminisztrátor létrehozása</button>
                 </form>
                 """ : "<p>Az első adminisztrátort helyi böngészőből vagy a <code>./run.sh user admin admin</code> paranccsal hozhatod létre.</p>"
             return htmlPage(title: "Első beállítás", body: """
@@ -434,11 +448,11 @@ private func configureAdmin(_ app: Application, store: WorksheetStore) {
     }
 
     app.post("admin", "settings") { req -> Response in
-        struct Form: Content { var requireLogin: String?; var guestCreation: String?; var csrf: String }
+        struct Form: Content { var requireLogin: String?; var csrf: String }
         _ = try requireAdmin(req, store: store)
         let form = try req.content.decode(Form.self)
         try verify(req, token: form.csrf)
-        try store.setSettings(SiteSettings(requireLogin: form.requireLogin == "on", guestCreation: form.guestCreation == "on"))
+        try store.setSettings(SiteSettings(requireLogin: form.requireLogin == "on"))
         return redirect("/admin")
     }
 
@@ -484,7 +498,7 @@ private func adminPage(users: [User], settings: SiteSettings, user: User, csrf: 
         let delete = user.name == account.name ? "" : """
             <form method="post" action="/admin/users/delete">
               \(csrfInput(csrf))<input type="hidden" name="name" value="\(escaped(account.name))">
-              <button class="button danger" type="submit">Törlés</button>
+              <button class="button danger" type="submit">\(uiIcon("trash"))Törlés</button>
             </form>
             """
         return """
@@ -494,7 +508,7 @@ private func adminPage(users: [User], settings: SiteSettings, user: User, csrf: 
                 <strong>\(escaped(account.name))</strong>
                 <label>Szerepkör\(roles(account.role))</label>
                 <label>Új jelszó<input name="password" type="password" autocomplete="new-password" minlength="10" placeholder="Változatlan"></label>
-                <button class="button" type="submit">Mentés</button>
+                <button class="button" type="submit">\(uiIcon("save"))Mentés</button>
               </form>
               \(delete)
             </div>
@@ -509,8 +523,7 @@ private func adminPage(users: [User], settings: SiteSettings, user: User, csrf: 
             <form method="post" action="/admin/settings" class="stack">
               \(csrfInput(csrf))
               <label class="check"><input type="checkbox" name="requireLogin"\(settings.requireLogin ? " checked" : "")>Megtekintéshez is szükséges bejelentkezni</label>
-              <label class="check"><input type="checkbox" name="guestCreation"\(settings.guestCreation ? " checked" : "")>Vendég is létrehozhat hiányzó munkalapot nyilvános módban</label>
-              <button class="button primary" type="submit">Beállítások mentése</button>
+              <button class="button primary" type="submit">\(uiIcon("save"))Beállítások mentése</button>
             </form>
           </section>
           <section class="panel admin-panel">
@@ -523,7 +536,7 @@ private func adminPage(users: [User], settings: SiteSettings, user: User, csrf: 
                 <label>Név<input name="name" pattern="[a-z0-9-]+" required></label>
                 <label>Szerepkör\(roles(.editor))</label>
                 <label>Jelszó<input name="password" type="password" autocomplete="new-password" minlength="10" required></label>
-                <button class="button primary" type="submit">Létrehozás</button>
+                <button class="button primary" type="submit">\(uiIcon("plus"))Létrehozás</button>
               </form>
             </details>
           </section>
