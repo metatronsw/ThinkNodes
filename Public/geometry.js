@@ -16,6 +16,13 @@ export const paper = "#f5f8fc";
 export const cableColor = "#526982";
 export const limit = (value, min, max) => Math.min(max, Math.max(min, value));
 
+export function selectionOutline(shape, width, height) {
+  const x = width / 2 + 10, y = height / 2 + 10;
+  if (shape === "ellipse") return ["ellipse", {rx: x, ry: y}];
+  if (shape === "diamond") return ["polygon", {points: `0,${-y} ${x},0 0,${y} ${-x},0`}];
+  return ["rect", {x: -x, y: -y, width: 2*x, height: 2*y, rx: shape === "rounded" ? 22 : 0}];
+}
+
 export function shapeDistance(node, point, padding = 0) {
   const x = Math.abs(point.x - node.position.x) / (node.width / 2 + padding);
   const y = Math.abs(point.y - node.position.y) / (node.height / 2 + padding);

@@ -34,15 +34,71 @@
       "target" : {
         "node" : "cables"
       }
+    },
+    {
+      "endArrow" : true,
+      "id" : "c9bb55fa2812fb3c7189f23c39587bd7",
+      "source" : "external",
+      "style" : "arrow",
+      "target" : {
+        "node" : "decision"
+      }
+    },
+    {
+      "endArrow" : true,
+      "id" : "e28189aca241f062da204b343e1b81f2",
+      "source" : "start",
+      "style" : "arrow",
+      "target" : {
+        "node" : "external"
+      }
+    },
+    {
+      "endArrow" : true,
+      "id" : "0c310717c0f79d409804750ca4ea3f19",
+      "source" : "start",
+      "style" : "arrow",
+      "target" : {
+        "node" : "cf3337e634ea60c42de110c77c70acea"
+      },
+      "width" : 5
+    },
+    {
+      "endArrow" : false,
+      "id" : "e88bbf2fdea36081065ee085757f21be",
+      "source" : "external",
+      "style" : "arrow",
+      "target" : {
+        "node" : "b47b1280f3da4730acbdb13330d0248f"
+      }
+    },
+    {
+      "endArrow" : true,
+      "id" : "ab99700e0dfd065ef4e7d39ddfb096ba",
+      "label" : "",
+      "source" : "b47b1280f3da4730acbdb13330d0248f",
+      "startArrow" : false,
+      "style" : "arrow",
+      "target" : {
+        "node" : "cf3337e634ea60c42de110c77c70acea"
+      }
+    },
+    {
+      "endArrow" : true,
+      "id" : "8fcd312ed28d0d9cc035e9d096acdb38",
+      "sourcePoint" : {
+        "x" : -110.5,
+        "y" : -413.5
+      },
+      "style" : "arrow",
+      "target" : {
+        "node" : "b47b1280f3da4730acbdb13330d0248f"
+      }
     }
-  ],
-  "editors" : [
-
   ],
   "gridColor" : "#bdcbd1",
   "gridSpacing" : 20,
   "gridVisible" : true,
-  "isPublic" : true,
   "markdown" : "**Próba:** jobb kattintás egy dobozon → Ping. Szerkesztésben dupla kattintással kövesd az allaplinkeket. Megtekintésben egy kattintás elég.",
   "nodes" : [
     {
@@ -56,8 +112,8 @@
       "id" : "start",
       "markdown" : "**Két allap** vár lent. Válassz közülük!",
       "position" : {
-        "x" : -300,
-        "y" : -115
+        "x" : -583.88887985405574,
+        "y" : -361.37844247180715
       },
       "shape" : "rounded",
       "showMarkdown" : true,
@@ -77,8 +133,8 @@
       "kind" : "connectionPoint",
       "markdown" : "",
       "position" : {
-        "x" : -40,
-        "y" : -115
+        "x" : -196,
+        "y" : -122
       },
       "shape" : "ellipse",
       "textColor" : "#193744",
@@ -87,22 +143,25 @@
     },
     {
       "alignment" : "center",
-      "autoSize" : false,
+      "autoMinHeight" : 253,
+      "autoMinWidth" : 475,
+      "autoSize" : true,
       "bold" : true,
       "border" : "#567282",
       "fill" : "#ffffff",
-      "fontSize" : 17,
-      "height" : 148,
+      "fontSize" : 18.53633064034376,
+      "height" : 253,
       "id" : "decision",
       "markdown" : "A pont mögött részletes **Markdown** van. Tartsd itt az egeret!",
       "position" : {
-        "x" : 185,
-        "y" : -115
+        "x" : 267.59668678891853,
+        "y" : 15.942666566154912
       },
       "shape" : "diamond",
+      "showMarkdown" : true,
       "textColor" : "#193744",
       "title" : "Döntési pont",
-      "width" : 230
+      "width" : 475
     },
     {
       "alignment" : "center",
@@ -117,8 +176,8 @@
       "link" : "formak",
       "markdown" : "",
       "position" : {
-        "x" : -165,
-        "y" : 145
+        "x" : -680.19656307477862,
+        "y" : 85.720052300210853
       },
       "shape" : "rounded",
       "textColor" : "#193744",
@@ -138,8 +197,8 @@
       "link" : "kapcsolatok",
       "markdown" : "",
       "position" : {
-        "x" : 157,
-        "y" : 170
+        "x" : -396.34332560184623,
+        "y" : 249.39351044757495
       },
       "shape" : "rounded",
       "textColor" : "#193744",
@@ -153,23 +212,87 @@
       "border" : "#567282",
       "fill" : "#f3e4f3",
       "fontSize" : 17,
-      "height" : 112,
+      "height" : 179.85654130126937,
       "id" : "external",
       "link" : "https://commonmark.org/help/",
       "markdown" : "",
       "position" : {
-        "x" : 461,
-        "y" : -81
+        "x" : 278.07573263488007,
+        "y" : -346.57979867345932
       },
       "shape" : "ellipse",
       "textColor" : "#193744",
       "title" : "Markdown útmutató",
-      "width" : 218
+      "width" : 275.63476966674011
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : true,
+      "bold" : true,
+      "border" : "#839bbc",
+      "comment" : "",
+      "fill" : "#dce9ff",
+      "fontSize" : 16,
+      "height" : 80,
+      "id" : "de3c7e2120b09f79c48029e2272363c1",
+      "markdown" : "",
+      "position" : {
+        "x" : -646.5,
+        "y" : -155.5
+      },
+      "shape" : "rounded",
+      "showMarkdown" : false,
+      "textColor" : "#182335",
+      "title" : "Új ötlet",
+      "width" : 176
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#839bbc",
+      "comment" : "",
+      "fill" : "#526982",
+      "fontSize" : 16,
+      "height" : 14,
+      "id" : "cf3337e634ea60c42de110c77c70acea",
+      "kind" : "connectionPoint",
+      "markdown" : "",
+      "position" : {
+        "x" : -219.5,
+        "y" : -579.5
+      },
+      "shape" : "ellipse",
+      "showMarkdown" : false,
+      "textColor" : "#182335",
+      "title" : "",
+      "width" : 14
+    },
+    {
+      "alignment" : "center",
+      "autoSize" : false,
+      "bold" : true,
+      "border" : "#839bbc",
+      "comment" : "",
+      "fill" : "#526982",
+      "fontSize" : 16,
+      "height" : 14,
+      "id" : "b47b1280f3da4730acbdb13330d0248f",
+      "kind" : "connectionPoint",
+      "markdown" : "",
+      "position" : {
+        "x" : 14.512008666992188,
+        "y" : -631.7540283203125
+      },
+      "shape" : "ellipse",
+      "showMarkdown" : false,
+      "textColor" : "#182335",
+      "title" : "",
+      "width" : 14
     }
   ],
-  "owner" : "admin",
-  "resetRevision" : 75,
-  "revision" : 75,
+  "resetRevision" : 119,
+  "revision" : 151,
   "schemaVersion" : 2,
   "title" : "ThinkNodes bemutató"
 }

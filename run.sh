@@ -70,12 +70,10 @@ if [[ ! -x "$executable" || ( -z "${THINKNODES_EXECUTABLE:-}" && Sources/ThinkNo
     ./build.sh --skip-update -j 2
 fi
 
-if [[ "$command" == serve ]]; then
-    exec "$executable" serve --hostname "${THINKNODES_HOST:-127.0.0.1}" --port "${port:-${THINKNODES_PORT:-8080}}" ${server_args[@]+"${server_args[@]}"}
-fi
-
 bind_host="${THINKNODES_HOST:-0.0.0.0}"
-port="${port:-${THINKNODES_PORT:-8443}}"
+default_port=8443
+if [[ "$command" == serve ]]; then default_port=8080; fi
+port="${port:-${THINKNODES_PORT:-$default_port}}"
 addresses=(localhost 127.0.0.1)
 if [[ "$bind_host" == 0.0.0.0 || "$bind_host" == :: ]]; then
     if [[ "$(uname -s)" == Darwin ]]; then
@@ -91,6 +89,15 @@ if [[ "$bind_host" == 0.0.0.0 || "$bind_host" == :: ]]; then
     [[ "$bind_host" != :: ]] || addresses+=("::1")
 else
     addresses+=("$bind_host")
+fi
+
+if [[ "$command" == serve ]]; then
+    if [[ "$bind_host" != 0.0.0.0 && "$bind_host" != :: ]]; then addresses=("$bind_host"); fi
+    for address in "${addresses[@]}"; do
+        [[ "$address" != *:* ]] || address="[$address]"
+        printf 'HTTP-cím: http://%s:%s/\n' "$address" "$port"
+    done
+    exec "$executable" serve --hostname "$bind_host" --port "$port" ${server_args[@]+"${server_args[@]}"}
 fi
 
 # Publish files only after OpenSSL has finished writing them. Parallel starts

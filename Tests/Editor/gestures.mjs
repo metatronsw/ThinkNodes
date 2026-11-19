@@ -257,6 +257,10 @@ canvas().props.onPointerup(event(canvas(), -510, -315));
 await save();
 assert.deepEqual(sheet.edges.at(-1).sourcePoint, {x: -600, y: -320});
 assert.deepEqual(sheet.edges.at(-1).target.point, {x: -510, y: -315});
+assert.equal(sheet.edges.at(-1).endArrow, true);
+const markerID = "arrow-" + sheet.edges.at(-1).id;
+assert.ok(prop("marker-end", "url(#" + markerID + ")"));
+assert.equal(prop("id", markerID).props.markerWidth, 6.75);
 
 for (const [id, x, y, automatic] of [["outside",180,30,false], ["auto",-420,0,true]]) {
   toggle("Alt", true); await tick();
@@ -303,7 +307,7 @@ assert.ok(prop("fill", "#ffeecc", graphic("outside")));
 edit(prop("aria-label", "Markdown háttér HEX"), "#ffb77a");
 await tick();
 assert.equal(find(n => n.tag === "rect" && n.props["pointer-events"] === "none" && n.props.fill === "#ffb77a", graphic("outside")), undefined);
-await press("Munkalap");
+toggle("Escape", true); await tick();
 const spacing = find(n => n.tag === "label" && n.children[0]?.text === "Rácsköz").children[1];
 spacing.props.onInput({target: {value: "36"}}); await tick();
 assert.equal(prop("id", "worksheet-grid").props.width, 36);

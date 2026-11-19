@@ -33,15 +33,14 @@ import VaporTesting
         let openedAgain = try await browser.sendRequest(.GET, "/\(path)", headers: ["Cookie": editor.cookie])
         #expect(openedAgain.status == .ok)
         let guestPrivate = try await browser.sendRequest(.GET, "/export/svg/\(path)")
-        #expect(guestPrivate.status == .unauthorized)
+        #expect(guestPrivate.status == .ok)
 
         let owner = try #require(try store.user(named: "editor"))
         var worksheet = try store.load(route, user: owner)
         #expect(worksheet.title == "mégnincsilyen")
         #expect(worksheet.revision == 1)
         #expect(worksheet.owner == "editor")
-        #expect(worksheet.isPublic == false)
-        worksheet.hidden = true
+        #expect(worksheet.isPublic == true)
         worksheet.background = "#e7eef3"
         worksheet.isPublic = true
         worksheet.editors = ["shared"]
@@ -70,29 +69,29 @@ import VaporTesting
         #expect(stale.status == .preconditionFailed)
 
         let shared = try await login(browser, name: "shared", password: password, path: path)
-        let outsider = try await login(browser, name: "outsider", password: password, path: path, canEdit: false)
+        let outsider = try await login(browser, name: "outsider", password: password, path: path)
         let childURL = "/api/subworksheet/" + path + "/terv"
         let headers: HTTPHeaders = ["Cookie": shared.cookie, "X-CSRF-Token": shared.csrf]
         let created = try await browser.sendRequest(.POST, childURL, headers: headers)
         #expect(created.status == .ok)
         let child = try created.content.decode(Worksheet.self)
         #expect(child.title == "terv" && child.nodes.isEmpty && child.edges.isEmpty)
-        #expect(child.owner == owner.name && child.editors == ["shared"] && child.isPublic == true)
+        #expect(child.owner == owner.name && child.editors == nil && child.isPublic == true)
         #expect(child.background == worksheet.background)
         #expect(child.creator == "shared")
         let preview = try await browser.sendRequest(.GET, "/api/preview/" + path + "/terv")
         #expect(preview.status == .ok && preview.body.string.contains("<svg"))
-        #expect(FileManager.default.fileExists(atPath: file.deletingPathExtension().appendingPathComponent(".terv.preview.svg").path))
+        #expect(FileManager.default.fileExists(atPath: file.deletingPathExtension().appendingPathComponent(".terv.preview-v2.svg").path))
         let parent = try await browser.sendRequest(.GET, "/" + path)
-        #expect(parent.body.string.contains("Allapok (1)") && parent.body.string.contains("Létrehozó: shared"))
+        #expect(parent.body.string.contains("További oldalak:") && parent.body.string.contains("Létrehozó: shared"))
         #expect(try await browser.sendRequest(.POST, childURL, headers: headers).status == .conflict)
-        for (cookie, visible) in [(editor.cookie, true), (admin.cookie, false), (shared.cookie, false)] {
+        for cookie in [editor.cookie, admin.cookie, shared.cookie] {
             let home = try await browser.sendRequest(.GET, "/", headers: ["Cookie": cookie])
-            #expect(home.body.string.contains("href=\"/" + path + "\"") == visible)
+            #expect(!home.body.string.contains("href=\"/" + path + "\""))
         }
         let outsidersView = try await browser.sendRequest(.GET, "/\(path)", headers: ["Cookie": outsider.cookie])
         #expect(outsidersView.status == .ok)
-        #expect(!outsidersView.body.string.contains(">Szerkesztés"))
+        #expect(outsidersView.body.string.contains("aria-label=\"Szerkesztés\""))
         var accessTamper = try saved.content.decode(Worksheet.self)
         accessTamper.editors = ["outsider"]
         let tampered = try await save(browser, path: path, worksheet: accessTamper, session: shared)
@@ -114,6 +113,9 @@ import VaporTesting
         #expect(page.body.string.contains("/viewer.js"))
         #expect(!page.body.string.contains("<h1>"))
         #expect(page.body.string.contains("/icons.svg#download"))
+        #expect(!page.body.string.contains("worksheet-grid"))
+        #expect(page.body.string.contains("passive-backdrop"))
+        #expect(page.body.string.contains("viewer-downloads"))
 
         let svg = try await browser.sendRequest(.GET, "/export/svg/\(path)")
         #expect(svg.status == .ok)
@@ -373,12 +375,16 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     func select(_ user: User, node: String?) throws -> LiveState {
         try live.presence(path, user: user, client: user.name, action: "select", node: node, since: nil, loop: eventLoop).0
     }
+    let viewer = User(name: "viewer", role: .editor, passwordHash: "")
+    _ = try live.presence(path, user: viewer, client: viewer.name, action: "view-select", node: "box", since: nil, loop: eventLoop)
     let first = try select(a, node: "box")
+    #expect(first.participants.map(\.name) == ["anna", "viewer"])
+    #expect(first.participants.last?.node == "box" && first.participants.last?.viewing == true)
     let poll = try #require(try live.presence(path, user: a, client: a.name, action: "poll", node: nil,
                                              since: first.version, loop: eventLoop).1)
     let both = try select(b, node: nil)
     try await poll.get()
-    #expect(Set(both.participants.map(\.color)).count == 2)
+    #expect(Set(both.participants.map(\.color)).count == 3)
     #expect(throws: Abort.self) { try select(b, node: "box") }
     var moved = sheet
     moved.nodes[0].position.x = 40
@@ -452,4 +458,46 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
         #expect(page.body.string.contains("data-role=\"admin\""))
         #expect(try store.allUsers().isEmpty)
     }
+}
+
+@Test func projectPoliciesFollowDirectory() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-policy-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    let creator = User(name: "owner", role: .editor, passwordHash: "")
+    let editor = User(name: "member", role: .editor, passwordHash: "")
+    try store.setUser(name: "admin", role: .admin, passwordHash: "unused")
+    try store.setUser(name: editor.name, role: .editor, passwordHash: "unused")
+    let project = try WorksheetPath(["main"])
+    let child = try WorksheetPath(["main", "child"])
+    _ = try store.open(project, user: creator)
+    let worksheet = try store.open(child, user: creator)
+    #expect(try store.access(child, sheet: worksheet, user: editor).editable)
+    func action(_ action: String, _ value: String? = nil) throws {
+        _ = try store.manage(project, operation: DocumentAction(scope: "project", action: action, value: value), user: creator, unlocks: [])
+    }
+    func listed(for user: User?) throws -> Bool {
+        try store.list(user: user, rootsOnly: true).contains { $0.path.url == project.url }
+    }
+    try action("hide")
+    #expect(try listed(for: editor))
+    #expect(try !listed(for: nil))
+    try action("mode", "internal")
+    #expect(try !listed(for: editor))
+    #expect(try listed(for: creator))
+    #expect(throws: Abort.self) { try store.load(child, user: editor) }
+    try action("grant", editor.name)
+    #expect(try listed(for: editor))
+    try action("password", "abcdefgh")
+    #expect(throws: Abort.self) { try store.load(child, user: editor) }
+    #expect(throws: Abort.self) { try store.update(child, worksheet: worksheet, user: editor) }
+    #expect(try store.load(child, user: creator).creator == creator.name)
+    let keys = Set(try store.unlock(child, password: "abcdefgh", user: editor))
+    #expect(try store.load(child, user: editor, unlocks: keys).creator == creator.name)
+    try action("freeze")
+    #expect(throws: Abort.self) { try store.update(child, worksheet: worksheet, user: editor, unlocks: keys) }
+    try action("rename", "uj")
+    let renamed = try WorksheetPath(["uj", "child"])
+    #expect(try store.load(renamed, user: editor, unlocks: keys).creator == creator.name)
+    #expect(!((try String(contentsOf: root.appendingPathComponent("uj/child.json"), encoding: .utf8)).contains("\"owner\":")))
 }

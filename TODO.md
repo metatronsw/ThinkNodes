@@ -1,71 +1,55 @@
+megtekintő módban a legalalul, sorold fel toggle buttonokkal a mappa tulajdonságait ha van: public  freeze  lock hidden
 
-ping legyen lehetséges üres canvas pozícióban is, úgy hogy nincs kijelölve semmi. ilyenkor a cursor pozícióból indul az effekt.
-
-megtekintő módban NE legyenek aláhúzva a sima szövegek onMouse esetén! csak akkor ha ezek linkek
-
-szerkesztő módban ha kijelölök egy link dobozt, akkor legyen aláhúzva benne a cím és a megjegyzés (a markdown ne) 
-
-link doboz kerete legyen szaggatott vonallal rajzolva
-
-munkalap gomb-ot töröld a fejlécből
+hozz létre egy favicont a jelenlegi kis fejléc logóból
 
 
-csomópont ne lehessen link
-context menüben hibásan megjelenik ez az opció
-
-lock konténer esetén jelezd a bal alsó sarokban egy lakat ikonnal
-
-Admin és Bejelentkezés Kijelentkezés gombok legyenek jobboldalon  a legszélén többi gombtól távolabb 
 
 
-a fő oldal csak a fő mappákat mutassa, ne listázza azok subdirectory -jat
-
-password lock a munkamenetre (vagy project), csak jelszóval nyitható még az szerkesztők számára is ? létrehozónak nem kell jelszót beírni.
 
 
-a fő oldalon a munkamenet kártyáknak kell még contextmenü: 
- - Password lock csak jelszóval lehet megnyitni szerkesztők és idegenek (lakat ikon a jobb sarokba)
- - Hide (szerkesztők és idegenek elől elrejti) Admin egy csukott szem ikont lát a kártya jobb sarkában
  
-megtekintés módban az Alapok (0) 
-túl közel van a felette lévő szekcióhoz
-Írd át a szöveget is "Kapcsolódó oldalak" 
 
-hozz létre új szekciót alatta: "Külső hivatkozások" 
-(olyan linkek amik nem az oldalra mutatnak) 
-
-hozz létre alatta újabb szekciót: "Mappa tartalma" 
-itt jelennek meg minden olyan file ami a mappában van, képek és egyéb dokumentumok. (nem muszáj a munkalapon látszódniuk)
-
-a fejléc navigációban ha subdir van, ne a parent dir nevét írja ki, hanem annak a munkalapnak a címét
-
-hiba: üresen húzott vonalnak nem jelenik meg a nyíl a végén
-nyilak mérete legyen +50% nagyobb
-
-
------------
 
 
 felhasználó egere: 
+
 bal alsó sarokban legyen egy gomb, ami engedélyezi vagy letitja a felhasználó egér pozíciójának a megjelenítését. 
 Az egér cursor legyen olyan színű mint a felhasználó színe
+a frissitési frekvencia legyen a --rate: értéke
+ez most legyen kísérleti funkció, csak a --mouse kapcsolóval indítva legyen működőképes.
+
 
 ----------
+
+alt + rectangle select: több objektum kijelölése 
+egyenlőre csak törléshez-mozgatáshoz. A kijelölt objektumok a property panelen úgy jelennek meg hogy : Objektumok: (dobozok, vonalak, csomópontok száma)
+Ilyenkor az alsó törlés gomb vagy a shortcut törlés mindet törli egyszerre.
+Mozgatás is lehetséges legyen egyszerre
+
+
+
+alt gomb lenyomásakor a doboz szövege és címe megfogható és  áthelyezhető legyen. Ez az áthelyezés a 9 definiált oldalt jelenti, nem a szabad mozgatást. Drag közben szabadon egy adott távolságig mozog, de elengedéskor már a helyére ugrik.
+
+hozz létre undo - redo mechanizmust
+
 
 képek és json kód beemelése
 paste text / markdown
 
 képek külön tárolása a könyvtárban
 svg -nél beágyazható legyen mentéskor 
-
+A munkalapon automatikusan jelenjenek meg a képek és a file-ok amik a mappában vannak. 
 
 + markdown külön editorba is 
 
 + elkerülő úton haladó kábel, sosem keresztezi a dobozokat
 
-+ hozz létre undo - redo mechanizmust
+
 
 + project letöltése zip formtumba
 
 + sitemap , gráf alapon mutassa a linkeket 
+
++ javascript nélkül is működjön a statikus oldal megtekintés
+
 

@@ -55,13 +55,18 @@ Saját PEM-tanúsítványlánc és hozzá tartozó, jelszó nélküli privát ku
 THINKNODES_TLS_CERT=/utvonal/fullchain.pem THINKNODES_TLS_KEY=/utvonal/server.key ./run.sh
 ~~~
 
-A **THINKNODES_HOST** és a **THINKNODES_PORT** HTTPS módban is felülírja a kötési címet és a portot. A **THINKNODES_TLS_DIR** a helyben előállított tanúsítványok könyvtárát adja meg. A **./run.sh --http** HTTP-n, alapból a **127.0.0.1:8080** címen indul. A **--port:8000** mindkét módban felülírja a portot, a **--rate:100** pedig milliszekundumban adja meg a húzás közbeni előnézet két küldése közötti minimális időt. Az alapérték **100 ms**.
+A **THINKNODES_HOST** és a **THINKNODES_PORT** mindkét módban felülírja a kötési címet és a portot. A **THINKNODES_TLS_DIR** a helyben előállított tanúsítványok könyvtárát adja meg. A **./run.sh --http** alapból minden IPv4-interfészen figyel a **8080**-as porton, és kiírja a helyi és hálózati HTTP-címeket. Csak a szervert futtató gépről való eléréshez indítsd így: **THINKNODES_HOST=127.0.0.1 ./run.sh --http**. A **--port:8000** mindkét módban felülírja a portot, a **--rate:100** pedig milliszekundumban adja meg a húzás közbeni előnézet két küldése közötti minimális időt. Az alapérték **100 ms**.
 
 A `./run.sh --test` indításkor minden új böngésző-munkamenet automatikusan adminisztrátori jogot kap, Tester1, Tester2 és további neveken. A tesztfelhasználó a fejléc **Bejelentkezés** gombjával saját fiókra válthat.
 
 ## Munkalapok és fájlok
 
-A **/demo** bemutató két allapja a **/demo/formak** és a **/demo/kapcsolatok**. A főoldali kártyák a munkalap háttérszínét használják, az elcsúsztatott lapok az allapokat jelzik. Jobb kattintással megnyitható a kártyamenü. A **Rejtett a főoldalon** beállítás a kártyát csak a létrehozónak mutatja. A közvetlen hivatkozásra a munkalap meglévő olvasási és szerkesztési jogosultságai érvényesek.
+A főoldalon a felső szintű projektek szerepelnek. A paklit a projektmappában közvetlenül található JSON-fájlok száma határozza meg. Az új projekt nyilvános módban indul. Minden bejelentkezett szerkesztő módosíthatja, belső módban pedig külön hozzáférés adható.
+
+A jobb kattintásos projektmenüben beállítható a láthatóság, a jelszár, a szerkesztési zár és a hozzáférés. A mappára adott jog és a mappaszintű zár az alatta lévő munkalapokra is érvényes. A jelszó csak hashként kerül az adatkönyvtár közös `.document-policies.json` fájljába. A munkalaphoz tartozó képek és dokumentumok a megtekintő **Mappa tartalma** szekciójában jelennek meg. Egy csatolt fájlhoz külön hozzáférés is adható.
+
+
+A **/demo** bemutató két allapja a **/demo/formak** és a **/demo/kapcsolatok**. A főoldali kártyák a munkalap háttérszínét használják, az elcsúsztatott lapok az allapokat jelzik. Jobb kattintással megnyitható a kártyamenü. Egy rejtett projekt kártyáját az adminisztrátor látja a főoldalon. A közvetlen hivatkozásra a munkalap meglévő olvasási és szerkesztési jogosultságai érvényesek.
 
 | URL | Adatfájl |
 |---|---|

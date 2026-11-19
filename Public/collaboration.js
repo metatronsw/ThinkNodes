@@ -133,7 +133,7 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
       } catch (error) {
         if (active.signal.aborted) return;
         onError(error);
-        if ([401, 403, 404].includes(error.status)) return;
+        if ([401, 403, 404, 423].includes(error.status)) return;
         await new Promise(resolve => setTimeout(resolve, 1000));
         since = undefined;
       }
@@ -148,10 +148,8 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
     socket = null;
     request("leave", {}, {keepalive: true}).catch(() => {});
   }
-  function ping(node, revision) {
-    if (socket?.readyState === 1 && audience) socket.send(JSON.stringify({node, revision, ping: true}));
-  }
-  return {client, start, stop, motion, endMotion, ping, snapshot: () => request("poll", {editing}),
+  return {client, start, stop, motion, endMotion, ping: target => request("ping", target), snapshot: () => request("poll", {editing}),
     checkpoint: (action, revision, checkpointRevision) => request(action, {revision, checkpointRevision}),
+    viewSelect: node => request("view-select", {node}),
     select: (node, edge) => request("select", {node, edge})};
 }

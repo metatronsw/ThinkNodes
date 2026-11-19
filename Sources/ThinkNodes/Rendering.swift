@@ -27,7 +27,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false) -> Response {
     let assets = scripts ? """
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
-        <script type="module" src="/editor.js"></script>
+        <script type="module" src="/editor.js?v=2"></script>
         """ : ""
     return response("""
         <!doctype html>
@@ -74,7 +74,7 @@ func headerLink(_ url: String, _ label: String, symbol: String) -> String {
     "<a class=\"button small\" href=\"\(escaped(url))\">\(uiIcon(symbol))\(escaped(label))</a>"
 }
 
-func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: String?, actions: String = "", editing: Bool = false) -> String {
+func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: String?, actions: String = "", afterTitle: String = "", editing: Bool = false, showAdminLogout: Bool = false) -> String {
     let parts = path?.split(separator: "/").map(String.init) ?? []
     let base = editing ? "/edit/" : "/"
     let crumb = parts.indices.map { i in
@@ -86,11 +86,12 @@ func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: 
     let parent = parts.count > 1 ? "<a class=\"button small\" aria-label=\"Szülő munkalap\" href=\"\(escaped(base + parts.dropLast().joined(separator: "/")))\">\(uiIcon("up"))</a>" : ""
     let session: String
     if let user, let csrf {
+        let logout = (user.role != .admin || showAdminLogout) ? "<button class=\"button small\" type=\"submit\">\(uiIcon("logout"))Kijelentkezés</button>" : ""
         session = """
             <form method="post" action="/logout" class="account">
               \(csrfInput(csrf))
               \(isTesterName(user.name) ? headerLink("/login", "Bejelentkezés", symbol: "login") : "")
-              \(user.role == .admin && user.name.lowercased() == "admin" ? "" : "<span>\(escaped(user.name))</span>")<button class="button small" type="submit">\(uiIcon("logout"))Kijelentkezés</button>
+              \(user.role == .admin && user.name.lowercased() == "admin" ? "" : "<span>\(escaped(user.name))</span>")\(logout)
             </form>
             """
     } else {
@@ -102,7 +103,7 @@ func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: 
         <header class="site-header"><div class="header-left"><nav aria-label="Fő navigáció" class="breadcrumbs">
           <a class="brand" href="/"><span class="brand-icon" aria-hidden="true"><span></span><span></span><span></span></span>ThinkNodes</a>
           \(crumb)
-        </nav><div class="header-user">\(user?.role == .admin ? headerLink("/admin", "Admin", symbol: "settings") : "")\(session)</div></div><div class="header-parent">\(parent)</div><div class="header-actions">\(actions)</div></header>
+        </nav>\(afterTitle)</div><div class="header-parent">\(parent)</div><div class="header-actions">\(actions)<div class="header-user">\(user?.role == .admin ? headerLink("/admin", "Admin", symbol: "settings") : "")\(session)</div></div></header>
         """
 }
 
@@ -302,7 +303,9 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
     let height = node.height
     let x = width / 2
     let y = height / 2
-    let appearance = "fill=\"\(escaped(node.fill))\" stroke=\"\(escaped(node.border))\" stroke-width=\"1.6\""
+    let strokeWidth = node.kind == .container && node.locked == true ? "3.2" : "1.6"
+    let dash = node.link.flatMap(WorksheetLink.init) == nil ? "" : " stroke-dasharray=\"7 4\""
+    let appearance = "fill=\"\(escaped(node.fill))\" stroke=\"\(escaped(node.border))\" stroke-width=\"\(strokeWidth)\"\(dash)"
     let geometry: String
     switch node.shape {
     case .rectangle, .rounded:
@@ -340,7 +343,7 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
         case .right: (textX, anchor) = (labelWidth / 2, "end")
         case .center: (textX, anchor) = (0, "middle")
         } }
-        var style = ""
+        var style = line.runs.isEmpty ? " class=\"link-label\"" : ""
         if line.style?.italic == true { style += " font-style=\"italic\"" }
         if line.style?.underline == true { style += " text-decoration=\"underline\"" }
         if !line.runs.isEmpty && bodyTop == nil { bodyTop = top + line.gap - 3 }
@@ -417,7 +420,7 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
         var markers = ""
         if edge.hasStartArrow || edge.hasEndArrow {
             definitions.append("""
-                <marker id="\(marker)" markerWidth="4.5" markerHeight="4.5" viewBox="0 0 10 10" refX="9" refY="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="\(color)"/></marker>
+                <marker id="\(marker)" markerWidth="6.75" markerHeight="6.75" viewBox="0 0 10 10" refX="9" refY="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="\(color)"/></marker>
                 """)
         }
         if edge.hasStartArrow { markers += " marker-start=\"url(#\(marker))\"" }
@@ -456,7 +459,7 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
         if let raw = node.link, let link = WorksheetLink(raw), link.isExternal(siteHost: siteHost) {
             linked += " target=\"_blank\" rel=\"noopener noreferrer\""
         }
-        let geometry = "data-x=\"\(node.position.x)\" data-y=\"\(node.position.y)\" data-width=\"\(node.width)\" data-height=\"\(node.height)\" data-shape=\"\(node.shape.rawValue)\" data-parent=\"\(node.parent ?? "")\""
+        let geometry = "data-x=\"\(node.position.x)\" data-y=\"\(node.position.y)\" data-width=\"\(node.width)\" data-height=\"\(node.height)\" data-shape=\"\(node.kind == .connectionPoint ? "ellipse" : node.shape.rawValue)\" data-parent=\"\(node.parent ?? "")\""
         return "<a data-node=\"\(node.id)\" \(geometry)\(linked) href=\"\(url)\" aria-label=\"\(escaped(node.title))\">\(graphic)</a>"
     }
     var depths: [String: Int] = [:]
@@ -478,7 +481,7 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
     let width = number(halfWidth * 2)
     let height = number(halfHeight * 2)
     var grid = ""
-    if board.gridVisible != false {
+    if noteBase == nil && board.gridVisible != false {
         let spacing = board.gridSpacing ?? 20
         definitions.append("""
             <pattern id="worksheet-grid" patternUnits="userSpaceOnUse" width="\(number(spacing))" height="\(number(spacing))"><circle cx="\(number(spacing/2))" cy="\(number(spacing/2))" r="1.1" fill="\(board.gridColor ?? "#ccd7eb")"/></pattern>

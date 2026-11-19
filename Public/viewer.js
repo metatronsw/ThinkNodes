@@ -1,11 +1,15 @@
+import {contextMenu, documentEntries} from "./cards.js";
 import {openExternalLink} from "./links.js";
-import {flashNode} from "./ping.js";
+import {flashNode, flashPoint} from "./ping.js";
 import {hideTooltip, showTooltip} from "./tooltip.js";
 import {liveConnection} from "./collaboration.js";
 
-import {edgeGeometry} from "./geometry.js";
+import {edgeGeometry, selectionOutline} from "./geometry.js?v=2";
 import {ancestors} from "./containers.js";
 
+let selection;
+let peers = [];
+let selectionRequest = Promise.resolve();
 let main = document.querySelector("#worksheet-view");
 const {path, csrf} = main.dataset;
 const ns = "http://www.w3.org/2000/svg";
@@ -61,17 +65,32 @@ let drawPreview = previewScene();
 function receiveMotion(frame) {
   if (!frame) motions.clear();
   else if (frame.revision !== Number(main.dataset.revision)) return;
-  else if (frame.ping) { flashNode(main, frame.node); return; }
+  else if (frame.ping) {
+    if (frame.point) flashPoint(main.querySelector(".passive-canvas"), frame.point);
+    else flashNode(main, frame.node);
+    return;
+  }
   else if (frame.delta) motions.set(frame.node, frame.delta);
   else motions.delete(frame.node);
   drawPreview();
 }
 
+function outline(box, marker, color) {
+  const {x, y, width, height, shape} = box.dataset;
+  const [tag, geometry] = selectionOutline(shape, +width, +height);
+  const frame = document.createElementNS(ns, tag);
+  for (const [key, value] of Object.entries({...geometry, [marker]: "", transform: `translate(${x} ${y})`,
+    stroke: color, "stroke-width": 3, fill: "none", "pointer-events": "none"})) frame.setAttribute(key, value);
+  box.prepend(frame);
+}
+
 function paint(peers) {
+  roster.classList.remove("connection-lost");
   roster.replaceChildren();
   for (const peer of peers) {
     const label = document.createElement("span");
-    label.style.setProperty("--peer", peer.color);
+    if (peer.color) label.style.setProperty("--peer", peer.color);
+    else label.className = "guest";
     label.textContent = peer.name;
     roster.append(label);
   }
@@ -89,48 +108,66 @@ function paint(peers) {
     });
   }
   for (const peer of peers) {
-    if (!peer.node) continue;
+    if (!peer.node || peer.mine) continue;
     const anchor = main.querySelector('[data-node="' + CSS.escape(peer.node) + '"]');
     if (!anchor) continue;
-    const box = anchor.getBBox();
-    const frame = document.createElementNS(ns, "rect");
-    for (const [name, value] of Object.entries({"data-selection": "", x: box.x-10, y: box.y-10,
-      width: box.width+20, height: box.height+20, rx: 14, stroke: peer.color,
-      "stroke-width": 3, fill: "none", "pointer-events": "none"})) frame.setAttribute(name, value);
-    anchor.prepend(frame);
+    outline(anchor, "data-selection", peer.color);
   }
 }
 
-// Anchors retain keyboard activation and work without JavaScript.
-let noteTimer;
-document.addEventListener("click", event => {
-  const box = event.target.closest?.(".passive-canvas [data-node]");
-  if (!box || !event.detail) return;
-  if (box.hasAttribute("data-link") && !event.ctrlKey) {
-    if (box.getAttribute("target") === "_blank") {
-      event.preventDefault();
-      if (event.detail === 1) openExternalLink(box.getAttribute("href"));
-    }
-    return;
+function selectBox(box, broadcast = false) {
+  main.querySelector("[data-view-selection]")?.remove();
+  selection = box?.dataset.node;
+  if (broadcast && main.dataset.member === "true") {
+    const node = selection ?? null;
+    selectionRequest = selectionRequest.then(() => live.viewSelect(node)).catch(() => {});
   }
-  if (main.dataset.editable === "true") {
+  if (!box) return;
+  outline(box, "data-view-selection", peers.find(peer => peer.mine)?.color || "#526982");
+}
+
+document.addEventListener("click", async event => {
+  const box = event.target.closest(".passive-canvas [data-node]");
+  if (box && event.detail) {
     event.preventDefault();
-    clearTimeout(noteTimer);
-    if (event.detail === 1 && !event.ctrlKey && !box.hasAttribute("data-link")) {
-      noteTimer = setTimeout(() => location.assign(box.getAttribute("href")), 500);
-    }
+    selectBox(box, true);
+  } else if (event.target.closest(".passive-canvas")) selectBox(null, true);
+  if (event.target.closest(".fullscreen")) {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await main.querySelector(".passive-frame").requestFullscreen();
+    } catch (error) { alert(error.message); }
   }
+
 });
 document.addEventListener("dblclick", event => {
-  const box = event.target.closest?.(".passive-canvas [data-node]");
-  const wire = event.target.closest?.(".passive-canvas [data-wire]");
+  const box = event.target.closest(".passive-canvas [data-node]");
+  const wire = event.target.closest(".passive-canvas [data-wire]");
   if (!box && !wire) return;
-  clearTimeout(noteTimer);
-  if (box?.hasAttribute("data-link") && !event.ctrlKey) return;
-  if (main.dataset.editable === "true") {
+  if (event.ctrlKey && main.dataset.editable === "true") {
     const target = box ? {node: box.dataset.node} : {edge: JSON.parse(wire.dataset.wire).id};
     location.assign("/edit/" + path + "?" + new URLSearchParams(target));
+  } else if (box?.getAttribute("target") === "_blank") openExternalLink(box.getAttribute("href"));
+  else if (box) location.assign(box.getAttribute("href"));
+});
+document.addEventListener("contextmenu", event => {
+  const canvas = event.target.closest(".passive-canvas");
+  if (!canvas || main.dataset.member !== "true") return;
+  const box = event.target.closest("[data-node]");
+  const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(canvas.getScreenCTM().inverse());
+  const entries = [["Ping", () => {
+    if (box) flashNode(canvas, box.dataset.node);
+    else flashPoint(canvas, point);
+    live.ping(box ? {node: box.dataset.node} : {point: {x: point.x, y: point.y}}).catch(error => alert(error.message));
+  }, "center"]];
+  if (main.dataset.editable === "true") {
+    const wire = event.target.closest("[data-wire]");
+    const target = box ? {node: box.dataset.node} : wire ? {edge: JSON.parse(wire.dataset.wire).id} : null;
+    entries.push(["Szerkesztés", () => location.assign("/edit/" + path + (target ? "?" + new URLSearchParams(target) : "")), "edit"]);
   }
+  const documentLink = main.querySelector("[data-current-document]");
+  if (documentLink) entries.push(...documentEntries(documentLink).slice(1));
+  contextMenu(event, entries);
 });
 const live = liveConnection(path, csrf, async state => {
   if (Number(main.dataset.revision) !== state.revision) {
@@ -139,23 +176,42 @@ const live = liveConnection(path, csrf, async state => {
     const page = new DOMParser().parseFromString(await response.text(), "text/html");
     const next = page.querySelector("#worksheet-view");
     if (!next) { location.reload(); return; }
-    main.replaceWith(next);
-    main = next;
+    if (document.fullscreenElement) {
+      const currentFrame = main.querySelector(".passive-frame");
+      const nextFrame = next.querySelector(".passive-frame");
+      currentFrame.replaceChildren(...nextFrame.childNodes);
+      for (const element of [...main.children]) if (element !== currentFrame) element.remove();
+      for (const element of [...next.children]) if (element !== nextFrame) main.append(element);
+      Object.assign(main.dataset, next.dataset);
+    } else {
+      main.replaceWith(next);
+      main = next;
+    }
     motions.clear();
     drawPreview = previewScene();
     document.title = page.title;
     const header = page.querySelector(".site-header");
     document.querySelector(".site-header").replaceWith(header);
     bindCanvas();
+    if (selection) selectBox(main.querySelector('[data-node="' + CSS.escape(selection) + '"]'));
   }
   for (const id of motions.keys()) {
     if (!state.participants.some(p => p.node === id)) motions.delete(id);
   }
   drawPreview();
-  paint(state.participants);
+  const previousMine = peers.find(peer => peer.mine);
+  peers = state.participants;
+  const mine = peers.find(peer => peer.mine);
+  if (selection && main.dataset.member === "true" && !mine?.node && !previousMine) {
+    selectBox(main.querySelector('[data-node="' + CSS.escape(selection) + '"]'), true);
+  }
+  paint(peers);
 }, error => {
-  if ([401, 403, 404].includes(error.status)) main.textContent = error.message;
+  if ([401, 403, 404, 423].includes(error.status)) main.textContent = error.message;
+  roster.classList.add("connection-lost");
   roster.textContent = "Kapcsolat megszakadt";
+  peers = [];
+  if (!roster.isConnected) main.prepend(roster);
 }, {onMotion: receiveMotion});
 window.addEventListener("pagehide", live.stop);
 window.addEventListener("pageshow", event => { if (event.persisted) live.start(); });

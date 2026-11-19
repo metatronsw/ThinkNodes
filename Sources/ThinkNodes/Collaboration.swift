@@ -7,6 +7,7 @@ struct Participant: Content {
     let node: String?
     let edge: String?
     let mine: Bool
+    let viewing: Bool
 }
 
 struct LiveState: Content {
@@ -24,6 +25,7 @@ final class Collaboration: @unchecked Sendable {
         let role: Role?
         let color: String
         var editing = false
+        var viewing = false
         var socket: WebSocket?
         var node: String?
         var edge: String?
@@ -87,10 +89,11 @@ final class Collaboration: @unchecked Sendable {
 
     func presence(_ path: WorksheetPath, user: User?, client: String, action: String, node: String?, edge: String? = nil,
                   since: String?, loop: any EventLoop, editing: Bool = false,
-                  revision: Int? = nil, checkpointRevision: Int? = nil) throws -> (LiveState, EventLoopFuture<Void>?) {
+                  revision: Int? = nil, checkpointRevision: Int? = nil, unlocks: Set<String> = [], point: Point? = nil) throws -> (LiveState, EventLoopFuture<Void>?) {
         try lock.withLock {
             expireInactiveRooms()
-            var board = try store.load(path, user: user)
+            var board = try store.load(path, user: user, unlocks: unlocks)
+            let access = try store.access(path, sheet: board, user: user, unlocks: unlocks)
             var room = rooms[path.url] ?? Room()
             room.expire()
             room.revision = board.revision
@@ -104,7 +107,7 @@ final class Collaboration: @unchecked Sendable {
                 room.changed()
             } else {
                 if action == "checkpoint" || action == "resign" {
-                    guard let user, board.canEdit(user), room.peers[client]?.editing == true,
+                    guard let user, access.editable, room.peers[client]?.editing == true,
                           var checkpoint = room.checkpoint else { throw Abort(.forbidden) }
                     guard revision == board.revision, checkpointRevision == checkpoint.revision else {
                         throw Abort(.preconditionFailed, reason: "A munkalap vagy a visszaállítási pont megváltozott. Ellenőrizd, majd próbáld újra.")
@@ -115,7 +118,7 @@ final class Collaboration: @unchecked Sendable {
                         checkpoint.editors = board.editors
                         checkpoint.isPublic = board.isPublic
                         checkpoint.hidden = board.hidden
-                        board = try store.update(path, worksheet: checkpoint, user: user, restoring: true)
+                        board = try store.update(path, worksheet: checkpoint, user: user, restoring: true, unlocks: unlocks)
                         room.revision = board.revision
                         for id in Array(room.peers.keys) {
                             room.peers[id]?.node = nil
@@ -126,27 +129,43 @@ final class Collaboration: @unchecked Sendable {
                     room.changed()
                 }
                 if room.peers[client] == nil {
-                    room.peers[client] = Peer(name: user?.name, role: user?.role, color: room.color(for: user?.name))
+                    room.peers[client] = Peer(name: user?.name, role: user?.role, color: user == nil ? "" : room.color(for: user?.name))
                     room.changed()
                 }
                 if editing && action == "poll" {
-                    guard board.canEdit(user) else { throw Abort(.forbidden) }
+                    guard access.editable else { throw Abort(.forbidden) }
                     room.peers[client]?.editing = true
                     if room.checkpoint == nil { room.checkpoint = board; room.changed() }
                 }
                 room.peers[client]?.seen = .now
-                if action == "select" {
-                    guard board.canEdit(user) else { throw Abort(.forbidden) }
+                if action == "ping" {
+                    guard user != nil, let peer = room.peers[client], peer.seen.duration(to: .now) < .seconds(45),
+                          node.map({ id in board.nodes.contains { $0.id == id } }) ?? (point?.isValid == true) else { throw Abort(.forbidden) }
+                    struct Ping: Encodable {
+                        let ping = true
+                        let revision: Int
+                        let node: String?
+                        let point: Point?
+                    }
+                    let data = try JSONEncoder().encode(Ping(revision: board.revision, node: node, point: point))
+                    for (id, receiver) in room.peers where id != client {
+                        receiver.socket?.send(String(decoding: data, as: UTF8.self))
+                    }
+                }
+                if action == "select" || action == "view-select" {
+                    let viewing = action == "view-select"
+                    guard viewing ? user != nil : access.editable else { throw Abort(.forbidden) }
                     if let node {
                         guard board.nodes.contains(where: { $0.id == node }) else { throw Abort(.notFound) }
-                        if let owner = room.peers.first(where: { $0.key != client && $0.value.node == node }) {
+                        if !viewing, let owner = room.peers.first(where: { $0.key != client && !$0.value.viewing && $0.value.node == node }) {
                             throw Abort(.locked, reason: "\(owner.value.name ?? "Vendég") már kijelölte ezt a dobozt.")
                         }
                     }
                     if let edge {
                         guard node == nil, board.edges.contains(where: { $0.id == edge }) else { throw Abort(.notFound) }
                     }
-                    if room.peers[client]?.node != node || room.peers[client]?.edge != edge {
+                    if room.peers[client]?.node != node || room.peers[client]?.edge != edge || room.peers[client]?.viewing != viewing {
+                        room.peers[client]?.viewing = viewing
                         room.peers[client]?.edge = edge
                         room.peers[client]?.node = node
                         room.changed()
@@ -167,23 +186,29 @@ final class Collaboration: @unchecked Sendable {
             comparable.resetRevision = room.checkpoint?.resetRevision
             comparable.schemaVersion = room.checkpoint?.schemaVersion ?? board.schemaVersion
             let changed = room.checkpoint.map { $0 != comparable } ?? false
-            let state = LiveState(version: room.version, revision: board.revision, checkpointRevision: room.checkpoint?.revision, checkpointChanged: changed, participants: room.peers.sorted { $0.value.joined < $1.value.joined }.map {
-                Participant(name: $0.value.name ?? "Vendég", color: $0.value.color, node: $0.value.node, edge: $0.value.edge, mine: $0.key == client)
+            let state = LiveState(version: room.version, revision: board.revision, checkpointRevision: room.checkpoint?.revision, checkpointChanged: changed, participants: room.peers.sorted { a, b in
+                let adminA = a.value.role == .admin
+                let adminB = b.value.role == .admin
+                if adminA != adminB { return adminA }
+                return a.value.joined == b.value.joined ? a.key < b.key : a.value.joined < b.value.joined
+            }.map {
+                Participant(name: $0.value.name ?? "Vendég", color: $0.value.color, node: $0.value.node, edge: $0.value.edge, mine: $0.key == client, viewing: $0.value.viewing)
             })
             rooms[path.url] = room.peers.isEmpty ? nil : room
             return (state, wait)
         }
     }
 
-    func update(_ path: WorksheetPath, sheet: Worksheet, user: User, client: String?) throws -> Worksheet {
+    func update(_ path: WorksheetPath, sheet: Worksheet, user: User, client: String?, unlocks: Set<String> = []) throws -> Worksheet {
         try lock.withLock {
             rooms[path.url]?.expire()
-            let saved = try store.update(path, worksheet: sheet, user: user) { current in
+            let current = try store.load(path, user: user, unlocks: unlocks)
+            let saved = try store.update(path, worksheet: sheet, user: user, unlocks: unlocks) { current in
                 if let client, rooms[path.url]?.peers[client]?.name != user.name {
                     throw Abort(.conflict, reason: "Kapcsolódj újra a munkalaphoz.")
                 }
                 guard let room = rooms[path.url] else { return }
-                let locked = Set(room.peers.filter { $0.key != client }.values.compactMap(\.node))
+                let locked = Set(room.peers.filter { $0.key != client && !$0.value.viewing }.values.compactMap(\.node))
                 guard !locked.isEmpty else { return }
                 let submitted = Dictionary(sheet.nodes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
                 for node in current.nodes where locked.contains(node.id) && submitted[node.id] != node {
@@ -192,25 +217,18 @@ final class Collaboration: @unchecked Sendable {
                     throw Abort(.locked, reason: "A dobozt egy másik felhasználó jelölte ki.")
                 }
             }
+            if saved.owner != current.owner || saved.editors != current.editors ||
+                saved.isPublic != current.isPublic || saved.hidden != current.hidden {
+                invalidate(path)
+                return saved
+            }
             if var room = rooms[path.url] {
                 room.revision = saved.revision
                 let ids = Set(saved.nodes.map(\.id))
                 let edges = Set(saved.edges.map(\.id))
                 for (id, peer) in room.peers {
-                    let allowed = peer.role == .admin || (peer.name != nil &&
-                        (peer.name == saved.owner || (saved.editors ?? []).contains(peer.name ?? "")))
-                    if !allowed && saved.isPublic == false {
-                        peer.socket?.close(promise: nil)
-                        peer.waiter?.succeed(())
-                        room.peers.removeValue(forKey: id)
-                        continue
-                    }
                     if let node = peer.node, !ids.contains(node) { room.peers[id]?.node = nil }
-                    if let edge = peer.edge, !edges.contains(edge) || !allowed { room.peers[id]?.edge = nil }
-                    if !allowed {
-                        room.peers[id]?.editing = false
-                        room.peers[id]?.node = nil
-                    }
+                    if let edge = peer.edge, !edges.contains(edge) { room.peers[id]?.edge = nil }
                 }
                 if !room.peers.values.contains(where: \.editing) { room.checkpoint = nil }
                 room.changed()
@@ -235,14 +253,12 @@ final class Collaboration: @unchecked Sendable {
                 let node: String
                 let revision: Int
                 let delta: Point?
-                let ping: Bool?
             }
             guard text.utf8.count < 512, let frame = try? JSONDecoder().decode(Motion.self, from: Data(text.utf8)),
-                  (frame.ping != true || frame.delta == nil),
                   frame.delta.map({ abs($0.x) <= 200_000 && abs($0.y) <= 200_000 }) ?? true else { return }
             self?.lock.withLock {
                 guard let room = self?.rooms[path.url], room.revision == frame.revision,
-                      let sender = room.peers[client], sender.socket === socket, sender.node == frame.node,
+                      let sender = room.peers[client], sender.socket === socket, !sender.viewing, sender.node == frame.node,
                       sender.seen.duration(to: .now) < .seconds(45) else { return }
                 for (id, peer) in room.peers where id != client && peer.seen.duration(to: .now) < .seconds(45) {
                     peer.socket?.send(text)
@@ -262,13 +278,27 @@ final class Collaboration: @unchecked Sendable {
         }
     }
 
-    func archive(_ path: WorksheetPath, expected: Int) throws {
+    func manage(_ path: WorksheetPath, operation: DocumentAction, user: User, unlocks: Set<String>) throws -> WorksheetPath? {
         try lock.withLock {
-            try store.archive(path, expected: expected)
-            rooms.removeValue(forKey: path.url)?.peers.values.forEach {
+            let result = try store.manage(path, operation: operation, user: user, unlocks: unlocks)
+            invalidate(path)
+            return result
+        }
+    }
+
+    private func invalidate(_ path: WorksheetPath) {
+        for key in rooms.keys.filter({ $0 == path.url || $0.hasPrefix(path.url + "/") }) {
+            rooms.removeValue(forKey: key)?.peers.values.forEach {
                 $0.socket?.close(promise: nil)
                 $0.waiter?.succeed(())
             }
+        }
+    }
+
+    func archive(_ path: WorksheetPath, expected: Int) throws {
+        try lock.withLock {
+            try store.archive(path, expected: expected)
+            invalidate(path)
         }
     }
 }

@@ -1,8 +1,8 @@
-import {flashNode} from "./ping.js";
+import {flashNode, flashPoint} from "./ping.js";
 import {showTooltip, hideTooltip} from "./tooltip.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {canvasBounds, commentColor, edgeEndpoint, edgeGeometry, edgePaint, labelLayout, limit, lineStyles, paper, shapeDistance, shapes} from "./geometry.js";
+import {canvasBounds, commentColor, edgeEndpoint, edgeGeometry, edgePaint, labelLayout, limit, lineStyles, paper, selectionOutline, shapeDistance, shapes} from "./geometry.js?v=2";
 
 import {ancestors, containerOrder, overlapFraction} from "./containers.js";
 
@@ -122,18 +122,19 @@ function draftMarkdown(source) {
   });
 }
 
-function shape(node) {
+function shape(node, linked) {
   const x = node.width / 2;
   const y = node.height / 2;
   if (node.kind === "connectionPoint") return h("circle", {r: node.width / 2, fill: node.fill});
-  const style = {fill: node.fill, stroke: node.border, "stroke-width": 1.6};
+  const style = {fill: node.fill, stroke: node.border, "stroke-width": node.kind === "container" && node.locked ? 3.2 : 1.6,
+    "stroke-dasharray": linked ? "7 4" : undefined};
   if (node.shape === "ellipse") return h("ellipse", {...style, rx: x, ry: y});
   if (node.shape === "diamond") return h("polygon", {...style, points: ["0," + -y, x + ",0", "0," + y, -x + ",0"].join(" ")});
   return h("rect", {...style, x: -x, y: -y, width: node.width, height: node.height, rx: node.shape === "rounded" ? 12 : 0});
 }
 
 function arrowDefinition(id, color) {
-  return h("marker", {key: id, id, viewBox: "0 0 10 10", markerWidth: 4.5, markerHeight: 4.5, refX: 9, refY: 5,
+  return h("marker", {key: id, id, viewBox: "0 0 10 10", markerWidth: 6.75, markerHeight: 6.75, refX: 9, refY: 5,
     orient: "auto-start-reverse"}, [
     h("path", {d: "M 0 0 L 10 5 L 0 10 z", fill: color}),
   ]);
@@ -177,7 +178,7 @@ createApp({
     const ctrl = ref(false);
     const alt = ref(false);
     const accounts = ref(null);
-    const canManage = computed(() => role === "admin" || Boolean(user && board.value?.owner === user));
+    const canManage = computed(() => role === "admin" || Boolean(user && (board.value?.owner === user || board.value?.creator === user)));
     const canvasMarkdown = shallowRef(new Map());
     const markdownSources = computed(() => [...new Set(
       board.value?.nodes.filter(node => node.showMarkdown && node.markdown).map(node => node.markdown)
@@ -186,7 +187,11 @@ createApp({
     function receiveMotion(frame) {
       if (!frame) { motions.value = new Map(); return; }
       if (frame.revision !== board.value?.revision) return;
-      if (frame.ping) { flashNode(canvas.value, frame.node); return; }
+      if (frame.ping) {
+        if (frame.point) flashPoint(canvas.value?.querySelector("[data-scene]"), frame.point);
+        else flashNode(canvas.value, frame.node);
+        return;
+      }
       const next = new Map(motions.value);
       if (frame.delta) next.set(frame.node, frame);
       else next.delete(frame.node);
@@ -271,7 +276,7 @@ createApp({
     const params = new URLSearchParams(window.location?.search);
     let initialNode = params.get("node"), initialEdge = params.get("edge");
     const copy = value => JSON.parse(JSON.stringify(value));
-    const occupied = id => peers.value.find(p => !p.mine && p.node === id);
+    const occupied = id => peers.value.find(p => !p.mine && !p.viewing && p.node === id);
     const groupBlocked = node => moveGroup(node).some(member => occupied(member.id));
     function enqueue(task) {
       const next = queued.then(task);
@@ -845,7 +850,7 @@ createApp({
           }
           return;
         }
-        const edge = {source: operation.nodeID, sourcePoint: operation.nodeID ? undefined : operation.initial, target: {point}, style: "arrow"};
+        const edge = {source: operation.nodeID, sourcePoint: operation.nodeID ? undefined : operation.initial, target: {point}, style: "arrow", endArrow: true};
         edge.target = endpointAt(point, edge, "target");
         preview.value = {edge, target: edge.target.node, junction: edge.target.junction};
       } else {
@@ -1015,7 +1020,7 @@ createApp({
             await refresh();
             if (result.status === 409) continue;
             // A lease may have changed owners while this tab was disconnected.
-            const foreign = new Set(peers.value.filter(p => !p.mine && p.node).map(p => p.node));
+            const foreign = new Set(peers.value.filter(p => !p.mine && !p.viewing && p.node).map(p => p.node));
             const local = new Map(board.value.nodes.map(n => [n.id, n]));
             for (const node of baseline.nodes) if (foreign.has(node.id)) local.set(node.id, copy(node));
             board.value.nodes = [...local.values()];
@@ -1218,12 +1223,15 @@ createApp({
     function renderNode(node) {
       const {node: drawn, layout} = drawings.value.get(node.id);
       const position = displayPosition(node);
-      const owner = peers.value.find(p => p.node === node.id && (!p.mine || (selected.value?.kind === "node" && selected.value.id === node.id)));
-      const destination = worksheetLink(node.link, path);
+      const selectors = peers.value.filter(p => p.node === node.id && (!p.mine || (selected.value?.kind === "node" && selected.value.id === node.id)));
+      const owner = selectors.find(p => !p.viewing) ?? selectors[0];
+      const destination = node.kind === "connectionPoint" ? null : worksheetLink(node.link, path);
+
       const inset = node.shape === "diamond" ? .45 : node.shape === "ellipse" ? .7 : .94;
+      const [outline, dimensions] = selectionOutline(node.kind === "connectionPoint" ? "ellipse" : drawn.shape, drawn.width, drawn.height);
       const snapTarget = preview.value?.target === node.id;
       return h("g", {key: node.id, "data-node": node.id, "data-width": drawn.width, "data-height": drawn.height, tabindex: 0, role: "button",
-        "aria-label": node.title, class: ["idea", {occupied: occupied(node.id), claimed: !!owner}],
+        "aria-label": node.title, "data-link": destination ? "" : undefined, class: ["idea", {occupied: occupied(node.id), claimed: !!owner}],
         transform: "translate(" + position.x + " " + position.y + ")",
         onPointerenter: event => {
           if (!gesture.value && !node.showMarkdown && node.markdown) showTooltip(event, async signal => {
@@ -1239,14 +1247,14 @@ createApp({
           if (event.key === "Enter" && event.shiftKey) openProperties("node", node.id);
         },
       }, [
-        owner || snapTarget ? h("rect", {"data-editor-only": "", x: -drawn.width / 2 - 10, y: -drawn.height / 2 - 10,
-          width: drawn.width + 20, height: drawn.height + 20, rx: 15, fill: "none",
+        owner || snapTarget ? h(outline, {"data-editor-only": "", ...dimensions, fill: "none",
           stroke: owner?.color ?? "#16a085", "stroke-width": 3, "pointer-events": "none"}) : null,
-        shape(drawn),
+        shape(drawn, !!destination),
         node.kind === "connectionPoint" && node.title ? h("text", {x: drawn.width/2 + 4, y: 4, fill: node.textColor, "font-size": 14}, node.title) : null,
         layout.frame ? h("rect", {...layout.frame, "pointer-events": "none"}) : null,
         h("text", {"font-family": "system-ui, sans-serif", "pointer-events": "none"},
           layout.lines.map(line => h("tspan", {
+            class: destination && !line.runs ? "link-label" : undefined,
             x: line.x, y: line.y, "text-anchor": line.anchor, "font-style": line.italic ? "italic" : undefined,
             "text-decoration": line.underline ? "underline" : undefined, fill: line.color, "font-size": line.size, "font-weight": line.weight,
             textLength: line.fit, lengthAdjust: line.fit ? "spacingAndGlyphs" : undefined,
@@ -1389,8 +1397,8 @@ createApp({
           ]),
         ]),
         h("div", {class: "participants", "aria-label": "Jelenlévők"},
-          peers.value.map((p, index) =>
-            h("span", {key: index, style: {"--peer": p.color}}, p.name))),
+          !online.value && problem.value ? h("span", {class: "connection-lost guest", role: "status"}, "Kapcsolat megszakadt") : peers.value.map((p, index) =>
+            h("span", {key: index, class: p.color ? "" : "guest", style: {"--peer": p.color}}, p.name))),
         h("div", {class: "canvas-controls"}, [
           button("", () => zoomBy(0.8), {"aria-label": "Kicsinyítés", title: "Kicsinyítés", symbol: "minus"}),
           h("span", Math.round(view.value.k * 100) + "%"),
@@ -1406,6 +1414,13 @@ createApp({
       ]);
     }
 
+    function ping(target) {
+      menu.value = null;
+      if (target.point) flashPoint(canvas.value?.querySelector("[data-scene]"), target.point);
+      else flashNode(canvas.value, target.node);
+      live.ping(target).catch(error => { problem.value = error.message; });
+    }
+
     function renderMenu() {
       const open = menu.value;
       if (!open) return null;
@@ -1413,13 +1428,8 @@ createApp({
       const edge = board.value?.edges.find(item => item.id === open.id);
       const type = open.kind;
       const entries = type === "node" && node ? [
-        button("Ping", async () => {
-          menu.value = null;
-          if (!await selectNode(node.id)) return;
-          flashNode(canvas.value, node.id);
-          live.ping(node.id, board.value.revision);
-        }, {symbol: "center", disabled: !!occupied(node.id)}),
-        button(node.link ? "Link feloldása" : "Link", async () => {
+        button("Ping", () => ping({node: node.id}), {symbol: "center", disabled: !online.value}),
+        node.kind !== "connectionPoint" ? button(node.link ? "Link feloldása" : "Link", async () => {
           menu.value = null;
           if (!await selectNode(node.id)) return;
           const current = nodeMap.value.get(node.id);
@@ -1428,7 +1438,7 @@ createApp({
           if (link == null) return;
           if (link && !worksheetLink(link, path)) { problem.value = "Érvénytelen hivatkozás."; return; }
           updateItem(current, "link", link);
-        }, {symbol: node.link ? "unlink" : "link", disabled: !!occupied(node.id)}),
+        }, {symbol: node.link ? "unlink" : "link", disabled: !!occupied(node.id)}) : null,
         button("Szerkesztés", () => openProperties("node", node.id), {symbol: "edit", disabled: !!occupied(node.id)}),
         button("Markdown megnyitása", () => showNote(node), {symbol: "eye"}),
         button("Törlés", () => { menu.value = null; deleteNode(node); }, {class: "button danger", symbol: "trash", disabled: !!occupied(node.id)}),
@@ -1437,6 +1447,7 @@ createApp({
         ...endpointActions(edge),
         button("Kapcsolat törlése", () => removeEdge(edge), {class: "button danger", symbol: "trash"}),
       ] : [
+        button("Ping", () => ping({point: clampPoint(open.position)}), {symbol: "center", disabled: !online.value}),
         button("Objektum létrehozása", () => { menu.value = null; addNode(open.position); }, {disabled: !board.value, symbol: "plus"}),
         button("Új munkalap", () => addSubworksheet(open.position), {symbol: "plus", disabled: !online.value}),
         button("Középre állítás", () => { menu.value = null; centerOrigin(); }, {symbol: "center"}),
@@ -1538,7 +1549,6 @@ createApp({
         if (!editingPanel.value) return sidebar("Munkalap", [
           button("Szerkesztés", () => openProperties("worksheet"), {symbol: "edit"}),
           h("h2", sheet.title), sheet.comment && h("p", sheet.comment), sheet.markdown && h("p", sheet.markdown),
-          h("p", sheet.gridVisible === false ? "Pontrács kikapcsolva" : "Rácsköz: " + (sheet.gridSpacing ?? 20)),
         ], role === "admin" ? button("Munkalap törlése", deleteBoard, {class: "button danger", symbol: "trash"}) : null);
         return sidebar("Munkalap", [
           button("Előnézet", () => { editingPanel.value = false; }, {symbol: "eye"}),
@@ -1678,9 +1688,6 @@ createApp({
       const changed = online.value && (dirty.value || (board.value.revision > checkpointState.value.revision
         ? board.value.revision !== checkpointRevision : checkpointState.value.changed));
       const controls = [
-          button("Munkalap", () => openProperties("worksheet"), {
-            "aria-pressed": inspector.value?.kind === "worksheet", symbol: "settings",
-          }),
           button("Mentés", () => sessionAction("checkpoint"), {class: changed ? "button primary" : "button", symbol: "save",
             title: "Közös visszaállítási pont rögzítése", disabled: checkpointBusy.value || !online.value}),
           button("Resign", () => sessionAction("resign"), {symbol: "undo", title: "A közös visszaállítási pont betöltése",
