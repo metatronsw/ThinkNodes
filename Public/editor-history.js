@@ -45,9 +45,32 @@ export function replayChanges(sheet, changes, redo, occupied) {
     } else if (value) result[group].splice(change.index, 0, structuredClone(value));
     else result[group].splice(result[group].indexOf(item), 1);
   }
-  const ids = new Set(result.nodes.map(node => node.id));
-  if (result.edges.some(edge => (edge.source && !ids.has(edge.source)) ||
-      (edge.target.node && !ids.has(edge.target.node))) ||
-      result.nodes.some(node => node.parent && !ids.has(node.parent))) return null;
+  const nodes = new Map(result.nodes.map(node => [node.id, node]));
+  const connections = new Set();
+  const degrees = new Map();
+  for (const edge of result.edges) {
+    const target = edge.target.node;
+    if ((edge.source && !nodes.has(edge.source)) || (target && !nodes.has(target))) return null;
+    for (const id of [edge.source, target]) {
+      if (id) degrees.set(id, (degrees.get(id) ?? 0) + 1);
+    }
+    if (!edge.source || !target) continue;
+    const pair = JSON.stringify([edge.source, target]);
+    if (edge.source === target || connections.has(pair)) return null;
+    connections.add(pair);
+  }
+  const checked = new Set();
+  for (const node of result.nodes) {
+    if (node.kind === "connectionPoint" && (degrees.get(node.id) ?? 0) < 2) return null;
+    const path = new Set();
+    let current = node;
+    while (current.parent && !checked.has(current.id)) {
+      const parent = nodes.get(current.parent);
+      if (parent?.kind !== "container" || path.has(current.id)) return null;
+      path.add(current.id);
+      current = parent;
+    }
+    for (const id of path) checked.add(id);
+  }
   return result;
 }

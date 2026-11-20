@@ -139,7 +139,7 @@ function wrap(text, columns) {
   return lines;
 }
 
-function wrapRuns(runs, columns) {
+function wrapRuns(runs, columns, preformatted) {
   const rows = [];
   let line = [];
   let word = [];
@@ -175,7 +175,15 @@ function wrapRuns(runs, columns) {
 
   for (const run of runs) {
     for (const letter of run.text) {
-      if (letter === "\n") {
+      if (preformatted) {
+        if (letter === "\n") {
+          if (!line.length) line.push({text: "", format: run.format});
+          endLine();
+        } else {
+          if (count === columns) endLine();
+          append(letter, run.format);
+        }
+      } else if (letter === "\n") {
         endWord();
         endLine();
       } else if (/\s/.test(letter)) {
@@ -215,7 +223,7 @@ export function labelLayout(node, blocks = []) {
     const size = block.kind === "heading" ? Math.round(bodySize * 1.15) : bodySize;
     const weight = block.kind === "heading" || textStyle.bold ? 700 : 400;
     const runs = block.kind === "quote" ? [{text: "› "}, ...block.runs] : block.runs;
-    wrapRuns(runs, Math.max(hiddenText ? 3 : 2, Math.floor(labelWidth / (size * 0.65)))).forEach((pieces, row) => {
+    wrapRuns(runs, Math.max(hiddenText ? 3 : 2, Math.floor(labelWidth / (size * 0.65))), block.kind === "code").forEach((pieces, row) => {
       const gap = row === 0 ? (index === 0 ? 8 : 3) : 0;
       lines.push({section: "textStyle", runs: pieces, text: pieces.map(piece => piece.text).join(""), size, weight,
         color: textStyle.color ?? node.textColor, italic: textStyle.italic, underline: textStyle.underline, alignment: textStyle.alignment, vertical: textStyle.verticalAlignment, step: size * 1.25 + gap, gap});

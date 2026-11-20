@@ -30,6 +30,8 @@ import VaporTesting
         #expect(newParent.status == .ok)
         #expect(FileManager.default.fileExists(atPath: file.path))
         #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("gondolatok.json").path))
+        let index = try await browser.sendRequest(.GET, "/")
+        #expect(index.body.string.contains("project-card panel layers-1"))
         let openedAgain = try await browser.sendRequest(.GET, "/\(path)", headers: ["Cookie": editor.cookie])
         #expect(openedAgain.status == .ok)
         let guestPrivate = try await browser.sendRequest(.GET, "/export/svg/\(path)")
@@ -80,7 +82,7 @@ import VaporTesting
         #expect(child.creator == "shared")
         let preview = try await browser.sendRequest(.GET, "/api/preview/" + path + "/terv")
         #expect(preview.status == .ok && preview.body.string.contains("<svg"))
-        #expect(FileManager.default.fileExists(atPath: file.deletingPathExtension().appendingPathComponent(".terv.preview-v2.svg").path))
+        #expect(FileManager.default.fileExists(atPath: file.deletingPathExtension().appendingPathComponent(".terv.preview-v3.svg").path))
         let parent = try await browser.sendRequest(.GET, "/" + path)
         #expect(parent.body.string.contains("További oldalak:") && parent.body.string.contains("Létrehozó: shared"))
         #expect(try await browser.sendRequest(.POST, childURL, headers: headers).status == .conflict)
@@ -512,4 +514,27 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     #expect(decoded.text == "**body**" && decoded.hideText == true && decoded.fontSize == 17)
     let encoded = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(decoded)) as? [String: Any])
     #expect(encoded["comment"] == nil && encoded["markdown"] == nil && encoded["text"] as? String == "**body**")
+}
+
+@Test func virtualPreviewAndRecreatedLeaf() throws {
+    let files = FileManager.default
+    let root = files.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? files.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    let owner = User(name: "owner", role: .editor, passwordHash: "")
+    let project = try WorksheetPath(["project"])
+    let child = try WorksheetPath(["project", "child"])
+    let sheet = try store.open(child, user: owner)
+    try files.removeItem(at: root.appendingPathComponent("project.json"))
+    #expect(try store.previewSVG(project, user: owner).contains("<svg"))
+    _ = try store.manage(child, operation: DocumentAction(scope: "sheet", action: "freeze"), user: owner, unlocks: [])
+    try store.archive(child, expected: sheet.revision)
+    let recreated = try store.open(child, user: owner)
+    #expect(try !store.access(child, sheet: recreated, user: owner).frozen)
+}
+
+@Test func codeBlockWhitespace() throws {
+    let block = try #require(canvasMarkdown("```\n  a  b\n\n c\n```").first)
+    let rows = wrapMarkdown(block.runs, columns: 40, preformatted: true)
+    #expect(rows.map { $0.map(\.text).joined() } == ["  a  b", "", " c"])
 }

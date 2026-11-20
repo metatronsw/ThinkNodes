@@ -38,7 +38,7 @@ if [[ -z "$swift_bin" || ! -x "$swift_bin" ]]; then
     exit 1
 fi
 
-swift_version="$($swift_bin --version | sed -n '1p')"
+swift_version="$("$swift_bin" --version | sed -n '1p')"
 printf 'Swift: %s\n' "$swift_version"
 
 if [[ "$server_only" == false ]]; then

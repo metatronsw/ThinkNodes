@@ -5,7 +5,7 @@ export const linkIcons = {
 
 export function worksheetLink(raw, currentPath) {
   const value = raw?.trim();
-  if (!value || value.length > 2048 || /[\\\u0000-\u001f\u007f]/u.test(value)) return null;
+  if (!value || new TextEncoder().encode(value).length > 2048 || /[\\\u0000-\u001f\u007f]/u.test(value)) return null;
   try {
     if (/^https?:\/\//i.test(value)) {
       const url = new URL(value);

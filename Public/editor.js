@@ -206,8 +206,8 @@ createApp({
       return draft ? edges.filter(e => e.id !== draft.original?.id).concat(draft.edges) : edges;
     });
     const layers = computed(() => {
-      const ordered = [...sceneNodes.value].sort((a,b) => b.width*b.height-a.width*a.height ||
-        Number(b.kind === "container")-Number(a.kind === "container"));
+      const ordered = [...sceneNodes.value].sort((a,b) => Number(b.kind === "container")-Number(a.kind === "container") ||
+        b.width*b.height-a.width*a.height);
       const firstBox = ordered.findIndex(n => n.kind !== "container");
       const split = firstBox < 0 ? ordered.length : firstBox;
       return {ordered, back: ordered.slice(0,split), front: ordered.slice(split)};
@@ -620,7 +620,7 @@ createApp({
       menu.value = null;
       const name = window.prompt("Új munkalap útvonalneve")?.trim();
       if (!name) return;
-      if (!/^[\p{L}\p{M}\p{N}_-]+$/u.test(name)) {
+      if (!/^[\p{L}\p{M}\p{Nd}_-]+$/u.test(name)) {
         problem.value = "A név betűt, számot, kötőjelet és aláhúzást tartalmazhat.";
         return;
       }
@@ -1635,6 +1635,7 @@ createApp({
             if (!format.bold && !format.italic && !format.code && !format.link) return run.text;
             return h("tspan", {"font-weight": format.bold ? 700 : undefined,
               "font-style": format.italic ? "italic" : undefined, "font-family": format.code ? "monospace" : undefined,
+              "xml:space": format.code ? "preserve" : undefined,
               "text-decoration": format.link ? "underline" : undefined}, run.text);
           }) : line.text))),
         destination ? h("svg", {x: drawn.width/2*inset-15, y: drawn.height/2*inset-16, width: 14, height: 14,
@@ -2037,8 +2038,17 @@ createApp({
             color("Text keret", "textBorder", node.border)]),
         ]),
         group("Link", [
-          field("Link", input(node.link ?? "", value => change("link", value.trim()), {
-            maxlength: 2048, placeholder: "allap, ../ vagy https://…",
+          field("Link", h("input", {
+            value: node.link ?? "", maxlength: 2048, placeholder: "allap, ../ vagy https://…",
+            onChange: event => {
+              const link = event.target.value.trim();
+              if (link && !worksheetLink(link, path)) {
+                problem.value = "Érvénytelen hivatkozás.";
+                event.target.value = node.link ?? "";
+                return;
+              }
+              change("link", link);
+            },
           })),
         ]),
       ], deleteButton(node));

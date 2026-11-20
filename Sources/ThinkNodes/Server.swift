@@ -233,7 +233,7 @@ func configure(_ application: Application, store: WorksheetStore) {
             try store.list(user: identity.user, rootsOnly: true, unlocks: identity.unlocks).map { item -> ProjectCard in
                 let access = try store.access(item.path, sheet: item.worksheet, user: identity.user, unlocks: identity.unlocks)
                 return ProjectCard(path: item.path, worksheet: item.worksheet, access: access,
-                                   count: try store.projectFileCount(item.path))
+                                   count: access.readable ? try store.list(user: identity.user, childrenOf: item.path, unlocks: identity.unlocks).count : 0)
             }
         }
         return indexPage(projects, session: identity)
@@ -544,7 +544,7 @@ private func indexPage(_ items: [ProjectCard], session: SessionInfo) -> Response
     let cards = items.map { item in
         let count = item.count
         return """
-        <a class="project-card panel layers-\(min(max(0, count - 1), 2))" data-scope="project" \(menuState(item.access.projectRule)) data-manage="\(item.access.manageable)" data-color="\(escaped(item.worksheet.backgroundColor))" data-revision="\(item.worksheet.revision)" href="/\(item.path.url)">
+        <a class="project-card panel layers-\(min(count, 2))" data-scope="project" \(menuState(item.access.projectRule)) data-manage="\(item.access.manageable)" data-color="\(escaped(item.worksheet.backgroundColor))" data-revision="\(item.worksheet.revision)" href="/\(item.path.url)">
           <span class="project-glyph" aria-hidden="true">◇</span>
           <div><h2>\(escaped(item.worksheet.title))</h2>
           <span class="muted">/\(escaped(item.path.parts.joined(separator: "/")))</span>\(credits(item.worksheet, item.access))<div class="project-badges">\(projectBadges(item.access))</div></div>

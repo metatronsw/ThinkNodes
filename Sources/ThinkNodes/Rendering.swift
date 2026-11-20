@@ -207,7 +207,7 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
         let columns = max(node.hideText == true ? 3 : 2, Int(labelWidth / (size * 0.65)))
         var runs = block.runs
         if block.kind == .quote { runs.insert(MarkdownRun(text: "› "), at: 0) }
-        for (row, pieces) in wrapMarkdown(runs, columns: columns).enumerated() {
+        for (row, pieces) in wrapMarkdown(runs, columns: columns, preformatted: block.kind == .code).enumerated() {
             let gap: Double = row == 0 ? (index == 0 ? 8 : 3) : 0
             lines.append(IdeaLabelLine(text: pieces.map(\.text).joined(), size: size,
                                        weight: block.kind == .heading || node.textStyle?.bold == true ? 700 : 400,
@@ -327,7 +327,7 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
             var attributes = ""
             if format.bold { attributes += " font-weight=\"700\"" }
             if format.italic { attributes += " font-style=\"italic\"" }
-            if format.code { attributes += " font-family=\"monospace\"" }
+            if format.code { attributes += " font-family=\"monospace\" xml:space=\"preserve\"" }
             if format.link { attributes += " text-decoration=\"underline\"" }
             return attributes.isEmpty ? escaped(run.text) : "<tspan\(attributes)>\(escaped(run.text))</tspan>"
         }.joined()
@@ -445,8 +445,8 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
         return "<\(tag) data-node=\"\(node.id)\" \(geometry)\(linked) aria-label=\"\(escaped(node.title))\">\(graphic)</\(tag)>"
     }
     let ordered = drawings.sorted { a, b in
-        let left = a.node.width * a.node.height, right = b.node.width * b.node.height
-        return left == right ? a.node.kind == .container && b.node.kind != .container : left > right
+        if (a.node.kind == .container) != (b.node.kind == .container) { return a.node.kind == .container }
+        return a.node.width * a.node.height > b.node.width * b.node.height
     }
     let split = ordered.firstIndex { $0.node.kind != .container } ?? ordered.endIndex
     let containers = ordered[..<split].map(render).joined(separator: "\n")

@@ -459,6 +459,7 @@ assert.ok(!model("outside") && edge("one").sourcePoint);
 console.log("Passed editor gestures, junction cleanup, container nesting and lock, text scaling, palette, HEX and world grid.");
 
 const {worksheetLink} = await import("../../Public/links.js");
+assert.equal(worksheetLink("https://example.com/" + "é".repeat(1024), "main"), null);
 assert.deepEqual(worksheetLink("../közös", "main/lab"), {kind: "worksheet", href: "/main/k%C3%B6z%C3%B6s"});
 assert.equal(worksheetLink("/..", "main/lab").href, "/main");
 assert.equal(worksheetLink("sub/one", "main").href, "/main/sub/one");
@@ -467,6 +468,9 @@ assert.equal(worksheetLink("javascript:alert(1)", "main"), null);
 
 const {labelLayout} = await import("../../Public/geometry.js");
 const sample = {...node("label", 0, 0, 240, 200), hideText: false};
+const codeBlock = {kind: "code", runs: [{text: "  a  b\n\n c\n", format: {code: true}}]};
+assert.deepEqual(labelLayout(sample, [codeBlock]).lines.filter(line => line.runs).map(line => line.text),
+  ["  a  b", "", " c"]);
 const hiddenNote = labelLayout({...sample, text: "**Szöveg**", hideText: true, textStyle: {alignment: "right", verticalAlignment: "bottom"}});
 const dot = hiddenNote.lines.find(l => l.runs);
 assert.equal(dot.text, "•••");
@@ -502,3 +506,20 @@ local.edges.push({id: "added", source: "a", target: {node: "b"}});
 remote.nodes.pop();
 assert.deepEqual(rebaseWorksheet(base, local, remote).edges[0].target, {point: {x: 40, y: 10}});
 console.log("Passed link resolution, nine alignments and concurrent worksheet edits.");
+
+const {replayChanges, worksheetChanges} = await import("../../Public/editor-history.js");
+const parent = {id: "parent", kind: "container"};
+const member = {id: "member", kind: "container"};
+const separated = {nodes: [parent, member], edges: []};
+const nested = {nodes: [parent, {...member, parent: "parent"}], edges: []};
+const outsiderMove = {nodes: [{...parent, parent: "member"}, member], edges: []};
+assert.equal(replayChanges(outsiderMove, worksheetChanges(nested, separated), false, () => false), null);
+const originalWire = {id: "old", source: "parent", target: {node: "member"}};
+const deletedWire = worksheetChanges({...separated, edges: [originalWire]}, separated);
+const replacementWire = {...separated, edges: [{...originalWire, id: "replacement"}]};
+assert.equal(replayChanges(replacementWire, deletedWire, false, () => false), null);
+const historyJunction = {id: "j", kind: "connectionPoint"};
+const cables = ["one", "two", "three"].map((id, x) => ({id, source: "j", target: {point: {x, y: 0}}}));
+const junctionSheet = edges => ({nodes: [historyJunction], edges});
+const thirdCable = worksheetChanges(junctionSheet(cables.slice(0, 2)), junctionSheet(cables));
+assert.equal(replayChanges(junctionSheet(cables.slice(1)), thirdCable, false, () => false), null);

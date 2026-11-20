@@ -101,7 +101,7 @@ func canvasMarkdown(_ source: String) -> [MarkdownBlock] {
     }
 }
 
-func wrapMarkdown(_ runs: [MarkdownRun], columns: Int) -> [[MarkdownRun]] {
+func wrapMarkdown(_ runs: [MarkdownRun], columns: Int, preformatted: Bool = false) -> [[MarkdownRun]] {
     var rows: [[MarkdownRun]] = []
     var line: [MarkdownRun] = []
     var word: [(Character, MarkdownFormat)] = []
@@ -137,7 +137,15 @@ func wrapMarkdown(_ runs: [MarkdownRun], columns: Int) -> [[MarkdownRun]] {
 
     for run in runs {
         for character in run.text {
-            if character.isNewline {
+            if preformatted {
+                if character.isNewline {
+                    if line.isEmpty { line.append(MarkdownRun(text: "", format: run.format)) }
+                    endLine()
+                } else {
+                    if count == columns { endLine() }
+                    append(character, format: run.format)
+                }
+            } else if character.isNewline {
                 endWord()
                 endLine()
             } else if character.isWhitespace {

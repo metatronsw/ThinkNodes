@@ -32,7 +32,9 @@ async function change(card, action, value) {
     const result = await response.json();
     if (!response.ok) throw Error(result.reason || "A művelet sikertelen.");
     if (action === "rename" && card.matches("[data-current-document]")) location.assign("/" + result.path);
-    else location.reload();
+    else if (action === "delete" && card.matches("[data-current-document]")) {
+      location.assign(card.pathname.slice(0, card.pathname.lastIndexOf("/")) || "/");
+    } else location.reload();
   } catch (error) { alert(error.message); }
 }
 

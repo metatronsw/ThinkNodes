@@ -39,6 +39,11 @@ fi
 configuration="${THINKNODES_CONFIGURATION:-debug}"
 executable="${THINKNODES_EXECUTABLE:-.build/$configuration/ThinkNodes}"
 
+if [[ -n "${THINKNODES_EXECUTABLE:-}" && ! -x "$executable" ]]; then
+    printf 'A kiválasztott fájl nem futtatható: %s\n' "$executable" >&2
+    exit 1
+fi
+
 build_stamp=".build/$configuration/.thinknodes-built-head"
 if [[ ! -x "$executable" || ( -z "${THINKNODES_EXECUTABLE:-}" && ( Sources/ThinkNodes/Server.swift -nt "$executable" ||
         ( -n "$checkout_head" && "$(cat "$build_stamp" 2>/dev/null || true)" != "$checkout_head" ) ) ) ]]; then

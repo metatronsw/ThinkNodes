@@ -158,6 +158,7 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
     timer = null;
     pending = null;
     cursorPoint = null;
+    onMotion?.(null);
     onCursor?.(null);
     socket?.close();
     socket = null;

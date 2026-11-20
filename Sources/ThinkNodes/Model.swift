@@ -561,18 +561,6 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    func projectFileCount(_ path: WorksheetPath) throws -> Int {
-        try lock.withLock {
-            let directory = try worksheetURL(path).deletingPathExtension()
-            try rejectLink(directory)
-            guard files.fileExists(atPath: directory.path) else { return 0 }
-            return try files.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey], options: [.skipsHiddenFiles]).filter {
-                let info = try $0.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
-                return info.isRegularFile == true && info.isSymbolicLink != true && $0.pathExtension == "json"
-            }.count
-        }
-    }
-
     func settings() throws -> SiteSettings {
         try lock.withLock { try readSettings() }
     }
@@ -633,7 +621,8 @@ final class WorksheetStore: @unchecked Sendable {
             let rules = try policies()
             let sheet = try readDocument(path, rules: rules)
             try authorize(accessLocked(path, sheet: sheet, user: user, unlocks: unlocks, rules: rules), user: user)
-            let cache = url.deletingLastPathComponent().appendingPathComponent("." + path.name + ".preview-v2.svg")
+            guard files.fileExists(atPath: url.path) else { return boardSVG(sheet) }
+            let cache = url.deletingLastPathComponent().appendingPathComponent("." + path.name + ".preview-v3.svg")
             try rejectLink(cache)
             let modified = try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
             if let modified, let cached = try? cache.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
@@ -834,7 +823,16 @@ final class WorksheetStore: @unchecked Sendable {
             let trash = root.appendingPathComponent(".trash", isDirectory: true)
             try rejectLink(trash)
             try files.createDirectory(at: trash, withIntermediateDirectories: true)
-            try files.moveItem(at: url, to: trash.appendingPathComponent("\(UUID().uuidString)-\(path.name).json"))
+            let destination = trash.appendingPathComponent("\(UUID().uuidString)-\(path.name).json")
+            var rules = try policies()
+            // A surviving directory can still contain protected children or attachments.
+            let removePolicy = !files.fileExists(atPath: url.deletingPathExtension().path)
+                && rules.removeValue(forKey: "sheet/" + path.url) != nil
+            try files.moveItem(at: url, to: destination)
+            if removePolicy {
+                do { try write(rules, to: policyURL) }
+                catch { try files.moveItem(at: destination, to: url); throw error }
+            }
         }
     }
 
