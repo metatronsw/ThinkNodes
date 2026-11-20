@@ -6,7 +6,7 @@ export function hideTooltip() {
 }
 export function showTooltip(event, render) {
   hideTooltip();
-  const {clientX, clientY, currentTarget} = event;
+  const {currentTarget} = event;
   const signal = (request = new AbortController()).signal;
   timer = setTimeout(async () => {
     try {
@@ -18,8 +18,10 @@ export function showTooltip(event, render) {
       tooltip.innerHTML = html;
       document.body.append(tooltip);
       const {width, height} = tooltip.getBoundingClientRect();
-      tooltip.style.left = Math.max(4, Math.min(clientX+12, innerWidth-width-4)) + "px";
-      tooltip.style.top = Math.max(4, Math.min(clientY+16, innerHeight-height-4)) + "px";
+      const box = currentTarget.getBoundingClientRect();
+      const left = box.right+width+12 <= innerWidth ? box.right+8 : box.left-width-8;
+      tooltip.style.left = Math.max(4, Math.min(left, innerWidth-width-4)) + "px";
+      tooltip.style.top = Math.max(4, Math.min(box.top, innerHeight-height-4)) + "px";
     } catch { /* Hover previews are optional when disconnected. */ }
   }, 350);
 }

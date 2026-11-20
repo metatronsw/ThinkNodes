@@ -5,7 +5,7 @@ import {flashNode, flashPoint} from "./ping.js";
 import {showTooltip, hideTooltip} from "./tooltip.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {arrowTransform, canvasBounds, edgeEndpoint, edgeGeometry, edgePaint, labelLayout, limit, lineAppearances, lineTypes, paper, selectionOutline, shapeDistance, shapes} from "./geometry.js?v=2";
+import {automaticBorder, arrowTransform, canvasBounds, edgeEndpoint, edgeGeometry, edgePaint, labelLayout, limit, lineAppearances, lineTypes, paper, selectionOutline, shapeDistance, shapes} from "./geometry.js?v=2";
 
 import {ancestors, containerOrder, overlapFraction} from "./containers.js";
 
@@ -129,7 +129,7 @@ function shape(node, linked) {
   const x = node.width / 2;
   const y = node.height / 2;
   if (node.kind === "connectionPoint") return h("circle", {r: node.width / 2, fill: node.fill});
-  const style = {fill: node.fill, stroke: node.border, "stroke-width": node.kind === "container" && node.locked ? 3.2 : 1.6,
+  const style = {fill: node.fill, stroke: automaticBorder(node.fill), "stroke-width": node.kind === "container" && node.locked ? 3.2 : 1.6,
     "stroke-dasharray": linked ? "7 4" : undefined};
   if (node.shape === "ellipse") return h("ellipse", {...style, rx: x, ry: y});
   if (node.shape === "diamond") return h("polygon", {...style, points: ["0," + -y, x + ",0", "0," + y, -x + ",0"].join(" ")});
@@ -245,7 +245,9 @@ createApp({
     const drawnBounds = () => canvasBounds({
       nodes: [...drawings.value.values()].map(({node, layout}) => ({...node, extentX: layout.extentX, extentY: layout.extentY})), edges: board.value.edges,
     });
-    const gridOverride = ref(null);
+    const gridKey = "thinknodes/grid/" + path;
+    const storedGrid = window.sessionStorage?.getItem(gridKey);
+    const gridOverride = ref(storedGrid == null ? null : storedGrid === "true");
     const gridVisible = computed(() => gridOverride.value ?? (board.value?.gridVisible !== false));
     const snapToGrid = ref(false);
     const selected = ref(null);
@@ -592,7 +594,7 @@ createApp({
 
     function makeNode(position) {
       return {id: id(), title: "Új ötlet", text: "", hideText: false, position: clampPoint(position), width: 176, height: 80,
-        shape: "rounded", fill: "#dce9ff", textColor: "#182335", border: "#839bbc", fontSize: 16, bold: true, alignment: "center"};
+        shape: "rounded", fill: "#dce9ff", textColor: "#182335", fontSize: 16, bold: true, alignment: "center"};
     }
 
     function addNode(position = worldAtCenter(), properties = {}) {
@@ -1560,7 +1562,7 @@ createApp({
         "aria-label": node.title, "data-link": destination ? "" : undefined, class: ["idea", {occupied: occupied(node.id), claimed: !!owner}],
         transform: "translate(" + position.x + " " + position.y + ")",
         onPointerenter: event => {
-          if (!gesture.value && node.hideText && node.text) showTooltip(event, async signal => {
+          if (!gesture.value && (node.hideText || layout.overflow) && node.text) showTooltip(event, async signal => {
             const result = await checked(await fetch("/api/text", {method: "POST", signal,
               headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify({text: node.text})}));
             return result.text();
@@ -1574,8 +1576,8 @@ createApp({
           if (event.key === "Enter" && event.shiftKey) openProperties("node", node.id);
         },
       }, [
-        owner || snapTarget || batch.value?.nodes.has(node.id) ? h(outline, {"data-editor-only": "", ...dimensions, fill: "none",
-          stroke: owner?.color ?? "#16a085", "stroke-width": 3, "pointer-events": "none"}) : null,
+        owner || snapTarget || batch.value?.nodes.has(node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-glow", color: owner?.color ?? "#16a085", fill: "none",
+          stroke: owner?.color ?? "#16a085", "stroke-width": 3, "pointer-events": "none"}, [h("animate", {attributeName: "opacity", values: "1;.45;1", dur: "4s", repeatCount: "indefinite"})]) : null,
         shape(drawn, !!destination),
         node.kind === "connectionPoint" && node.title ? h("text", {x: drawn.width/2 + 4, y: 4, fill: node.textColor, "font-size": 14}, node.title) : null,
         layout.frame ? h("rect", {...layout.frame, "pointer-events": "none", transform: textDrag?.section === "textStyle" ?
@@ -1610,14 +1612,15 @@ createApp({
               "xml:space": format.code ? "preserve" : undefined,
               "text-decoration": format.link ? "underline" : undefined}, run.text);
           }) : line.text))),
-        destination ? h("svg", {x: drawn.width/2*inset-15, y: drawn.height/2*inset-16, width: 14, height: 14,
+        destination ? h("svg", {overflow: "visible", x: drawn.width/2*inset-15, y: drawn.height/2*inset-16, width: 14, height: 14,
           viewBox: "0 0 24 24", fill: "none", stroke: node.textColor, "stroke-width": 1.8,
           "stroke-linecap": "round", "stroke-linejoin": "round", "pointer-events": "all",
           role: "link", tabindex: 0, "aria-label": "Hivatkozás megnyitása", cursor: "pointer",
           onPointerdown: e => { if (!e.altKey) e.stopPropagation(); }, onClick: e => e.stopPropagation(),
           onDblclick: e => { if (e.altKey) return; e.preventDefault(); e.stopPropagation(); followBoxLink(destination); },
           onKeydown: e => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); followBoxLink(destination); } }},
-          [h("rect", {width: 24, height: 24, fill: "transparent", stroke: "none"}), h("path", {d: linkIcons[destination.kind]})]) : null,
+          [h("text", {class: "box-link", x: -5, y: 19, fill: node.textColor, stroke: "none", "text-anchor": "end", "font-size": 18,
+            textLength: node.link.length * 11 > (drawn.width*inset-22)*24/14 ? Math.max(12,drawn.width*inset-22)*24/14 : undefined, lengthAdjust: "spacingAndGlyphs"}, node.link), h("rect", {width: 24, height: 24, fill: "transparent", stroke: "none"}), h("path", {d: linkIcons[destination.kind]})]) : null,
         ...(alt.value && !ctrl.value && !occupied(node.id) && node.kind !== "connectionPoint" && !ancestors(node, nodeMap.value).some(n => n.locked)
           ? [[-1,-1], [1,-1], [1,1], [-1,1]].map(([sx, sy]) => {
             const r = 5/view.value.k;
@@ -1685,8 +1688,10 @@ createApp({
         },
         onContextmenu: event => context(event, "edge", edge.id),
       }, [
-        ...colors.map((color, i) => h("path", {"data-editor-only": "", d: stroke.d, "stroke-linecap": "butt", stroke: color,
+        ...colors.map((color, i) => h("path", {"data-editor-only": "", d: stroke.d, "stroke-linecap": paint.linecap, "stroke-dasharray": paint.dash, stroke: color,
           "stroke-width": paint.width + 5 * (colors.length-i) / view.value.k, "pointer-events": "none"})),
+        ...colors.flatMap(color => Object.values(ends).filter(head => head.visible).map(head =>
+          h("path", {"data-editor-only": "", transform: head.transform, d: "M0 0L-1 -.5V.5Z", fill: color, stroke: color, "stroke-width": .35, "pointer-events": "none"}))),
         h("path", stroke),
         h("path", {"data-editor-only": "", d, stroke: "transparent", "stroke-width": Math.max(paint.width + 10, 14 / view.value.k),
           "pointer-events": "stroke", class: "edge-hit"}),
@@ -1721,7 +1726,7 @@ createApp({
           ]),
           h("rect", {width: "100%", height: "100%", fill: board.value.background ?? paper, "pointer-events": "none"}),
           h("g", {transform: view.value + " translate(" + centerX + " " + centerY + ")"}, [
-            gridVisible.value ? h("rect", {x: left-centerX, y: top-centerY, width: size.value.width/view.value.k,
+            gridVisible.value ? h("rect", {"data-editor-only": "", x: left-centerX, y: top-centerY, width: size.value.width/view.value.k,
               height: size.value.height/view.value.k, fill: "url(#worksheet-grid)", "pointer-events": "none"}) : null,
             h("path", {"data-editor-only": "", "pointer-events": "none", stroke: "#aab9cf", "stroke-width": 1,
               d: "M -8 0 H 8 M 0 -8 V 8"}),
@@ -1748,7 +1753,7 @@ createApp({
           button("", () => zoomBy(1.25), {"aria-label": "Nagyítás", title: "Nagyítás", symbol: "plus"}),
           button("Közép", centerOrigin, {title: "Középre állítás, (0, 0)", symbol: "center"}),
           button("Mind", fit, {title: "A teljes vászon megjelenítése", symbol: "fit"}),
-          button("", () => { gridOverride.value = !gridVisible.value; }, {
+          button("", () => { gridOverride.value = !gridVisible.value; window.sessionStorage?.setItem(gridKey, String(gridOverride.value)); }, {
             title: "Pontrács ezen a kliensen", "aria-label": "Pontrács", "aria-pressed": gridVisible.value, symbol: "grid"}),
           button("", () => { snapToGrid.value = !snapToGrid.value; }, {title: "Rácsra igazítás", "aria-label": "Rácsra igazítás", "aria-pressed": snapToGrid.value, symbol: "snap"}),
 
@@ -1799,14 +1804,14 @@ createApp({
         style: {left: open.x + "px", top: open.y + "px"}}, entries);
     }
 
-    function sidebar(label, contents, deletion) {
+    function sidebar(label, contents, deletion, modeButton) {
       return h("aside", {class: "inspector", "aria-label": label,
         onFocusin: event => { editingField = event.target.matches("textarea,input,select"); },
         onFocusout: finishField,
         onChange: event => { if (event.target.matches("select,input[type=checkbox],input[type=range],input[type=color]")) finishField(); },
         onInputCapture: () => { editingField = true; }}, [
         h("div", {class: "inspector-content stack"}, contents),
-        deletion ? h("footer", {class: "inspector-footer"}, deletion) : null,
+        deletion || modeButton ? h("footer", {class: "inspector-footer"}, [deletion, modeButton]) : null,
 
       ]);
     }
@@ -1894,27 +1899,25 @@ createApp({
         const node = nodeMap.value.get(reading.id);
         if (!node) return null;
         return sidebar("Text", [
-          button("Szerkesztés", () => openProperties("node", node.id), {symbol: "edit", disabled: !!occupied(node.id)}),
           h("h2", node.title),
           reading.loading ? h("p", "Betöltés…") : null,
           reading.error ? h("p", {class: "error"}, reading.error) : null,
           !reading.loading && !reading.error ? h("div", {class: "formatted-text", innerHTML: reading.html || "<p>Még nincs leírás.</p>"}) : null,
-        ], deleteButton(node));
+        ], deleteButton(node), button("Szerkesztés", () => openProperties("node", node.id), {symbol: "edit", disabled: !!occupied(node.id)}));
       }
       if (!inspector.value || inspector.value.kind === "worksheet") {
         const sheet = board.value;
         if (!editingPanel.value) return sidebar("Munkalap", [
-          button("Szerkesztés", () => openProperties("worksheet"), {symbol: "edit"}),
           h("h2", sheet.title), h(FormattedText, {source: sheet.text}),
-        ], role === "admin" ? button("Munkalap törlése", deleteBoard, {class: "button danger", symbol: "trash"}) : null);
+        ], role === "admin" ? button("Munkalap törlése", deleteBoard, {class: "button danger", symbol: "trash"}) : null, button("Szerkesztés", () => openProperties("worksheet"), {symbol: "edit"}));
         return sidebar("Munkalap", [
-          button("Előnézet", () => { editingPanel.value = false; }, {symbol: "eye"}),
           field("Cím", input(sheet.title, value => updateItem(sheet, "title", value), {maxlength: 120})),
           field("Text", textarea(sheet.text ?? "", value => updateItem(sheet, "text", value))),
           colorPicker("Munkalap háttérszíne", sheet.background ?? paper, value => updateItem(sheet, "background", value), "worksheet/background"),
           colorPicker("Rácspontok színe", sheet.gridColor ?? "#ccd7eb", value => updateItem(sheet, "gridColor", value), "worksheet/grid"),
           checkbox("Pontrács megjelenítése", sheet.gridVisible !== false, v => {
             gridOverride.value = null;
+            window.sessionStorage?.removeItem(gridKey);
             updateItem(sheet, "gridVisible", v);
           }),
           field("Rácsköz", numeric(sheet.gridSpacing ?? 20, value => updateItem(sheet, "gridSpacing", value), 6, 160)),
@@ -1924,19 +1927,17 @@ createApp({
             link("Mentett JSON letöltése", "/export/json/" + path, "download"),
             link("Mentett Text letöltése", "/export/text/" + path, "download"),
           ]),
-        ], role === "admin" ? button("Munkalap törlése", deleteBoard, {class: "button danger", symbol: "trash"}) : null);
+        ], role === "admin" ? button("Munkalap törlése", deleteBoard, {class: "button danger", symbol: "trash"}) : null, button("Előnézet", () => { editingPanel.value = false; }, {symbol: "eye"}));
       }
       if (inspector.value.kind === "edge") {
         const edge = board.value.edges.find(item => item.id === inspector.value.id);
         if (!edge) return null;
         const paint = edgePaint(edge);
         if (!editingPanel.value) return sidebar("Vonal", [
-          button("Szerkesztés", () => openProperties("edge", edge.id), {symbol: "edit"}),
           h("h2", edge.label || "Vonal"),
           h("p", (nodeMap.value.get(edge.source)?.title || "Szabad kezdőpont") + " → " + (nodeMap.value.get(edge.target.node)?.title || "Szabad végpont")),
-        ], button("Kapcsolat törlése", () => removeEdge(edge), {class: "button danger", symbol: "trash"}));
+        ], button("Kapcsolat törlése", () => removeEdge(edge), {class: "button danger", symbol: "trash"}), button("Szerkesztés", () => openProperties("edge", edge.id), {symbol: "edit"}));
         return sidebar("Vonal szerkesztése", [
-          button("Előnézet", () => { editingPanel.value = false; }, {symbol: "eye"}),
           field("Címke", input(edge.label || "", value => updateItem(edge, "label", value), {"data-object-label": "", maxlength: 120})),
           colorPicker("Vonal színe", paint.color, value => updateItem(edge, "color", value), edge.id + "/line"),
           field("Alapvastagság", numeric(edge.width ?? 2, value => updateItem(edge, "width", value), 0.5, 24)),
@@ -1945,7 +1946,7 @@ createApp({
           checkbox("Nyíl a vonal elején", paint.startArrow, value => updateItem(edge, "startArrow", value)),
           checkbox("Nyíl a vonal végén", paint.endArrow, value => updateItem(edge, "endArrow", value)),
           ...endpointActions(edge),
-        ], button("Kapcsolat törlése", () => removeEdge(edge), {class: "button danger", symbol: "trash"}));
+        ], button("Kapcsolat törlése", () => removeEdge(edge), {class: "button danger", symbol: "trash"}), button("Előnézet", () => { editingPanel.value = false; }, {symbol: "eye"}));
       }
       const node = nodeMap.value.get(inspector.value.id);
       if (!node || held.value !== node.id || occupied(node.id)) return null;
@@ -1953,10 +1954,9 @@ createApp({
       const title = input(node.title, value => change("title", value), {"aria-label": "Címke", "data-object-label": "", maxlength: 120});
       const color = (label, key, fallback) => colorPicker(label, node[key] ?? fallback, v => change(key, v), node.id + "/" + key);
       if (node.kind === "connectionPoint") return sidebar("Csomópont", [
-        button("Előnézet", () => showNote(node), {symbol: "eye"}),
         field("Átmérő", numeric(node.width, size => { node.height = size; change("width", size); }, 4, 128)),
         field("Címke", title), color("Szín", "fill"),
-      ], deleteButton(node));
+      ], deleteButton(node), button("Előnézet", () => showNote(node), {symbol: "eye"}));
       const alignments = {left: "Balra", center: "Középre", right: "Jobbra"};
       function typography(section) {
         const isTitle = section === "title";
@@ -1993,11 +1993,10 @@ createApp({
       const group = (label, children) => h("fieldset", {class: "property-group stack"}, [h("legend", label), ...children]);
       const locked = groupBlocked(node) || ancestors(node, nodeMap.value).some(n => n.locked);
       return sidebar("Ötlet szerkesztése", [
-        button("Előnézet", () => showNote(node), {symbol: "eye"}),
         group("Cím", [title, ...typography("title")]),
         group("Doboz", [
           select(node.shape, shapes, value => change("shape", value), {"aria-label": "Forma"}),
-          h("div", {class: "fields-two"}, [color("Háttér", "fill"), color("Keret", "border")]),
+          color("Háttér", "fill"),
           button(node.kind === "container" ? "Konténer feloldása" : "Konténer", () => toggleContainer(node), {symbol: "folder", disabled: locked}),
           node.kind === "container" ? checkbox("Lock · tartalom rögzítése", !!node.locked, v => change("locked", v)) : null,
         ]),
@@ -2005,8 +2004,7 @@ createApp({
           textarea(node.text, value => change("text", value)),
           checkbox("Hide text", Boolean(node.hideText), value => change("hideText", value)),
           ...typography("textStyle"),
-          h("div", {class: "fields-two"}, [color("Text háttér", "textFill", node.fill),
-            color("Text keret", "textBorder", node.border)]),
+          color("Text keret", "textBorder", automaticBorder(node.fill)),
         ]),
         group("Link", [
           h("input", {"aria-label": "Link",
@@ -2022,7 +2020,7 @@ createApp({
             },
           }),
         ]),
-      ], deleteButton(node));
+      ], deleteButton(node), button("Előnézet", () => showNote(node), {symbol: "eye"}));
     }
 
     const toolbar = document.getElementById?.("editor-tools");
@@ -2042,10 +2040,10 @@ createApp({
       const controls = [
           historyButton("Visszavonás", "undo", false, undo.value.length || fieldChanged),
           historyButton("Újra", "redo", true, redo.value.length),
-          button(h("span", {class: changed ? "save-label-changed" : undefined}, "Mentés"), () => sessionAction("checkpoint"), {symbol: "save",
-            title: "Közös visszaállítási pont rögzítése", disabled: checkpointBusy.value || !online.value}),
           button("Resign", () => sessionAction("resign"), {symbol: "undo", title: "A közös visszaállítási pont betöltése",
             disabled: checkpointBusy.value || !online.value}),
+          button(h("span", {class: changed ? "save-label-changed" : undefined}, "Mentés"), () => sessionAction("checkpoint"), {symbol: "save",
+            title: "Közös visszaállítási pont rögzítése", disabled: checkpointBusy.value || !online.value}),
       ];
       return toolbar ? h(window.Vue.Teleport, {to: toolbar}, controls) : h("div", controls);
     }

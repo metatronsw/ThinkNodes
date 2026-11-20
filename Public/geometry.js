@@ -12,6 +12,10 @@ export const edgeStyles = {
   rope: "Íves kötél",
 };
 
+export function automaticBorder(fill) {
+  return "#" + [1, 3, 5].map(i => Math.floor(parseInt(fill.slice(i, i+2), 16)*2/3).toString(16).padStart(2,"0")).join("");
+}
+
 export const paper = "#f5f8fc";
 export const cableColor = "#526982";
 export const limit = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -79,10 +83,10 @@ function route(type, source, target) {
       break;
     case "zigzag":
       if (length) {
-        const offset = .06;
+        const offset = .028;
         return {command: "L", points: [
-          {x: source.x + dx * .53 - dy * offset, y: source.y + dy * .53 + dx * offset},
-          {x: source.x + dx * .47 + dy * offset, y: source.y + dy * .47 - dx * offset},
+          {x: source.x + dx * .515 - dy * offset, y: source.y + dy * .515 + dx * offset},
+          {x: source.x + dx * .485 + dy * offset, y: source.y + dy * .485 - dx * offset},
         ]};
       }
       break;
@@ -111,24 +115,20 @@ export function edgeGeometry(edge, findNode) {
   const targetToward = points.at(-1) ?? from;
   const pair = p => `${p.x} ${p.y}`;
   const path = (start, end) => `M ${pair(start)} ${command} ${[...points, end].map(pair).join(" ")}`;
-  const middle = command === "L" && points.length ? points : [from, to];
-  const labelPosition = {x: (middle[0].x + middle[1].x) / 2, y: (middle[0].y + middle[1].y) / 2};
-  const boundsPoints = [from, to];
-  if (command === "Q") {
-    const [control] = points;
-    const at = (key, t) => (1-t)**2 * from[key] + 2*(1-t)*t * control[key] + t*t * to[key];
-    for (const axis of ["x", "y"]) {
-      const t = (from[axis] - control[axis]) / (from[axis] - 2 * control[axis] + to[axis]);
-      if (t > 0 && t < 1) boundsPoints.push({x: at("x", t), y: at("y", t)});
-      labelPosition[axis] = at(axis, .5);
-    }
-  } else {
-    boundsPoints.push(...points);
-    if (command === "C") {
-      for (const axis of ["x", "y"]) labelPosition[axis] = (from[axis] + 3 * points[0][axis] + 3 * points[1][axis] + to[axis]) / 8;
-    }
-  }
-  let angle = Math.atan2(to.y - from.y, to.x - from.x) * 180 / Math.PI;
+  const vertices = [from, ...points, to];
+  const boundsPoints = vertices;
+  const samples = command === "L" ? vertices : Array.from({length: 33}, (_, i) => {
+    const t = i / 32, u = 1 - t;
+    const weights = command === "Q" ? [u*u, 2*u*t, t*t] : [u**3, 3*u*u*t, 3*u*t*t, t**3];
+    return {x: vertices.reduce((v,p,j) => v+p.x*weights[j],0), y: vertices.reduce((v,p,j) => v+p.y*weights[j],0)};
+  });
+  const lengths = samples.slice(1).map((p,i) => Math.hypot(p.x-samples[i].x,p.y-samples[i].y));
+  let remaining = lengths.reduce((sum,n) => sum+n,0)/2;
+  let index = 0;
+  while (index < lengths.length-1 && remaining > lengths[index]) remaining -= lengths[index++];
+  const a = samples[index], b = samples[index+1], fraction = lengths[index] ? remaining/lengths[index] : 0;
+  const labelPosition = {x: a.x+(b.x-a.x)*fraction, y: a.y+(b.y-a.y)*fraction};
+  let angle = Math.atan2(b.y-a.y,b.x-a.x) * 180 / Math.PI;
   if (angle > 90) angle -= 180;
   if (angle < -90) angle += 180;
   return {from, to, sourceToward, targetToward, bent: points.length > 0, boundsPoints, labelPosition, angle,
@@ -357,10 +357,10 @@ export function labelLayout(node, blocks = []) {
       y += line.step;
     }
   }
-  const fill = node.textFill ?? node.fill;
-  const border = node.textBorder ?? node.border;
-  const framed = bodyTop !== undefined && (fill.toLowerCase() !== node.fill.toLowerCase() || border.toLowerCase() !== node.border.toLowerCase());
+  const fill = "none";
+  const border = node.textBorder ?? automaticBorder(node.fill);
+  const framed = bodyTop !== undefined && (border.toLowerCase() !== automaticBorder(node.fill).toLowerCase());
   const frame = framed ? {x: bodyX-labelWidth / 2 - 3, y: bodyTop, width: labelWidth + 6, height: bodyEnd + 3 - bodyTop,
-    fill, stroke: border.toLowerCase() === node.border.toLowerCase() ? "none" : border} : null;
-  return {width, height, extentX, extentY, lines: positioned, frame};
+    fill, stroke: border.toLowerCase() === automaticBorder(node.fill).toLowerCase() ? "none" : border} : null;
+  return {width, height, extentX, extentY, overflow: visible.length < inside.length, lines: positioned, frame};
 }

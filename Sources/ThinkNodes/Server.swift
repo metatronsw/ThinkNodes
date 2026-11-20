@@ -241,7 +241,7 @@ func configure(_ application: Application, store: WorksheetStore) {
             try store.list(user: identity.user, rootsOnly: true, unlocks: identity.unlocks).map { item -> ProjectCard in
                 let access = try store.access(item.path, sheet: item.worksheet, user: identity.user, unlocks: identity.unlocks)
                 return ProjectCard(path: item.path, worksheet: item.worksheet, access: access,
-                                   count: access.readable ? try store.list(user: identity.user, childrenOf: item.path, unlocks: identity.unlocks).count : 0)
+                                   count: access.readable ? try store.list(user: identity.user, childrenOf: item.path, recursive: true, unlocks: identity.unlocks).count : 0)
             }
         }
         return indexPage(projects, session: identity)
@@ -270,7 +270,7 @@ func configure(_ application: Application, store: WorksheetStore) {
         guard try store.access(path, sheet: worksheet, user: user, unlocks: identity.unlocks).editable else { throw Abort(.forbidden) }
         let local = [assets + "vendor/vue.js", assets + "vendor/d3.js"].allSatisfy { FileManager.default.fileExists(atPath: $0) }
         let loading = local ? "Szerkesztő betöltése…" : "A szerkesztőhöz futtasd a teljes ./build.sh parancsot."
-        let actions = "<div id='editor-tools'></div>" + headerLink("/" + path.url, "Megtekintés", symbol: "eye")
+        let actions = "<div id='editor-tools'></div>" + headerLink("/" + path.url, "Bezárás", symbol: "left")
         return htmlPage(title: worksheet.title, body: """
             <div class="editor-root">
             \(siteHeader(path: path.url, project: worksheet.title, user: user, csrf: csrf, actions: actions, editing: true))
@@ -536,7 +536,7 @@ private func menuState(_ rule: DocumentPolicy) -> String {
 }
 
 private func credits(_ sheet: Worksheet, _ access: DocumentAccess) -> String {
-    let names = access.editorNames.map(escaped).joined(separator: ", ")
+    let names = access.editorNames.filter { $0 != sheet.owner }.map(escaped).joined(separator: ", ")
     return "<div class=\"card-meta\">Létrehozó: \(escaped(sheet.creator ?? "ismeretlen"))</div><div class=\"card-meta\">Szerkesztők: \(names.isEmpty ? "—" : names)</div>"
 }
 
@@ -553,9 +553,9 @@ private func indexPage(_ items: [ProjectCard], session: SessionInfo) -> Response
         let count = item.count
         return """
         <a class="project-card panel layers-\(min(count, 2))" data-scope="project" \(menuState(item.access.projectRule)) data-manage="\(item.access.manageable)" data-color="\(escaped(item.worksheet.backgroundColor))" data-revision="\(item.worksheet.revision)" href="/\(item.path.url)">
-          <span class="project-glyph" aria-hidden="true">◇</span>
-          <div><h2>\(escaped(item.worksheet.title))</h2>
-          <span class="muted">/\(escaped(item.path.parts.joined(separator: "/")))</span>\(credits(item.worksheet, item.access))<div class="project-badges">\(projectBadges(item.access))</div></div>
+          \(item.access.readable ? "<img class=\"project-background\" loading=\"lazy\" alt=\"\" src=\"/api/preview/\(item.path.url)?v=\(item.worksheet.revision)\">" : "")
+          <div class="project-summary"><h2>\(escaped(item.worksheet.title))</h2>
+          <span class="muted">/\(escaped(item.path.parts.joined(separator: "/")))</span> · \(count + 1) munkalap\(credits(item.worksheet, item.access))<div class="project-badges">\(projectBadges(item.access))</div></div>
         </a>
         """
     }.joined()
@@ -604,7 +604,7 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
     } else {
         note = ""
     }
-    let tooltips = worksheet.nodes.filter { $0.hideText == true && !$0.text.isEmpty }.map {
+    let tooltips = worksheet.nodes.filter(needsTextTooltip).map {
         "<template data-tooltip=\"\($0.id)\">\(markdownHTML($0.text))</template>"
     }.joined()
     let introduction = worksheet.text.map(markdownHTML) ?? ""
@@ -691,7 +691,8 @@ private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, liv
         guard let user = identity.user, let csrf = identity.csrf else { return redirect("/login?next=/admin") }
         guard user.role == .admin else { throw Abort(.forbidden) }
         let settings = try store.settings()
-        return adminPage(users: users, settings: settings, user: user, csrf: csrf)
+        return adminPage(users: users, settings: settings, user: user, csrf: csrf,
+                         dataDirectoryPath: store.dataDirectoryPath)
     }
 
     app.post("admin", "setup") { req async throws -> Response in
@@ -747,7 +748,8 @@ private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, liv
     }
 }
 
-private func adminPage(users: [User], settings: SiteSettings, user: User, csrf: String) -> Response {
+private func adminPage(users: [User], settings: SiteSettings, user: User, csrf: String,
+                       dataDirectoryPath: String) -> Response {
     func roles(_ current: Role) -> String {
         """
         <select name="role"><option value="editor"\(current == .editor ? " selected" : "")>Szerkesztő</option>
@@ -785,6 +787,11 @@ private func adminPage(users: [User], settings: SiteSettings, user: User, csrf: 
               <label class="check"><input type="checkbox" name="requireLogin"\(settings.requireLogin ? " checked" : "")>Megtekintéshez is szükséges bejelentkezni</label>
               <button class="button primary" type="submit">\(uiIcon("save"))Beállítások mentése</button>
             </form>
+          </section>
+          <section class="panel admin-panel">
+            <h2>Projektmappa</h2>
+            <p>Az aktív projektadatok teljes elérési útja:</p>
+            <code class="admin-path">\(escaped(dataDirectoryPath))</code>
           </section>
           <section class="panel admin-panel">
             <h2>Felhasználók</h2>

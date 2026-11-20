@@ -205,6 +205,7 @@ input[type="color"] { height: 37px; padding: 3px; cursor: pointer; }
 .admin-panel { padding: 20px; margin-bottom: 16px; }
 .admin-panel h2 { margin-bottom: 14px; }
 .admin-panel .stack > button { justify-self: start; }
+.admin-path { display: block; overflow-wrap: anywhere; }
 .account-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .account-fields { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(125px, 1fr) minmax(130px, 1.2fr) auto; gap: 10px; align-items: end; }
 .account-fields strong { align-self: center; overflow-wrap: anywhere; }
@@ -324,3 +325,12 @@ input[type="color"] { height: 37px; padding: 3px; cursor: pointer; }
 .viewer-downloads .card-meta:first-of-type { margin-left: auto; }
 [data-current-sheet] .new-worksheet { justify-self: start; }
 [data-node][data-link]:hover svg { stroke-width: 3; }
+
+.project-card { isolation: isolate; overflow: hidden; }
+.project-background { position: absolute; inset: -4%; width: 108%; height: 108%; object-fit: cover; filter: blur(3px); opacity: .27; z-index: -1; }
+.project-summary h2 { font-size: 1.35rem; line-height: 1.2; margin-bottom: .5rem; }
+.project-summary .card-meta { margin-top: .35rem; }
+.project-summary .project-badges { margin-top: .6rem; }
+.inspector-footer .danger { margin-right: auto; }
+.selection-glow { filter: drop-shadow(0 0 4px currentColor); }
+[data-node]:hover .box-link, a:hover .box-link { text-decoration: underline; }

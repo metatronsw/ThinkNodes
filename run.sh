@@ -147,7 +147,10 @@ if [[ ! -x "$executable" || ( -z "${THINKNODES_EXECUTABLE:-}" && ( Sources/Think
         printf '%s\n' 'A Swift nem található. A THINKNODES_SWIFT változóban megadható a swift futtatható fájl.' >&2
         exit 1
     fi
-    ./build.sh --skip-update -j 2
+    build_jobs="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || printf '1')"
+    if [[ ! "$build_jobs" =~ ^[1-9][0-9]*$ ]]; then build_jobs=1; fi
+    printf 'Párhuzamos buildfeladatok: %s\n' "$build_jobs"
+    ./build.sh --skip-update -j "$build_jobs"
     if [[ -n "$checkout_head" && -z "${THINKNODES_EXECUTABLE:-}" ]]; then
         printf '%s\n' "$checkout_head" > "$build_stamp"
     fi

@@ -10,6 +10,19 @@ struct Point: Codable, Equatable, Sendable {
     }
 }
 
+private struct WorksheetElement<Value: Decodable>: Decodable {
+    let value: Value?
+
+    init(from decoder: Decoder) throws {
+        value = try? Value(from: decoder)
+    }
+}
+
+private func automaticBorder(_ fill: String) -> String {
+    guard let rgb = Int(fill.dropFirst(), radix: 16) else { return "#526982" }
+    return String(format: "#%02x%02x%02x", (rgb >> 16) * 2 / 3, ((rgb >> 8) & 255) * 2 / 3, (rgb & 255) * 2 / 3)
+}
+
 enum Shape: String, Codable, Sendable {
     case rounded, rectangle, ellipse, diamond
 }
@@ -54,7 +67,7 @@ struct Idea: Codable, Equatable, Sendable {
     var shape: Shape = .rounded
     var fill = "#dce9ff"
     var textColor = "#182335"
-    var border = "#839bbc"
+    var border: String { automaticBorder(fill) }
     var fontSize: Double = 16
     var bold = true
     var alignment: LabelAlignment = .center
@@ -68,12 +81,11 @@ struct Idea: Codable, Equatable, Sendable {
     var italic: Bool?
     var underline: Bool?
     var textStyle: TextStyle?
-    var textFill: String?
     var textBorder: String?
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, text, hideText, shape, fill, border, bold, titleOutside, link
-        case kind, parent, locked, italic, underline, textStyle, textFill, textBorder
+        case id, title, text, hideText, shape, fill, bold, titleOutside, link
+        case kind, parent, locked, italic, underline, textStyle, textBorder
         case position = "pos", width = "w", height = "h", textColor = "textCol"
         case fontSize = "fontSz", alignment = "align", verticalAlignment = "vAlign"
     }
@@ -86,7 +98,7 @@ struct Idea: Codable, Equatable, Sendable {
         let validContent = position.isValid
             && (link.map { $0.isEmpty || WorksheetLink($0) != nil } ?? true)
         return validContent && (textStyle?.isValid ?? true)
-            && [textFill, textBorder].compactMap { $0 }.allSatisfy(validColor)
+            && (textBorder.map(validColor) ?? true)
             && (10...1000).contains(fontSize) && fontSize.rounded() == fontSize
             && [fill, textColor, border].allSatisfy(validColor)
     }
@@ -154,18 +166,20 @@ extension Connection {
 
     init(from decoder: Decoder) throws {
         let fields = try decoder.container(keyedBy: CodingKeys.self)
-        let legacy = try decoder.container(keyedBy: LegacyKey.self).decodeIfPresent(LegacyStyle.self, forKey: .style)
-        id = try fields.decode(String.self, forKey: .id)
-        source = try fields.decodeIfPresent(String.self, forKey: .source)
-        sourcePoint = try fields.decodeIfPresent(Point.self, forKey: .sourcePoint)
-        target = try fields.decode(ConnectionTarget.self, forKey: .target)
-        type = try fields.decodeIfPresent(ConnectionType.self, forKey: .type) ?? (legacy == .rope ? .rope : .straight)
-        appearance = try fields.decodeIfPresent(ConnectionAppearance.self, forKey: .appearance) ?? (legacy == .dashed ? .dashed : .plain)
-        color = try fields.decodeIfPresent(String.self, forKey: .color)
-        width = try fields.decodeIfPresent(Double.self, forKey: .width)
-        startArrow = try fields.decodeIfPresent(Bool.self, forKey: .startArrow) ?? (legacy == .both ? true : nil)
-        endArrow = try fields.decodeIfPresent(Bool.self, forKey: .endArrow) ?? (legacy == .rope || legacy == .solid ? false : nil)
-        label = try fields.decodeIfPresent(String.self, forKey: .label)
+        let legacy = try? decoder.container(keyedBy: LegacyKey.self).decodeIfPresent(LegacyStyle.self, forKey: .style)
+        id = (try? fields.decode(String.self, forKey: .id)) ?? "line-\(decoder.codingPath.last?.intValue ?? 0)"
+        source = (try? fields.decode(String.self, forKey: .source))
+        sourcePoint = (try? fields.decode(Point.self, forKey: .sourcePoint))
+        target = (try? fields.decode(ConnectionTarget.self, forKey: .target)) ?? ConnectionTarget()
+        if target.node == nil && target.point == nil { target.point = Point(x: 0, y: 0) }
+        if source == nil && sourcePoint == nil { sourcePoint = Point(x: 0, y: 0) }
+        type = (try? fields.decode(ConnectionType.self, forKey: .type)) ?? (legacy == .rope ? .rope : .straight)
+        appearance = (try? fields.decode(ConnectionAppearance.self, forKey: .appearance)) ?? (legacy == .dashed ? .dashed : .plain)
+        color = (try? fields.decode(String.self, forKey: .color))
+        width = (try? fields.decode(Double.self, forKey: .width))
+        startArrow = (try? fields.decode(Bool.self, forKey: .startArrow)) ?? (legacy == .both ? true : nil)
+        endArrow = (try? fields.decode(Bool.self, forKey: .endArrow)) ?? (legacy == .rope || legacy == .solid ? false : nil)
+        label = (try? fields.decode(String.self, forKey: .label))
     }
 }
 
@@ -383,6 +397,7 @@ struct DocumentAction: Content {
 
 final class WorksheetStore: @unchecked Sendable {
     private let root: URL
+    var dataDirectoryPath: String { root.path }
     let testMode: Bool
     private var testerCount = 0
 
@@ -546,7 +561,7 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    func list(user: User?, childrenOf parent: WorksheetPath? = nil, rootsOnly: Bool = false, unlocks: Set<String> = []) throws -> [(path: WorksheetPath, worksheet: Worksheet)] {
+    func list(user: User?, childrenOf parent: WorksheetPath? = nil, rootsOnly: Bool = false, recursive: Bool = false, unlocks: Set<String> = []) throws -> [(path: WorksheetPath, worksheet: Worksheet)] {
         try lock.withLock {
             let rules = try policies()
             let start = try parent.map { try worksheetURL($0).deletingPathExtension() } ?? root
@@ -568,7 +583,7 @@ final class WorksheetStore: @unchecked Sendable {
                            try accessLocked(path, sheet: sheet, user: user, unlocks: unlocks, rules: rules).listed {
                             result.append((path, sheet))
                         }
-                        if parent == nil, !rootsOnly, nested.count < 12, (try? WorksheetPath(nested)) != nil { pending.append((url, nested)) }
+                        if (parent == nil || recursive), !rootsOnly, nested.count < 12, (try? WorksheetPath(nested)) != nil { pending.append((url, nested)) }
                         continue
                     }
                     guard properties.isRegularFile == true, url.pathExtension == "json",
@@ -643,7 +658,7 @@ final class WorksheetStore: @unchecked Sendable {
             let sheet = try readDocument(path, rules: rules)
             try authorize(accessLocked(path, sheet: sheet, user: user, unlocks: unlocks, rules: rules), user: user)
             guard files.fileExists(atPath: url.path) else { return boardSVG(sheet) }
-            let cache = url.deletingLastPathComponent().appendingPathComponent("." + path.name + ".preview-v5.svg")
+            let cache = url.deletingLastPathComponent().appendingPathComponent("." + path.name + ".preview-v6.svg")
             try rejectLink(cache)
             let modified = try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
             if let modified, let cached = try? cache.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
@@ -939,5 +954,64 @@ final class WorksheetStore: @unchecked Sendable {
         if (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
             throw Abort(.notFound)
         }
+    }
+}
+
+extension Idea {
+    init(from decoder: Decoder) throws {
+        let fields = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try? fields.decode(IdeaKind.self, forKey: .kind)
+        id = (try? fields.decode(String.self, forKey: .id)) ?? "box-\(decoder.codingPath.last?.intValue ?? 0)"
+        title = (try? fields.decode(String.self, forKey: .title)) ?? "Ötlet"
+        text = (try? fields.decode(String.self, forKey: .text)) ?? ""
+        hideText = try? fields.decode(Bool.self, forKey: .hideText)
+        position = (try? fields.decode(Point.self, forKey: .position)) ?? Point(x: 0, y: 0)
+        width = (try? fields.decode(Double.self, forKey: .width)) ?? (kind == .connectionPoint ? 12 : 176)
+        height = (try? fields.decode(Double.self, forKey: .height)) ?? (kind == .connectionPoint ? width : 80)
+        shape = (try? fields.decode(Shape.self, forKey: .shape)) ?? .rounded
+        fill = (try? fields.decode(String.self, forKey: .fill)) ?? "#dce9ff"
+        textColor = (try? fields.decode(String.self, forKey: .textColor)) ?? "#182335"
+        fontSize = (try? fields.decode(Double.self, forKey: .fontSize)) ?? 16
+        bold = (try? fields.decode(Bool.self, forKey: .bold)) ?? true
+        alignment = (try? fields.decode(LabelAlignment.self, forKey: .alignment)) ?? .center
+        verticalAlignment = try? fields.decode(VerticalAlignment.self, forKey: .verticalAlignment)
+        titleOutside = try? fields.decode(Bool.self, forKey: .titleOutside)
+        link = try? fields.decode(String.self, forKey: .link)
+        parent = try? fields.decode(String.self, forKey: .parent)
+        locked = try? fields.decode(Bool.self, forKey: .locked)
+        italic = try? fields.decode(Bool.self, forKey: .italic)
+        underline = try? fields.decode(Bool.self, forKey: .underline)
+        textStyle = try? fields.decode(TextStyle.self, forKey: .textStyle)
+        textBorder = try? fields.decode(String.self, forKey: .textBorder)
+    }
+}
+
+extension Worksheet {
+    init(from decoder: Decoder) throws {
+        let fields = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = (try? fields.decode(Int.self, forKey: .schemaVersion)) ?? 2
+        revision = (try? fields.decode(Int.self, forKey: .revision)) ?? 1
+        resetRevision = try? fields.decode(Int.self, forKey: .resetRevision)
+        title = (try? fields.decode(String.self, forKey: .title)) ?? "Munkalap"
+        text = try? fields.decode(String.self, forKey: .text)
+        background = try? fields.decode(String.self, forKey: .background)
+        gridColor = try? fields.decode(String.self, forKey: .gridColor)
+        gridSpacing = try? fields.decode(Double.self, forKey: .gridSpacing)
+        gridVisible = try? fields.decode(Bool.self, forKey: .gridVisible)
+        creator = try? fields.decode(String.self, forKey: .creator)
+        owner = try? fields.decode(String.self, forKey: .owner)
+        editors = try? fields.decode([String].self, forKey: .editors)
+        hidden = try? fields.decode(Bool.self, forKey: .hidden)
+        isPublic = try? fields.decode(Bool.self, forKey: .isPublic)
+        nodes = (try? fields.decode([WorksheetElement<Idea>].self, forKey: .nodes))?.compactMap(\.value) ?? []
+        edges = (try? fields.decode([WorksheetElement<Connection>].self, forKey: .edges))?.compactMap(\.value) ?? []
+    }
+}
+
+extension Point {
+    init(from decoder: Decoder) throws {
+        let fields = try decoder.container(keyedBy: CodingKeys.self)
+        x = (try? fields.decode(Double.self, forKey: .x)) ?? 0
+        y = (try? fields.decode(Double.self, forKey: .y)) ?? 0
     }
 }

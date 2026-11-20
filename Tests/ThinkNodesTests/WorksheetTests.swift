@@ -82,7 +82,7 @@ import VaporTesting
         #expect(child.creator == "shared")
         let preview = try await browser.sendRequest(.GET, "/api/preview/" + path + "/terv")
         #expect(preview.status == .ok && preview.body.string.contains("<svg"))
-        #expect(FileManager.default.fileExists(atPath: file.deletingPathExtension().appendingPathComponent(".terv.preview-v5.svg").path))
+        #expect(FileManager.default.fileExists(atPath: file.deletingPathExtension().appendingPathComponent(".terv.preview-v6.svg").path))
         let parent = try await browser.sendRequest(.GET, "/" + path)
         #expect(parent.body.string.contains("További oldalak:") && parent.body.string.contains("Létrehozó: shared"))
         #expect(try await browser.sendRequest(.POST, childURL, headers: headers).status == .conflict)
@@ -125,7 +125,7 @@ import VaporTesting
         #expect(svg.body.string.contains("font-weight=\"700\">Szöveg</tspan>"))
         #expect(svg.body.string.contains("fill=\"#e7eef3\""))
         #expect(svg.body.string.contains("stroke=\"#6b3273\" stroke-width=\"5.000\""))
-        #expect(svg.body.string.contains("rotate(32.005)"))
+        #expect(svg.body.string.contains("rotate(49.931)"))
         #expect(svg.body.string.contains(">Szabad vonal</text>"))
         #expect(!svg.body.string.contains("<a href="))
 
@@ -290,7 +290,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     let child = Idea(id: "child", title: "Ötlet", text: "**törzs**", hideText: false,
                      position: origin, parent: "group", italic: true, underline: true,
                      textStyle: TextStyle(color: "#663300", size: 17, italic: true, alignment: .left),
-                     textFill: "#eecc99", textBorder: "#663344")
+                     textBorder: "#663344")
     let junction = Idea(id: "joint", title: "Kapocs", position: Point(x: 200, y: 80), width: 34, height: 34,
                         shape: .ellipse, kind: .connectionPoint)
     let line = Connection(id: "line", source: child.id, target: ConnectionTarget(node: junction.id))
@@ -314,7 +314,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     let svg = boardSVG(saved)
     #expect(!svg.contains("worksheet-grid"))
     #expect(!svg.contains("<pattern"))
-    #expect(svg.contains("fill=\"#eecc99\" stroke=\"#663344\""))
+    #expect(svg.contains("fill=\"none\" stroke=\"#663344\""))
     #expect(svg.contains("text-anchor=\"start\""))
     #expect(svg.contains("font-style=\"italic\" text-decoration=\"underline\""))
     #expect(svg.contains("r=\"17.000\" fill=\"#dce9ff\" aria-label=\"Kapocs\""))
@@ -326,7 +326,6 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     let childStart = try #require(svg.range(of: "aria-label=\"Ötlet\" transform="))
     #expect(groupStart.lowerBound < edgeStart.lowerBound && edgeStart.lowerBound < childStart.lowerBound)
     board.gridVisible = false
-    board.nodes[0].textFill = board.nodes[0].fill
     board.nodes[0].textBorder = board.nodes[0].border
     let plain = boardSVG(board)
     #expect(!plain.contains("worksheet-grid"))
@@ -535,7 +534,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     let compact = try JSONEncoder().encode(sheet)
     #expect(try JSONDecoder().decode(Worksheet.self, from: compact) == sheet)
     let longKeys = String(decoding: compact, as: UTF8.self).replacingOccurrences(of: "\"pos\"", with: "\"position\"")
-    #expect(throws: DecodingError.self) { try JSONDecoder().decode(Worksheet.self, from: Data(longKeys.utf8)) }
+    #expect(try JSONDecoder().decode(Worksheet.self, from: Data(longKeys.utf8)).nodes.first?.position == Point(x: 0, y: 0))
     let keys = String(decoding: compact, as: UTF8.self)
     for key in ["pos", "align", "textCol", "w", "h", "vAlign", "srcPt", "gridStep"] {
         #expect(keys.contains("\"\(key)\""))
@@ -554,22 +553,33 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     edge.appearance = .dotted
     let curve = render()
     #expect(curve.contains("C 0.000 0.000 0.000 60.000"))
-    #expect(curve.contains("stroke-linecap=\"round\" stroke-dasharray=\"0 5.000\""))
+    #expect(curve.contains("stroke-linecap=\"round\" stroke-dasharray=\"0 16.000\""))
 
     edge.type = .lightning
     edge.target.point = to
     edge.appearance = .thick
     let lightning = render()
-    #expect(lightning.contains("L -20.000 30.000 20.000 -30.000 100.000 0.000"))
+    #expect(lightning.contains("L -20.000 -23.094 20.000 23.094 100.000 0.000"))
     #expect(lightning.contains("stroke-width=\"4.000\""))
     edge.type = .arc
     #expect(render().contains("Q 0.000 -56.000"))
     edge.type = .rope
-    #expect(render().contains("Q 0.000 56.000"))
+    #expect(render().contains("Q 0.000 170.000"))
 
     let previous = #"{"id":"wire","srcPt":{"x":0,"y":0},"target":{"point":{"x":50,"y":20}},"style":"rope"}"#
     let decoded = try JSONDecoder().decode(Connection.self, from: Data(previous.utf8))
     #expect(decoded.type == .rope && decoded.appearance == .plain && !decoded.hasEndArrow)
     let saved = String(decoding: try JSONEncoder().encode(decoded), as: UTF8.self)
     #expect(!saved.contains("\"style\""))
+}
+
+@Test func incompleteWorksheetUsesDefaultsAndDropsUnknownKeys() throws {
+    let data = Data(##"{"nodes":[{"id":"a","shape":"unknown","pos":{"x":42},"border":"#ffffff","textFill":"#ffffff","extra":true}]}"##.utf8)
+    let board = try JSONDecoder().decode(Worksheet.self, from: data)
+    try board.validate()
+    let node = try #require(board.nodes.first)
+    #expect(node.position == Point(x: 42, y: 0))
+    #expect(node.shape == .rounded)
+    let encoded = String(decoding: try JSONEncoder().encode(board), as: UTF8.self)
+    for key in ["border", "textFill", "extra"] { #expect(!encoded.contains(key)) }
 }

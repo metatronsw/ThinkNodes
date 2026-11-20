@@ -82,7 +82,7 @@ func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: 
     let parent = parts.count > 1 ? "<a class=\"button small\" aria-label=\"Szülő munkalap\" href=\"\(escaped(base + parts.dropLast().joined(separator: "/")))\">\(uiIcon("up"))</a>" : ""
     let session: String
     if let user, let csrf {
-        let logout = (user.role != .admin || showAdminLogout) ? "<button class=\"button small\" type=\"submit\">\(uiIcon("logout"))Kijelentkezés</button>" : ""
+        let logout = (user.role != .admin || showAdminLogout) ? "<button class=\"button small\" type=\"submit\" aria-label=\"Kijelentkezés\" title=\"Kijelentkezés\">\(uiIcon("logout"))</button>" : ""
         session = """
             <form method="post" action="/logout" class="account">
               \(csrfInput(csrf))
@@ -138,10 +138,10 @@ private func edgeRoute(_ type: ConnectionType, from source: Point, to target: Po
             Point(x: source.x + dx * 0.6 - dy * offset, y: source.y + dy * 0.6 + dx * offset),
         ])
     case .zigzag where length > 0:
-        let offset = 0.06
+        let offset = 0.028
         return ("L", [
-            Point(x: source.x + dx * 0.53 - dy * offset, y: source.y + dy * 0.53 + dx * offset),
-            Point(x: source.x + dx * 0.47 + dy * offset, y: source.y + dy * 0.47 - dx * offset),
+            Point(x: source.x + dx * 0.515 - dy * offset, y: source.y + dy * 0.515 + dx * offset),
+            Point(x: source.x + dx * 0.485 + dy * offset, y: source.y + dy * 0.485 - dx * offset),
         ])
     case .arc where length > 0:
         let rise = min(110, length * 0.28)
@@ -191,6 +191,7 @@ private struct IdeaDrawing {
     let labelWidth: Double
     var iconSpace: Double = 0
     var available: Double = 0
+    var overflow = false
     let lines: [IdeaLabelLine]
     var extentX: Double = 0
     var extentY: Double = 0
@@ -256,7 +257,8 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
         visible.append(line)
         remaining -= line.step
     }
-    if !visible.isEmpty && visible.count < lines.count {
+    let overflow = visible.count < lines.count
+    if !visible.isEmpty && overflow {
         let last = visible.count - 1
         visible[last].text += "…"
         if !visible[last].runs.isEmpty { visible[last].runs.append(MarkdownRun(text: "…")) }
@@ -283,7 +285,11 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
         }
     }
     return IdeaDrawing(node: node, labelWidth: labelWidth, iconSpace: iconSpace, available: available,
-                       lines: visible, extentX: extentX, extentY: extentY)
+                       overflow: overflow, lines: visible, extentX: extentX, extentY: extentY)
+}
+
+func needsTextTooltip(_ node: Idea) -> Bool {
+    !node.text.isEmpty && (node.hideText == true || ideaDrawing(node).overflow)
 }
 
 private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
@@ -360,18 +366,20 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
             """
     }.joined()
     var frame = ""
-    let fill = node.textFill ?? node.fill
+    let fill = "none"
     let border = node.textBorder ?? node.border
     let distinctBorder = border.lowercased() != node.border.lowercased()
-    if let bodyTop, let bodyEnd, distinctBorder || fill.lowercased() != node.fill.lowercased() {
+    if let bodyTop, let bodyEnd, distinctBorder {
         frame = """
             <rect x="\(number(bodyX-labelWidth/2-3))" y="\(number(bodyTop))" width="\(number(labelWidth+6))" height="\(number(bodyEnd+3-bodyTop))" fill="\(fill)" stroke="\(distinctBorder ? border : "none")"/>
             """
     }
     let symbol = node.link.flatMap(WorksheetLink.init).map { link in
         let inset = node.shape == .diamond ? 0.45 : node.shape == .ellipse ? 0.7 : 0.94
+        let linkWidth = max(12, node.width * inset - 22)
+        let fit = textWidth(node.link ?? "", size: 11) > linkWidth ? " textLength=\"\(number(linkWidth))\" lengthAdjust=\"spacingAndGlyphs\"" : ""
         return """
-            <svg x="\(number(x * inset - 15))" y="\(number(y * inset - 16))" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="\(node.textColor)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="\(link.iconPath(siteHost: siteHost))"/></svg>
+            <text class="box-link"\(fit) x="\(number(x * inset - 19))" y="\(number(y * inset - 5))" text-anchor="end" font-size="11" fill="\(node.textColor)">\(escaped(node.link ?? ""))</text><svg x="\(number(x * inset - 15))" y="\(number(y * inset - 16))" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="\(node.textColor)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="\(link.iconPath(siteHost: siteHost))"/></svg>
             """
     } ?? ""
     return """
@@ -450,19 +458,24 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
         let stroke = "<path\(wire) d=\"\(drawing)\" stroke=\"\(color)\" stroke-width=\"\(number(lineWidth))\"\(markers)/>"
         let path = heads.isEmpty ? stroke : "<g data-free-arrows=\"\">\(heads)\(stroke)</g>"
         guard let label = edge.label, !label.trimmingCharacters(in: .whitespaces).isEmpty else { return path }
-        let center: Point
-        switch command {
-        case "Q":
-            center = Point(x: (beginning.x + 2 * points[0].x + ending.x) / 4,
-                           y: (beginning.y + 2 * points[0].y + ending.y) / 4)
-        case "C":
-            center = Point(x: (beginning.x + 3 * points[0].x + 3 * points[1].x + ending.x) / 8,
-                           y: (beginning.y + 3 * points[0].y + 3 * points[1].y + ending.y) / 8)
-        default:
-            let first = points.first ?? beginning, last = points.last ?? ending
-            center = Point(x: (first.x + last.x) / 2, y: (first.y + last.y) / 2)
+        let vertices = [beginning] + points + [ending]
+        let samples: [Point] = command == "L" ? vertices : (0...32).map { i in
+            let t = Double(i) / 32, u = 1 - t
+            let weights = command == "Q" ? [u*u, 2*u*t, t*t] : [u*u*u, 3*u*u*t, 3*u*t*t, t*t*t]
+            return zip(vertices, weights).reduce(Point(x: 0, y: 0)) { sum, pair in
+                Point(x: sum.x + pair.0.x * pair.1, y: sum.y + pair.0.y * pair.1)
+            }
         }
-        var angle = atan2(ending.y - beginning.y, ending.x - beginning.x) * 180 / Double.pi
+        let lengths = zip(samples, samples.dropFirst()).map { hypot($1.x-$0.x, $1.y-$0.y) }
+        var remaining = lengths.reduce(0,+)/2
+        var i = 0
+        while i < lengths.count-1 && remaining > lengths[i] {
+            remaining -= lengths[i]
+            i += 1
+        }
+        let a = samples[i], b = samples[i+1], fraction = lengths[i] == 0 ? 0 : remaining/lengths[i]
+        let center = Point(x: a.x+(b.x-a.x)*fraction, y: a.y+(b.y-a.y)*fraction)
+        var angle = atan2(b.y-a.y,b.x-a.x) * 180 / Double.pi
         if angle > 90 { angle -= 180 }
         if angle < -90 { angle += 180 }
         let labelRadius = textWidth(label, size: 14) / 2

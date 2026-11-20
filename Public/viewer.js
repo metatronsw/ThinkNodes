@@ -21,6 +21,7 @@ roster.setAttribute("aria-label", "Jelenlévők");
 const mouse = sharedMouse(point => live.cursor(point));
 function bindCanvas() {
   const svg = main.querySelector(".passive-canvas");
+  main.querySelector(".passive-frame > .mouse-share")?.remove();
   mouse?.bind(svg, svg, main.dataset.member === "true" ? main.querySelector(".passive-frame") : null);
   hideTooltip();
   main.querySelector(".passive-frame").append(roster);
@@ -93,6 +94,12 @@ function outline(box, marker, color) {
   const frame = document.createElementNS(ns, tag);
   for (const [key, value] of Object.entries({...geometry, [marker]: "", transform: `translate(${x} ${y})`,
     stroke: color, "stroke-width": 3, fill: "none", "pointer-events": "none"})) frame.setAttribute(key, value);
+  frame.setAttribute("class", "selection-glow");
+  frame.style.color = color;
+  const pulse = document.createElementNS(ns, "animate");
+  for (const [key, value] of Object.entries({attributeName: "opacity", values: "1;.45;1", dur: "4s", repeatCount: "indefinite"})) pulse.setAttribute(key, value);
+  frame.append(pulse);
+  frame.dataset.peerColor = color;
   box.prepend(frame);
 }
 
@@ -106,23 +113,31 @@ function paint(peers) {
     label.textContent = peer.name;
     roster.append(label);
   }
-  main.querySelectorAll("[data-selection]").forEach(frame => frame.remove());
+  for (const frame of main.querySelectorAll("[data-selection]")) {
+    if (!peers.some(peer => !peer.mine && peer.node === frame.parentElement.dataset.node && peer.color === frame.dataset.peerColor)) frame.remove();
+  }
   main.querySelectorAll("[data-wire-highlight]").forEach(line => line.remove());
   for (const wire of main.querySelectorAll("[data-wire]")) {
     const id = JSON.parse(wire.dataset.wire).id;
     const owners = peers.filter(p => p.edge === id);
+    for (const arrow of wire.parentElement.querySelectorAll(":scope > [data-arrow-end]")) {
+      arrow.style.filter = owners.length ? "drop-shadow(0 0 2px " + owners[0].color + ")" : "";
+    }
     owners.forEach((peer, i) => {
       const line = document.createElementNS(ns, "path");
       for (const [key, value] of Object.entries({"data-wire-highlight": "", d: wire.getAttribute("d"),
         stroke: peer.color, "stroke-width": Number(wire.getAttribute("stroke-width")) + (owners.length-i)*5,
         fill: "none", "pointer-events": "none"})) line.setAttribute(key, value);
+      for (const key of ["stroke-dasharray", "stroke-linecap", "marker-start", "marker-end"]) {
+        if (wire.hasAttribute(key)) line.setAttribute(key, wire.getAttribute(key));
+      }
       wire.before(line);
     });
   }
   for (const peer of peers) {
     if (!peer.node || peer.mine) continue;
     const anchor = main.querySelector('[data-node="' + CSS.escape(peer.node) + '"]');
-    if (!anchor) continue;
+    if (!anchor || [...anchor.querySelectorAll("[data-selection]")].some(frame => frame.dataset.peerColor === peer.color)) continue;
     outline(anchor, "data-selection", peer.color);
   }
 }
@@ -192,7 +207,12 @@ const live = liveConnection(path, csrf, async state => {
     const next = page.querySelector("#worksheet-view");
     if (!next) { location.reload(); return; }
     const frame = main.querySelector(".passive-frame");
-    frame.replaceChildren(...next.querySelector(".passive-frame").childNodes);
+    const nextFrame = next.querySelector(".passive-frame");
+    for (const selector of ["svg:not(.passive-backdrop)", ".passive-backdrop"]) {
+      const previous = frame.querySelector(":scope > " + selector);
+      const updated = nextFrame.querySelector(":scope > " + selector);
+      if (previous && updated) previous.replaceWith(updated);
+    }
     for (const selector of ["[data-current-document]", "[data-viewer-notes]", "[data-viewer-sections]"]) {
       updateSection(main, next, selector);
     }
@@ -203,6 +223,9 @@ const live = liveConnection(path, csrf, async state => {
       const replacement = newCredits[index];
       if (replacement && !credit.isEqualNode(replacement)) credit.replaceWith(replacement);
     });
+    const oldEdit = frame.querySelector(".viewer-edit"), newEdit = nextFrame.querySelector(".viewer-edit");
+    if (!newEdit) oldEdit?.remove();
+    else if (!oldEdit) frame.append(newEdit);
     Object.assign(main.dataset, next.dataset);
     motions.clear();
     drawPreview = previewScene();
