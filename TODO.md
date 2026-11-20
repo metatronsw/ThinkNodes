@@ -18,23 +18,14 @@ onMouseOver esetén pedig legyen aláhúzva és szöveg
 
 vonal rendszer átalakítása: 
 
-legyen külön választható a vonal típusa és megjelenése
-
-típus legyen: egyenes, s-forma(ha nem egy vonalba van a kettő, akkor a vonal közepén egy bezier görbe s forma legyen), villám(2 töréspont legyen középen), íves(felülről hajlik), kötél (középen lóg a saját sújjánál) 
-
-a property panelen gombokkal lehessen választani, töröld a régi leugró menüt.
-
-megjelenés: sima, vastag, szaggatott, pontozott
-
-a property panelen gombokkal lehessen választani, töröld a régi leugró menüt.
-
-property panelen előnézet módban : 
-cím és text külön kell választani egy halvány divider vonallal 
-
+vonal felirat mindig középen legyen, akkor is ha változik a vonal hossza
 
 ---
 
 
+munkalap beállítások:
+szerkesztők között ne sorolja fel a tulajdonost
+ha nincs tulajdonos, 
 
 
 képek és json kód beemelése

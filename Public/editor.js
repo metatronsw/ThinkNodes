@@ -154,7 +154,7 @@ function wireDrawing(edge, findNode) {
       base: {x: tip.x+dx*ratio, y: tip.y+dy*ratio}};
   }
   const stroke = {d: path(ends.source.base, ends.target.base), fill: "none", stroke: paint.color,
-    "stroke-width": paint.width, "stroke-linecap": paint.linecap, "stroke-dasharray": paint.dash};
+    "stroke-width": paint.lineWidth, "stroke-linecap": paint.linecap, "stroke-dasharray": paint.dash};
   return {...geometry, ends, stroke, paint};
 }
 
@@ -916,7 +916,7 @@ createApp({
         }
         if (!commit) return {point: free.point, junction: free.point};
         const node = {...makeNode(free.point), title: "", kind: "connectionPoint",
-          shape: "ellipse", fill: edgePaint(free.edge).color, width: 14, height: 14};
+          shape: "ellipse", fill: edgePaint(free.edge).color, width: 12, height: 12};
         board.value.nodes.push(node);
         dropParent(node);
         setEndpoint(free.edge, free.end, {node: node.id});
@@ -1672,7 +1672,7 @@ createApp({
           event.stopPropagation();
           const p = pathElement.getPointAtLength(nearest);
           const joint = {...makeNode(clampPoint(p)), title: "", kind: "connectionPoint", shape: "ellipse",
-            width: 14, height: 14, fill: paint.color};
+            width: 12, height: 12, fill: paint.color};
           const tail = {...edge, id: id(), source: joint.id, sourcePoint: undefined, startArrow: false, label: ""};
           const head = {...copy(edge), target: {node: joint.id}, endArrow: false};
           beginDrag(event,"split",{edgeID: edge.id});

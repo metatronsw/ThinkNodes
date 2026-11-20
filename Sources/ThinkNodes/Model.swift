@@ -93,13 +93,14 @@ struct Idea: Codable, Equatable, Sendable {
 }
 
 enum ConnectionType: String, Codable, CaseIterable, Sendable {
-    case straight, sCurve, lightning, arc, rope
+    case straight, sCurve, zigzag, lightning, arc, rope
 
     var label: String {
         switch self {
         case .straight: "Egyenes"
         case .sCurve: "S-forma"
-        case .lightning: "Villám"
+        case .zigzag: "Villám"
+        case .lightning: "Tört"
         case .arc: "Íves"
         case .rope: "Kötél"
         }

@@ -40,7 +40,7 @@ export function borderPoint(node, toward) {
   };
 }
 
-export const lineTypes = {straight: "Egyenes", sCurve: "S-forma", lightning: "Villám", arc: "Íves", rope: "Kötél"};
+export const lineTypes = {straight: "Egyenes", sCurve: "S-forma", zigzag: "Villám", lightning: "Tört", arc: "Íves", rope: "Kötél"};
 export const lineAppearances = {plain: "Sima", thick: "Vastag", dashed: "Szaggatott", dotted: "Pontozott"};
 
 export function edgePaint(edge) {
@@ -48,8 +48,9 @@ export function edgePaint(edge) {
   const color = edge.color ?? cableColor;
   const width = Math.min(24, (edge.width ?? 2) * (appearance === "thick" ? 2 : 1));
   const dash = appearance === "dashed" ? `${width * 3.5} ${width * 2.5}`
-    : appearance === "dotted" ? `0 ${width * 2.5}` : undefined;
-  return {color, width, dash, linecap: appearance === "dotted" ? "round" : "butt",
+    : appearance === "dotted" ? `0 ${width * 8}` : undefined;
+  return {color, width, lineWidth: width * (appearance === "dotted" ? 2 : 1), dash,
+    linecap: appearance === "dotted" || appearance === "thick" ? "round" : "butt",
     startArrow: edge.startArrow ?? false, endArrow: edge.endArrow ?? true};
 }
 
@@ -69,10 +70,19 @@ function route(type, source, target) {
       break;
     case "lightning":
       if (length) {
-        const offset = Math.min(55, length * .15) / length;
+        const offset = .2 * Math.tan(Math.PI / 6);
         return {command: "L", points: [
-          {x: source.x + dx * .4 - dy * offset, y: source.y + dy * .4 + dx * offset},
-          {x: source.x + dx * .6 + dy * offset, y: source.y + dy * .6 - dx * offset},
+          {x: source.x + dx * .4 + dy * offset, y: source.y + dy * .4 - dx * offset},
+          {x: source.x + dx * .6 - dy * offset, y: source.y + dy * .6 + dx * offset},
+        ]};
+      }
+      break;
+    case "zigzag":
+      if (length) {
+        const offset = .06;
+        return {command: "L", points: [
+          {x: source.x + dx * .53 - dy * offset, y: source.y + dy * .53 + dx * offset},
+          {x: source.x + dx * .47 + dy * offset, y: source.y + dy * .47 - dx * offset},
         ]};
       }
       break;
@@ -83,7 +93,7 @@ function route(type, source, target) {
       }
       break;
     case "rope":
-      if (dx) return {command: "Q", points: [{x, y: y + Math.min(110, length * .28)}]};
+      if (dx) return {command: "Q", points: [{x, y: y + Math.min(330, length * .85)}]};
       break;
   }
   return {command: "L", points: []};

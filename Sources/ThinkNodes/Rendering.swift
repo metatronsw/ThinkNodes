@@ -132,16 +132,22 @@ private func edgeRoute(_ type: ConnectionType, from source: Point, to target: Po
             ? [Point(x: x, y: source.y), Point(x: x, y: target.y)]
             : [Point(x: source.x, y: y), Point(x: target.x, y: y)])
     case .lightning where length > 0:
-        let offset = min(55, length * 0.15) / length
+        let offset = 0.2 * tan(Double.pi / 6)
         return ("L", [
-            Point(x: source.x + dx * 0.4 - dy * offset, y: source.y + dy * 0.4 + dx * offset),
-            Point(x: source.x + dx * 0.6 + dy * offset, y: source.y + dy * 0.6 - dx * offset),
+            Point(x: source.x + dx * 0.4 + dy * offset, y: source.y + dy * 0.4 - dx * offset),
+            Point(x: source.x + dx * 0.6 - dy * offset, y: source.y + dy * 0.6 + dx * offset),
+        ])
+    case .zigzag where length > 0:
+        let offset = 0.06
+        return ("L", [
+            Point(x: source.x + dx * 0.53 - dy * offset, y: source.y + dy * 0.53 + dx * offset),
+            Point(x: source.x + dx * 0.47 + dy * offset, y: source.y + dy * 0.47 - dx * offset),
         ])
     case .arc where length > 0:
         let rise = min(110, length * 0.28)
         return ("Q", [Point(x: dx == 0 ? x + rise : x, y: y - rise)])
     case .rope where dx != 0:
-        return ("Q", [Point(x: x, y: y + min(110, length * 0.28))])
+        return ("Q", [Point(x: x, y: y + min(330, length * 0.85))])
     default:
         return ("L", [])
     }
@@ -419,10 +425,12 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
         if edge.hasStartArrow && sourceNode != nil { markers += " marker-start=\"url(#\(marker))\"" }
         if edge.hasEndArrow && targetNode != nil { markers += " marker-end=\"url(#\(marker))\"" }
         switch edge.appearance {
+        case .thick:
+            markers += " stroke-linecap=\"round\""
         case .dashed:
             markers += " stroke-dasharray=\"\(number(edge.strokeWidth * 3.5)) \(number(edge.strokeWidth * 2.5))\""
         case .dotted:
-            markers += " stroke-linecap=\"round\" stroke-dasharray=\"0 \(number(edge.strokeWidth * 2.5))\""
+            markers += " stroke-linecap=\"round\" stroke-dasharray=\"0 \(number(edge.strokeWidth * 8))\""
         default: break
         }
         let wire: String
@@ -438,7 +446,8 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
         }
         if edge.hasStartArrow && sourceNode == nil { heads += arrow("source", tip: beginning, toward: points.first ?? ending) }
         if edge.hasEndArrow && targetNode == nil { heads += arrow("target", tip: ending, toward: points.last ?? beginning) }
-        let stroke = "<path\(wire) d=\"\(drawing)\" stroke=\"\(color)\" stroke-width=\"\(number(edge.strokeWidth))\"\(markers)/>"
+        let lineWidth = edge.strokeWidth * (edge.appearance == .dotted ? 2 : 1)
+        let stroke = "<path\(wire) d=\"\(drawing)\" stroke=\"\(color)\" stroke-width=\"\(number(lineWidth))\"\(markers)/>"
         let path = heads.isEmpty ? stroke : "<g data-free-arrows=\"\">\(heads)\(stroke)</g>"
         guard let label = edge.label, !label.trimmingCharacters(in: .whitespaces).isEmpty else { return path }
         let center: Point
