@@ -17,8 +17,7 @@ konténer:
 
 
 
-
-
+alakítsd át a property panelt úgy, hogy a teljes sáv eltűnik, csak a 
 
 
 

@@ -82,7 +82,7 @@ import VaporTesting
         #expect(child.creator == "shared")
         let preview = try await browser.sendRequest(.GET, "/api/preview/" + path + "/terv")
         #expect(preview.status == .ok && preview.body.string.contains("<svg"))
-        #expect(FileManager.default.fileExists(atPath: file.deletingPathExtension().appendingPathComponent(".terv.preview-v7.svg").path))
+        #expect(FileManager.default.fileExists(atPath: file.deletingPathExtension().appendingPathComponent(".terv.preview-v8.svg").path))
         let parent = try await browser.sendRequest(.GET, "/" + path)
         #expect(parent.body.string.contains("További oldalak:") && parent.body.string.contains("Létrehozó: shared"))
         #expect(try await browser.sendRequest(.POST, childURL, headers: headers).status == .conflict)
@@ -571,24 +571,18 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     #expect(!saved.contains("\"style\""))
 }
 
-@Test func anchoredWireFollowsBoxGeometry() throws {
+@Test func experimentalAnchorsLoadAsAutomaticConnections() throws {
     let box = Idea(id: "box", title: "Doboz", position: Point(x: 0, y: 0), width: 120, height: 80, shape: .rectangle)
     var second = box
     second.id = "second"
     second.position = Point(x: 200, y: 60)
-    let edge = Connection(id: "wire", source: box.id, sourceAnchor: .n, target: ConnectionTarget(node: second.id, anchor: .sw))
-    var sheet = Worksheet(title: "Pontok", nodes: [box, second], edges: [edge])
-    sheet = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(sheet))
+    let data = Data(#"{"id":"wire","source":"box","sourceAnchor":"n","target":{"node":"second","anchor":"sw"}}"#.utf8)
+    let edge = try JSONDecoder().decode(Connection.self, from: data)
+    let sheet = Worksheet(title: "Pontok", nodes: [box, second], edges: [edge])
     try sheet.validate()
-    #expect(sheet.edges == [edge])
-    #expect(boardSVG(sheet).contains("M 0.000 -40.000 L 140.000 100.000"))
-    sheet.nodes[0].height = 160
-    sheet.nodes[1].position.x = 300
-    #expect(boardSVG(sheet).contains("M 0.000 -80.000 L 240.000 100.000"))
-    let unknown = Data(#"{"source":"box","sourceAnchor":"invalid","target":{"node":"second","anchor":"invalid"}}"#.utf8)
-    let decoded = try JSONDecoder().decode(Connection.self, from: unknown)
-    #expect(decoded.source == "box" && decoded.target.node == "second")
-    #expect(decoded.sourceAnchor == nil && decoded.target.anchor == nil)
+    #expect(boardSVG(sheet).contains("M 60.000 18.000 L 140.000 42.000"))
+    let encoded = String(decoding: try JSONEncoder().encode(edge), as: UTF8.self)
+    #expect(!encoded.lowercased().contains("anchor"))
 }
 
 @Test func incompleteWorksheetUsesDefaultsAndDropsUnknownKeys() throws {

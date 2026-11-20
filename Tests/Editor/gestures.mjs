@@ -163,9 +163,11 @@ const panel = () => find(n => n.tag === "aside");
 const sidebarToggle = () => find(n => n.tag === "button" && n.props["aria-label"]?.startsWith("Oldalsáv "));
 oneWire().props.onClick();
 await tick();
-assert.ok(panel(), "selecting a wire opens the panel");
+assert.equal(panel()?.props["aria-label"], "Vonal szerkesztése");
+assert.ok(button("Egyenes"), "selecting a wire opens its editable properties directly");
 toggle("Escape", true); await tick();
 assert.equal(panel()?.props["aria-label"], "Munkalap");
+assert.ok(find(n => n.tag === "input" && n.props.value === sheet.title, panel()));
 toggle("Escape", true); await tick();
 assert.ok(!panel(), "Escape without a selection collapses the panel");
 sidebarToggle().props.onClick(); await tick();
@@ -226,7 +228,22 @@ const sourceBeforeClone = structuredClone(model("outside"));
 await drag(graphic("outside"),340,0,390,45,{altKey:true},true);
 await save();
 assert.equal(sheet.nodes.length,5);
-await drag(graphic("outside"),340,0,390,45,{altKey:true,shiftKey:true});
+const cloneSource = graphic("outside");
+cloneSource.props.onPointerdown(event(cloneSource, 340, 0, {altKey: true}));
+canvas().props.onPointermove(event(canvas(), 390, 45, {altKey: true}));
+const wireCount = () => {
+  const wires = find(n => n.tag === "g" && n.props["data-edge"] === "one").parent;
+  return wires.children.filter(n => n.props["data-edge"]).length;
+};
+await tick();
+assert.equal(wireCount(), 2);
+listeners.keydown({key: "Shift", altKey: true, shiftKey: true});
+await tick();
+assert.equal(wireCount(), 3, "pressing Shift without moving shows the proposed link");
+listeners.keyup({key: "Shift", altKey: true, shiftKey: false});
+await tick();
+assert.equal(wireCount(), 2, "releasing Shift without moving hides the proposed link");
+canvas().props.onPointerup(event(canvas(), 390, 45, {altKey: true, shiftKey: true}));
 await save();
 const duplicate = sheet.nodes.find(n => n.title === "outside" && n.id !== "outside");
 assert.deepEqual(duplicate.position,{x:390,y:45});
@@ -237,6 +254,15 @@ assert.deepEqual(model("outside"),sourceBeforeClone);
 await press("Visszavonás"); await save();
 assert.equal(sheet.nodes.length,5);
 assert.equal(sheet.edges.length,1);
+
+const unlinkedSource = graphic("outside");
+unlinkedSource.props.onPointerdown(event(unlinkedSource, 340, 0, {altKey: true, shiftKey: true}));
+canvas().props.onPointermove(event(canvas(), 390, 45, {altKey: true, shiftKey: true}));
+canvas().props.onPointerup(event(canvas(), 390, 45, {altKey: true, shiftKey: false}));
+await save();
+assert.equal(sheet.nodes.length, 6);
+assert.equal(sheet.edges.length, 2, "dropping after releasing Shift keeps only the duplicated connection");
+await press("Visszavonás"); await save();
 
 // Rectangle selection, one-step group moves/deletes and alignment on release.
 function selectArea(x, y, endX, endY, keys = {}) {
@@ -323,48 +349,29 @@ await properties("outer"); await press("Konténer feloldása"); await save();
 assert.equal(model("inner").parent, undefined);
 assert.equal(model("child").parent, "inner");
 
-const {anchorPoint} = await import("../../Public/geometry.js");
-function topMiddle(id) {
-  const props = graphic(id).props;
-  return anchorPoint({...model(id), width: props["data-width"], height: props["data-height"]}, "n");
-}
-async function wireFromTop(id, x, y) {
-  const start = topMiddle(id);
-  await drag(graphic(id), start.x, start.y, x, y, {ctrlKey: true});
-}
+// A drag from the middle attaches to the box even when it starts away from its border.
+canvas().props.onPointermove(event(canvas(), 180, 30, {ctrlKey: true}));
+await tick();
+assert.equal(find(n => n.props["data-anchor"]), undefined);
 await drag(graphic("outside"), 180, 30, -420, 0, {ctrlKey: true});
 await save();
 assert.equal(sheet.edges.at(-1).source, "outside");
-assert.equal(sheet.edges.at(-1).sourceAnchor, undefined);
 assert.deepEqual(sheet.edges.at(-1).target, {node: "auto"});
-await press("Visszavonás"); await save();
-for (const [x, y, id] of [[180,30,"outside"],[-420,0,"auto"]]) {
-  canvas().props.onPointermove(event(canvas(), x, y, {ctrlKey: true}));
-  await tick();
-  const handles = find(n => n.props["data-anchor"] === "n").parent.children.filter(n => n.props["data-anchor"]);
-  assert.deepEqual(handles.map(n => n.props["data-anchor"]), ["n", "e", "s", "w"]);
-  assert.ok(handles.every(n => n.props["data-node"] === id));
-}
-const autoTop = topMiddle("auto");
-await wireFromTop("outside", autoTop.x - 2, autoTop.y - 2);
-await save();
-assert.equal(sheet.edges.at(-1).sourceAnchor, "n");
-assert.deepEqual(sheet.edges.at(-1).target, {node: "auto", anchor: "n"});
 await press("Visszavonás"); await save();
 
 const free = endpoint("one", "target");
 assert.equal(free.tag, "path");
 assert.equal(free.props["pointer-events"], "all");
-await wireFromTop("outside", 400, 230);
+await drag(graphic("outside"), 180, 30, 400, 230, {ctrlKey: true});
 await save();
 assert.equal(sheet.nodes.some(n => n.kind === "connectionPoint"), false, "duplicate route cannot create a junction");
-await wireFromTop("auto", 400, 230);
+await drag(graphic("auto"), -420, 0, 400, 230, {ctrlKey: true});
 await save();
 const junction = sheet.nodes.find(n => n.kind === "connectionPoint");
 assert.equal(edge("one").target.node, junction.id);
 const secondID = sheet.edges.at(-1).id;
 assert.equal(edge(secondID).target.node, junction.id);
-await wireFromTop("child", 400, 230);
+await drag(graphic("child"), 50, 40, 400, 230, {ctrlKey: true});
 await save();
 assert.equal(sheet.edges.at(-1).target.node, junction.id);
 await detachDrag("one", "target", 450, 245, true);
@@ -379,8 +386,7 @@ await save();
 assert.equal(model(junction.id), undefined);
 assert.deepEqual(sheet.edges.at(-1).target.point, junction.position);
 const originBox = graphic("outside");
-const originTop = topMiddle("outside");
-originBox.props.onPointerdown(event(originBox, originTop.x, originTop.y, {ctrlKey: true}));
+originBox.props.onPointerdown(event(originBox, 180, 30, {ctrlKey: true}));
 canvas().props.onPointermove(event(canvas(), 434, 292));
 await tick();
 const marker = find(n => n.tag === "circle" && n.props.stroke === "#078469");
@@ -498,8 +504,8 @@ listeners.keydown({key: "Delete", ctrlKey: true}); await tick(); await save();
 assert.ok(!model("inner") && !model("child"));
 assert.ok(!sheet.edges.some(e => [e.source,e.target.node].includes("child")));
 await properties("outside");
-await press("Előnézet");
-assert.equal(text(panel().children.at(-1)), "TörlésSzerkesztés");
+assert.equal(button("Előnézet"), undefined);
+assert.equal(text(panel().children.at(-1)), "Törlés");
 globalThis.confirm = () => { throw Error("Connected nodes must delete without a prompt"); };
 listeners.keydown({key: "Backspace"}); await tick(); await save();
 assert.ok(!model("outside") && !edge("one"));

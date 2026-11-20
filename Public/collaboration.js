@@ -19,10 +19,9 @@ export function rebaseWorksheet(base, local, remote) {
   const result = mergeFields(fields, localFields, {...remote});
   function mergeEdge(before, edited, latest) {
     const edge = {...mergeFields(before, edited, latest)};
-    if (before.source !== edited.source || before.sourceAnchor !== edited.sourceAnchor || !equal(before.sourcePoint, edited.sourcePoint)) {
+    if (before.source !== edited.source || !equal(before.sourcePoint, edited.sourcePoint)) {
       edge.source = edited.source;
       edge.sourcePoint = edited.sourcePoint;
-      edge.sourceAnchor = edited.sourceAnchor;
     }
     if (!equal(before.target, edited.target)) edge.target = edited.target;
     return edge;
@@ -47,7 +46,6 @@ export function rebaseWorksheet(base, local, remote) {
     if (edge.source && !present.has(edge.source)) {
       edge.sourcePoint = lastKnown.get(edge.source).position;
       delete edge.source;
-      delete edge.sourceAnchor;
     }
     const pair = edge.source && edge.target.node ? JSON.stringify([edge.source, edge.target.node]) : null;
     if (edge.target.node && (!present.has(edge.target.node) || edge.target.node === edge.source || pairs.has(pair))) {

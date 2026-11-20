@@ -122,17 +122,6 @@ private func borderPoint(_ idea: Idea, toward point: Point) -> Point {
     return Point(x: idea.position.x + dx * scale, y: idea.position.y + dy * scale)
 }
 
-private func anchorPoint(_ node: Idea?, _ anchor: EdgeAnchor?) -> Point? {
-    guard let node, let anchor, node.kind != .connectionPoint else { return nil }
-    let name = anchor.rawValue
-    let dx: Double = name.contains("e") ? 1 : name.contains("w") ? -1 : 0
-    let dy: Double = name.contains("s") ? 1 : name.contains("n") ? -1 : 0
-    let inset = node.shape == .rounded && dx != 0 && dy != 0 ? 12 * (1 - sqrt(0.5)) : 0
-    let corner = Point(x: node.position.x + dx * (node.width/2 - inset),
-                       y: node.position.y + dy * (node.height/2 - inset))
-    return inset > 0 ? corner : borderPoint(node, toward: corner)
-}
-
 private func edgeRoute(_ type: ConnectionType, from source: Point, to target: Point) -> (command: String, points: [Point]) {
     let dx = target.x - source.x, dy = target.y - source.y
     let length = hypot(dx, dy)
@@ -407,13 +396,11 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
     let edges = board.edges.compactMap { edge -> String? in
         let sourceNode = edge.source.flatMap { nodes[$0] }
         let targetNode = edge.target.node.flatMap { nodes[$0] }
-        let sourceAnchor = anchorPoint(sourceNode, edge.sourceAnchor)
-        let targetAnchor = anchorPoint(targetNode, edge.target.anchor)
-        guard let source = sourceAnchor ?? sourceNode?.position ?? edge.sourcePoint,
-              let target = targetAnchor ?? targetNode?.position ?? edge.target.point else { return nil }
+        guard let source = sourceNode?.position ?? edge.sourcePoint,
+              let target = targetNode?.position ?? edge.target.point else { return nil }
         let (command, points) = edgeRoute(edge.type, from: source, to: target)
-        let beginning = sourceAnchor ?? sourceNode.map { borderPoint($0, toward: points.first ?? target) } ?? source
-        let ending = targetAnchor ?? targetNode.map { borderPoint($0, toward: points.last ?? source) } ?? target
+        let beginning = sourceNode.map { borderPoint($0, toward: points.first ?? target) } ?? source
+        let ending = targetNode.map { borderPoint($0, toward: points.last ?? source) } ?? target
         let segments = (points + [ending]).map { "\(number($0.x)) \(number($0.y))" }.joined(separator: " ")
         let drawing = "M \(number(beginning.x)) \(number(beginning.y)) \(command) \(segments)"
         for point in [beginning, ending] + points {

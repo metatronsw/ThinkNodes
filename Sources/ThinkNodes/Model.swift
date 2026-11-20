@@ -178,14 +178,9 @@ enum ConnectionAppearance: String, Codable, CaseIterable, Sendable {
     case plain, thick, dashed, dotted
 }
 
-enum EdgeAnchor: String, Codable, Sendable {
-    case n, ne, e, se, s, sw, w, nw
-}
-
 struct ConnectionTarget: Equatable, Codable, Sendable {
     var node: String?
     var point: Point?
-    var anchor: EdgeAnchor?
 
     func isValid(in nodeIDs: Set<String>) -> Bool {
         if let node {
@@ -200,14 +195,12 @@ extension ConnectionTarget {
         let fields = try decoder.container(keyedBy: CodingKeys.self)
         node = try? fields.decode(String.self, forKey: .node)
         point = try? fields.decode(Point.self, forKey: .point)
-        anchor = node == nil ? nil : try? fields.decode(EdgeAnchor.self, forKey: .anchor)
     }
 }
 
 struct Connection: Equatable, Codable, Sendable {
     var id: String
     var source: String?
-    var sourceAnchor: EdgeAnchor?
     var sourcePoint: Point?
     var target: ConnectionTarget
     var type: ConnectionType = .straight
@@ -219,11 +212,11 @@ struct Connection: Equatable, Codable, Sendable {
     var label: String?
 
     private enum CodingKeys: String, CodingKey {
-        case id, source, sourceAnchor, target, type, appearance, color, startArrow, endArrow, label
+        case id, source, target, type, appearance, color, startArrow, endArrow, label
         case sourcePoint = "srcPt", width = "w"
     }
 
-    var origin: ConnectionTarget { ConnectionTarget(node: source, point: sourcePoint, anchor: sourceAnchor) }
+    var origin: ConnectionTarget { ConnectionTarget(node: source, point: sourcePoint) }
     var strokeColor: String { color ?? "#526982" }
     var strokeWidth: Double { min(24, (width ?? 2) * (appearance == .thick ? 2 : 1)) }
     var hasStartArrow: Bool { startArrow ?? false }
@@ -239,7 +232,6 @@ extension Connection {
         let legacy = try? decoder.container(keyedBy: LegacyKey.self).decodeIfPresent(LegacyStyle.self, forKey: .style)
         id = (try? fields.decode(String.self, forKey: .id)) ?? "line-\(decoder.codingPath.last?.intValue ?? 0)"
         source = (try? fields.decode(String.self, forKey: .source))
-        sourceAnchor = source == nil ? nil : try? fields.decode(EdgeAnchor.self, forKey: .sourceAnchor)
         sourcePoint = (try? fields.decode(Point.self, forKey: .sourcePoint))
         target = (try? fields.decode(ConnectionTarget.self, forKey: .target)) ?? ConnectionTarget()
         if target.node == nil && target.point == nil { target.point = Point(x: 0, y: 0) }
@@ -733,7 +725,7 @@ final class WorksheetStore: @unchecked Sendable {
             let sheet = try readDocument(path, rules: rules)
             try authorize(accessLocked(path, sheet: sheet, user: user, unlocks: unlocks, rules: rules), user: user)
             guard files.fileExists(atPath: url.path) else { return boardSVG(sheet, assetBase: "/" + path.url) }
-            let cache = url.deletingLastPathComponent().appendingPathComponent("." + path.name + ".preview-v7.svg")
+            let cache = url.deletingLastPathComponent().appendingPathComponent("." + path.name + ".preview-v8.svg")
             try rejectLink(cache)
             let modified = try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
             if let modified, let cached = try? cache.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,

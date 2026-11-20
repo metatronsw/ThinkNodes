@@ -44,17 +44,6 @@ export function borderPoint(node, toward) {
   };
 }
 
-// Clockwise from the top. Unspecified anchors use the automatic border intersection.
-export const anchorNames = ["n","ne","e","se","s","sw","w","nw"];
-export function anchorPoint(node, anchor) {
-  if (!node || !anchorNames.includes(anchor) || node.kind === "connectionPoint") return;
-  const dx = anchor.includes("e") ? 1 : anchor.includes("w") ? -1 : 0;
-  const dy = anchor.includes("s") ? 1 : anchor.includes("n") ? -1 : 0;
-  const inset = node.shape === "rounded" && dx && dy ? 12 * (1-Math.SQRT1_2) : 0;
-  const corner = {x: node.position.x + dx*(node.width/2-inset), y: node.position.y + dy*(node.height/2-inset)};
-  return inset ? corner : borderPoint(node, corner);
-}
-
 export const lineTypes = {straight: "Egyenes", sCurve: "S-forma", zigzag: "Villám", lightning: "Tört", arc: "Íves", rope: "Kötél"};
 export const lineAppearances = {plain: "Sima", thick: "Vastag", dashed: "Szaggatott", dotted: "Pontozott"};
 
@@ -70,7 +59,7 @@ export function edgePaint(edge) {
 }
 
 export function edgeEndpoint(edge, end) {
-  return end === "source" ? {node: edge.source, point: edge.sourcePoint, anchor: edge.sourceAnchor} : edge.target;
+  return end === "source" ? {node: edge.source, point: edge.sourcePoint} : edge.target;
 }
 
 function route(type, source, target) {
@@ -117,13 +106,11 @@ function route(type, source, target) {
 export function edgeGeometry(edge, findNode) {
   const sourceNode = findNode(edge.source);
   const targetNode = findNode(edge.target.node);
-  const fixedSource = anchorPoint(sourceNode, edge.sourceAnchor);
-  const fixedTarget = anchorPoint(targetNode, edge.target.anchor);
-  const source = fixedSource ?? sourceNode?.position ?? edge.sourcePoint;
-  const target = fixedTarget ?? targetNode?.position ?? edge.target.point;
+  const source = sourceNode?.position ?? edge.sourcePoint;
+  const target = targetNode?.position ?? edge.target.point;
   const {command, points} = route(edge.type, source, target);
-  const from = sourceNode && !fixedSource ? borderPoint(sourceNode, points[0] ?? target) : source;
-  const to = targetNode && !fixedTarget ? borderPoint(targetNode, points.at(-1) ?? source) : target;
+  const from = sourceNode ? borderPoint(sourceNode, points[0] ?? target) : source;
+  const to = targetNode ? borderPoint(targetNode, points.at(-1) ?? source) : target;
   const sourceToward = points[0] ?? to;
   const targetToward = points.at(-1) ?? from;
   const pair = p => `${p.x} ${p.y}`;
