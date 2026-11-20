@@ -1,11 +1,6 @@
 .build/
 .swiftpm/
 Public/vendor/
-Data/.users.json
-Data/.trash/
 .DS_Store
-Data/.settings.json
 /.thinknodes-tls/
-Data/**/.*.preview.svg
-Data/.document-policies.json
-Data/**/.*.preview-v2.svg
+/Data/

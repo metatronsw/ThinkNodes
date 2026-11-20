@@ -2,12 +2,55 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# Run the updated launcher too, preserving the original arguments.
+update_checkout() {
+    local branch previous
+    branch="$(git symbolic-ref --quiet --short HEAD)" || {
+        echo 'Frissítés kihagyva: nincs aktív Git-ág.' >&2
+        return
+    }
+    if ! GIT_TERMINAL_PROMPT=0 git fetch --no-tags origin "refs/heads/$branch"; then
+        echo 'A frissítés letöltése sikertelen. A helyi verzió indul.' >&2
+        return
+    fi
+    previous="$(git rev-parse HEAD)"
+    if ! git -c merge.autoStash=false merge --ff-only FETCH_HEAD; then
+        echo 'A frissítés ütközik a helyi állapottal. A helyi verzió indul.' >&2
+        return
+    fi
+    if [[ "$(git rev-parse HEAD)" != "$previous" ]]; then
+        THINKNODES_UPDATED_HEAD="$(git rev-parse HEAD)" exec ./run.sh "$@"
+    fi
+}
+
+checkout_head=""
+if [[ -e .git ]]; then
+    checkout_head="$(git rev-parse HEAD)"
+    if [[ "${THINKNODES_UPDATED_HEAD:-}" != "$checkout_head" ]]; then
+        update_checkout "$@"
+    fi
+    unset THINKNODES_UPDATED_HEAD
+fi
+
 swift_bin="${THINKNODES_SWIFT:-$HOME/X-Code/Swift/6.0.3/usr/bin/swift}"
 if [[ ! -x "$swift_bin" && -z "${THINKNODES_SWIFT:-}" ]]; then
     swift_bin="$(command -v swift || true)"
 fi
 configuration="${THINKNODES_CONFIGURATION:-debug}"
 executable="${THINKNODES_EXECUTABLE:-.build/$configuration/ThinkNodes}"
+
+build_stamp=".build/$configuration/.thinknodes-built-head"
+if [[ ! -x "$executable" || ( -z "${THINKNODES_EXECUTABLE:-}" && ( Sources/ThinkNodes/Server.swift -nt "$executable" ||
+        ( -n "$checkout_head" && "$(cat "$build_stamp" 2>/dev/null || true)" != "$checkout_head" ) ) ) ]]; then
+    if [[ ! -x "$swift_bin" ]]; then
+        printf '%s\n' 'A Swift nem található. A THINKNODES_SWIFT változóban megadható a swift futtatható fájl.' >&2
+        exit 1
+    fi
+    ./build.sh --skip-update -j 2
+    if [[ -n "$checkout_head" && -z "${THINKNODES_EXECUTABLE:-}" ]]; then
+        printf '%s\n' "$checkout_head" > "$build_stamp"
+    fi
+fi
 
 if [[ "${1:-}" == "user" ]]; then
     if [[ ! -x "$executable" ]]; then
@@ -61,14 +104,6 @@ while (( $# )); do
 done
 export THINKNODES_MOTION_RATE="$rate" THINKNODES_TEST_MODE="$test_mode"
 if [[ "$test_mode" == 1 ]]; then echo "Tesztmód: minden csatlakozó adminisztrátori jogot kap."; fi
-
-if [[ ! -x "$executable" || ( -z "${THINKNODES_EXECUTABLE:-}" && Sources/ThinkNodes/Server.swift -nt "$executable" ) ]]; then
-    if [[ ! -x "$swift_bin" ]]; then
-        printf '%s\n' 'A Swift nem található. A THINKNODES_SWIFT változóban megadható a swift futtatható fájl.' >&2
-        exit 1
-    fi
-    ./build.sh --skip-update -j 2
-fi
 
 bind_host="${THINKNODES_HOST:-0.0.0.0}"
 default_port=8443
