@@ -55,7 +55,7 @@ const {decodeWorksheet, encodeWorksheet} = await import("../../Public/worksheet-
 let sheet = {title: "Próba", revision: 1, nodes: [
   node("outer", 0, 0, 300, 240), node("inner", 10, 10, 160, 120), node("child", 10, 10, 64, 40),
   node("outside", 340, 0, 100, 80), {...node("auto", -420, 0, 120, 60), autoSize: true},
-], edges: [{id: "one", source: "outside", target: {point: {x: 400, y: 230}}, style: "arrow"}]};
+], edges: [{id: "one", source: "outside", target: {point: {x: 400, y: 230}}, type: "straight", appearance: "plain"}]};
 let socket, finishPoll, fetchWorksheet;
 globalThis.location = new URL("http://localhost/test");
 globalThis.WebSocket = window.WebSocket = class {
@@ -531,3 +531,30 @@ const cables = ["one", "two", "three"].map((id, x) => ({id, source: "j", target:
 const junctionSheet = edges => ({nodes: [historyJunction], edges});
 const thirdCable = worksheetChanges(junctionSheet(cables.slice(0, 2)), junctionSheet(cables));
 assert.equal(replayChanges(junctionSheet(cables.slice(1)), thirdCable, false, () => false), null);
+
+oneWire().props.onDblclick({stopPropagation() {}});
+await tick();
+assert.equal(button("Egyenes").props["aria-pressed"], true);
+assert.equal(button("Sima").props["aria-pressed"], true);
+await press("S-forma");
+await press("Pontozott");
+assert.equal(button("S-forma").props["aria-pressed"], true);
+assert.equal(button("Pontozott").props["aria-pressed"], true);
+assert.ok(find(n => n.props.d?.includes(" C ") && n.props["stroke-dasharray"] === "0 5", oneWire()));
+await save();
+assert.equal(edge("one").type, "sCurve");
+assert.equal(edge("one").appearance, "dotted");
+await press("Egyenes");
+await press("Sima");
+await save();
+
+const {edgeGeometry, edgePaint} = await import("../../Public/geometry.js");
+const route = (type, y = 0) => edgeGeometry({
+  type, sourcePoint: {x: -100, y: 0}, target: {point: {x: 100, y}},
+}, () => undefined);
+assert.equal(route("sCurve").d, "M -100 0 L 100 0");
+assert.equal(route("sCurve", 60).d, "M -100 0 C 0 0 0 60 100 60");
+assert.equal(route("lightning").d, "M -100 0 L -20 30 20 -30 100 0");
+assert.ok(route("arc").labelPosition.y < 0 && route("rope").labelPosition.y > 0);
+assert.equal(edgePaint({appearance: "thick"}).width, 4);
+assert.equal(edgePaint({appearance: "dotted"}).linecap, "round");

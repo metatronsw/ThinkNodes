@@ -219,6 +219,7 @@ input[type="color"] { height: 37px; padding: 3px; cursor: pointer; }
 .editor-canvas.ctrl-held, .ctrl-held .idea, .ctrl-held .edge-hit { cursor: crosshair; }
 .editor-canvas .detach-endpoint { cursor: url("/detach-cursor.svg") 2 2, alias; }
 .property-group { margin: 0; border: 1px solid var(--line); border-radius: 8px; padding: 9px; min-width: 0; }
+.line-options { display: flex; flex-wrap: wrap; gap: 4px; }
 .property-group legend { font-weight: 650; padding: 0 5px; }
 .font-switches { display: flex; gap: 8px; flex-wrap: wrap; }
 .color-sample, .color-presets button { padding: 3px; background: white; border: 1px solid #bbc8d8; border-radius: 5px; cursor: pointer; }

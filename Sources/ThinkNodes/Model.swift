@@ -92,18 +92,22 @@ struct Idea: Codable, Equatable, Sendable {
     }
 }
 
-enum ConnectionStyle: String, Codable, Sendable {
-    case arrow, both, solid, dashed, rope
+enum ConnectionType: String, Codable, CaseIterable, Sendable {
+    case straight, sCurve, lightning, arc, rope
 
     var label: String {
         switch self {
-        case .arrow: "Egyirányú nyíl"
-        case .both: "Kétirányú nyíl"
-        case .solid: "Folytonos vonal"
-        case .dashed: "Szaggatott nyíl"
-        case .rope: "Íves kötél"
+        case .straight: "Egyenes"
+        case .sCurve: "S-forma"
+        case .lightning: "Villám"
+        case .arc: "Íves"
+        case .rope: "Kötél"
         }
     }
+}
+
+enum ConnectionAppearance: String, Codable, CaseIterable, Sendable {
+    case plain, thick, dashed, dotted
 }
 
 struct ConnectionTarget: Equatable, Codable, Sendable {
@@ -123,7 +127,8 @@ struct Connection: Equatable, Codable, Sendable {
     var source: String?
     var sourcePoint: Point?
     var target: ConnectionTarget
-    var style: ConnectionStyle
+    var type: ConnectionType = .straight
+    var appearance: ConnectionAppearance = .plain
     var color: String?
     var width: Double?
     var startArrow: Bool?
@@ -131,15 +136,36 @@ struct Connection: Equatable, Codable, Sendable {
     var label: String?
 
     private enum CodingKeys: String, CodingKey {
-        case id, source, target, style, color, startArrow, endArrow, label
+        case id, source, target, type, appearance, color, startArrow, endArrow, label
         case sourcePoint = "srcPt", width = "w"
     }
 
     var origin: ConnectionTarget { ConnectionTarget(node: source, point: sourcePoint) }
     var strokeColor: String { color ?? "#526982" }
-    var strokeWidth: Double { width ?? 2 }
-    var hasStartArrow: Bool { startArrow ?? (style == .both) }
-    var hasEndArrow: Bool { endArrow ?? (style != .rope && style != .solid) }
+    var strokeWidth: Double { min(24, (width ?? 2) * (appearance == .thick ? 2 : 1)) }
+    var hasStartArrow: Bool { startArrow ?? false }
+    var hasEndArrow: Bool { endArrow ?? true }
+}
+
+extension Connection {
+    private enum LegacyKey: String, CodingKey { case style }
+    private enum LegacyStyle: String, Decodable { case arrow, both, solid, dashed, rope }
+
+    init(from decoder: Decoder) throws {
+        let fields = try decoder.container(keyedBy: CodingKeys.self)
+        let legacy = try decoder.container(keyedBy: LegacyKey.self).decodeIfPresent(LegacyStyle.self, forKey: .style)
+        id = try fields.decode(String.self, forKey: .id)
+        source = try fields.decodeIfPresent(String.self, forKey: .source)
+        sourcePoint = try fields.decodeIfPresent(Point.self, forKey: .sourcePoint)
+        target = try fields.decode(ConnectionTarget.self, forKey: .target)
+        type = try fields.decodeIfPresent(ConnectionType.self, forKey: .type) ?? (legacy == .rope ? .rope : .straight)
+        appearance = try fields.decodeIfPresent(ConnectionAppearance.self, forKey: .appearance) ?? (legacy == .dashed ? .dashed : .plain)
+        color = try fields.decodeIfPresent(String.self, forKey: .color)
+        width = try fields.decodeIfPresent(Double.self, forKey: .width)
+        startArrow = try fields.decodeIfPresent(Bool.self, forKey: .startArrow) ?? (legacy == .both ? true : nil)
+        endArrow = try fields.decodeIfPresent(Bool.self, forKey: .endArrow) ?? (legacy == .rope || legacy == .solid ? false : nil)
+        label = try fields.decodeIfPresent(String.self, forKey: .label)
+    }
 }
 
 struct Worksheet: Content, Equatable {
@@ -221,7 +247,7 @@ struct Worksheet: Content, Equatable {
               nodes.allSatisfy(\.isValid), edges.allSatisfy({
                   validSlug($0.id) && $0.origin.isValid(in: nodeIDs) && $0.target.isValid(in: nodeIDs)
                       && ($0.source == nil || $0.source != $0.target.node)
-                      && validColor($0.strokeColor) && (0.5...24).contains($0.strokeWidth)
+                      && validColor($0.strokeColor) && (0.5...24).contains($0.width ?? 2)
                       && validComment($0.label) && ($0.label?.utf16.count ?? 0) <= 120
               })
         else {
@@ -616,7 +642,7 @@ final class WorksheetStore: @unchecked Sendable {
             let sheet = try readDocument(path, rules: rules)
             try authorize(accessLocked(path, sheet: sheet, user: user, unlocks: unlocks, rules: rules), user: user)
             guard files.fileExists(atPath: url.path) else { return boardSVG(sheet) }
-            let cache = url.deletingLastPathComponent().appendingPathComponent("." + path.name + ".preview-v4.svg")
+            let cache = url.deletingLastPathComponent().appendingPathComponent("." + path.name + ".preview-v5.svg")
             try rejectLink(cache)
             let modified = try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
             if let modified, let cached = try? cache.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,

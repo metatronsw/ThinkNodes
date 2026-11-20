@@ -37,6 +37,21 @@ A szerver buildje böngészős függőségek letöltése nélkül:
 
 A bináris a **.build/release/ThinkNodes** útvonalon készül. A buildszkript kiírja annak dinamikus könyvtárfüggőségeit is. A futtató Fedora rendszeren a Swift compiler nem kell, de a bináris által jelzett megosztott könyvtáraknak rendelkezésre kell állniuk; azonos vagy újabb Fedora kiadáson építs, mint a célrendszer. A futtatáshoz a bináris mellett a projekt **Public/** és **Projects/** állományai, valamint a TLS-beállítások szükségesek. A futó szolgáltatást korlátozott jogosultságú külön felhasználóként érdemes elindítani.
 
+#### Indítás systemd szolgáltatásként
+
+A `deploy/thinknodes.service` unit a `/opt/ThinkNodes` telepítési útvonalat és a `thinknodes` szolgáltatásfelhasználót használja. A launcher GitHubról frissíti a checkoutot, ezért ennek a felhasználónak írnia kell az alkalmazásmappát; a projektek és a TLS-kulcsok külön, a `/var/lib/thinknodes` alatt tárolódnak. A frissítés utáni buildhez Swift toolchain is kell a szerveren.
+
+~~~sh
+sudo useradd --system --home-dir /var/lib/thinknodes --create-home --shell /sbin/nologin thinknodes
+sudo chown -R thinknodes:thinknodes /opt/ThinkNodes
+sudo install -m 0644 /opt/ThinkNodes/deploy/thinknodes.service /etc/systemd/system/thinknodes.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now thinknodes
+sudo systemctl status thinknodes
+~~~
+
+A napló követése: `sudo journalctl -u thinknodes -f`. Leállítás: `sudo systemctl stop thinknodes`. A unit a 443-as porthoz szükséges jogosultságot rootként futás nélkül adja meg.
+
 ### HTTPS a belső hálózaton
 
 Indítás a szervergépen:
@@ -116,7 +131,7 @@ A vászon jobb kattintásos menüjében az **Új munkalap** létrehozza az allap
 - Az **Enter** megnyitja a munkalap gyorskeresőjét. Enterrel vagy Esc-kel bezárható. Az **Esc** a vásznon először megszünteti a kijelölést, kijelölés nélkül bezárja a panelt. A **Delete** és a **Backspace** törli a kijelölt objektumot. Ctrl-lal együtt a csomópont kábelei, konténernél a tartalmazott objektumok és a hozzájuk vagy a konténerhez kötött kábelek is törlődnek.
 - Egy adott kezdőobjektumtól egy adott célobjektumig egy kábel csatlakozhat. Két szabad vég összeillesztésekor zöld kör jelzi a leendő csomópont helyét.
 - A **Ctrl + bal gombos húzás** kábelt indít egy dobozból vagy a vászon üres pontjáról. A kábel a kiemelt célhoz illeszkedik, üres helyre engedve vászonkoordinátára kerül.
-- Ctrl + kattintás a vonal belsejére csomópontot szúr be, és két kábelszakaszra osztja a vonalat. Az új pont ugyanazzal a húzással a helyére vihető. A kijelölt vonal alatt a felhasználó színével folytonos vonal jelenik meg. Dupla kattintás a vonalra megnyitja a címke, a szín, a vastagság, a nyílirányok és a vonaltípus beállításait. Mindkét végpont leválasztható és húzható, majd dobozhoz kapcsolható. A doboz törlésekor a hozzá tartozó kábelek végpontjai a helyükön maradnak.
+- Ctrl + kattintás a vonal belsejére csomópontot szúr be, és két kábelszakaszra osztja a vonalat. Az új pont ugyanazzal a húzással a helyére vihető. A kijelölt vonal alatt a felhasználó színével folytonos vonal jelenik meg. Dupla kattintással nyílnak meg a vonal beállításai. Külön gombsoron választható a geometria (Egyenes, S-forma, Villám, Íves, Kötél) és a megjelenés (Sima, Vastag, Szaggatott, Pontozott). A nyilak, az alapszélesség és a szín külön állíthatók. Mindkét végpont leválasztható és húzható, majd dobozhoz kapcsolható. A doboz törlésekor a hozzá tartozó kábelek végpontjai a helyükön maradnak.
 - A végpontot a teljes nyílhegy megfogásával lehet húzni. Nyílhegy nélküli végponton azonos méretű láthatatlan téglalap szolgál fogófelületként. Két kábel szabad végének összeillesztése címke nélküli csomópontot hoz létre. A címke, az átmérő és a szín a csomópont paneljén módosítható. Ha már csak egy kábel maradna a csomóponton, a csomópont eltűnik, és a kábel vége ugyanazon a helyen szabaddá válik.
 - Az **Alt** megjeleníti a méretező sarkokat. A sarkot húzva a doboz mérete változik. A cím és a Text betűmérete külön állítható. Alt+húzás a dobozon a kapcsolataival együtt másolja a dobozt. Alt+dupla kattintás a teljes Text mezőt kijelöli.
 - A **Konténer** gomb az átfedő, azonos szinten lévő dobozokat a konténerhez rendeli. Behúzáskor a mozgatott elem területének több mint fele kell, hogy a célkonténerben legyen. Egymásba ágyazott céloknál a legbelső alkalmas konténer fogadja az elemet. A **Lock** a tartalom önálló mozgatását rögzíti. A **Konténer feloldása** egy szinttel kijjebb helyezi a közvetlen tagokat a vásznon elfoglalt helyük megőrzésével.

@@ -6,7 +6,7 @@ import {flashNode, flashPoint} from "./ping.js";
 import {hideTooltip, showTooltip} from "./tooltip.js";
 import {liveConnection} from "./collaboration.js";
 
-import {arrowTransform, edgeGeometry, selectionOutline} from "./geometry.js?v=2";
+import {arrowTransform, edgeGeometry, edgePaint, selectionOutline} from "./geometry.js?v=2";
 import {ancestors} from "./containers.js";
 
 let selection;
@@ -54,12 +54,12 @@ function previewScene() {
     }
     for (const {path, edge} of wires) {
       if (!changed.has(edge.source) && !changed.has(edge.target.node)) continue;
-      const {d, labelPosition, angle, from, to, control} = edgeGeometry(edge, id => nodes.get(id));
+      const {d, labelPosition, angle, from, to, sourceToward, targetToward} = edgeGeometry(edge, id => nodes.get(id));
       path.setAttribute("d", d);
       if (path.parentElement.hasAttribute("data-free-arrows")) {
         for (const arrow of path.parentElement.querySelectorAll("[data-arrow-end]")) {
           const start = arrow.dataset.arrowEnd === "source";
-          arrow.setAttribute("transform", arrowTransform(start ? from : to, control ?? (start ? to : from), edge.width ?? 2));
+          arrow.setAttribute("transform", arrowTransform(start ? from : to, start ? sourceToward : targetToward, edgePaint(edge).width));
         }
       }
       let underlay = path.previousElementSibling;

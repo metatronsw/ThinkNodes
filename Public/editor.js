@@ -5,7 +5,7 @@ import {flashNode, flashPoint} from "./ping.js";
 import {showTooltip, hideTooltip} from "./tooltip.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {arrowTransform, canvasBounds, edgeEndpoint, edgeGeometry, edgePaint, labelLayout, limit, lineStyles, paper, selectionOutline, shapeDistance, shapes} from "./geometry.js?v=2";
+import {arrowTransform, canvasBounds, edgeEndpoint, edgeGeometry, edgePaint, labelLayout, limit, lineAppearances, lineTypes, paper, selectionOutline, shapeDistance, shapes} from "./geometry.js?v=2";
 
 import {ancestors, containerOrder, overlapFraction} from "./containers.js";
 
@@ -139,24 +139,22 @@ function shape(node, linked) {
 // The stored endpoints are the tips. Stop the shaft at each triangle's base.
 function wireDrawing(edge, findNode) {
   const geometry = edgeGeometry(edge, findNode);
-  const {from, to, control} = geometry;
+  const {from, to, sourceToward, targetToward, bent, path} = geometry;
   const paint = edgePaint(edge);
   const ends = {};
   for (const [end, tip, toward, visible] of [
-    ["source", from, control ?? to, paint.startArrow], ["target", to, control ?? from, paint.endArrow],
+    ["source", from, sourceToward, paint.startArrow], ["target", to, targetToward, paint.endArrow],
   ]) {
     const dx = toward.x-tip.x, dy = toward.y-tip.y;
     const distance = Math.hypot(dx,dy);
-    const available = control || !(paint.startArrow && paint.endArrow) ? distance : distance/2;
+    const available = bent || !(paint.startArrow && paint.endArrow) ? distance : distance/2;
     const length = visible ? Math.min(paint.width*6.75, available) : paint.width*6.75;
     const ratio = visible && distance ? length/distance : 0;
     ends[end] = {visible, transform: arrowTransform(tip,toward,length/6.75),
       base: {x: tip.x+dx*ratio, y: tip.y+dy*ratio}};
   }
-  const a = ends.source.base, b = ends.target.base;
-  const d = `M ${a.x} ${a.y} ` + (control ? `Q ${control.x} ${control.y} ` : "L ") + `${b.x} ${b.y}`;
-  const stroke = {d, fill: "none", stroke: paint.color, "stroke-width": paint.width, "stroke-linecap": "butt",
-    "stroke-dasharray": edge.style === "dashed" ? (paint.width*3.5)+" "+(paint.width*2.5) : undefined};
+  const stroke = {d: path(ends.source.base, ends.target.base), fill: "none", stroke: paint.color,
+    "stroke-width": paint.width, "stroke-linecap": paint.linecap, "stroke-dasharray": paint.dash};
   return {...geometry, ends, stroke, paint};
 }
 
@@ -863,7 +861,7 @@ createApp({
       const locked = ancestors(node, nodeMap.value).some(parent => parent.locked);
       gesture.value = {group: cabling || locked ? [] : moveGroup(node), locked, type: cabling ? "cable" : "move", pointer: event.pointerId, nodeID: node.id,
         position: {...node.position}, initial, screen: [event.clientX, event.clientY], moved: false};
-      if (cabling) preview.value = {edge: {source: node.id, target: {point: initial}, style: "arrow"}};
+      if (cabling) preview.value = {edge: {source: node.id, target: {point: initial}, type: "straight", appearance: "plain"}};
       event.currentTarget.setPointerCapture(event.pointerId);
       if (!cabling && !occupied(node.id)) claimGesture(node);
       else if (!cabling) gesture.value.locked = true;
@@ -1032,7 +1030,7 @@ createApp({
           }
           return;
         }
-        const edge = {source: operation.nodeID, sourcePoint: operation.nodeID ? undefined : operation.initial, target: {point}, style: "arrow", endArrow: true};
+        const edge = {source: operation.nodeID, sourcePoint: operation.nodeID ? undefined : operation.initial, target: {point}, type: "straight", appearance: "plain", endArrow: true};
         edge.target = endpointAt(point, edge, "target");
         preview.value = {edge, target: edge.target.node, junction: edge.target.junction};
       } else {
@@ -1152,16 +1150,7 @@ createApp({
         if ([-1,1].every(k => inside({x: node.position.x+k*node.width/2, y: node.position.y+k*node.height/2}))) nodes.add(node.id);
       }
       for (const edge of board.value.edges) {
-        const {from,to,control} = edgeGeometry(edge, drawnNode);
-        if (!inside(from) || !inside(to)) continue;
-        // A quadratic can extend past both endpoints at its interior extrema.
-        const fits = !control || ["x","y"].every(axis => {
-          const t = (from[axis]-control[axis])/(from[axis]-2*control[axis]+to[axis]);
-          if (!(t > 0 && t < 1)) return true;
-          const at = key => (1-t)**2*from[key]+2*(1-t)*t*control[key]+t*t*to[key];
-          return inside({x: at("x"), y: at("y")});
-        });
-        if (fits) edges.add(edge.id);
+        if (edgeGeometry(edge, drawnNode).boundsPoints.every(inside)) edges.add(edge.id);
       }
       if (nodes.size || edges.size) {
         batch.value = {nodes, edges};
@@ -1262,7 +1251,7 @@ createApp({
           menu.value = null;
           const initial = clampPoint(world(event));
           gesture.value = {type: "cable", pointer: event.pointerId, initial, screen: [event.clientX, event.clientY], moved: false};
-          preview.value = {edge: {sourcePoint: initial, target: {point: initial}, style: "arrow"}};
+          preview.value = {edge: {sourcePoint: initial, target: {point: initial}, type: "straight", appearance: "plain"}};
           canvas.value.setPointerCapture(event.pointerId);
           return;
         }
@@ -1831,10 +1820,14 @@ createApp({
       });
     }
 
-    function changeLineStyle(edge, style) {
-      const {startArrow, endArrow} = edgePaint(edge);
-      Object.assign(edge, {style, startArrow, endArrow});
-      modified();
+    function lineOptions(edge, label, key, choices, fallback) {
+      return h("fieldset", {class: "property-group"}, [
+        h("legend", label),
+        h("div", {class: "line-options"}, Object.entries(choices).map(([value, title]) =>
+          h("button", {type: "button", class: "button small", key: value,
+            "aria-pressed": (edge[key] ?? fallback) === value,
+            onClick: () => updateItem(edge, key, value)}, title))),
+      ]);
     }
 
     function worksheetAccess(sheet) {
@@ -1937,7 +1930,6 @@ createApp({
         const edge = board.value.edges.find(item => item.id === inspector.value.id);
         if (!edge) return null;
         const paint = edgePaint(edge);
-        const style = edge.style === "dashed" || edge.style === "rope" ? edge.style : "solid";
         if (!editingPanel.value) return sidebar("Vonal", [
           button("Szerkesztés", () => openProperties("edge", edge.id), {symbol: "edit"}),
           h("h2", edge.label || "Vonal"),
@@ -1947,8 +1939,9 @@ createApp({
           button("Előnézet", () => { editingPanel.value = false; }, {symbol: "eye"}),
           field("Címke", input(edge.label || "", value => updateItem(edge, "label", value), {"data-object-label": "", maxlength: 120})),
           colorPicker("Vonal színe", paint.color, value => updateItem(edge, "color", value), edge.id + "/line"),
-          field("Vastagság", numeric(paint.width, value => updateItem(edge, "width", value), 0.5, 24)),
-          field("Vonaltípus", select(style, lineStyles, value => changeLineStyle(edge, value))),
+          field("Alapvastagság", numeric(edge.width ?? 2, value => updateItem(edge, "width", value), 0.5, 24)),
+          lineOptions(edge, "Vonaltípus", "type", lineTypes, "straight"),
+          lineOptions(edge, "Megjelenés", "appearance", lineAppearances, "plain"),
           checkbox("Nyíl a vonal elején", paint.startArrow, value => updateItem(edge, "startArrow", value)),
           checkbox("Nyíl a vonal végén", paint.endArrow, value => updateItem(edge, "endArrow", value)),
           ...endpointActions(edge),

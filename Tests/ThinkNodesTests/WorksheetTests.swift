@@ -53,10 +53,10 @@ import VaporTesting
             Idea(id: "masodik", title: "Második ötlet", position: Point(x: 250, y: 0), shape: .ellipse)
         ]
         worksheet.edges = [
-            Connection(id: "kapcsolat", source: "elso", target: ConnectionTarget(node: "masodik"), style: .both),
-            Connection(id: "szabad", source: "masodik", target: ConnectionTarget(point: Point(x: 810, y: 12)), style: .dashed),
+            Connection(id: "kapcsolat", source: "elso", target: ConnectionTarget(node: "masodik"), startArrow: true),
+            Connection(id: "szabad", source: "masodik", target: ConnectionTarget(point: Point(x: 810, y: 12)), appearance: .dashed),
             Connection(id: "szabad-kezdet", sourcePoint: Point(x: -410, y: -170),
-                       target: ConnectionTarget(point: Point(x: -250, y: -70)), style: .rope,
+                       target: ConnectionTarget(point: Point(x: -250, y: -70)), type: .rope,
                        color: "#6b3273", width: 5, startArrow: true, endArrow: false, label: "Szabad vonal")
         ]
         let noLogin = try await browser.sendRequest(.PUT, "/api/worksheet/\(path)")
@@ -82,7 +82,7 @@ import VaporTesting
         #expect(child.creator == "shared")
         let preview = try await browser.sendRequest(.GET, "/api/preview/" + path + "/terv")
         #expect(preview.status == .ok && preview.body.string.contains("<svg"))
-        #expect(FileManager.default.fileExists(atPath: file.deletingPathExtension().appendingPathComponent(".terv.preview-v4.svg").path))
+        #expect(FileManager.default.fileExists(atPath: file.deletingPathExtension().appendingPathComponent(".terv.preview-v5.svg").path))
         let parent = try await browser.sendRequest(.GET, "/" + path)
         #expect(parent.body.string.contains("További oldalak:") && parent.body.string.contains("Létrehozó: shared"))
         #expect(try await browser.sendRequest(.POST, childURL, headers: headers).status == .conflict)
@@ -133,7 +133,8 @@ import VaporTesting
         #expect(markdown.status == .ok)
         #expect(markdown.body.string.contains("**Szöveg**"))
         #expect(markdown.body.string.contains("**A munkalap bevezetője**"))
-        #expect(markdown.body.string.contains("Kétirányú nyíl"))
+        #expect(markdown.body.string.contains("↔"))
+        #expect(markdown.body.string.contains("· Egyenes"))
         #expect(markdown.body.string.contains("810.000, 12.000"))
 
         let canvasNotes = try await browser.sendRequest(.POST, "/api/text/canvas", headers: [
@@ -292,8 +293,8 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
                      textFill: "#eecc99", textBorder: "#663344")
     let junction = Idea(id: "joint", title: "Kapocs", position: Point(x: 200, y: 80), width: 34, height: 34,
                         shape: .ellipse, kind: .connectionPoint)
-    let line = Connection(id: "line", source: child.id, target: ConnectionTarget(node: junction.id), style: .arrow)
-    let second = Connection(id: "other-line", source: junction.id, target: ConnectionTarget(point: origin), style: .solid)
+    let line = Connection(id: "line", source: child.id, target: ConnectionTarget(node: junction.id))
+    let second = Connection(id: "other-line", source: junction.id, target: ConnectionTarget(point: origin), endArrow: false)
     var board = Worksheet(title: "Ábra", gridColor: "#006699", gridSpacing: 32,
                           nodes: [child, junction, container], edges: [line, second])
     try board.validate()
@@ -384,7 +385,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     #expect(throws: Abort.self) { try live.update(path, sheet: moved, user: b, client: b.name) }
     #expect(throws: Abort.self) { try live.update(path, sheet: moved, user: b, client: nil) }
     #expect(throws: Abort.self) { try live.update(path, sheet: moved, user: b, client: a.name) }
-    sheet.edges = [Connection(id: "wire", source: "box", target: ConnectionTarget(point: Point(x: 0, y: 50)), style: .solid)]
+    sheet.edges = [Connection(id: "wire", source: "box", target: ConnectionTarget(point: Point(x: 0, y: 50)), endArrow: false)]
     sheet = try live.update(path, sheet: sheet, user: b, client: b.name)
     sheet.edges[0].source = nil
     sheet.edges[0].sourcePoint = Point(x: 0, y: 10)
@@ -529,7 +530,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
                     alignment: .left, verticalAlignment: .top,
                     textStyle: TextStyle(alignment: .right, verticalAlignment: .bottom))
     let edge = Connection(id: "wire", sourcePoint: Point(x: 0, y: 0),
-                          target: ConnectionTarget(node: node.id), style: .arrow, width: 3)
+                          target: ConnectionTarget(node: node.id), width: 3)
     let sheet = Worksheet(title: "Teszt", gridSpacing: 25, nodes: [node], edges: [edge])
     let compact = try JSONEncoder().encode(sheet)
     #expect(try JSONDecoder().decode(Worksheet.self, from: compact) == sheet)
@@ -539,4 +540,36 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     for key in ["pos", "align", "textCol", "w", "h", "vAlign", "srcPt", "gridStep"] {
         #expect(keys.contains("\"\(key)\""))
     }
+}
+
+@Test func connectionTypesAndAppearances() throws {
+    let from = Point(x: -100, y: 0)
+    let to = Point(x: 100, y: 0)
+    var edge = Connection(id: "wire", sourcePoint: from, target: ConnectionTarget(point: to), endArrow: false)
+    func render() -> String { boardSVG(Worksheet(title: "Vonalak", edges: [edge])) }
+
+    edge.type = .sCurve
+    #expect(render().contains("M -100.000 0.000 L 100.000 0.000"))
+    edge.target.point?.y = 60
+    edge.appearance = .dotted
+    let curve = render()
+    #expect(curve.contains("C 0.000 0.000 0.000 60.000"))
+    #expect(curve.contains("stroke-linecap=\"round\" stroke-dasharray=\"0 5.000\""))
+
+    edge.type = .lightning
+    edge.target.point = to
+    edge.appearance = .thick
+    let lightning = render()
+    #expect(lightning.contains("L -20.000 30.000 20.000 -30.000 100.000 0.000"))
+    #expect(lightning.contains("stroke-width=\"4.000\""))
+    edge.type = .arc
+    #expect(render().contains("Q 0.000 -56.000"))
+    edge.type = .rope
+    #expect(render().contains("Q 0.000 56.000"))
+
+    let previous = #"{"id":"wire","srcPt":{"x":0,"y":0},"target":{"point":{"x":50,"y":20}},"style":"rope"}"#
+    let decoded = try JSONDecoder().decode(Connection.self, from: Data(previous.utf8))
+    #expect(decoded.type == .rope && decoded.appearance == .plain && !decoded.hasEndArrow)
+    let saved = String(decoding: try JSONEncoder().encode(decoded), as: UTF8.self)
+    #expect(!saved.contains("\"style\""))
 }

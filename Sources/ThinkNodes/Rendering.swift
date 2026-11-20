@@ -122,11 +122,29 @@ private func borderPoint(_ idea: Idea, toward point: Point) -> Point {
     return Point(x: idea.position.x + dx * scale, y: idea.position.y + dy * scale)
 }
 
-private func edgePath(from: Point, to: Point, bend: Point?) -> (path: String, control: Point?) {
-    let start = "\(number(from.x)) \(number(from.y))"
-    let end = "\(number(to.x)) \(number(to.y))"
-    guard let control = bend else { return ("M \(start) L \(end)", nil) }
-    return ("M \(start) Q \(number(control.x)) \(number(control.y)) \(end)", control)
+private func edgeRoute(_ type: ConnectionType, from source: Point, to target: Point) -> (command: String, points: [Point]) {
+    let dx = target.x - source.x, dy = target.y - source.y
+    let length = hypot(dx, dy)
+    let x = (source.x + target.x) / 2, y = (source.y + target.y) / 2
+    switch type {
+    case .sCurve where dx != 0 && dy != 0:
+        return ("C", abs(dx) >= abs(dy)
+            ? [Point(x: x, y: source.y), Point(x: x, y: target.y)]
+            : [Point(x: source.x, y: y), Point(x: target.x, y: y)])
+    case .lightning where length > 0:
+        let offset = min(55, length * 0.15) / length
+        return ("L", [
+            Point(x: source.x + dx * 0.4 - dy * offset, y: source.y + dy * 0.4 + dx * offset),
+            Point(x: source.x + dx * 0.6 + dy * offset, y: source.y + dy * 0.6 - dx * offset),
+        ])
+    case .arc where length > 0:
+        let rise = min(110, length * 0.28)
+        return ("Q", [Point(x: dx == 0 ? x + rise : x, y: y - rise)])
+    case .rope where dx != 0:
+        return ("Q", [Point(x: x, y: y + min(110, length * 0.28))])
+    default:
+        return ("L", [])
+    }
 }
 
 private func wrap(_ title: String, columns: Int) -> [String] {
@@ -381,13 +399,15 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
         let targetNode = edge.target.node.flatMap { nodes[$0] }
         guard let source = sourceNode?.position ?? edge.sourcePoint,
               let target = targetNode?.position ?? edge.target.point else { return nil }
-        let control = edge.style == .rope ? Point(x: (source.x + target.x)/2,
-            y: (source.y + target.y)/2 + min(110, hypot(target.x-source.x, target.y-source.y)*0.28)) : nil
-        let beginning = sourceNode.map { borderPoint($0, toward: control ?? target) } ?? source
-        let ending = targetNode.map { borderPoint($0, toward: control ?? source) } ?? target
-        let drawing = edgePath(from: beginning, to: ending, bend: control)
-        halfWidth = max(halfWidth, abs(beginning.x) + 40, abs(ending.x) + 40, abs(drawing.control?.x ?? 0) + 40)
-        halfHeight = max(halfHeight, abs(beginning.y) + 40, abs(ending.y) + 40, abs(drawing.control?.y ?? 0) + 40)
+        let (command, points) = edgeRoute(edge.type, from: source, to: target)
+        let beginning = sourceNode.map { borderPoint($0, toward: points.first ?? target) } ?? source
+        let ending = targetNode.map { borderPoint($0, toward: points.last ?? source) } ?? target
+        let segments = (points + [ending]).map { "\(number($0.x)) \(number($0.y))" }.joined(separator: " ")
+        let drawing = "M \(number(beginning.x)) \(number(beginning.y)) \(command) \(segments)"
+        for point in [beginning, ending] + points {
+            halfWidth = max(halfWidth, abs(point.x) + 40)
+            halfHeight = max(halfHeight, abs(point.y) + 40)
+        }
         let color = escaped(edge.strokeColor)
         let marker = "arrow-" + edge.id
         var markers = ""
@@ -398,7 +418,13 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
         }
         if edge.hasStartArrow && sourceNode != nil { markers += " marker-start=\"url(#\(marker))\"" }
         if edge.hasEndArrow && targetNode != nil { markers += " marker-end=\"url(#\(marker))\"" }
-        if edge.style == .dashed { markers += " stroke-dasharray=\"\(number(edge.strokeWidth * 3.5)) \(number(edge.strokeWidth * 2.5))\"" }
+        switch edge.appearance {
+        case .dashed:
+            markers += " stroke-dasharray=\"\(number(edge.strokeWidth * 3.5)) \(number(edge.strokeWidth * 2.5))\""
+        case .dotted:
+            markers += " stroke-linecap=\"round\" stroke-dasharray=\"0 \(number(edge.strokeWidth * 2.5))\""
+        default: break
+        }
         let wire: String
         if noteBase != nil, let data = try? JSONEncoder().encode(edge) {
             wire = " data-wire=\"\(escaped(String(decoding: data, as: UTF8.self)))\""
@@ -410,14 +436,23 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
                 <path data-arrow-end="\(end)" d="M0 0L-1 -.5V.5Z" transform="translate(\(number(tip.x)) \(number(tip.y))) rotate(\(number(angle))) scale(\(number(edge.strokeWidth*6.75)))" fill="\(color)" stroke="none" pointer-events="none"/>
                 """
         }
-        if edge.hasStartArrow && sourceNode == nil { heads += arrow("source", tip: beginning, toward: control ?? ending) }
-        if edge.hasEndArrow && targetNode == nil { heads += arrow("target", tip: ending, toward: control ?? beginning) }
-        let stroke = "<path\(wire) d=\"\(drawing.path)\" stroke=\"\(color)\" stroke-width=\"\(number(edge.strokeWidth))\"\(markers)/>"
+        if edge.hasStartArrow && sourceNode == nil { heads += arrow("source", tip: beginning, toward: points.first ?? ending) }
+        if edge.hasEndArrow && targetNode == nil { heads += arrow("target", tip: ending, toward: points.last ?? beginning) }
+        let stroke = "<path\(wire) d=\"\(drawing)\" stroke=\"\(color)\" stroke-width=\"\(number(edge.strokeWidth))\"\(markers)/>"
         let path = heads.isEmpty ? stroke : "<g data-free-arrows=\"\">\(heads)\(stroke)</g>"
         guard let label = edge.label, !label.trimmingCharacters(in: .whitespaces).isEmpty else { return path }
-        let center = drawing.control.map {
-            Point(x: (beginning.x + 2 * $0.x + ending.x) / 4, y: (beginning.y + 2 * $0.y + ending.y) / 4)
-        } ?? Point(x: (beginning.x + ending.x) / 2, y: (beginning.y + ending.y) / 2)
+        let center: Point
+        switch command {
+        case "Q":
+            center = Point(x: (beginning.x + 2 * points[0].x + ending.x) / 4,
+                           y: (beginning.y + 2 * points[0].y + ending.y) / 4)
+        case "C":
+            center = Point(x: (beginning.x + 3 * points[0].x + 3 * points[1].x + ending.x) / 8,
+                           y: (beginning.y + 3 * points[0].y + 3 * points[1].y + ending.y) / 8)
+        default:
+            let first = points.first ?? beginning, last = points.last ?? ending
+            center = Point(x: (first.x + last.x) / 2, y: (first.y + last.y) / 2)
+        }
         var angle = atan2(ending.y - beginning.y, ending.x - beginning.x) * 180 / Double.pi
         if angle > 90 { angle -= 180 }
         if angle < -90 { angle += 180 }
@@ -486,7 +521,7 @@ func worksheetMarkdown(_ worksheet: Worksheet) -> String {
             return endpoint.point.map { "(\(number($0.x)), \(number($0.y)))" } ?? ""
         }
         for edge in worksheet.edges {
-            let description = edge.label.flatMap { $0.isEmpty ? nil : inline($0) } ?? edge.style.label
+            let description = edge.label.flatMap { $0.isEmpty ? nil : inline($0) } ?? edge.type.label
             let arrow = edge.hasStartArrow ? (edge.hasEndArrow ? "↔" : "←") : (edge.hasEndArrow ? "→" : "—")
             sections.append("- \(endpoint(edge.origin)) \(arrow) \(endpoint(edge.target)) · \(description)")
         }

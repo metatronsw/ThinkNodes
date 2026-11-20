@@ -40,18 +40,53 @@ export function borderPoint(node, toward) {
   };
 }
 
-export const lineStyles = {solid: "Folytonos", dashed: "Szaggatott", rope: "Íves"};
+export const lineTypes = {straight: "Egyenes", sCurve: "S-forma", lightning: "Villám", arc: "Íves", rope: "Kötél"};
+export const lineAppearances = {plain: "Sima", thick: "Vastag", dashed: "Szaggatott", dotted: "Pontozott"};
 
 export function edgePaint(edge) {
+  const appearance = edge.appearance ?? "plain";
   const color = edge.color ?? cableColor;
-  const width = edge.width ?? 2;
-  const startArrow = edge.startArrow ?? edge.style === "both";
-  const endArrow = edge.endArrow ?? (edge.style !== "rope" && edge.style !== "solid");
-  return {color, width, startArrow, endArrow};
+  const width = Math.min(24, (edge.width ?? 2) * (appearance === "thick" ? 2 : 1));
+  const dash = appearance === "dashed" ? `${width * 3.5} ${width * 2.5}`
+    : appearance === "dotted" ? `0 ${width * 2.5}` : undefined;
+  return {color, width, dash, linecap: appearance === "dotted" ? "round" : "butt",
+    startArrow: edge.startArrow ?? false, endArrow: edge.endArrow ?? true};
 }
 
 export function edgeEndpoint(edge, end) {
   return end === "source" ? {node: edge.source, point: edge.sourcePoint} : edge.target;
+}
+
+function route(type, source, target) {
+  const dx = target.x - source.x, dy = target.y - source.y;
+  const length = Math.hypot(dx, dy);
+  const x = (source.x + target.x) / 2, y = (source.y + target.y) / 2;
+  switch (type) {
+    case "sCurve":
+      if (dx && dy) return {command: "C", points: Math.abs(dx) >= Math.abs(dy)
+        ? [{x, y: source.y}, {x, y: target.y}]
+        : [{x: source.x, y}, {x: target.x, y}]};
+      break;
+    case "lightning":
+      if (length) {
+        const offset = Math.min(55, length * .15) / length;
+        return {command: "L", points: [
+          {x: source.x + dx * .4 - dy * offset, y: source.y + dy * .4 + dx * offset},
+          {x: source.x + dx * .6 + dy * offset, y: source.y + dy * .6 - dx * offset},
+        ]};
+      }
+      break;
+    case "arc":
+      if (length) {
+        const rise = Math.min(110, length * .28);
+        return {command: "Q", points: [{x: dx ? x : x + rise, y: y - rise}]};
+      }
+      break;
+    case "rope":
+      if (dx) return {command: "Q", points: [{x, y: y + Math.min(110, length * .28)}]};
+      break;
+  }
+  return {command: "L", points: []};
 }
 
 export function edgeGeometry(edge, findNode) {
@@ -59,22 +94,35 @@ export function edgeGeometry(edge, findNode) {
   const targetNode = findNode(edge.target.node);
   const source = sourceNode?.position ?? edge.sourcePoint;
   const target = targetNode?.position ?? edge.target.point;
-  const control = edge.style === "rope"
-    ? {x: (source.x + target.x)/2, y: (source.y + target.y)/2 + Math.min(110, Math.hypot(target.x-source.x, target.y-source.y)*0.28)} : null;
-  const from = sourceNode ? borderPoint(sourceNode, control ?? target) : source;
-  const to = targetNode ? borderPoint(targetNode, control ?? source) : target;
-  const start = "M " + from.x + " " + from.y;
-  const end = to.x + " " + to.y;
-  const midpoint = {x: (from.x + to.x) / 2, y: (from.y + to.y) / 2};
-  const labelPosition = control
-    ? {x: (from.x + 2 * control.x + to.x) / 4, y: (from.y + 2 * control.y + to.y) / 4} : midpoint;
+  const {command, points} = route(edge.type, source, target);
+  const from = sourceNode ? borderPoint(sourceNode, points[0] ?? target) : source;
+  const to = targetNode ? borderPoint(targetNode, points.at(-1) ?? source) : target;
+  const sourceToward = points[0] ?? to;
+  const targetToward = points.at(-1) ?? from;
+  const pair = p => `${p.x} ${p.y}`;
+  const path = (start, end) => `M ${pair(start)} ${command} ${[...points, end].map(pair).join(" ")}`;
+  const middle = command === "L" && points.length ? points : [from, to];
+  const labelPosition = {x: (middle[0].x + middle[1].x) / 2, y: (middle[0].y + middle[1].y) / 2};
+  const boundsPoints = [from, to];
+  if (command === "Q") {
+    const [control] = points;
+    const at = (key, t) => (1-t)**2 * from[key] + 2*(1-t)*t * control[key] + t*t * to[key];
+    for (const axis of ["x", "y"]) {
+      const t = (from[axis] - control[axis]) / (from[axis] - 2 * control[axis] + to[axis]);
+      if (t > 0 && t < 1) boundsPoints.push({x: at("x", t), y: at("y", t)});
+      labelPosition[axis] = at(axis, .5);
+    }
+  } else {
+    boundsPoints.push(...points);
+    if (command === "C") {
+      for (const axis of ["x", "y"]) labelPosition[axis] = (from[axis] + 3 * points[0][axis] + 3 * points[1][axis] + to[axis]) / 8;
+    }
+  }
   let angle = Math.atan2(to.y - from.y, to.x - from.x) * 180 / Math.PI;
   if (angle > 90) angle -= 180;
   if (angle < -90) angle += 180;
-  return {
-    from, to, control, labelPosition, angle,
-    d: control ? start + " Q " + control.x + " " + control.y + " " + end : start + " L " + end,
-  };
+  return {from, to, sourceToward, targetToward, bent: points.length > 0, boundsPoints, labelPosition, angle,
+    path, d: path(from, to)};
 }
 
 export function arrowTransform(tip, toward, width) {
@@ -95,9 +143,11 @@ export function canvasBounds(board) {
     halfHeight = Math.max(halfHeight, Math.abs(node.position.y) + (node.extentY ?? node.height / 2) + 40);
   }
   for (const edge of board.edges) {
-    const {from, to, control, labelPosition, angle} = edgeGeometry(edge, id => nodes.get(id));
-    halfWidth = Math.max(halfWidth, Math.abs(from.x) + 40, Math.abs(to.x) + 40, Math.abs(control?.x || 0) + 40);
-    halfHeight = Math.max(halfHeight, Math.abs(from.y) + 40, Math.abs(to.y) + 40, Math.abs(control?.y || 0) + 40);
+    const {boundsPoints, labelPosition, angle} = edgeGeometry(edge, id => nodes.get(id));
+    for (const {x, y} of boundsPoints) {
+      halfWidth = Math.max(halfWidth, Math.abs(x) + 40);
+      halfHeight = Math.max(halfHeight, Math.abs(y) + 40);
+    }
     if (edge.label?.trim()) {
       const radius = textWidth(edge.label, 14) / 2;
       const radians = angle * Math.PI / 180;

@@ -7,6 +7,14 @@ gépelés közben folyamatosan villognak-frissülnek megtekintő oldalon a letö
 mentés gomb csak a mentés cimke legyen kék, a gomb ne 
 mozgatás 
 
+---
+
+link a dobozon: írd ki az ikon mellé (úgy hogy a szöveg jobbra legyen igazítva, az ikon jobboldalon a legszélén legyen) a Link tartalmát is. (tehát hogy /subdir vagy https://google.com
+onMouseOver esetén pedig legyen aláhúzva és szöveg
+
+
+
+---
 
 vonal rendszer átalakítása: 
 
@@ -24,7 +32,7 @@ property panelen előnézet módban :
 cím és text külön kell választani egy halvány divider vonallal 
 
 
-
+---
 
 
 
@@ -51,3 +59,5 @@ svg üres háttér kezelése
 + javascript nélkül is működjön a statikus oldal megtekintés
 
 
++ Animációk az SVG -be, futó vonal 
++ 

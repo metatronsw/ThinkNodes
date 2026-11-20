@@ -2,6 +2,56 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+show_help() {
+    cat <<'EOF'
+ThinkNodes indítása
+
+Használat:
+  ./run.sh [kapcsolók] [-- Vapor-argumentumok]
+  ./run.sh user [Vapor-argumentumok]
+
+Kapcsolók:
+  -h, --help       Súgó megjelenítése kilépés előtt
+  --debug          Debug build használata (alapból release)
+  --http           HTTP indítása HTTPS helyett (alap port: 80)
+  --local          Helyi/LAN tesztmód: debug build, HTTP, nem biztonságos
+                   cookie-k; macOS-en 1024 alatti porthoz sudo-t kérhet
+  --port:PORT      Port beállítása (1–65535); pl. --port:8080
+  --rate:MS        Mozgásfrissítési időköz milliszekundumban (pozitív egész,
+                   alapérték: 33); pl. --rate:50
+  --test           Tesztmód: minden csatlakozó adminisztrátori jogot kap
+  --https          Elutasítva, mert a HTTPS az alapértelmezett mód
+  --               A további argumentumok változtatás nélkül a Vaporhoz kerülnek
+
+Példák:
+  ./run.sh
+  ./run.sh --debug
+  ./run.sh --local --port:8080
+  ./run.sh --http --port:8080
+  ./run.sh --rate:50 -- --help
+  ./run.sh user create
+
+Környezeti változók:
+  THINKNODES_CONFIGURATION  Buildkonfiguráció (release vagy debug)
+  THINKNODES_PORT           Alapértelmezett port felülírása
+  THINKNODES_HOST           Figyelési cím (alapból: 0.0.0.0)
+  THINKNODES_SWIFT          Swift futtatható fájl elérési útja
+  THINKNODES_EXECUTABLE     Előre lefordított futtatható fájl elérési útja
+  THINKNODES_TLS_CERT       Saját TLS tanúsítvány PEM fájlja
+  THINKNODES_TLS_KEY        Saját TLS kulcs PEM fájlja
+  THINKNODES_TLS_DIR        Automatikus TLS fájlok mappája
+  THINKNODES_DATA           Projektadatok mappája (alapból: Projects)
+
+Git checkout esetén indítás előtt megpróbálja gyors előre léptetéssel
+frissíteni az aktuális ágat a GitHubról.
+EOF
+}
+
+if [[ "${1:-}" == -h || "${1:-}" == --help ]]; then
+    show_help
+    exit 0
+fi
+
 # Run the updated launcher too, preserving the original arguments.
 update_checkout() {
     local branch previous
@@ -42,6 +92,7 @@ local_mode=0
 server_args=()
 while [[ "$command" != user ]] && (( $# )); do
     case "$1" in
+        -h|--help) show_help; exit 0 ;;
         --debug) configuration=debug ;;
         --test) test_mode=1 ;;
         --http) command=serve ;;
