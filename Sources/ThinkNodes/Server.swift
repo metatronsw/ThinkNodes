@@ -15,7 +15,7 @@ enum ThinkNodes {
     }
 
     private static func run() async throws {
-        let directory = Environment.get("THINKNODES_DATA") ?? "Data"
+        let directory = Environment.get("THINKNODES_DATA") ?? "Projects"
         let store = try WorksheetStore(root: URL(fileURLWithPath: directory, isDirectory: true),
                                        testMode: Environment.get("THINKNODES_TEST_MODE") == "1")
         let arguments = Array(CommandLine.arguments.dropFirst())

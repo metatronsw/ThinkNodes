@@ -51,6 +51,7 @@ function node(id, x, y, width, height) {
   return {id, title: id, position: {x, y}, width, height, shape: "rectangle", autoSize: false, text: "",
     fill: "#bbbbbb", border: "#555555", textColor: "#111111", alignment: "center", fontSize: 16, bold: true};
 }
+const {decodeWorksheet, encodeWorksheet} = await import("../../Public/worksheet-json.js");
 let sheet = {title: "Próba", revision: 1, nodes: [
   node("outer", 0, 0, 300, 240), node("inner", 10, 10, 160, 120), node("child", 10, 10, 64, 40),
   node("outside", 340, 0, 100, 80), {...node("auto", -420, 0, 120, 60), autoSize: true},
@@ -84,11 +85,13 @@ globalThis.fetch = async (url, options) => {
   });
   if (options?.method === "PUT") {
     writes++;
-    sheet = JSON.parse(options.body);
+    const submitted = JSON.parse(options.body);
+    assert.ok(submitted.nodes.every(node => node.pos && !node.position));
+    sheet = decodeWorksheet(submitted);
     sheet.revision++;
   }
   if (fetchWorksheet) await fetchWorksheet;
-  return Response.json(sheet);
+  return Response.json(encodeWorksheet(sheet));
 };
 await import("../../Public/editor.js");
 const tick = async () => { await new Promise(resolve => setTimeout(resolve, 0)); await Vue.nextTick(); };

@@ -148,6 +148,8 @@ import VaporTesting
 
         let json = try await browser.sendRequest(.GET, "/export/json/\(path)")
         #expect(try json.content.decode(Worksheet.self).nodes.count == 2)
+        #expect(json.body.string.contains("\"pos\""))
+        #expect(!json.body.string.contains("\"position\""))
         #expect(!json.body.string.contains("\"boards\""))
         #expect(!json.body.string.contains("\"editors\""))
         #expect(!json.body.string.contains("\"owner\""))
@@ -292,7 +294,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
                         shape: .ellipse, kind: .connectionPoint)
     let line = Connection(id: "line", source: child.id, target: ConnectionTarget(node: junction.id), style: .arrow)
     let second = Connection(id: "other-line", source: junction.id, target: ConnectionTarget(point: origin), style: .solid)
-    var board = Worksheet(schemaVersion: 1, title: "Ábra", gridColor: "#006699", gridSpacing: 32,
+    var board = Worksheet(title: "Ábra", gridColor: "#006699", gridSpacing: 32,
                           nodes: [child, junction, container], edges: [line, second])
     try board.validate()
     var largeTitle = board
@@ -303,9 +305,6 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     duplicate.id = "parallel"
     legacy.edges.append(duplicate)
     #expect(throws: Abort.self) { try legacy.validate() }
-    legacy.detachLegacyDuplicateConnections()
-    try legacy.validate()
-    #expect(legacy.edges.last?.target.point == junction.position)
     let saved = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(board))
     try saved.validate()
     #expect(saved.nodes.first?.parent == container.id)
@@ -333,9 +332,6 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     #expect(!plain.contains("stroke=\"none\"/>"))
     board.edges = [line]
     #expect(throws: Abort.self) { try board.validate() }
-    board.dissolveUnusedJunctions()
-    try board.validate()
-    #expect(board.edges.first?.target.point == junction.position)
     board.edges = []
     board.nodes = [container]
     container.parent = container.id
@@ -505,20 +501,6 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     #expect(!((try String(contentsOf: root.appendingPathComponent("uj/child.json"), encoding: .utf8)).contains("\"owner\":")))
 }
 
-@Test func legacyTextFields() throws {
-    let idea = Idea(id: "box", title: "Title", position: Point(x: 0, y: 0))
-    var old = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(idea)) as? [String: Any])
-    old.removeValue(forKey: "text")
-    old["markdown"] = "**body**"
-    old["comment"] = "obsolete"
-    old["showMarkdown"] = false
-    old["fontSize"] = 17.4
-    let decoded = try JSONDecoder().decode(Idea.self, from: JSONSerialization.data(withJSONObject: old))
-    #expect(decoded.text == "**body**" && decoded.hideText == true && decoded.fontSize == 17)
-    let encoded = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(decoded)) as? [String: Any])
-    #expect(encoded["comment"] == nil && encoded["markdown"] == nil && encoded["text"] as? String == "**body**")
-}
-
 @Test func virtualPreviewAndRecreatedLeaf() throws {
     let files = FileManager.default
     let root = files.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -540,4 +522,21 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     let block = try #require(canvasMarkdown("```\n  a  b\n\n c\n```").first)
     let rows = wrapMarkdown(block.runs, columns: 40, preformatted: true)
     #expect(rows.map { $0.map(\.text).joined() } == ["  a  b", "", " c"])
+}
+
+@Test func compactWorksheetKeysRoundTrip() throws {
+    let node = Idea(id: "idea", title: "Ötlet", position: Point(x: 12, y: 34),
+                    alignment: .left, verticalAlignment: .top,
+                    textStyle: TextStyle(alignment: .right, verticalAlignment: .bottom))
+    let edge = Connection(id: "wire", sourcePoint: Point(x: 0, y: 0),
+                          target: ConnectionTarget(node: node.id), style: .arrow, width: 3)
+    let sheet = Worksheet(title: "Teszt", gridSpacing: 25, nodes: [node], edges: [edge])
+    let compact = try JSONEncoder().encode(sheet)
+    #expect(try JSONDecoder().decode(Worksheet.self, from: compact) == sheet)
+    let longKeys = String(decoding: compact, as: UTF8.self).replacingOccurrences(of: "\"pos\"", with: "\"position\"")
+    #expect(throws: DecodingError.self) { try JSONDecoder().decode(Worksheet.self, from: Data(longKeys.utf8)) }
+    let keys = String(decoding: compact, as: UTF8.self)
+    for key in ["pos", "align", "textCol", "w", "h", "vAlign", "srcPt", "gridStep"] {
+        #expect(keys.contains("\"\(key)\""))
+    }
 }

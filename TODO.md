@@ -7,29 +7,24 @@ gépelés közben folyamatosan villognak-frissülnek megtekintő oldalon a letö
 mentés gomb csak a mentés cimke legyen kék, a gomb ne 
 mozgatás 
 
-# property panel:
+
+vonal rendszer átalakítása: 
+
+legyen külön választható a vonal típusa és megjelenése
+
+típus legyen: egyenes, s-forma(ha nem egy vonalba van a kettő, akkor a vonal közepén egy bezier görbe s forma legyen), villám(2 töréspont legyen középen), íves(felülről hajlik), kötél (középen lóg a saját sújjánál) 
+
+a property panelen gombokkal lehessen választani, töröld a régi leugró menüt.
+
+megjelenés: sima, vastag, szaggatott, pontozott
+
+a property panelen gombokkal lehessen választani, töröld a régi leugró menüt.
+
+property panelen előnézet módban : 
+cím és text külön kell választani egy halvány divider vonallal 
 
 
 
-
-A Link szekción belül:
-- a Link feliratot töröld
-
-Cím szekción belül: 
-- Cimke feliratot töröld
-- Cím betűméret maximum 1000 minimum 
-
-Text szekción belül: 
- - hide text kapcsoló legyen textbox alatt
- 
-Doboz szekción belül: 
-töröld az X és Y input mezőket
-töröld a hex color mezőket
-töröld a Forma cimkét
-
-Összes property panel részen: 
-Töröld a color hexa input mezőt
-a color választó box legyen 4:3 arányú kis rectangle, a cimkével egy sorban
 
 
 

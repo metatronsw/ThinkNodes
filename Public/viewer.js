@@ -1,3 +1,4 @@
+import {decodeConnection} from "./worksheet-json.js";
 import {sharedMouse} from "./mouse.js";
 import {contextMenu, documentEntries} from "./cards.js";
 import {openExternalLink} from "./links.js";
@@ -39,7 +40,7 @@ function previewScene() {
     return [node, {id: node, anchor, parent, shape, width: +width, height: +height,
       origin: {x: +x, y: +y}, position: {x: +x, y: +y}}];
   }));
-  const wires = [...main.querySelectorAll("[data-wire]")].map(path => ({path, edge: JSON.parse(path.dataset.wire)}));
+  const wires = [...main.querySelectorAll("[data-wire]")].map(path => ({path, edge: decodeConnection(JSON.parse(path.dataset.wire))}));
   return () => {
     const changed = new Set();
     for (const node of nodes.values()) {

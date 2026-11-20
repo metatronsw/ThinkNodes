@@ -35,7 +35,7 @@ A szerver buildje böngészős függőségek letöltése nélkül:
 ./build-fedora.sh --server-only
 ~~~
 
-A bináris a **.build/release/ThinkNodes** útvonalon készül. A buildszkript kiírja annak dinamikus könyvtárfüggőségeit is. A futtató Fedora rendszeren a Swift compiler nem kell, de a bináris által jelzett megosztott könyvtáraknak rendelkezésre kell állniuk; azonos vagy újabb Fedora kiadáson építs, mint a célrendszer. A futtatáshoz a bináris mellett a projekt **Public/** és **Data/** állományai, valamint a TLS-beállítások szükségesek. A futó szolgáltatást korlátozott jogosultságú külön felhasználóként érdemes elindítani.
+A bináris a **.build/release/ThinkNodes** útvonalon készül. A buildszkript kiírja annak dinamikus könyvtárfüggőségeit is. A futtató Fedora rendszeren a Swift compiler nem kell, de a bináris által jelzett megosztott könyvtáraknak rendelkezésre kell állniuk; azonos vagy újabb Fedora kiadáson építs, mint a célrendszer. A futtatáshoz a bináris mellett a projekt **Public/** és **Projects/** állományai, valamint a TLS-beállítások szükségesek. A futó szolgáltatást korlátozott jogosultságú külön felhasználóként érdemes elindítani.
 
 ### HTTPS a belső hálózaton
 
@@ -73,17 +73,17 @@ A főoldalon a felső szintű projektek szerepelnek. A paklit a projektmappában
 A jobb kattintásos projektmenüben beállítható a láthatóság, a jelszár, a szerkesztési zár és a hozzáférés. A mappára adott jog és a mappaszintű zár az alatta lévő munkalapokra is érvényes. A jelszó csak hashként kerül az adatkönyvtár közös `.document-policies.json` fájljába. A munkalaphoz tartozó képek és dokumentumok a megtekintő **Mappa tartalma** szekciójában jelennek meg. Egy csatolt fájlhoz külön hozzáférés is adható.
 
 
-A **/demo** bemutató két allapja a **/demo/formak** és a **/demo/kapcsolatok**. A főoldali kártyák a munkalap háttérszínét használják, az elcsúsztatott lapok az allapokat jelzik. Jobb kattintással megnyitható a kártyamenü. Egy rejtett projekt kártyáját az adminisztrátor látja a főoldalon. A közvetlen hivatkozásra a munkalap meglévő olvasási és szerkesztési jogosultságai érvényesek.
+A helyi **/demo** bemutató többszintű projekt külön kutatási, tervezési, megvalósítási és mérési munkalapokkal. A főoldali kártyák a munkalap háttérszínét használják, az elcsúsztatott lapok az allapokat jelzik. Jobb kattintással megnyitható a kártyamenü. Egy rejtett projekt kártyáját az adminisztrátor látja a főoldalon. A közvetlen hivatkozásra a munkalap meglévő olvasási és szerkesztési jogosultságai érvényesek.
 
 | URL | Adatfájl |
 |---|---|
-| **/munkalap1** | **Data/munkalap1.json** |
-| **/mégnincsilyen** | **Data/mégnincsilyen.json** |
-| **/gondolatok/otletek1** | **Data/gondolatok/otletek1.json** |
+| **/munkalap1** | **Projects/munkalap1.json** |
+| **/mégnincsilyen** | **Projects/mégnincsilyen.json** |
+| **/gondolatok/otletek1** | **Projects/gondolatok/otletek1.json** |
 
-Egy munkalap egy JSON-fájl. Ebben van a munkalap címe és formázott Text mezője, valamint a revízió, a dobozok és a kapcsolatok. A **Data/.settings.json** és **Data/.users.json** a szerver beállításait és a fiókokat tárolja. Utóbbiban a jelszavak helyett bcrypt-hashek vannak.
+Egy munkalap egy JSON-fájl. A tárolt és letöltött JSON rövid kulcsokat használ, például `pos`, `align`, `textCol`, `w`, `h` és `vAlign`. A munkalap API ugyanezeket a rövid kulcsokat használja. Ebben van a munkalap címe és formázott Text mezője, valamint a revízió, a dobozok és a kapcsolatok. A **Projects/.settings.json** és **Projects/.users.json** a szerver beállításait és a fiókokat tárolja. Utóbbiban a jelszavak helyett bcrypt-hashek vannak.
 
-Önálló munkalapnál a közvetlen URL első megnyitása bejelentkezés után automatikusan létrehozza a privát lapot a bejelentkezett felhasználó nevére. A munkalapot a tulajdonos, a kijelölt szerkesztők és az adminisztrátorok szerkeszthetik. A tulajdonos és az admin állíthatja a nyilvánosságot és a szerkesztőket a Munkalap panelen. A nyilvános lap vendégként megtekinthető és letölthető, ha az adminoldalon a teljes oldal olvasásához nincs előírva a belépés. Régebbi, tulajdonos nélküli laphoz az admin rendelhet tulajdonost. A munkalap törléséhez adminisztrátori szerepkör kell. A törölt munkalap a **Data/.trash/** mappába kerül. Az útvonal ismételt megnyitása üres munkalapot hozhat létre.
+Önálló munkalapnál a közvetlen URL első megnyitása bejelentkezés után automatikusan létrehozza a privát lapot a bejelentkezett felhasználó nevére. A munkalapot a tulajdonos, a kijelölt szerkesztők és az adminisztrátorok szerkeszthetik. A tulajdonos és az admin állíthatja a nyilvánosságot és a szerkesztőket a Munkalap panelen. A nyilvános lap vendégként megtekinthető és letölthető, ha az adminoldalon a teljes oldal olvasásához nincs előírva a belépés. Régebbi, tulajdonos nélküli laphoz az admin rendelhet tulajdonost. A munkalap törléséhez adminisztrátori szerepkör kell. A törölt munkalap a **Projects/.trash/** mappába kerül. Az útvonal ismételt megnyitása üres munkalapot hozhat létre.
 
 A mentés atomi fájlcserét és revízióellenőrzést használ. Egy adatkönyvtárhoz egy futó szerverpéldány tartozik.
 
@@ -125,4 +125,4 @@ A vászon jobb kattintásos menüjében az **Új munkalap** létrehozza az allap
 
 A Munkalap panel **SVG letöltése** gombja a teljes vásznat exportálja egy SVG-fájlba, a képernyőn éppen látható nagyítástól és a mentéstől függetlenül. A megtekintő oldalon az SVG, a JSON és a Text export a mentett munkalapból készül. A Text export tartalmazza a dobozok szövegét és a kapcsolatokat.
 
-A szerver az 1-es és a 2-es verziójú munkalapokat olvassa. Mentéskor a konténerek, csomópontok és formázások a 2-es verziójú munkalap-JSON-ba kerülnek.
+A munkalapok a rövid kulcsú, 2-es verziójú JSON-formátumban készülnek. A **Projects/** mappa tartalma helyi adatként a Git-követésen kívül marad.

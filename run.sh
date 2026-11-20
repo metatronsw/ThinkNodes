@@ -152,7 +152,7 @@ if [[ "$command" == serve ]]; then
         if [[ "$(uname -s)" == Darwin && "$EUID" != 0 && "$port" =~ ^[0-9]{1,5}$ ]] &&
             (( 10#$port < 1024 )); then
             exec sudo -- /usr/bin/env \
-                THINKNODES_DATA="${THINKNODES_DATA:-Data}" \
+                THINKNODES_DATA="${THINKNODES_DATA:-Projects}" \
                 THINKNODES_MOTION_RATE="$rate" THINKNODES_TEST_MODE="$test_mode" THINKNODES_SECURE_COOKIES=0 \
                 "$executable" serve --hostname "$bind_host" --port "$port" ${server_args[@]+"${server_args[@]}"}
         fi

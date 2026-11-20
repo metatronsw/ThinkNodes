@@ -33,6 +33,11 @@ struct TextStyle: Codable, Equatable, Sendable {
     var alignment: LabelAlignment?
     var verticalAlignment: VerticalAlignment?
 
+    private enum CodingKeys: String, CodingKey {
+        case color, size, bold, italic, underline
+        case alignment = "align", verticalAlignment = "vAlign"
+    }
+
     var isValid: Bool {
         (color.map(validColor) ?? true) && (size.map { (10...60).contains($0) && $0.rounded() == $0 } ?? true)
     }
@@ -65,6 +70,13 @@ struct Idea: Codable, Equatable, Sendable {
     var textStyle: TextStyle?
     var textFill: String?
     var textBorder: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, title, text, hideText, shape, fill, border, bold, titleOutside, link
+        case kind, parent, locked, italic, underline, textStyle, textFill, textBorder
+        case position = "pos", width = "w", height = "h", textColor = "textCol"
+        case fontSize = "fontSz", alignment = "align", verticalAlignment = "vAlign"
+    }
 
     var isValid: Bool {
         let sizeValid = kind == .connectionPoint ? (4...128).contains(width) && height == width :
@@ -118,6 +130,11 @@ struct Connection: Equatable, Codable, Sendable {
     var endArrow: Bool?
     var label: String?
 
+    private enum CodingKeys: String, CodingKey {
+        case id, source, target, style, color, startArrow, endArrow, label
+        case sourcePoint = "srcPt", width = "w"
+    }
+
     var origin: ConnectionTarget { ConnectionTarget(node: source, point: sourcePoint) }
     var strokeColor: String { color ?? "#526982" }
     var strokeWidth: Double { width ?? 2 }
@@ -142,6 +159,12 @@ struct Worksheet: Content, Equatable {
     var isPublic: Bool?
     var nodes: [Idea] = []
     var edges: [Connection] = []
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion, revision, resetRevision, title, text, background, gridVisible
+        case creator, owner, editors, hidden, isPublic, nodes, edges
+        case gridColor = "gridCol", gridSpacing = "gridStep"
+    }
 
     var backgroundColor: String { background ?? "#f5f8fc" }
 
@@ -175,26 +198,6 @@ struct Worksheet: Content, Equatable {
         return counts
     }
 
-    mutating func dissolveUnusedJunctions() {
-        let degrees = junctionDegrees
-        var removed: [String: Point] = [:]
-        nodes.removeAll { node in
-            guard node.kind == .connectionPoint, degrees[node.id, default: 0] < 2 else { return false }
-            removed[node.id] = node.position
-            return true
-        }
-        guard !removed.isEmpty else { return }
-        for i in edges.indices {
-            if let source = edges[i].source, let point = removed[source] {
-                edges[i].source = nil
-                edges[i].sourcePoint = point
-            }
-            if let target = edges[i].target.node, let point = removed[target] {
-                edges[i].target = ConnectionTarget(point: point)
-            }
-        }
-    }
-
     private var duplicateConnections: [Int] {
         var pairs = Set<[String]>()
         return edges.indices.filter { i in
@@ -203,21 +206,12 @@ struct Worksheet: Content, Equatable {
         }
     }
 
-    mutating func detachLegacyDuplicateConnections() {
-        let positions = Dictionary(nodes.map { ($0.id, $0.position) }, uniquingKeysWith: { first, _ in first })
-        for i in duplicateConnections {
-            if let id = edges[i].target.node, let point = positions[id] {
-                edges[i].target = ConnectionTarget(point: point)
-            }
-        }
-    }
-
     func validate() throws {
         guard duplicateConnections.isEmpty else {
             throw Abort(.unprocessableEntity, reason: "Ezen az útvonalon már van kábel.")
         }
         let nodeIDs = Set(nodes.map(\.id))
-        guard (1...2).contains(schemaVersion), revision > 0, revision < Int.max, validTitle(title),
+        guard schemaVersion == 2, revision > 0, revision < Int.max, validTitle(title),
               (text?.utf8.count ?? 0) <= 100_000, validColor(backgroundColor),
               validColor(gridColor ?? "#ccd7eb"), (6...160).contains(gridSpacing ?? 20),
               owner.map({ validSlug($0) || isTesterName($0) }) ?? true,
@@ -894,9 +888,7 @@ final class WorksheetStore: @unchecked Sendable {
 
     private func read(_ url: URL) throws -> Worksheet {
         guard files.fileExists(atPath: url.path) else { throw Abort(.notFound, reason: "A munkalap nem található.") }
-        var worksheet = try JSONDecoder().decode(Worksheet.self, from: Data(contentsOf: url))
-        worksheet.detachLegacyDuplicateConnections()
-        worksheet.dissolveUnusedJunctions()
+        let worksheet = try JSONDecoder().decode(Worksheet.self, from: Data(contentsOf: url))
         try worksheet.validate()
         return worksheet
     }
@@ -920,68 +912,5 @@ final class WorksheetStore: @unchecked Sendable {
         if (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
             throw Abort(.notFound)
         }
-    }
-}
-
-extension Idea {
-    private enum Legacy: String, CodingKey { case markdown, showMarkdown, markdownStyle, markdownFill, markdownBorder }
-
-    init(from decoder: Decoder) throws {
-        let fields = try decoder.container(keyedBy: CodingKeys.self)
-        let legacy = try decoder.container(keyedBy: Legacy.self)
-        id = try fields.decode(String.self, forKey: .id)
-        title = try fields.decode(String.self, forKey: .title)
-        text = try fields.decodeIfPresent(String.self, forKey: .text) ?? legacy.decodeIfPresent(String.self, forKey: .markdown) ?? ""
-        hideText = try fields.decodeIfPresent(Bool.self, forKey: .hideText) ?? legacy.decodeIfPresent(Bool.self, forKey: .showMarkdown).map { !$0 }
-        position = try fields.decode(Point.self, forKey: .position)
-        width = try fields.decode(Double.self, forKey: .width)
-        height = try fields.decode(Double.self, forKey: .height)
-        shape = try fields.decode(Shape.self, forKey: .shape)
-        fill = try fields.decode(String.self, forKey: .fill)
-        textColor = try fields.decode(String.self, forKey: .textColor)
-        border = try fields.decode(String.self, forKey: .border)
-        fontSize = try fields.decode(Double.self, forKey: .fontSize)
-        bold = try fields.decode(Bool.self, forKey: .bold)
-        alignment = try fields.decode(LabelAlignment.self, forKey: .alignment)
-        verticalAlignment = try fields.decodeIfPresent(VerticalAlignment.self, forKey: .verticalAlignment)
-        titleOutside = try fields.decodeIfPresent(Bool.self, forKey: .titleOutside)
-        link = try fields.decodeIfPresent(String.self, forKey: .link)
-        kind = try fields.decodeIfPresent(IdeaKind.self, forKey: .kind)
-        parent = try fields.decodeIfPresent(String.self, forKey: .parent)
-        locked = try fields.decodeIfPresent(Bool.self, forKey: .locked)
-        italic = try fields.decodeIfPresent(Bool.self, forKey: .italic)
-        underline = try fields.decodeIfPresent(Bool.self, forKey: .underline)
-        textStyle = try fields.decodeIfPresent(TextStyle.self, forKey: .textStyle) ?? legacy.decodeIfPresent(TextStyle.self, forKey: .markdownStyle)
-        textFill = try fields.decodeIfPresent(String.self, forKey: .textFill) ?? legacy.decodeIfPresent(String.self, forKey: .markdownFill)
-        textBorder = try fields.decodeIfPresent(String.self, forKey: .textBorder) ?? legacy.decodeIfPresent(String.self, forKey: .markdownBorder)
-        if legacy.contains(.markdown) {
-            fontSize = fontSize.rounded()
-            if let size = textStyle?.size { textStyle?.size = size.rounded() }
-        }
-    }
-}
-
-extension Worksheet {
-    private enum Legacy: String, CodingKey { case markdown }
-
-    init(from decoder: Decoder) throws {
-        let fields = try decoder.container(keyedBy: CodingKeys.self)
-        let legacy = try decoder.container(keyedBy: Legacy.self)
-        schemaVersion = try fields.decode(Int.self, forKey: .schemaVersion)
-        revision = try fields.decode(Int.self, forKey: .revision)
-        resetRevision = try fields.decodeIfPresent(Int.self, forKey: .resetRevision)
-        title = try fields.decode(String.self, forKey: .title)
-        text = try fields.decodeIfPresent(String.self, forKey: .text) ?? legacy.decodeIfPresent(String.self, forKey: .markdown)
-        background = try fields.decodeIfPresent(String.self, forKey: .background)
-        gridColor = try fields.decodeIfPresent(String.self, forKey: .gridColor)
-        gridSpacing = try fields.decodeIfPresent(Double.self, forKey: .gridSpacing)
-        gridVisible = try fields.decodeIfPresent(Bool.self, forKey: .gridVisible)
-        creator = try fields.decodeIfPresent(String.self, forKey: .creator)
-        owner = try fields.decodeIfPresent(String.self, forKey: .owner)
-        editors = try fields.decodeIfPresent([String].self, forKey: .editors)
-        hidden = try fields.decodeIfPresent(Bool.self, forKey: .hidden)
-        isPublic = try fields.decodeIfPresent(Bool.self, forKey: .isPublic)
-        nodes = try fields.decode([Idea].self, forKey: .nodes)
-        edges = try fields.decode([Connection].self, forKey: .edges)
     }
 }

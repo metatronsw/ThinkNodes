@@ -1,3 +1,4 @@
+import {decodeWorksheet, encodeWorksheet} from "./worksheet-json.js";
 import {sharedMouse} from "./mouse.js";
 import {worksheetChanges, replayChanges} from "./editor-history.js";
 import {flashNode, flashPoint} from "./ping.js";
@@ -322,7 +323,7 @@ createApp({
     }
 
     async function refresh() {
-      const latest = await (await checked(await fetch(endpoint))).json();
+      const latest = decodeWorksheet(await (await checked(await fetch(endpoint))).json());
       if (latest.revision <= baseline.revision) return;
       if (latest.resetRevision > baseline.revision) { discardDrafts(latest); return; }
       historyBase = rebaseWorksheet(baseline, historyBase, latest);
@@ -1330,7 +1331,7 @@ createApp({
           const submitted = copy(board.value);
           const result = await fetch(endpoint, {method: "PUT", headers: {"Content-Type": "application/json",
             "X-CSRF-Token": csrf, "X-Worksheet-Client": live.client, "If-Match": '"' + baseline.revision + '"'},
-            body: JSON.stringify({...submitted, schemaVersion: 2})});
+            body: JSON.stringify(encodeWorksheet({...submitted, schemaVersion: 2}))});
           if (result.status === 412) { await refresh(); continue; }
           if (result.status === 409 || result.status === 423) {
             const state = await live.snapshot();
@@ -1348,7 +1349,7 @@ createApp({
             scheduleSave();
             throw new Error("A közben lefoglalt doboz visszaállt a közös munkalapon látható állapotára.");
           }
-          const saved = await (await checked(result)).json();
+          const saved = decodeWorksheet(await (await checked(result)).json());
           historyBase = rebaseWorksheet(submitted, historyBase, saved);
           board.value = rebaseWorksheet(submitted, copy(board.value), saved);
           baseline = copy(saved);
@@ -1526,7 +1527,7 @@ createApp({
       window.addEventListener("pageshow", restore);
       try {
         const response = await checked(await fetch(endpoint));
-        baseline = await response.json();
+        baseline = decodeWorksheet(await response.json());
         board.value = copy(baseline);
         historyBase = copy(baseline);
         live.start();
