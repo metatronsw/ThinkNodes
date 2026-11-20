@@ -82,7 +82,7 @@ import VaporTesting
         #expect(child.creator == "shared")
         let preview = try await browser.sendRequest(.GET, "/api/preview/" + path + "/terv")
         #expect(preview.status == .ok && preview.body.string.contains("<svg"))
-        #expect(FileManager.default.fileExists(atPath: file.deletingPathExtension().appendingPathComponent(".terv.preview-v6.svg").path))
+        #expect(FileManager.default.fileExists(atPath: file.deletingPathExtension().appendingPathComponent(".terv.preview-v7.svg").path))
         let parent = try await browser.sendRequest(.GET, "/" + path)
         #expect(parent.body.string.contains("További oldalak:") && parent.body.string.contains("Létrehozó: shared"))
         #expect(try await browser.sendRequest(.POST, childURL, headers: headers).status == .conflict)
@@ -187,7 +187,8 @@ import VaporTesting
         #expect(blockedCreate.status == .seeOther)
         #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("gondolatok/masik.json").path))
         let authenticatedCreate = try await browser.sendRequest(.GET, "/gondolatok/masik", headers: ["Cookie": editor.cookie])
-        #expect(authenticatedCreate.status == .ok)
+        #expect(authenticatedCreate.status == .seeOther)
+        #expect(authenticatedCreate.headers.first(name: .location) == "/edit/gondolatok/masik")
         #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("gondolatok/masik.json").path))
 
         let adminDelete = try await remove(browser, path: path, session: admin)
@@ -289,8 +290,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     var container = Idea(id: "group", title: "Konténer", position: origin, kind: .container, locked: true)
     let child = Idea(id: "child", title: "Ötlet", text: "**törzs**", hideText: false,
                      position: origin, parent: "group", italic: true, underline: true,
-                     textStyle: TextStyle(color: "#663300", size: 17, italic: true, alignment: .left),
-                     textBorder: "#663344")
+                     textStyle: TextStyle(color: "#663300", size: 17, italic: true, alignment: .left))
     let junction = Idea(id: "joint", title: "Kapocs", position: Point(x: 200, y: 80), width: 34, height: 34,
                         shape: .ellipse, kind: .connectionPoint)
     let line = Connection(id: "line", source: child.id, target: ConnectionTarget(node: junction.id))
@@ -314,7 +314,6 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     let svg = boardSVG(saved)
     #expect(!svg.contains("worksheet-grid"))
     #expect(!svg.contains("<pattern"))
-    #expect(svg.contains("fill=\"none\" stroke=\"#663344\""))
     #expect(svg.contains("text-anchor=\"start\""))
     #expect(svg.contains("font-style=\"italic\" text-decoration=\"underline\""))
     #expect(svg.contains("r=\"17.000\" fill=\"#dce9ff\" aria-label=\"Kapocs\""))
@@ -324,9 +323,8 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     let groupStart = try #require(svg.range(of: "aria-label=\"Konténer\" transform="))
     let edgeStart = try #require(svg.range(of: "marker-end=\"url(#arrow-line)"))
     let childStart = try #require(svg.range(of: "aria-label=\"Ötlet\" transform="))
-    #expect(groupStart.lowerBound < edgeStart.lowerBound && edgeStart.lowerBound < childStart.lowerBound)
+    #expect(groupStart.lowerBound < childStart.lowerBound && childStart.lowerBound < edgeStart.lowerBound)
     board.gridVisible = false
-    board.nodes[0].textBorder = board.nodes[0].border
     let plain = boardSVG(board)
     #expect(!plain.contains("worksheet-grid"))
     #expect(!plain.contains("stroke=\"none\"/>"))
@@ -573,13 +571,88 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     #expect(!saved.contains("\"style\""))
 }
 
+@Test func anchoredWireFollowsBoxGeometry() throws {
+    let box = Idea(id: "box", title: "Doboz", position: Point(x: 0, y: 0), width: 120, height: 80, shape: .rectangle)
+    var second = box
+    second.id = "second"
+    second.position = Point(x: 200, y: 60)
+    let edge = Connection(id: "wire", source: box.id, sourceAnchor: .n, target: ConnectionTarget(node: second.id, anchor: .sw))
+    var sheet = Worksheet(title: "Pontok", nodes: [box, second], edges: [edge])
+    sheet = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(sheet))
+    try sheet.validate()
+    #expect(sheet.edges == [edge])
+    #expect(boardSVG(sheet).contains("M 0.000 -40.000 L 140.000 100.000"))
+    sheet.nodes[0].height = 160
+    sheet.nodes[1].position.x = 300
+    #expect(boardSVG(sheet).contains("M 0.000 -80.000 L 240.000 100.000"))
+    let unknown = Data(#"{"source":"box","sourceAnchor":"invalid","target":{"node":"second","anchor":"invalid"}}"#.utf8)
+    let decoded = try JSONDecoder().decode(Connection.self, from: unknown)
+    #expect(decoded.source == "box" && decoded.target.node == "second")
+    #expect(decoded.sourceAnchor == nil && decoded.target.anchor == nil)
+}
+
 @Test func incompleteWorksheetUsesDefaultsAndDropsUnknownKeys() throws {
-    let data = Data(##"{"nodes":[{"id":"a","shape":"unknown","pos":{"x":42},"border":"#ffffff","textFill":"#ffffff","extra":true}]}"##.utf8)
+    let data = Data(##"{"nodes":[{"id":"a","shape":"unknown","pos":{"x":42},"border":"#ffffff","textFill":"#ffffff","textBorder":"#663344","extra":true}]}"##.utf8)
     let board = try JSONDecoder().decode(Worksheet.self, from: data)
     try board.validate()
     let node = try #require(board.nodes.first)
     #expect(node.position == Point(x: 42, y: 0))
     #expect(node.shape == .rounded)
     let encoded = String(decoding: try JSONEncoder().encode(board), as: UTF8.self)
-    for key in ["border", "textFill", "extra"] { #expect(!encoded.contains(key)) }
+    for key in ["border", "textFill", "textBorder", "extra"] { #expect(!encoded.contains(key)) }
+}
+
+@Test func privateCanvasMediaRequiresWorksheetAccess() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-media-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    let path = try WorksheetPath(["media"])
+    let owner = User(name: "owner", role: .admin, passwordHash: "")
+    let other = User(name: "other", role: .editor, passwordHash: "")
+    var sheet = try store.open(path, user: owner)
+    sheet.isPublic = false
+    _ = try store.update(path, worksheet: sheet, user: owner)
+    let png = try #require(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jWZkAAAAASUVORK5CYII="))
+    let name = try store.storeMedia(png, type: "image/png", at: path, user: owner, unlocks: [])
+    #expect(canvasAssetType(name) == "image/png")
+    #expect(try store.contents(path, user: owner, unlocks: [], named: name).count == 1)
+    #expect(throws: Abort.self) { try store.contents(path, user: nil, unlocks: [], named: name) }
+    #expect(throws: Abort.self) { try store.contents(path, user: other, unlocks: [], named: name) }
+    #expect(throws: Abort.self) { try store.storeMedia(png, type: "image/png", at: path, user: other, unlocks: []) }
+    #expect(throws: Abort.self) { try store.storeMedia(Data("szöveg".utf8), type: "image/png", at: path, user: owner, unlocks: []) }
+    #expect(try store.contents(path, user: owner, unlocks: []).count == 1)
+}
+
+@Test func canvasImageRenamePreservesAttachmentIdentity() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-image-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    let path = try WorksheetPath(["image"])
+    let owner = User(name: "owner", role: .admin, passwordHash: "")
+    var sheet = try store.open(path, user: owner)
+    let png = try #require(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jWZkAAAAASUVORK5CYII="))
+    let asset = try store.storeMedia(png, type: "image/png", imageName: "Eredeti", at: path, user: owner, unlocks: [])
+    let original = try #require(store.contents(path, user: owner, unlocks: [], named: asset).first)
+    #expect(original.lastPathComponent == "Eredeti.png")
+    sheet.nodes = [
+        Idea(id: "one", title: "", text: "Csak mutatáskor", file: CanvasFile(type: .image, asset: asset, filename: "Eredeti"), position: Point(x: 0, y: 0)),
+        Idea(id: "two", title: "", file: CanvasFile(type: .image, asset: asset, filename: "Eredeti"), position: Point(x: 400, y: 0)),
+    ]
+    sheet = try store.update(path, worksheet: sheet, user: owner)
+    sheet.nodes[0].file?.filename = "Új név"
+    sheet.nodes[0].file?.showFilename = true
+    sheet = try store.update(path, worksheet: sheet, user: owner)
+    let renamed = try #require(store.contents(path, user: owner, unlocks: [], named: asset).first)
+    #expect(renamed.lastPathComponent == "Új név.png")
+    #expect(!FileManager.default.fileExists(atPath: original.path))
+    #expect(try Data(contentsOf: renamed) == png)
+    #expect(attachmentName(renamed) == asset)
+    #expect(sheet.nodes[1].file?.filename == "Új név")
+    #expect(needsTextTooltip(sheet.nodes[0]))
+    let svg = boardSVG(sheet, noteBase: "/image")
+    #expect(svg.contains("<span>Új név</span>"))
+    #expect(!svg.contains("Csak mutatáskor"))
+    sheet.nodes[0].file?.filename = "../tiltott"
+    #expect(throws: Abort.self) { try store.update(path, worksheet: sheet, user: owner) }
+    #expect(FileManager.default.fileExists(atPath: renamed.path))
 }

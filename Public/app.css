@@ -327,10 +327,28 @@ input[type="color"] { height: 37px; padding: 3px; cursor: pointer; }
 [data-node][data-link]:hover svg { stroke-width: 3; }
 
 .project-card { isolation: isolate; overflow: hidden; }
-.project-background { position: absolute; inset: -4%; width: 108%; height: 108%; object-fit: cover; filter: blur(3px); opacity: .27; z-index: -1; }
+.project-background { position: absolute; inset: -4%; width: 108%; height: 108%; object-fit: cover; filter: blur(1px); opacity: .38; z-index: -1; }
 .project-summary h2 { font-size: 1.35rem; line-height: 1.2; margin-bottom: .5rem; }
 .project-summary .card-meta { margin-top: .35rem; }
 .project-summary .project-badges { margin-top: .6rem; }
 .inspector-footer .danger { margin-right: auto; }
 .selection-glow { filter: drop-shadow(0 0 4px currentColor); }
 [data-node]:hover .box-link, a:hover .box-link { text-decoration: underline; }
+
+.canvas-file { box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; height: 100%; padding: 10px; background: white; border: 1px solid #a8b7cb; border-radius: 10px; overflow: hidden; font: 14px/1.4 system-ui, sans-serif; color: #182335; }
+.canvas-file strong, .canvas-file small { flex: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.canvas-file pre, .canvas-file .formatted-text { margin: 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.canvas-audio { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.canvas-audio .button { flex: none; width: 34px; height: 34px; padding: 4px; justify-content: center; }
+.canvas-audio input { flex: 1; width: auto; padding: 0; cursor: pointer; accent-color: var(--accent); }
+.canvas-audio [data-audio-status] { flex-basis: 100%; color: #9e2230; }
+.canvas-audio [data-audio-status]:empty { display: none; }
+.passive-canvas [data-node]:target :is(.canvas-file, .canvas-image img) { border: 3px solid #4168e9; }
+
+.canvas-image { display: flex; flex-direction: column; height: 100%; color: var(--ink); text-align: center; font: 14px/22px system-ui, sans-serif; }
+.canvas-image img { display: block; flex: 1; width: 100%; min-height: 0; object-fit: cover; border: 1px solid #a8b7cb; border-radius: 12px; }
+.canvas-image :is(strong, span) { flex: none; height: 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.alignment-picker { display: grid; grid-template-columns: repeat(3, 1.6rem); gap: 2px; }
+.alignment-picker button { height: 1.6rem; padding: 0; color: inherit; background: var(--panel, white); border: 1px solid #a8b7cb; border-radius: 4px; cursor: pointer; }
+.alignment-picker button[aria-pressed="true"] { color: white; background: #3659b9; }

@@ -405,7 +405,7 @@ func configure(_ application: Application, store: WorksheetStore) {
         }
         switch req.parameters.get("format") {
         case "svg":
-            return response("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + boardSVG(worksheet, siteHost: req.headers.first(name: .host)),
+            return response("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + boardSVG(worksheet, siteHost: req.headers.first(name: .host), assetBase: "/" + path.url),
                             type: "image/svg+xml; charset=utf-8", filename: "\(path.name).svg")
         case "json":
             return try worksheetResponse(store.access(path, sheet: worksheet, user: identity.user, unlocks: identity.unlocks).editable ? worksheet : worksheet.withoutAccessDetails(),
@@ -449,6 +449,20 @@ func configure(_ application: Application, store: WorksheetStore) {
         return ["path": result?.url ?? ""]
     }
 
+    app.post("api", "media", "**") { req async throws -> [String: String] in
+        let identity = try session(req, store: store)
+        let user = try identity.editor()
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        guard let body = req.body.data, let type = req.headers.first(name: .contentType) else { throw Abort(.badRequest) }
+        let bytes = Data(body.readableBytesView)
+        let imageName = req.query[String.self, at: "name"]
+        let name = try await req.application.threadPool.runIfActive {
+            try store.storeMedia(bytes, type: type, imageName: imageName, at: path, user: user, unlocks: identity.unlocks)
+        }
+        return ["asset": name]
+    }
+
     app.get("api", "attachment", "**") { req async throws -> Response in
         let identity = try session(req, store: store)
         if try store.settings().requireLogin && identity.user == nil { throw Abort(.unauthorized) }
@@ -464,8 +478,13 @@ func configure(_ application: Application, store: WorksheetStore) {
             return unlockPage(req, path: path, identity: identity, attachment: name)
         }
         let result = try await req.fileio.asyncStreamFile(at: file.path)
-        result.headers.replaceOrAdd(name: .contentDisposition, value: "attachment; filename*=UTF-8''" + encodeQuery(name))
+        result.headers.replaceOrAdd(name: .contentDisposition, value: "attachment; filename*=UTF-8''" + encodeQuery(file.lastPathComponent))
         result.headers.replaceOrAdd(name: .contentType, value: "application/octet-stream")
+        if req.query[String.self, at: "inline"] == "1", let mime = canvasAssetType(attachmentName(file)) {
+            result.headers.replaceOrAdd(name: .contentType, value: mime)
+            result.headers.replaceOrAdd(name: .contentDisposition, value: "inline")
+            result.headers.replaceOrAdd(name: "Content-Security-Policy", value: "sandbox; default-src 'none'")
+        }
         result.headers.replaceOrAdd(name: "X-Content-Type-Options", value: "nosniff")
         result.headers.replaceOrAdd(name: .cacheControl, value: "no-store")
         return result
@@ -476,9 +495,11 @@ func configure(_ application: Application, store: WorksheetStore) {
         let identity = try session(req, store: store)
         let worksheet: Worksheet
         do {
-            worksheet = try await req.application.threadPool.runIfActive {
-                try store.open(path, user: identity.user, unlocks: identity.unlocks)
+            let opened = try await req.application.threadPool.runIfActive {
+                try store.openWithStatus(path, user: identity.user, unlocks: identity.unlocks)
             }
+            if opened.created { return redirect("/edit/" + path.url) }
+            worksheet = opened.worksheet
         } catch let error as Abort where error.status == .unauthorized {
             return redirect("/login?next=/" + path.url)
         }
@@ -495,7 +516,7 @@ func configure(_ application: Application, store: WorksheetStore) {
     }
 }
 
-private func encodeQuery(_ value: String) -> String {
+func encodeQuery(_ value: String) -> String {
     value.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
 }
 
@@ -594,7 +615,7 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
     }.joined()
     let note: String
     if let noteID = req.query[String.self, at: "note"] {
-        guard let node = worksheet.nodes.first(where: { $0.id == noteID }) else { throw Abort(.notFound) }
+        guard let node = worksheet.nodes.first(where: { $0.id == noteID && $0.file?.type != .image }) else { throw Abort(.notFound) }
         note = """
             <article class="panel passive-note"><a class="muted" href="\(base)">Vissza a munkalaphoz</a>
               <h2>\(escaped(node.title))</h2>
@@ -617,8 +638,8 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
         return "<li><a href=\"\(escaped(href))\" target=\"_blank\" rel=\"noopener noreferrer\">\(escaped(node.title))</a></li>"
     }.joined()
     let attachments = files.map { file in
-        let name = file.lastPathComponent
-        return "<li><a data-scope=\"attachment\" data-manage=\"\(access.manageable)\" data-document=\"\(path.url)\" data-filename=\"\(escaped(name))\" href=\"/api/attachment/\(path.url)?name=\(encodeQuery(name))\">\(escaped(name))</a></li>"
+        let name = attachmentName(file)
+        return "<li><a data-scope=\"attachment\" data-manage=\"\(access.manageable)\" data-document=\"\(path.url)\" data-filename=\"\(escaped(name))\" href=\"/api/attachment/\(path.url)?name=\(encodeQuery(name))\">\(escaped(file.lastPathComponent))</a></li>"
     }.joined()
     let newPage = access.editable ? "<button type=\"button\" class=\"button new-worksheet\">\(uiIcon("plus"))Új munkalap</button>" : ""
     return htmlPage(title: worksheet.title, body: """

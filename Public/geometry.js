@@ -44,6 +44,17 @@ export function borderPoint(node, toward) {
   };
 }
 
+// Clockwise from the top. Unspecified anchors use the automatic border intersection.
+export const anchorNames = ["n","ne","e","se","s","sw","w","nw"];
+export function anchorPoint(node, anchor) {
+  if (!node || !anchorNames.includes(anchor) || node.kind === "connectionPoint") return;
+  const dx = anchor.includes("e") ? 1 : anchor.includes("w") ? -1 : 0;
+  const dy = anchor.includes("s") ? 1 : anchor.includes("n") ? -1 : 0;
+  const inset = node.shape === "rounded" && dx && dy ? 12 * (1-Math.SQRT1_2) : 0;
+  const corner = {x: node.position.x + dx*(node.width/2-inset), y: node.position.y + dy*(node.height/2-inset)};
+  return inset ? corner : borderPoint(node, corner);
+}
+
 export const lineTypes = {straight: "Egyenes", sCurve: "S-forma", zigzag: "Villám", lightning: "Tört", arc: "Íves", rope: "Kötél"};
 export const lineAppearances = {plain: "Sima", thick: "Vastag", dashed: "Szaggatott", dotted: "Pontozott"};
 
@@ -59,7 +70,7 @@ export function edgePaint(edge) {
 }
 
 export function edgeEndpoint(edge, end) {
-  return end === "source" ? {node: edge.source, point: edge.sourcePoint} : edge.target;
+  return end === "source" ? {node: edge.source, point: edge.sourcePoint, anchor: edge.sourceAnchor} : edge.target;
 }
 
 function route(type, source, target) {
@@ -106,11 +117,13 @@ function route(type, source, target) {
 export function edgeGeometry(edge, findNode) {
   const sourceNode = findNode(edge.source);
   const targetNode = findNode(edge.target.node);
-  const source = sourceNode?.position ?? edge.sourcePoint;
-  const target = targetNode?.position ?? edge.target.point;
+  const fixedSource = anchorPoint(sourceNode, edge.sourceAnchor);
+  const fixedTarget = anchorPoint(targetNode, edge.target.anchor);
+  const source = fixedSource ?? sourceNode?.position ?? edge.sourcePoint;
+  const target = fixedTarget ?? targetNode?.position ?? edge.target.point;
   const {command, points} = route(edge.type, source, target);
-  const from = sourceNode ? borderPoint(sourceNode, points[0] ?? target) : source;
-  const to = targetNode ? borderPoint(targetNode, points.at(-1) ?? source) : target;
+  const from = sourceNode && !fixedSource ? borderPoint(sourceNode, points[0] ?? target) : source;
+  const to = targetNode && !fixedTarget ? borderPoint(targetNode, points.at(-1) ?? source) : target;
   const sourceToward = points[0] ?? to;
   const targetToward = points.at(-1) ?? from;
   const pair = p => `${p.x} ${p.y}`;
@@ -123,7 +136,8 @@ export function edgeGeometry(edge, findNode) {
     return {x: vertices.reduce((v,p,j) => v+p.x*weights[j],0), y: vertices.reduce((v,p,j) => v+p.y*weights[j],0)};
   });
   const lengths = samples.slice(1).map((p,i) => Math.hypot(p.x-samples[i].x,p.y-samples[i].y));
-  let remaining = lengths.reduce((sum,n) => sum+n,0)/2;
+  const length = lengths.reduce((sum,n) => sum+n,0);
+  let remaining = length/2;
   let index = 0;
   while (index < lengths.length-1 && remaining > lengths[index]) remaining -= lengths[index++];
   const a = samples[index], b = samples[index+1], fraction = lengths[index] ? remaining/lengths[index] : 0;
@@ -131,8 +145,54 @@ export function edgeGeometry(edge, findNode) {
   let angle = Math.atan2(b.y-a.y,b.x-a.x) * 180 / Math.PI;
   if (angle > 90) angle -= 180;
   if (angle < -90) angle += 180;
-  return {from, to, sourceToward, targetToward, bent: points.length > 0, boundsPoints, labelPosition, angle,
+  return {from, to, sourceToward, targetToward, bent: points.length > 0, boundsPoints, command, length, labelPosition, angle,
     path, d: path(from, to)};
+}
+
+export function edgeInRectangle({boundsPoints, command}, box, touching) {
+  const epsilon = 1e-8;
+  const minX = box.x-epsilon, minY = box.y-epsilon;
+  const right = box.x+box.width+epsilon, bottom = box.y+box.height+epsilon;
+  const inside = p => p.x >= minX && p.x <= right && p.y >= minY && p.y <= bottom;
+  // Clip a segment to the two axis intervals, including contact at either boundary.
+  function intersects(a, b) {
+    let start = 0, end = 1;
+    for (const [axis, min, max] of [["x",minX,right],["y",minY,bottom]]) {
+      const delta = b[axis] - a[axis];
+      if (!delta) {
+        if (a[axis] < min || a[axis] > max) return false;
+      } else {
+        const first = (min-a[axis])/delta, last = (max-a[axis])/delta;
+        start = Math.max(start, Math.min(first,last));
+        end = Math.min(end, Math.max(first,last));
+        if (start > end) return false;
+      }
+    }
+    return true;
+  }
+  if (command === "L") return touching
+    ? boundsPoints.some((p,i) => i > 0 && intersects(boundsPoints[i-1],p)) : boundsPoints.every(inside);
+
+  // Subdivide only Bézier portions whose control hull straddles the rectangle.
+  function visit(points, depth) {
+    if (points.every(inside)) return true;
+    if (points.every(p => p.x < minX) || points.every(p => p.x > right) ||
+        points.every(p => p.y < minY) || points.every(p => p.y > bottom)) return false;
+    const first = points[0], last = points.at(-1);
+    if (touching && (inside(first) || inside(last))) return true;
+    if (!touching && (!inside(first) || !inside(last))) return false;
+    if (depth === 24) return touching ? intersects(first, last) : true;
+    const left = [first], rightHalf = [last];
+    let row = points;
+    while (row.length > 1) {
+      row = row.slice(1).map((p,i) => ({x: (p.x+row[i].x)/2, y: (p.y+row[i].y)/2}));
+      left.push(row[0]);
+      rightHalf.unshift(row.at(-1));
+    }
+    return touching ? visit(left, depth+1) || visit(rightHalf, depth+1)
+      : visit(left, depth+1) && visit(rightHalf, depth+1);
+  }
+  return visit(boundsPoints, 0);
 }
 
 export function arrowTransform(tip, toward, width) {
@@ -327,12 +387,8 @@ export function labelLayout(node, blocks = []) {
   const rank = line => ({top: 0, bottom: 1}[line.vertical] ?? 0.5);
   visible.sort((a, b) => rank(a) - rank(b));
   let offset = -(available + iconSpace) / 2;
-  let bodyEnd;
-  let bodyTop;
   const positioned = visible.map(line => {
     const top = offset + remaining * rank(line);
-    if (line.runs) bodyEnd = top + line.step;
-    if (line.runs && bodyTop === undefined) bodyTop = top + line.gap - 3;
     const y = top + (line.gap ?? 0) + line.size * (1.25 / 2 + 0.33);
     offset += line.step;
     const align = line.alignment ?? node.alignment;
@@ -340,7 +396,6 @@ export function labelLayout(node, blocks = []) {
     return {...line, x, y, anchor: {left: "start", center: "middle", right: "end"}[align],
       fit: textWidth(line.text, line.size) > labelWidth ? labelWidth : undefined};
   });
-  let bodyX = 0;
   let extentX = width / 2, extentY = Math.max(height, available + iconSpace) / 2;
   for (const {horizontal, vertical, rows} of external.values()) {
     const total = rows.reduce((sum, line) => sum + line.step, 0);
@@ -353,14 +408,8 @@ export function labelLayout(node, blocks = []) {
       const anchor = horizontal === "left" ? "end" : horizontal === "right" ? "start" : "middle";
       positioned.push({...line, anchor, x: centerX - side * labelWidth/2,
         y: y + (line.gap ?? 0) + line.size * .955, fit: textWidth(line.text, line.size) > labelWidth ? labelWidth : undefined});
-      if (line.runs) { bodyX = centerX; bodyTop ??= y + line.gap - 3; bodyEnd = y + line.step; }
       y += line.step;
     }
   }
-  const fill = "none";
-  const border = node.textBorder ?? automaticBorder(node.fill);
-  const framed = bodyTop !== undefined && (border.toLowerCase() !== automaticBorder(node.fill).toLowerCase());
-  const frame = framed ? {x: bodyX-labelWidth / 2 - 3, y: bodyTop, width: labelWidth + 6, height: bodyEnd + 3 - bodyTop,
-    fill, stroke: border.toLowerCase() === automaticBorder(node.fill).toLowerCase() ? "none" : border} : null;
-  return {width, height, extentX, extentY, overflow: visible.length < inside.length, lines: positioned, frame};
+  return {width, height, extentX, extentY, overflow: visible.length < inside.length, lines: positioned};
 }

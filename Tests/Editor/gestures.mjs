@@ -226,11 +226,12 @@ const sourceBeforeClone = structuredClone(model("outside"));
 await drag(graphic("outside"),340,0,390,45,{altKey:true},true);
 await save();
 assert.equal(sheet.nodes.length,5);
-await drag(graphic("outside"),340,0,390,45,{altKey:true});
+await drag(graphic("outside"),340,0,390,45,{altKey:true,shiftKey:true});
 await save();
 const duplicate = sheet.nodes.find(n => n.title === "outside" && n.id !== "outside");
 assert.deepEqual(duplicate.position,{x:390,y:45});
 assert.equal(duplicate.fill,sourceBeforeClone.fill);
+assert.ok(sheet.edges.some(e => e.source === "outside" && e.target.node === duplicate.id && e.endArrow));
 assert.ok(sheet.edges.some(e => e.source === duplicate.id));
 assert.deepEqual(model("outside"),sourceBeforeClone);
 await press("Visszavonás"); await save();
@@ -238,9 +239,9 @@ assert.equal(sheet.nodes.length,5);
 assert.equal(sheet.edges.length,1);
 
 // Rectangle selection, one-step group moves/deletes and alignment on release.
-function selectArea(x, y, endX, endY) {
+function selectArea(x, y, endX, endY, keys = {}) {
   const area = canvas();
-  area.props.onPointerdownCapture(event(area,x,y,{altKey:true,target:{closest:()=>null}}));
+  area.props.onPointerdownCapture(event(area,x,y,{altKey:true,...keys,target:{closest:()=>null}}));
   area.props.onPointermove(event(area,endX,endY,{altKey:true}));
   area.props.onPointerup(event(area,endX,endY,{altKey:true}));
 }
@@ -248,7 +249,18 @@ selectArea(-160,-130,160,130);
 await tick();
 assert.equal(panel().props["aria-label"], "Objektumok");
 assert.ok(text(panel()).includes("3 doboz, 0 vonal, 0 csomópont"));
-canvas().props.onPointerdownCapture(event(canvas(),0,0,{target:{closest:()=>({dataset:{node:"outer"}})}}));
+function shiftClick(id) {
+  const target = {closest: selector => selector.includes("[data-node]") ? {dataset: {node:id}} : null};
+  canvas().props.onPointerdownCapture(event(canvas(),0,0,{shiftKey:true,target}));
+}
+selectArea(389,-2,392,2,{shiftKey:true,ctrlKey:true}); await tick();
+assert.ok(text(panel()).includes("4 doboz, 0 vonal"));
+shiftClick("outside"); await tick();
+assert.ok(text(panel()).includes("3 doboz, 0 vonal"));
+selectArea(370,125,380,132,{ctrlKey:true,shiftKey:true}); await tick();
+assert.ok(text(panel()).includes("3 doboz, 1 vonal"));
+selectArea(-160,-130,160,130); await tick();
+canvas().props.onPointerdownCapture(event(canvas(),0,0,{target:{closest: selector => selector.includes("[data-node]") ? {dataset:{node:"outer"}} : null}}));
 canvas().props.onPointermove(event(canvas(),25,35));
 canvas().props.onPointerup(event(canvas(),25,35));
 await save();
@@ -311,19 +323,48 @@ await properties("outer"); await press("Konténer feloldása"); await save();
 assert.equal(model("inner").parent, undefined);
 assert.equal(model("child").parent, "inner");
 
+const {anchorPoint} = await import("../../Public/geometry.js");
+function topMiddle(id) {
+  const props = graphic(id).props;
+  return anchorPoint({...model(id), width: props["data-width"], height: props["data-height"]}, "n");
+}
+async function wireFromTop(id, x, y) {
+  const start = topMiddle(id);
+  await drag(graphic(id), start.x, start.y, x, y, {ctrlKey: true});
+}
+await drag(graphic("outside"), 180, 30, -420, 0, {ctrlKey: true});
+await save();
+assert.equal(sheet.edges.at(-1).source, "outside");
+assert.equal(sheet.edges.at(-1).sourceAnchor, undefined);
+assert.deepEqual(sheet.edges.at(-1).target, {node: "auto"});
+await press("Visszavonás"); await save();
+for (const [x, y, id] of [[180,30,"outside"],[-420,0,"auto"]]) {
+  canvas().props.onPointermove(event(canvas(), x, y, {ctrlKey: true}));
+  await tick();
+  const handles = find(n => n.props["data-anchor"] === "n").parent.children.filter(n => n.props["data-anchor"]);
+  assert.deepEqual(handles.map(n => n.props["data-anchor"]), ["n", "e", "s", "w"]);
+  assert.ok(handles.every(n => n.props["data-node"] === id));
+}
+const autoTop = topMiddle("auto");
+await wireFromTop("outside", autoTop.x - 2, autoTop.y - 2);
+await save();
+assert.equal(sheet.edges.at(-1).sourceAnchor, "n");
+assert.deepEqual(sheet.edges.at(-1).target, {node: "auto", anchor: "n"});
+await press("Visszavonás"); await save();
+
 const free = endpoint("one", "target");
 assert.equal(free.tag, "path");
 assert.equal(free.props["pointer-events"], "all");
-await drag(graphic("outside"), 180, 30, 400, 230, {ctrlKey: true});
+await wireFromTop("outside", 400, 230);
 await save();
 assert.equal(sheet.nodes.some(n => n.kind === "connectionPoint"), false, "duplicate route cannot create a junction");
-await drag(graphic("auto"), -420, 0, 400, 230, {ctrlKey: true});
+await wireFromTop("auto", 400, 230);
 await save();
 const junction = sheet.nodes.find(n => n.kind === "connectionPoint");
 assert.equal(edge("one").target.node, junction.id);
 const secondID = sheet.edges.at(-1).id;
 assert.equal(edge(secondID).target.node, junction.id);
-await drag(graphic("child"), 50, 40, 400, 230, {ctrlKey: true});
+await wireFromTop("child", 400, 230);
 await save();
 assert.equal(sheet.edges.at(-1).target.node, junction.id);
 await detachDrag("one", "target", 450, 245, true);
@@ -338,7 +379,8 @@ await save();
 assert.equal(model(junction.id), undefined);
 assert.deepEqual(sheet.edges.at(-1).target.point, junction.position);
 const originBox = graphic("outside");
-originBox.props.onPointerdown(event(originBox, 180, 30, {ctrlKey: true}));
+const originTop = topMiddle("outside");
+originBox.props.onPointerdown(event(originBox, originTop.x, originTop.y, {ctrlKey: true}));
 canvas().props.onPointermove(event(canvas(), 434, 292));
 await tick();
 const marker = find(n => n.tag === "circle" && n.props.stroke === "#078469");
@@ -348,9 +390,17 @@ await save();
 const joint = sheet.nodes.find(n => n.kind === "connectionPoint");
 const incident = sheet.edges.filter(e => e.source === joint.id || e.target.node === joint.id).map(e => e.id);
 assert.equal(incident.length, 2);
+const {edgeGeometry: geometry} = await import("../../Public/geometry.js");
+const [longer, shorter] = incident.map(edge).sort((a,b) => geometry(b,model).length-geometry(a,model).length);
+await properties(joint.id);
+listeners.keydown({key:"Delete"}); await tick(); await save();
+assert.ok(!model(joint.id) && !edge(shorter.id) && edge(longer.id));
+assert.ok(![edge(longer.id).source, edge(longer.id).target.node].includes(joint.id));
+await press("Visszavonás"); await save();
+assert.ok(model(joint.id) && incident.every(edge));
 await properties(joint.id);
 listeners.keydown({key: "Backspace", ctrlKey: true}); await tick(); await save();
-assert.ok(!model(joint.id) && incident.every(id => !edge(id)));
+assert.ok(!model(joint.id) && incident.every(id => edge(id) && ![edge(id).source,edge(id).target.node].includes(joint.id)));
 const freeStart = event(canvas(), -600, -320, {ctrlKey: true, target: {closest: () => null}});
 canvas().props.onPointerdownCapture(freeStart);
 canvas().props.onPointermove(event(canvas(), -510, -315));
@@ -398,7 +448,7 @@ edit(titleSize, "16"); await tick();
 const body = section("Text");
 assert.equal(check(body, "Hide text").props.checked, false);
 edit(control(body, "Betűméret"), "18.7");
-control(body, "Igazítás").props.onChange({target: {value: "middle-right"}});
+prop("aria-label","Jobb oldal",body).props.onClick();
 enable(check(body, "Dőlt"));
 edit(find(n => n.tag === "textarea", body), "Törzs");
 enable(check(body, "Aláhúzott"));
@@ -452,12 +502,13 @@ await press("Előnézet");
 assert.equal(text(panel().children.at(-1)), "TörlésSzerkesztés");
 globalThis.confirm = () => { throw Error("Connected nodes must delete without a prompt"); };
 listeners.keydown({key: "Backspace"}); await tick(); await save();
-assert.ok(!model("outside") && edge("one").sourcePoint);
+assert.ok(!model("outside") && !edge("one"));
 await press("Visszavonás"); await save();
 assert.ok(model("outside"));
 assert.equal(edge("one").source, "outside");
 await press("Újra"); await save();
-assert.ok(!model("outside") && edge("one").sourcePoint);
+assert.ok(!model("outside") && !edge("one"));
+await press("Visszavonás"); await save();
 console.log("Passed editor gestures, junction cleanup, container nesting and lock, text scaling, palette and local world grid.");
 
 const {worksheetLink} = await import("../../Public/links.js");
@@ -542,7 +593,7 @@ await press("Egyenes");
 await press("Sima");
 await save();
 
-const {edgeGeometry, edgePaint} = await import("../../Public/geometry.js");
+const {edgeGeometry, edgePaint, edgeInRectangle} = await import("../../Public/geometry.js");
 const route = (type, y = 0) => edgeGeometry({
   type, sourcePoint: {x: -100, y: 0}, target: {point: {x: 100, y}},
 }, () => undefined);
@@ -550,5 +601,18 @@ assert.equal(route("sCurve").d, "M -100 0 L 100 0");
 assert.equal(route("sCurve", 60).d, "M -100 0 C 0 0 0 60 100 60");
 assert.ok(Math.abs(route("lightning").labelPosition.x) < 1e-10);
 assert.ok(route("arc").labelPosition.y < 0 && route("rope").labelPosition.y > 0);
+const arc = route("arc");
+assert.ok(edgeInRectangle(arc, {x:-1,y:-30,width:2,height:2}, true), "the rectangle touches the arc at its apex");
+assert.ok(!edgeInRectangle(arc, {x:-1,y:-32,width:2,height:2}, true), "a control hull alone is insufficient");
+assert.ok(edgeInRectangle(arc, {x:-100,y:-28,width:200,height:28}, false));
 assert.equal(edgePaint({appearance: "thick"}).width, 4);
 assert.equal(edgePaint({appearance: "dotted"}).linecap, "round");
+
+const {importFile} = await import("../../Public/canvas-files.js");
+const doc = await importFile(new File(['{"large":90071992547409931,"nested":[{},{"literal":"a,b"}]}'], "adat.json"));
+assert.equal(doc.file.type, "json");
+assert.ok(doc.text.includes('"large": 90071992547409931'));
+assert.deepEqual(JSON.parse(doc.text).nested, [{},{literal:"a,b"}]);
+await assert.rejects(importFile(new File(["szöveg"], "hibás.json")), /JSON/);
+await assert.rejects(importFile(new File(["data"], "idegen.bin")), /Támogatott/);
+console.log("Passed document import, JSON precision and unsupported format checks.");

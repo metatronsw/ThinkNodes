@@ -42,7 +42,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false) -> Response {
 func response(_ content: String, type: String, filename: String? = nil) -> Response {
     var headers: HTTPHeaders = ["Content-Type": type, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"]
     headers.replaceOrAdd(name: "Content-Security-Policy",
-                         value: "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+                         value: "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob:; media-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
     if let filename {
         let encoded = filename.utf8.map { byte in
             switch byte {
@@ -120,6 +120,17 @@ private func borderPoint(_ idea: Idea, toward point: Point) -> Point {
     case .rectangle, .rounded: scale = 1 / max(abs(x), abs(y))
     }
     return Point(x: idea.position.x + dx * scale, y: idea.position.y + dy * scale)
+}
+
+private func anchorPoint(_ node: Idea?, _ anchor: EdgeAnchor?) -> Point? {
+    guard let node, let anchor, node.kind != .connectionPoint else { return nil }
+    let name = anchor.rawValue
+    let dx: Double = name.contains("e") ? 1 : name.contains("w") ? -1 : 0
+    let dy: Double = name.contains("s") ? 1 : name.contains("n") ? -1 : 0
+    let inset = node.shape == .rounded && dx != 0 && dy != 0 ? 12 * (1 - sqrt(0.5)) : 0
+    let corner = Point(x: node.position.x + dx * (node.width/2 - inset),
+                       y: node.position.y + dy * (node.height/2 - inset))
+    return inset > 0 ? corner : borderPoint(node, toward: corner)
 }
 
 private func edgeRoute(_ type: ConnectionType, from source: Point, to target: Point) -> (command: String, points: [Point]) {
@@ -289,7 +300,7 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
 }
 
 func needsTextTooltip(_ node: Idea) -> Bool {
-    !node.text.isEmpty && (node.hideText == true || ideaDrawing(node).overflow)
+    !node.text.isEmpty && (node.file?.type == .image || node.hideText == true || ideaDrawing(node).overflow)
 }
 
 private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
@@ -328,12 +339,8 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
     }
     let extra = drawing.available - drawing.lines.filter { $0.outsideTop == nil }.reduce(0) { $0 + $1.step }
     var offset = -(drawing.available + drawing.iconSpace) / 2
-    var bodyEnd: Double?
-    var bodyX: Double = 0
-    var bodyTop: Double?
     let spans = drawing.lines.sorted { rank($0) < rank($1) }.map { line in
         let top = line.outsideTop ?? (offset + extra * rank(line))
-        if !line.runs.isEmpty { bodyEnd = max(bodyEnd ?? -Double.infinity, top + line.step); bodyX = line.outsideX ?? 0 }
         let textX: Double
         let anchor: String
         if let center = line.outsideX {
@@ -347,7 +354,6 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
         var style = line.runs.isEmpty ? " class=\"link-label\"" : ""
         if line.style?.italic == true { style += " font-style=\"italic\"" }
         if line.style?.underline == true { style += " text-decoration=\"underline\"" }
-        if !line.runs.isEmpty && bodyTop == nil { bodyTop = top + line.gap - 3 }
         let baseline = top + line.gap + line.size * (1.25 / 2 + 0.33)
         if line.outsideTop == nil { offset += line.step }
         let fit = textWidth(line.text, size: line.size) > labelWidth
@@ -365,15 +371,6 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
             <tspan text-anchor="\(anchor)"\(style) x="\(number(textX))" y="\(number(baseline))" fill="\(escaped(line.color))" font-size="\(number(line.size))" font-weight="\(line.weight)"\(fit)>\(content)</tspan>
             """
     }.joined()
-    var frame = ""
-    let fill = "none"
-    let border = node.textBorder ?? node.border
-    let distinctBorder = border.lowercased() != node.border.lowercased()
-    if let bodyTop, let bodyEnd, distinctBorder {
-        frame = """
-            <rect x="\(number(bodyX-labelWidth/2-3))" y="\(number(bodyTop))" width="\(number(labelWidth+6))" height="\(number(bodyEnd+3-bodyTop))" fill="\(fill)" stroke="\(distinctBorder ? border : "none")"/>
-            """
-    }
     let symbol = node.link.flatMap(WorksheetLink.init).map { link in
         let inset = node.shape == .diamond ? 0.45 : node.shape == .ellipse ? 0.7 : 0.94
         let linkWidth = max(12, node.width * inset - 22)
@@ -385,14 +382,13 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
     return """
         <g aria-label="\(escaped(node.title))" transform="translate(\(number(node.position.x)) \(number(node.position.y)))">
           \(geometry)
-          \(frame)
           <text font-family="system-ui, sans-serif" pointer-events="none">\(spans)</text>
           \(symbol)
         </g>
         """
 }
 
-func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = nil) -> String {
+func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = nil, assetBase: String? = nil) -> String {
     let drawings = board.nodes.map(ideaDrawing)
     let renderedIdeas = drawings.map(\.node)
     let nodes = Dictionary(uniqueKeysWithValues: renderedIdeas.map { ($0.id, $0) })
@@ -411,11 +407,13 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
     let edges = board.edges.compactMap { edge -> String? in
         let sourceNode = edge.source.flatMap { nodes[$0] }
         let targetNode = edge.target.node.flatMap { nodes[$0] }
-        guard let source = sourceNode?.position ?? edge.sourcePoint,
-              let target = targetNode?.position ?? edge.target.point else { return nil }
+        let sourceAnchor = anchorPoint(sourceNode, edge.sourceAnchor)
+        let targetAnchor = anchorPoint(targetNode, edge.target.anchor)
+        guard let source = sourceAnchor ?? sourceNode?.position ?? edge.sourcePoint,
+              let target = targetAnchor ?? targetNode?.position ?? edge.target.point else { return nil }
         let (command, points) = edgeRoute(edge.type, from: source, to: target)
-        let beginning = sourceNode.map { borderPoint($0, toward: points.first ?? target) } ?? source
-        let ending = targetNode.map { borderPoint($0, toward: points.last ?? source) } ?? target
+        let beginning = sourceAnchor ?? sourceNode.map { borderPoint($0, toward: points.first ?? target) } ?? source
+        let ending = targetAnchor ?? targetNode.map { borderPoint($0, toward: points.last ?? source) } ?? target
         let segments = (points + [ending]).map { "\(number($0.x)) \(number($0.y))" }.joined(separator: " ")
         let drawing = "M \(number(beginning.x)) \(number(beginning.y)) \(command) \(segments)"
         for point in [beginning, ending] + points {
@@ -488,7 +486,35 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
     }.joined(separator: "\n")
     func render(_ drawing: IdeaDrawing) -> String {
         let node = drawing.node
-        let graphic = nodeSVG(drawing, siteHost: siteHost)
+        let graphic: String
+        if let file = node.file {
+            let url = escaped("/api/attachment" + (assetBase ?? noteBase ?? "") + "?inline=1&name=" + encodeQuery(file.asset ?? ""))
+            let title = file.hideTitle == true || node.title.isEmpty ? "" : "<strong>\(escaped(node.title))</strong>"
+            let content: String
+            switch file.type {
+            case .image:
+                let filename = file.showFilename == true ? "<span>\(escaped(file.imageStem))</span>" : ""
+                let alt = escaped(node.title.isEmpty ? file.imageStem : node.title)
+                content = "<img alt=\"\(alt)\" src=\"\(url)\"/>" + filename
+            case .mp3:
+                content = """
+                    <div class="canvas-audio" data-audio-player="">
+                      <audio hidden="hidden" preload="metadata" src="\(url)"></audio>
+                      <button type="button" class="button" data-audio-toggle="" aria-label="Lejátszás" title="Lejátszás">\(uiIcon("play"))</button>
+                      <input type="range" min="0" max="0" step="any" disabled="disabled" data-audio-seek="" aria-label="Lejátszási pozíció"/>
+                      <small data-audio-status="" role="status"></small>
+                    </div><small>\(escaped(node.text))</small>
+                    """
+            case .md: content = "<div class=\"formatted-text\">\(markdownHTML(node.text))</div>"
+            case .txt, .json: content = "<pre>\(escaped(node.text))</pre>"
+            }
+            let image = file.type == .image
+            let above: Double = image && !title.isEmpty ? 22 : 0
+            let below: Double = image && file.showFilename == true ? 22 : 0
+            graphic = """
+                <foreignObject x="\(number(node.position.x-node.width/2))" y="\(number(node.position.y-node.height/2-above))" width="\(number(node.width))" height="\(number(node.height+above+below))"><div xmlns="http://www.w3.org/1999/xhtml" class="\(image ? "canvas-image" : "canvas-file")">\(title)\(content)</div></foreignObject>
+                """
+        } else { graphic = nodeSVG(drawing, siteHost: siteHost) }
         guard let noteBase else { return graphic }
         let parts = noteBase.split(separator: "/").map { String($0).removingPercentEncoding ?? String($0) }
         let path = try? WorksheetPath(parts)
@@ -499,27 +525,24 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
             linked += " target=\"_blank\" rel=\"noopener noreferrer\""
         }
         let geometry = "data-x=\"\(node.position.x)\" data-y=\"\(node.position.y)\" data-width=\"\(node.width)\" data-height=\"\(node.height)\" data-shape=\"\(node.kind == .connectionPoint ? "ellipse" : node.shape.rawValue)\" data-parent=\"\(node.parent ?? "")\""
-        return "<\(tag) data-node=\"\(node.id)\" \(geometry)\(linked) aria-label=\"\(escaped(node.title))\">\(graphic)</\(tag)>"
+        return "<\(tag) id=\"object-\(node.id)\" data-node=\"\(node.id)\" \(geometry)\(linked) aria-label=\"\(escaped(node.title))\">\(graphic)</\(tag)>"
     }
     let ordered = drawings.sorted { a, b in
         if (a.node.kind == .container) != (b.node.kind == .container) { return a.node.kind == .container }
         return a.node.width * a.node.height > b.node.width * b.node.height
     }
-    let split = ordered.firstIndex { $0.node.kind != .container } ?? ordered.endIndex
-    let containers = ordered[..<split].map(render).joined(separator: "\n")
-    let renderedNodes = ordered[split...].map(render).joined(separator: "\n")
+    let renderedNodes = ordered.map(render).joined(separator: "\n")
     let width = number(halfWidth * 2)
     let height = number(halfHeight * 2)
     return """
-        <svg xmlns="http://www.w3.org/2000/svg" class="passive-canvas" role="img" aria-label="\(escaped(board.title))" width="\(width)" height="\(height)" viewBox="\(number(-halfWidth)) \(number(-halfHeight)) \(width) \(height)">
+        <svg xmlns="http://www.w3.org/2000/svg" class="passive-canvas" role="\(noteBase == nil ? "img" : "group")" aria-label="\(escaped(board.title))" width="\(width)" height="\(height)" viewBox="\(number(-halfWidth)) \(number(-halfHeight)) \(width) \(height)">
           \(noteBase == nil ? "<title>\(escaped(board.title))</title>" : "")
           <defs>\(definitions.joined())</defs>
           <rect x="\(number(-halfWidth))" y="\(number(-halfHeight))" width="\(width)" height="\(height)" fill="\(escaped(board.backgroundColor))"/>
-          \(containers)
+          \(renderedNodes)
           <g fill="none" stroke-linecap="round">
             \(edges)
           </g>
-          \(renderedNodes)
         </svg>
         """
 }
@@ -533,7 +556,7 @@ func worksheetMarkdown(_ worksheet: Worksheet) -> String {
     if let text = worksheet.text, !text.isEmpty { sections.append(text) }
     for node in worksheet.nodes {
         sections.append("## \(inline(node.title))\n")
-        if !node.text.isEmpty { sections.append(node.text) }
+        if node.file?.type != .image && !node.text.isEmpty { sections.append(node.text) }
     }
     if !worksheet.edges.isEmpty {
         sections.append("## Kapcsolatok\n")

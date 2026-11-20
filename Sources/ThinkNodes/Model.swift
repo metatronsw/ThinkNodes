@@ -56,10 +56,58 @@ struct TextStyle: Codable, Equatable, Sendable {
     }
 }
 
+enum CanvasFileType: String, Codable, Sendable { case image, mp3, txt, md, json }
+
+struct CanvasFile: Codable, Equatable, Sendable {
+    var type: CanvasFileType
+    var asset: String?
+    var hideTitle: Bool?
+    var filename: String?
+    var showFilename: Bool?
+
+    var imageStem: String {
+        filename ?? asset.map { ($0 as NSString).deletingPathExtension } ?? ""
+    }
+}
+
+private func validImageStem(_ value: String) -> Bool {
+    !value.isEmpty && value.utf8.count <= 200 && !value.hasPrefix(".")
+        && value == value.trimmingCharacters(in: .whitespacesAndNewlines)
+        && !value.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) || "/\\:".unicodeScalars.contains($0) }
+}
+
+func attachmentName(_ file: URL) -> String {
+    let parent = file.deletingLastPathComponent()
+    return parent.deletingLastPathComponent().lastPathComponent == ".canvas-images"
+        ? parent.lastPathComponent : file.lastPathComponent
+}
+
+func canvasAssetType(_ name: String) -> String? {
+    let parts = name.split(separator: ".", omittingEmptySubsequences: false)
+    guard parts.count == 2, let id = UUID(uuidString: String(parts[0])),
+          id.uuidString.lowercased() == parts[0] else { return nil }
+    return canvasMediaTypes[String(parts[1])]
+}
+
+private func matchesMediaHeader(_ bytes: Data, type: String) -> Bool {
+    switch type {
+    case "image/png": return bytes.starts(with: [137,80,78,71,13,10,26,10])
+    case "image/jpeg": return bytes.starts(with: [255,216,255])
+    case "image/gif": return bytes.starts(with: "GIF87a".utf8) || bytes.starts(with: "GIF89a".utf8)
+    case "image/webp": return bytes.starts(with: "RIFF".utf8) && bytes.dropFirst(8).starts(with: "WEBP".utf8)
+    case "audio/mpeg":
+        return bytes.starts(with: "ID3".utf8) || (bytes.count >= 4 && bytes[0] == 255 && bytes[1] & 0xe6 == 0xe2)
+    default: return false
+    }
+}
+
+let canvasMediaTypes = ["png": "image/png", "jpg": "image/jpeg", "gif": "image/gif", "webp": "image/webp", "mp3": "audio/mpeg"]
+
 struct Idea: Codable, Equatable, Sendable {
     var id: String
     var title: String
     var text = ""
+    var file: CanvasFile?
     var hideText: Bool?
     var position: Point
     var width: Double = 176
@@ -81,11 +129,10 @@ struct Idea: Codable, Equatable, Sendable {
     var italic: Bool?
     var underline: Bool?
     var textStyle: TextStyle?
-    var textBorder: String?
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, text, hideText, shape, fill, bold, titleOutside, link
-        case kind, parent, locked, italic, underline, textStyle, textBorder
+        case id, title, text, file, hideText, shape, fill, bold, titleOutside, link
+        case kind, parent, locked, italic, underline, textStyle
         case position = "pos", width = "w", height = "h", textColor = "textCol"
         case fontSize = "fontSz", alignment = "align", verticalAlignment = "vAlign"
     }
@@ -93,12 +140,20 @@ struct Idea: Codable, Equatable, Sendable {
     var isValid: Bool {
         let sizeValid = kind == .connectionPoint ? (4...128).contains(width) && height == width :
             (64...880).contains(width) && (40...680).contains(height)
-        guard validSlug(id), validTitle(title) || (kind == .connectionPoint && title.isEmpty),
+        guard validSlug(id), validTitle(title) || (title.isEmpty && (kind == .connectionPoint || file?.type == .image)),
               text.utf8.count <= 100_000, sizeValid else { return false }
+        if let file {
+            switch file.type {
+            case .image:
+                guard file.asset.flatMap(canvasAssetType)?.hasPrefix("image/") == true,
+                      file.filename.map(validImageStem) ?? true else { return false }
+            case .mp3: guard file.asset.flatMap(canvasAssetType) == "audio/mpeg" else { return false }
+            case .txt, .json, .md: guard file.asset == nil else { return false }
+            }
+        }
         let validContent = position.isValid
             && (link.map { $0.isEmpty || WorksheetLink($0) != nil } ?? true)
         return validContent && (textStyle?.isValid ?? true)
-            && (textBorder.map(validColor) ?? true)
             && (10...1000).contains(fontSize) && fontSize.rounded() == fontSize
             && [fill, textColor, border].allSatisfy(validColor)
     }
@@ -123,9 +178,14 @@ enum ConnectionAppearance: String, Codable, CaseIterable, Sendable {
     case plain, thick, dashed, dotted
 }
 
+enum EdgeAnchor: String, Codable, Sendable {
+    case n, ne, e, se, s, sw, w, nw
+}
+
 struct ConnectionTarget: Equatable, Codable, Sendable {
     var node: String?
     var point: Point?
+    var anchor: EdgeAnchor?
 
     func isValid(in nodeIDs: Set<String>) -> Bool {
         if let node {
@@ -135,9 +195,19 @@ struct ConnectionTarget: Equatable, Codable, Sendable {
     }
 }
 
+extension ConnectionTarget {
+    init(from decoder: Decoder) throws {
+        let fields = try decoder.container(keyedBy: CodingKeys.self)
+        node = try? fields.decode(String.self, forKey: .node)
+        point = try? fields.decode(Point.self, forKey: .point)
+        anchor = node == nil ? nil : try? fields.decode(EdgeAnchor.self, forKey: .anchor)
+    }
+}
+
 struct Connection: Equatable, Codable, Sendable {
     var id: String
     var source: String?
+    var sourceAnchor: EdgeAnchor?
     var sourcePoint: Point?
     var target: ConnectionTarget
     var type: ConnectionType = .straight
@@ -149,11 +219,11 @@ struct Connection: Equatable, Codable, Sendable {
     var label: String?
 
     private enum CodingKeys: String, CodingKey {
-        case id, source, target, type, appearance, color, startArrow, endArrow, label
+        case id, source, sourceAnchor, target, type, appearance, color, startArrow, endArrow, label
         case sourcePoint = "srcPt", width = "w"
     }
 
-    var origin: ConnectionTarget { ConnectionTarget(node: source, point: sourcePoint) }
+    var origin: ConnectionTarget { ConnectionTarget(node: source, point: sourcePoint, anchor: sourceAnchor) }
     var strokeColor: String { color ?? "#526982" }
     var strokeWidth: Double { min(24, (width ?? 2) * (appearance == .thick ? 2 : 1)) }
     var hasStartArrow: Bool { startArrow ?? false }
@@ -169,6 +239,7 @@ extension Connection {
         let legacy = try? decoder.container(keyedBy: LegacyKey.self).decodeIfPresent(LegacyStyle.self, forKey: .style)
         id = (try? fields.decode(String.self, forKey: .id)) ?? "line-\(decoder.codingPath.last?.intValue ?? 0)"
         source = (try? fields.decode(String.self, forKey: .source))
+        sourceAnchor = source == nil ? nil : try? fields.decode(EdgeAnchor.self, forKey: .sourceAnchor)
         sourcePoint = (try? fields.decode(Point.self, forKey: .sourcePoint))
         target = (try? fields.decode(ConnectionTarget.self, forKey: .target)) ?? ConnectionTarget()
         if target.node == nil && target.point == nil { target.point = Point(x: 0, y: 0) }
@@ -609,10 +680,14 @@ final class WorksheetStore: @unchecked Sendable {
     }
 
     func open(_ path: WorksheetPath, user: User?, createOnly: Bool = false, unlocks: Set<String> = []) throws -> Worksheet {
+        try openWithStatus(path, user: user, createOnly: createOnly, unlocks: unlocks).worksheet
+    }
+
+    func openWithStatus(_ path: WorksheetPath, user: User?, createOnly: Bool = false, unlocks: Set<String>) throws -> (worksheet: Worksheet, created: Bool) {
         try lock.withLock { try openLocked(path, user: user, createOnly: createOnly, unlocks: unlocks) }
     }
 
-    private func openLocked(_ path: WorksheetPath, user: User?, createOnly: Bool, unlocks: Set<String>) throws -> Worksheet {
+    private func openLocked(_ path: WorksheetPath, user: User?, createOnly: Bool, unlocks: Set<String>) throws -> (worksheet: Worksheet, created: Bool) {
         if try readSettings().requireLogin && user == nil { throw Abort(.unauthorized) }
         let url = try worksheetURL(path)
         let rules = try policies()
@@ -622,7 +697,7 @@ final class WorksheetStore: @unchecked Sendable {
         if let worksheet = existing {
             try authorize(accessLocked(path, sheet: worksheet, user: user, unlocks: unlocks, rules: rules), user: user)
             if createOnly { throw Abort(.conflict, reason: "Ilyen nevű munkalap már létezik.") }
-            return worksheet
+            return (worksheet, false)
         }
         guard let user else {
             throw Abort(.unauthorized, reason: "A munkalap létrehozásához be kell jelentkezni.")
@@ -633,7 +708,7 @@ final class WorksheetStore: @unchecked Sendable {
                                   creator: user.name, owner: user.name, isPublic: true)
         if path.parts.count > 1 {
             let parentPath = try WorksheetPath(Array(path.parts.dropLast()))
-            let parent = try openLocked(parentPath, user: user, createOnly: false, unlocks: unlocks)
+            let parent = try openLocked(parentPath, user: user, createOnly: false, unlocks: unlocks).worksheet
             guard try accessLocked(parentPath, sheet: parent, user: user, unlocks: unlocks, rules: policies()).editable else { throw Abort(.forbidden) }
             worksheet.background = parent.background
             worksheet.gridColor = parent.gridColor
@@ -647,7 +722,7 @@ final class WorksheetStore: @unchecked Sendable {
         var next = try policies()
         if path.parts.count == 1 { next["project/" + path.url] = DocumentPolicy(publicEditing: true) }
         try writeDocument(worksheet, at: path, rules: next)
-        return worksheet
+        return (worksheet, true)
     }
 
     func previewSVG(_ path: WorksheetPath, user: User?, unlocks: Set<String> = []) throws -> String {
@@ -657,13 +732,13 @@ final class WorksheetStore: @unchecked Sendable {
             let rules = try policies()
             let sheet = try readDocument(path, rules: rules)
             try authorize(accessLocked(path, sheet: sheet, user: user, unlocks: unlocks, rules: rules), user: user)
-            guard files.fileExists(atPath: url.path) else { return boardSVG(sheet) }
-            let cache = url.deletingLastPathComponent().appendingPathComponent("." + path.name + ".preview-v6.svg")
+            guard files.fileExists(atPath: url.path) else { return boardSVG(sheet, assetBase: "/" + path.url) }
+            let cache = url.deletingLastPathComponent().appendingPathComponent("." + path.name + ".preview-v7.svg")
             try rejectLink(cache)
             let modified = try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
             if let modified, let cached = try? cache.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
                cached > modified { return try String(contentsOf: cache, encoding: .utf8) }
-            let svg = boardSVG(sheet)
+            let svg = boardSVG(sheet, assetBase: "/" + path.url)
             try Data(svg.utf8).write(to: cache, options: .atomic)
             return svg
         }
@@ -717,7 +792,39 @@ final class WorksheetStore: @unchecked Sendable {
             updated.resetRevision = restoring ? updated.revision : current.resetRevision
             try updated.validate()
             updated.schemaVersion = 2
-            try writeDocument(updated, at: path, rules: rules)
+            let directory = try worksheetURL(path).deletingPathExtension()
+            let previousImages = Dictionary(uniqueKeysWithValues: current.nodes.map { ($0.id, $0.file) })
+            var renames: [String: String] = [:]
+            for node in updated.nodes {
+                guard let file = node.file, file.type == .image, let asset = file.asset else { continue }
+                let previous = previousImages[node.id] ?? nil
+                if previous?.asset == asset && previous?.filename == file.filename { continue }
+                guard let previousStem = renames.updateValue(file.imageStem, forKey: asset) else { continue }
+                guard previousStem == file.imageStem else { throw Abort(.conflict, reason: "Egy képfájlhoz csak egy név tartozhat.") }
+            }
+            var moved: [(from: URL, to: URL)] = []
+            do {
+                for (asset, stem) in renames {
+                    let folder = try imageFolder(in: directory, asset: asset)
+                    let source = try storedImage(in: folder) ?? directory.appendingPathComponent(asset)
+                    try rejectLink(source)
+                    guard files.fileExists(atPath: source.path) else { throw Abort(.notFound, reason: "A képfájl nem található.") }
+                    if source.deletingPathExtension().lastPathComponent == stem { continue }
+                    try files.createDirectory(at: folder, withIntermediateDirectories: true)
+                    let destination = folder.appendingPathComponent(stem).appendingPathExtension(source.pathExtension)
+                    try files.moveItem(at: source, to: destination)
+                    moved.append((source, destination))
+                }
+                for index in updated.nodes.indices {
+                    guard let file = updated.nodes[index].file, file.type == .image, let asset = file.asset,
+                          let stem = renames[asset] else { continue }
+                    updated.nodes[index].file?.filename = stem
+                }
+                try writeDocument(updated, at: path, rules: rules)
+            } catch {
+                for move in moved.reversed() { try files.moveItem(at: move.to, to: move.from) }
+                throw error
+            }
             return updated
         }
     }
@@ -820,6 +927,32 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
+    func storeMedia(_ bytes: Data, type: String, imageName: String? = nil, at path: WorksheetPath, user: User, unlocks: Set<String>) throws -> String {
+        try lock.withLock {
+            guard let ext = canvasMediaTypes.first(where: { $0.value == type })?.key,
+                  !bytes.isEmpty, bytes.count <= 12 * 1024 * 1024 else { throw Abort(.badRequest) }
+            let rules = try policies()
+            let access = try accessLocked(path, sheet: readDocument(path, rules: rules), user: user, unlocks: unlocks, rules: rules)
+            guard access.editable else { throw Abort(.forbidden) }
+            guard matchesMediaHeader(bytes, type: type) else {
+                throw Abort(.unsupportedMediaType, reason: "A fájl tartalma eltér a megadott típustól.")
+            }
+            let directory = try worksheetURL(path).deletingPathExtension()
+            try rejectLink(directory)
+            try files.createDirectory(at: directory, withIntermediateDirectories: true)
+            let name = UUID().uuidString.lowercased() + "." + ext
+            if type.hasPrefix("image/"), let imageName {
+                guard validImageStem(imageName) else { throw Abort(.badRequest, reason: "Érvénytelen képfájlnév.") }
+                let folder = try imageFolder(in: directory, asset: name)
+                try files.createDirectory(at: folder, withIntermediateDirectories: true)
+                try bytes.write(to: folder.appendingPathComponent(imageName).appendingPathExtension(ext), options: .atomic)
+            } else {
+                try bytes.write(to: directory.appendingPathComponent(name), options: .atomic)
+            }
+            return name
+        }
+    }
+
     func contents(_ path: WorksheetPath, user: User?, unlocks: Set<String>, named name: String? = nil) throws -> [URL] {
         try lock.withLock {
             let url = try worksheetURL(path)
@@ -835,19 +968,57 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
+    private func imageFolder(in directory: URL, asset: String) throws -> URL {
+        try rejectLink(directory)
+        let images = directory.appendingPathComponent(".canvas-images", isDirectory: true)
+        try rejectLink(images)
+        let folder = images.appendingPathComponent(asset, isDirectory: true)
+        try rejectLink(folder)
+        return folder
+    }
+
+    private func storedImage(in folder: URL) throws -> URL? {
+        guard files.fileExists(atPath: folder.path) else { return nil }
+        let keys: Set<URLResourceKey> = [.isRegularFileKey, .isSymbolicLinkKey]
+        return try files.contentsOfDirectory(at: folder, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles])
+            .first { file in
+                let info = try file.resourceValues(forKeys: keys)
+                return info.isRegularFile == true && info.isSymbolicLink != true
+                    && file.pathExtension == folder.pathExtension
+            }
+    }
+
     private func attachments(at url: URL, named name: String?) throws -> [URL] {
         let directory = url.deletingPathExtension()
         try rejectLink(directory)
         guard files.fileExists(atPath: directory.path) else { return [] }
         let keys: Set<URLResourceKey> = [.isRegularFileKey, .isSymbolicLinkKey]
         let entries = try files.contentsOfDirectory(at: directory, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles])
-        return try entries.filter { file in
+        let managed: [URL]
+        if let name {
+            if canvasAssetType(name)?.hasPrefix("image/") == true,
+               let image = try storedImage(in: imageFolder(in: directory, asset: name)) { return [image] }
+            managed = []
+        } else {
+            let images = directory.appendingPathComponent(".canvas-images", isDirectory: true)
+            try rejectLink(images)
+            if files.fileExists(atPath: images.path) {
+                let folders = try files.contentsOfDirectory(at: images, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
+                managed = try folders.compactMap {
+                    let asset = $0.lastPathComponent
+                    guard canvasAssetType(asset)?.hasPrefix("image/") == true else { return nil }
+                    return try storedImage(in: imageFolder(in: directory, asset: asset))
+                }
+            } else { managed = [] }
+        }
+        let regular = try entries.filter { file in
             guard name == nil || file.lastPathComponent == name else { return false }
             let info = try file.resourceValues(forKeys: keys)
             if info.isSymbolicLink == true || info.isRegularFile != true { return false }
             // Worksheets use the normal authenticated document routes.
             return file.pathExtension.lowercased() != "json" || (try? read(file)) == nil
-        }.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+        }
+        return (regular + managed).sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
     }
 
     func archive(_ path: WorksheetPath, expected: Int) throws {
@@ -964,6 +1135,7 @@ extension Idea {
         id = (try? fields.decode(String.self, forKey: .id)) ?? "box-\(decoder.codingPath.last?.intValue ?? 0)"
         title = (try? fields.decode(String.self, forKey: .title)) ?? "Ötlet"
         text = (try? fields.decode(String.self, forKey: .text)) ?? ""
+        file = try? fields.decode(CanvasFile.self, forKey: .file)
         hideText = try? fields.decode(Bool.self, forKey: .hideText)
         position = (try? fields.decode(Point.self, forKey: .position)) ?? Point(x: 0, y: 0)
         width = (try? fields.decode(Double.self, forKey: .width)) ?? (kind == .connectionPoint ? 12 : 176)
@@ -982,7 +1154,6 @@ extension Idea {
         italic = try? fields.decode(Bool.self, forKey: .italic)
         underline = try? fields.decode(Bool.self, forKey: .underline)
         textStyle = try? fields.decode(TextStyle.self, forKey: .textStyle)
-        textBorder = try? fields.decode(String.self, forKey: .textBorder)
     }
 }
 

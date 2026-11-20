@@ -1,3 +1,5 @@
+import {bindAudioPlayers, syncAudioPlayers} from "./audio-player.js";
+import {objectURL, writeText} from "./canvas-files.js";
 import {decodeConnection} from "./worksheet-json.js";
 import {sharedMouse} from "./mouse.js";
 import {contextMenu, documentEntries} from "./cards.js";
@@ -33,6 +35,7 @@ function bindCanvas() {
   }
 }
 bindCanvas();
+bindAudioPlayers(main);
 
 const motions = new Map();
 function previewScene() {
@@ -154,6 +157,7 @@ function selectBox(box, broadcast = false) {
 }
 
 document.addEventListener("click", async event => {
+  if (event.target.closest("audio, [data-audio-player], .canvas-file a")) return;
   const box = event.target.closest(".passive-canvas [data-node]");
   if (box && event.detail) {
     event.preventDefault();
@@ -176,14 +180,20 @@ document.addEventListener("dblclick", event => {
 });
 document.addEventListener("contextmenu", event => {
   const canvas = event.target.closest(".passive-canvas");
-  if (!canvas || main.dataset.member !== "true") return;
+  if (!canvas) return;
   const box = event.target.closest("[data-node]");
+  const copyLink = box?.querySelector(".canvas-file, .canvas-image") ? ["Link másolása", () => writeText(objectURL(path, box.dataset.node)).catch(error => alert(error.message)), "link"] : null;
+  if (main.dataset.member !== "true") {
+    if (copyLink) contextMenu(event,[copyLink]);
+    return;
+  }
   const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(canvas.getScreenCTM().inverse());
   const entries = [["Ping", () => {
     if (box) flashNode(canvas, box.dataset.node);
     else flashPoint(canvas, point);
     live.ping(box ? {node: box.dataset.node} : {point: {x: point.x, y: point.y}}).catch(error => alert(error.message));
   }, "center"]];
+  if (copyLink) entries.unshift(copyLink);
   if (main.dataset.editable === "true") {
     const wire = event.target.closest("[data-wire]");
     const target = box ? {node: box.dataset.node} : wire ? {edge: JSON.parse(wire.dataset.wire).id} : null;
@@ -211,7 +221,25 @@ const live = liveConnection(path, csrf, async state => {
     for (const selector of ["svg:not(.passive-backdrop)", ".passive-backdrop"]) {
       const previous = frame.querySelector(":scope > " + selector);
       const updated = nextFrame.querySelector(":scope > " + selector);
-      if (previous && updated) previous.replaceWith(updated);
+      if (!previous || !updated) continue;
+      if (!previous.querySelector("audio")) { previous.replaceWith(updated); continue; }
+      previous.before(updated);
+      for (const player of previous.querySelectorAll("audio")) {
+        const id = player.closest("[data-node]").dataset.node;
+        const nextPlayer = updated.querySelector('[data-node="' + CSS.escape(id) + '"] audio');
+        if (!nextPlayer || nextPlayer.getAttribute("src") !== player.getAttribute("src")) continue;
+        if (nextPlayer.parentElement.moveBefore) {
+          nextPlayer.parentElement.moveBefore(player,nextPlayer);
+          nextPlayer.remove();
+        } else {
+          const time = player.currentTime, playing = !player.paused;
+          nextPlayer.addEventListener("loadedmetadata", () => {
+            nextPlayer.currentTime = time;
+            if (playing) nextPlayer.play().catch(() => {});
+          }, {once: true});
+        }
+      }
+      previous.remove();
     }
     for (const selector of ["[data-current-document]", "[data-viewer-notes]", "[data-viewer-sections]"]) {
       updateSection(main, next, selector);
@@ -236,6 +264,7 @@ const live = liveConnection(path, csrf, async state => {
       updateSection(header, nextHeader, selector);
     }
     bindCanvas();
+    syncAudioPlayers(main);
     if (selection) selectBox(main.querySelector('[data-node="' + CSS.escape(selection) + '"]'));
   }
   for (const id of motions.keys()) {

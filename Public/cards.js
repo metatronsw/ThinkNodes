@@ -116,6 +116,6 @@ document.addEventListener("click", async event => {
       "X-CSRF-Token": button.closest("[data-csrf]").dataset.csrf,
     }});
     if (!response.ok) throw Error((await response.json()).reason || "A létrehozás sikertelen.");
-    location.assign("/" + path);
+    location.assign("/edit/" + path);
   } catch (error) { alert(error.message); }
 });

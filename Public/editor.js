@@ -1,3 +1,5 @@
+import {bindAudioPlayers} from "./audio-player.js";
+import {assetURL, checkText, imageStem, importFile, objectURL, pngForClipboard, validImageStem, writeText} from "./canvas-files.js";
 import {decodeWorksheet, encodeWorksheet} from "./worksheet-json.js";
 import {sharedMouse} from "./mouse.js";
 import {worksheetChanges, replayChanges} from "./editor-history.js";
@@ -5,7 +7,7 @@ import {flashNode, flashPoint} from "./ping.js";
 import {showTooltip, hideTooltip} from "./tooltip.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {automaticBorder, arrowTransform, canvasBounds, edgeEndpoint, edgeGeometry, edgePaint, labelLayout, limit, lineAppearances, lineTypes, paper, selectionOutline, shapeDistance, shapes} from "./geometry.js?v=2";
+import {anchorPoint, automaticBorder, arrowTransform, canvasBounds, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, lineAppearances, lineTypes, paper, selectionOutline, shapeDistance, shapes} from "./geometry.js?v=2";
 
 import {ancestors, containerOrder, overlapFraction} from "./containers.js";
 
@@ -15,6 +17,7 @@ const d3 = window.d3;
 const {createApp, computed, h, nextTick, onMounted, onUnmounted, ref, shallowRef, watch} = window.Vue;
 const endpoint = "/api/worksheet/" + path;
 const svgNamespace = "http://www.w3.org/2000/svg";
+const sideAnchors = ["n", "e", "s", "w"];
 
 function icon(name) {
   return h("svg", {class: "ui-icon", "aria-hidden": "true", viewBox: "0 0 24 24"}, [
@@ -31,6 +34,8 @@ function link(label, href, symbol) {
   return h("a", {class: "button", href}, [icon(symbol), label]);
 }
 
+const palette = ["#ffffff", "#000000", "#e95c59", "#f3ae49", "#f3df65", "#60b77a", "#5aaed2", "#657ace", "#a375be", "#e198ad"];
+
 const ColorPicker = {
   props: {label: String, color: String},
   emits: ["update"],
@@ -40,13 +45,13 @@ const ColorPicker = {
       return h("svg", {viewBox: "0 0 4 3", preserveAspectRatio: "none", "aria-hidden": "true"},
         [h("rect", {width: 4, height: 3, fill: color})]);
     }
-    const presets = ["#ffffff", "#000000", "#e95c59", "#f3ae49", "#f3df65", "#60b77a", "#5aaed2", "#657ace", "#a375be", "#e198ad"];
+
     return () => h("div", {class: "color-field"}, [
       h("span", props.label),
       h("button", {type: "button", class: "color-sample", "aria-label": props.label + " színválasztó",
         "aria-expanded": expanded.value, onClick: () => { expanded.value = !expanded.value; }}, [swatch(props.color)]),
       expanded.value ? h("div", {class: "color-tools"}, [
-        h("div", {class: "color-presets"}, presets.map(color => h("button", {type: "button", key: color,
+        h("div", {class: "color-presets"}, palette.map(color => h("button", {type: "button", key: color,
           "aria-label": props.label + " " + color, title: color, onClick: () => emit("update", color)}, [swatch(color)]))),
         ...["Piros", "Zöld", "Kék"].map((label, i) => {
           const offset = 1 + i * 2;
@@ -162,6 +167,7 @@ function setEndpoint(edge, end, endpoint) {
   if (end === "source") {
     edge.source = endpoint.node;
     edge.sourcePoint = endpoint.point;
+    edge.sourceAnchor = endpoint.anchor;
   } else {
     edge.target = endpoint;
   }
@@ -190,13 +196,8 @@ createApp({
       const draft = insertion.value;
       return draft ? edges.filter(e => e.id !== draft.original?.id).concat(draft.edges) : edges;
     });
-    const layers = computed(() => {
-      const ordered = [...sceneNodes.value].sort((a,b) => Number(b.kind === "container")-Number(a.kind === "container") ||
-        b.width*b.height-a.width*a.height);
-      const firstBox = ordered.findIndex(n => n.kind !== "container");
-      const split = firstBox < 0 ? ordered.length : firstBox;
-      return {ordered, back: ordered.slice(0,split), front: ordered.slice(split)};
-    });
+    const orderedNodes = computed(() => [...sceneNodes.value].sort((a,b) =>
+      Number(b.kind === "container")-Number(a.kind === "container") || b.width*b.height-a.width*a.height));
     const nodeMap = computed(() => new Map(sceneNodes.value.map(node => [node.id, node])));
     const edgeMap = computed(() => new Map(board.value?.edges.map(edge => [edge.id, edge])));
     const containers = computed(() => containerOrder(board.value?.nodes ?? [], nodeMap.value));
@@ -206,7 +207,7 @@ createApp({
     const canManage = computed(() => role === "admin" || Boolean(user && (board.value?.owner === user || board.value?.creator === user)));
     const canvasText = shallowRef(new Map());
     const textSources = computed(() => [...new Set(
-      board.value?.nodes.filter(node => !node.hideText && node.text).map(node => node.text)
+      board.value?.nodes.filter(node => !node.file && !node.hideText && node.text).map(node => node.text)
     )]);
     const motions = shallowRef(new Map());
     function receiveMotion(frame) {
@@ -225,7 +226,7 @@ createApp({
     const drawings = computed(() => new Map(sceneNodes.value.map(node => {
       const text = !node.hideText && node.text
         ? canvasText.value.get(node.text) ?? [] : [];
-      const layout = labelLayout(node, text);
+      const layout = node.file ? {width: node.width, height: node.height, lines: []} : labelLayout(node, text);
       return [node.id, {node: {...node, width: layout.width, height: layout.height}, layout}];
     })));
     function displayPosition(node) {
@@ -264,6 +265,7 @@ createApp({
     const view = shallowRef(d3.zoomIdentity);
     const size = ref({width: 0, height: 0});
     const gesture = ref(null);
+    const cablePointer = shallowRef(null);
     const preview = ref(null);
     const checkpointState = ref({revision: 0, changed: false});
     const problem = ref("");
@@ -578,23 +580,10 @@ createApp({
       return Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, "0")).join("");
     }
 
-    async function deleteBoard() {
-      if (!confirm("Lomtárba helyezed a munkalapot? Az útvonal egy újabb megnyitása üres lapot hozhat létre.")) return;
-      try {
-        await checked(await fetch(endpoint, {
-          method: "DELETE",
-          headers: {"X-CSRF-Token": csrf, "If-Match": '"' + board.value.revision + '"'},
-        }));
-        savedGeneration.value = generation.value;
-        location.assign("/");
-      } catch (error) {
-        problem.value = error.message;
-      }
-    }
-
     function makeNode(position) {
+      const fill = palette[Math.floor(Math.random() * palette.length)];
       return {id: id(), title: "Új ötlet", text: "", hideText: false, position: clampPoint(position), width: 176, height: 80,
-        shape: "rounded", fill: "#dce9ff", textColor: "#182335", fontSize: 16, bold: true, alignment: "center"};
+        shape: "rounded", fill, textColor: fill === "#000000" ? "#ffffff" : "#182335", fontSize: 16, bold: true, alignment: "center"};
     }
 
     function addNode(position = worldAtCenter(), properties = {}) {
@@ -603,6 +592,89 @@ createApp({
       board.value.nodes.push(node);
       modified();
       selectNode(node.id);
+    }
+
+    function selectedBox() {
+      return selected.value?.kind === "node" ? nodeMap.value.get(selected.value.id) : null;
+    }
+
+    function transfer(action) {
+      Promise.resolve().then(action).catch(error => { problem.value = error.message; });
+    }
+
+    async function pasteText(text, position = worldAtCenter()) {
+      if (!text || !online.value) return;
+      const source = text.startsWith(location.origin + "/") ? new URL(text) : null;
+      if (source && /^#object-[a-z0-9-]+$/.test(source.hash)) {
+        const sourcePath = source.pathname.slice(1);
+        const sheet = sourcePath === path ? board.value : decodeWorksheet(await (await checked(await fetch("/api/worksheet/" + sourcePath))).json());
+        const item = sheet.nodes.find(n => n.id === source.hash.slice(8));
+        if (item?.file) {
+          const file = {...item.file};
+          if (file.asset && sourcePath !== path) {
+            const blob = await (await checked(await fetch(assetURL(sourcePath,file.asset)))).blob();
+            file.asset = (await importFile(new File([blob], file.type === "image" ? imageStem(file) + "." + file.asset.split(".").at(-1) : item.title, {type: blob.type}), path, csrf)).file.asset;
+          }
+          addNode(position, {file, text: item.text, title: item.title, width: item.width, height: item.height});
+          return;
+        }
+      }
+      checkText(text);
+      const box = selectedBox();
+      if (box && !box.file && !box.kind && held.value === box.id && !occupied(box.id)) updateItem(box, "text", checkText([box.text,text].filter(Boolean).join("\n")));
+      else addNode(position, {text});
+    }
+
+    async function importFiles(files, position) {
+      if (!online.value) throw Error("A beillesztéshez aktív szerkesztői kapcsolat szükséges.");
+      const failures = [];
+      for (const [index, blob] of files.entries()) {
+        try {
+          const properties = await importFile(blob, path, csrf);
+          if (!online.value) throw Error("A kapcsolat megszakadt.");
+          addNode({x: position.x + 24*index, y: position.y + 24*index}, properties);
+        } catch (error) { failures.push((blob.name || "Vágólap") + " · " + error.message); }
+      }
+      if (failures.length) throw Error(failures.join("\n"));
+    }
+
+    const editingText = target => target?.closest?.("input, textarea, select, [contenteditable=true]");
+    function onPaste(event) {
+      if (editingText(event.target) || !online.value) return;
+      const files = Array.from(event.clipboardData.files);
+      const text = event.clipboardData.getData("text/plain") || event.clipboardData.getData("text/markdown");
+      if (!files.length && !text) return;
+      event.preventDefault();
+      transfer(() => files.length ? importFiles(files, worldAtCenter()) : pasteText(text));
+    }
+    async function pasteClipboard() {
+      if (!navigator.clipboard?.read) {
+        if (navigator.clipboard?.readText) return pasteText(await navigator.clipboard.readText());
+        throw Error("A beillesztéshez nyomj Ctrl+V-t vagy ⌘V-t a vásznon.");
+      }
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const image = item.types.find(t => t.startsWith("image/"));
+        if (image) await importFiles([await item.getType(image)], worldAtCenter());
+        else {
+          const type = item.types.includes("text/plain") ? "text/plain" : "text/markdown";
+          if (item.types.includes(type)) await pasteText(await (await item.getType(type)).text());
+        }
+      }
+    }
+    function copyBox(node) {
+      if (!node) return;
+      if (node.file?.type === "image" && navigator.clipboard?.write && window.ClipboardItem) {
+        return navigator.clipboard.write([new ClipboardItem({"image/png": pngForClipboard(assetURL(path,node.file.asset))})]);
+      }
+      return writeText(node.file?.type === "mp3" ? objectURL(path,node.id) : node.text || node.title);
+    }
+    function onCopy(event) {
+      const node = selectedBox();
+      if (!node || editingText(event.target) || window.getSelection()?.toString()) return;
+      event.preventDefault();
+      event.clipboardData.setData("text/plain", node.file?.asset ? objectURL(path,node.id) : node.text || node.title);
+      if (node.file?.type === "image") transfer(() => copyBox(node));
     }
 
     async function addSubworksheet(position) {
@@ -620,6 +692,7 @@ createApp({
         }));
         const sheet = await response.json();
         addNode(position, {title: sheet.title, link: name});
+        await followBoxLink(worksheetLink(name, path));
       } catch (error) { problem.value = error.message; }
     }
 
@@ -651,25 +724,54 @@ createApp({
       }
     }
 
-    async function deleteNode(node, cascade = false) {
-      if (!(await selectNode(node.id)) || groupBlocked(node)) return;
-      const ids = new Set(cascade && node.kind === "container" ? moveGroup(node).map(n => n.id) : [node.id]);
-      const connected = board.value.edges.filter(edge => ids.has(edge.source) || ids.has(edge.target.node));
-      if (!connected.length && node.kind !== "connectionPoint" && !confirm("Törlöd a kijelölt objektumot?")) return;
-      if (cascade && ["connectionPoint", "container"].includes(node.kind)) {
-        board.value.edges = board.value.edges.filter(edge => !connected.includes(edge));
-      } else {
-        for (const edge of connected) {
-          const {from, to} = edgeGeometry(edge, drawnNode);
-          if (ids.has(edge.source)) setEndpoint(edge, "source", {point: clampPoint(from)});
-          if (ids.has(edge.target.node)) setEndpoint(edge, "target", {point: clampPoint(to)});
+    function joinAtJunction(id, connected) {
+      if (connected.length !== 2) return;
+      const [keep, shorter] = connected.sort((a,b) => edgeGeometry(b, drawnNode).length - edgeGeometry(a, drawnNode).length);
+      const end = keep.source === id ? "source" : "target";
+      const far = shorter.source === id ? "target" : "source";
+      const destination = edgeEndpoint(shorter, far);
+      const candidate = {...keep};
+      setEndpoint(candidate, end, destination);
+      if (candidate.source && candidate.target.node && (candidate.source === candidate.target.node ||
+          board.value.edges.some(e => e.id !== keep.id && e.source === candidate.source && e.target.node === candidate.target.node))) return;
+      setEndpoint(keep, end, destination);
+      keep[end === "source" ? "startArrow" : "endArrow"] = far === "source" ? !!shorter.startArrow : shorter.endArrow !== false;
+      board.value.edges = board.value.edges.filter(e => e.id !== shorter.id);
+    }
+
+    function removeObjects(ids, preserve, selectedEdges = new Set()) {
+      const boxes = new Set([...ids].filter(id => nodeMap.value.get(id)?.kind !== "connectionPoint"));
+      board.value.edges = board.value.edges.filter(edge => {
+        if (preserve && (ids.has(edge.source) || ids.has(edge.target.node))) return true;
+        if (selectedEdges.has(edge.id)) return false;
+        return preserve || !(boxes.has(edge.source) || boxes.has(edge.target.node));
+      });
+      if (!preserve) {
+        for (const id of ids) {
+          if (!boxes.has(id)) joinAtJunction(id, board.value.edges.filter(e => e.source === id || e.target.node === id));
         }
       }
-      releaseChildren(node);
-      board.value.nodes = board.value.nodes.filter(item => !ids.has(item.id));
+      for (const edge of board.value.edges) {
+        if (!ids.has(edge.source) && !ids.has(edge.target.node)) continue;
+        const {from, to} = edgeGeometry(edge, drawnNode);
+        if (ids.has(edge.source)) setEndpoint(edge, "source", {point: clampPoint(from)});
+        if (ids.has(edge.target.node)) setEndpoint(edge, "target", {point: clampPoint(to)});
+      }
+      for (const node of board.value.nodes) {
+        while (node.parent && ids.has(node.parent)) node.parent = nodeMap.value.get(node.parent)?.parent;
+      }
+      board.value.nodes = board.value.nodes.filter(node => !ids.has(node.id));
       pruneJunctions();
       modified();
       clearSelection();
+    }
+
+    async function deleteNode(node, preserve = false, includeChildren = false) {
+      if (!(await selectNode(node.id)) || groupBlocked(node)) return;
+      const ids = new Set(includeChildren && node.kind === "container" ? moveGroup(node).map(n => n.id) : [node.id]);
+      const connected = board.value.edges.some(edge => ids.has(edge.source) || ids.has(edge.target.node));
+      if (!connected && node.kind !== "connectionPoint" && !confirm("Törlöd a kijelölt objektumot?")) return;
+      removeObjects(ids, preserve);
     }
 
     function removeEdge(edge) {
@@ -766,9 +868,45 @@ createApp({
           (note.value && !nodeMap.value.has(note.value.id))) inspectNothing();
     }
 
+    function nearestBox(point, exclude) {
+      let closest, distance = Infinity;
+      for (let index = orderedNodes.value.length - 1; index >= 0; index--) {
+        const {id, kind} = orderedNodes.value[index];
+        if (id === exclude || kind === "connectionPoint") continue;
+        const box = drawnNode(id);
+        const dx = Math.abs(point.x - box.position.x) - box.width/2;
+        const dy = Math.abs(point.y - box.position.y) - box.height/2;
+        const gap = Math.hypot(Math.max(0,dx), Math.max(0,dy));
+        if (gap < distance) {
+          closest = box;
+          distance = gap;
+        }
+        if (!gap && shapeDistance(box, point) <= 1) return box;
+      }
+      return closest;
+    }
+
     function snap(point, exclude) {
-      const hit = node => node.id !== exclude && shapeDistance(drawnNode(node.id), point, 8 / view.value.k) <= 1;
-      return layers.value.ordered.findLast(hit);
+      const box = nearestBox(point, exclude);
+      if (box) {
+        let anchor, distance = Math.min(10/view.value.k, box.width/5, box.height/5);
+        for (const name of sideAnchors) {
+          const p = anchorPoint(box, name);
+          const gap = Math.hypot(point.x-p.x, point.y-p.y);
+          if (gap <= distance) { anchor = name; distance = gap; }
+        }
+        if (anchor) return {node: box.id, anchor};
+      }
+      const joint = orderedNodes.value.findLast(node => node.kind === "connectionPoint" && node.id !== exclude &&
+        shapeDistance(drawnNode(node.id), point, 8/view.value.k) <= 1);
+      if (joint) return {node: joint.id};
+      if (box && shapeDistance(box, point) <= 1) return {node: box.id};
+    }
+
+    function cablePreview(source, point) {
+      const edge = {target: {point}, type: "straight", appearance: "plain", endArrow: true};
+      setEndpoint(edge, "source", source);
+      return edge;
     }
 
     function nearbyEnd(point, edge) {
@@ -788,7 +926,7 @@ createApp({
       return best;
     }
 
-    function cloneBox(source) {
+    function cloneBox(source, connect) {
       const originals = moveGroup(source).map(member => nodeMap.value.get(member.id));
       const ids = new Map(originals.map(n => [n.id,id()]));
       const nodes = originals.map(n => ({...copy(n), id: ids.get(n.id), parent: ids.get(n.parent) ?? n.parent}));
@@ -798,6 +936,7 @@ createApp({
         if (ids.has(e.target.node)) clone.target.node = ids.get(e.target.node);
         return clone;
       });
+      if (connect) edges.push({id: id(), source: source.id, target: {node: nodes[0].id}, type: "straight", endArrow: true});
       return {nodes,edges};
     }
 
@@ -849,7 +988,7 @@ createApp({
       finishField();
       if (event.altKey && !event.ctrlKey && event.button === 0 && node.kind !== "connectionPoint") {
         if (!online.value || reconnect.value) return;
-        beginDrag(event,"clone",{nodeID: node.id});
+        beginDrag(event,"clone",{nodeID: node.id, connect: event.shiftKey});
         return;
       }
       const controlClick = event.ctrlKey && !event.altKey && (event.button === 0 || event.button === 2);
@@ -863,8 +1002,11 @@ createApp({
       const locked = ancestors(node, nodeMap.value).some(parent => parent.locked);
       gesture.value = {group: cabling || locked ? [] : moveGroup(node), locked, type: cabling ? "cable" : "move", pointer: event.pointerId, nodeID: node.id,
         position: {...node.position}, initial, screen: [event.clientX, event.clientY], moved: false};
-      if (cabling) preview.value = {edge: {source: node.id, target: {point: initial}, type: "straight", appearance: "plain"}};
-      event.currentTarget.setPointerCapture(event.pointerId);
+      if (cabling) {
+        gesture.value.source = snap(initial) ?? {point: clampPoint(initial)};
+        preview.value = {edge: cablePreview(gesture.value.source, initial)};
+      }
+      (cabling ? canvas.value : event.currentTarget).setPointerCapture(event.pointerId);
       if (!cabling && !occupied(node.id)) claimGesture(node);
       else if (!cabling) gesture.value.locked = true;
     }
@@ -893,12 +1035,12 @@ createApp({
       });
     }
 
-    function pressEndpoint(event, edge, end) {
+    function pressEndpoint(event, edge, end, fromShaft = false) {
       finishField();
       if ((event.button !== 0 && !(event.ctrlKey && event.button === 2)) || reconnect.value) return;
       const original = edgeEndpoint(edge, end);
       const geometry = edgeGeometry(edge, drawnNode);
-      const position = end === "source" ? geometry.from : geometry.to;
+      const position = fromShaft ? world(event) : end === "source" ? geometry.from : geometry.to;
       event.preventDefault();
       event.stopPropagation();
       menu.value = null;
@@ -911,7 +1053,8 @@ createApp({
 
     function endpointAt(point, edge, end, commit = false) {
       const opposite = edgeEndpoint(edge, otherEnd(end)).node;
-      const free = nearbyEnd(point, edge);
+      const target = snap(point, opposite);
+      const free = !target && nearbyEnd(point, edge);
       if (free) {
         if (opposite && end === free.end && edgeEndpoint(free.edge, otherEnd(free.end)).node === opposite) {
           return {point, blocked: true};
@@ -924,12 +1067,11 @@ createApp({
         setEndpoint(free.edge, free.end, {node: node.id});
         return {node: node.id};
       }
-      const node = snap(point, opposite);
-      if (node && opposite && board.value.edges.some(candidate => candidate.id !== edge.id &&
-          edgeEndpoint(candidate, end).node === node.id && edgeEndpoint(candidate, otherEnd(end)).node === opposite)) {
+      if (target && opposite && board.value.edges.some(candidate => candidate.id !== edge.id &&
+          edgeEndpoint(candidate, end).node === target.node && edgeEndpoint(candidate, otherEnd(end)).node === opposite)) {
         return {point, blocked: true};
       }
-      return node ? {node: node.id} : {point: clampPoint(point)};
+      return target ?? {point: clampPoint(point)};
     }
 
     function pressCorner(event, node, sx, sy) {
@@ -963,6 +1105,8 @@ createApp({
       if (!board.value) return;
       modifiers(event);
       const operation = gesture.value;
+      const point = world(event);
+      cablePointer.value = point;
       if (!operation && !reconnect.value) return;
       if (operation && operation.pointer !== event.pointerId) return;
       if (operation?.waiting) {
@@ -970,12 +1114,11 @@ createApp({
         operation.moved ||= Math.hypot(event.clientX-operation.screen[0], event.clientY-operation.screen[1]) > 3;
         return;
       }
-      const point = world(event);
       if (operation) {
         operation.moved ||= Math.hypot(event.clientX - operation.screen[0], event.clientY - operation.screen[1]) > 3;
         if (operation.type === "clone" || operation.type === "split") {
           if (operation.moved) {
-            if (!insertion.value) stageInsertion(cloneBox(nodeMap.value.get(operation.nodeID)));
+            if (!insertion.value) stageInsertion(cloneBox(nodeMap.value.get(operation.nodeID), operation.connect));
             moveInsertion(operation,point);
           }
           return;
@@ -1028,11 +1171,11 @@ createApp({
             operation.endPosition = position;
             const endpoint = endpointAt(position, edge, operation.end);
             operation.endPosition = endpoint.point ?? position;
-            preview.value = {target: endpoint.node, junction: endpoint.junction};
+            preview.value = {target: endpoint.node, attachment: endpoint, junction: endpoint.junction};
           }
           return;
         }
-        const edge = {source: operation.nodeID, sourcePoint: operation.nodeID ? undefined : operation.initial, target: {point}, type: "straight", appearance: "plain", endArrow: true};
+        const edge = cablePreview(operation.source, point);
         edge.target = endpointAt(point, edge, "target");
         preview.value = {edge, target: edge.target.node, junction: edge.target.junction};
       } else {
@@ -1144,20 +1287,40 @@ createApp({
       return {x: Math.min(a.x,b.x), y: Math.min(a.y,b.y), width: Math.abs(a.x-b.x), height: Math.abs(a.y-b.y)};
     }
 
-    function selectRectangle(drag) {
-      const box = rectangle(drag.initial, drag.point);
-      const inside = p => p.x >= box.x && p.x <= box.x + box.width && p.y >= box.y && p.y <= box.y + box.height;
-      const nodes = new Set(), edges = new Set();
-      for (const {node} of drawings.value.values()) {
-        if ([-1,1].every(k => inside({x: node.position.x+k*node.width/2, y: node.position.y+k*node.height/2}))) nodes.add(node.id);
-      }
-      for (const edge of board.value.edges) {
-        if (edgeGeometry(edge, drawnNode).boundsPoints.every(inside)) edges.add(edge.id);
-      }
-      if (nodes.size || edges.size) {
-        batch.value = {nodes, edges};
+    function selectionMembers() {
+      const nodes = new Set(batch.value?.nodes), edges = new Set(batch.value?.edges);
+      const item = selected.value;
+      if (item) (item.kind === "node" ? nodes : edges).add(item.id);
+      return {nodes, edges};
+    }
+
+    function selectMembers(group) {
+      clearSelection();
+      if (group.nodes.size || group.edges.size) {
+        batch.value = group;
         manuallyClosed.value = false;
       }
+    }
+
+    function selectRectangle(drag) {
+      const box = rectangle(drag.initial, drag.point);
+      const right = box.x + box.width, bottom = box.y + box.height;
+      const inside = p => p.x >= box.x && p.x <= right && p.y >= box.y && p.y <= bottom;
+      const group = drag.additive ? selectionMembers() : {nodes: new Set(), edges: new Set()};
+      for (const {node} of drawings.value.values()) {
+        const closest = {x: limit(node.position.x, box.x, right), y: limit(node.position.y, box.y, bottom)};
+        let touches = shapeDistance(node, closest) <= 1;
+        if (touches && node.shape === "rounded") {
+          const dx = Math.max(0, Math.abs(closest.x-node.position.x)-node.width/2+12);
+          const dy = Math.max(0, Math.abs(closest.y-node.position.y)-node.height/2+12);
+          touches = Math.hypot(dx,dy) <= 12;
+        }
+        if (drag.touching ? touches : [-1,1].every(k => inside({x: node.position.x+k*node.width/2, y: node.position.y+k*node.height/2}))) group.nodes.add(node.id);
+      }
+      for (const edge of board.value.edges) {
+        if (edgeInRectangle(edgeGeometry(edge, drawnNode), box, drag.touching)) group.edges.add(edge.id);
+      }
+      selectMembers(group);
     }
 
     watch(board, () => {
@@ -1201,22 +1364,10 @@ createApp({
       modified();
     }
 
-    function deleteBatch() {
+    function deleteBatch(preserve = false) {
       const group = batch.value;
       if (!group || batchBlocked(group.nodes) || !confirm("Törlöd a kijelölt objektumokat?")) return;
-      board.value.edges = board.value.edges.filter(e => !group.edges.has(e.id));
-      for (const edge of board.value.edges) {
-        const {from,to} = edgeGeometry(edge,drawnNode);
-        if (group.nodes.has(edge.source)) setEndpoint(edge,"source",{point: from});
-        if (group.nodes.has(edge.target.node)) setEndpoint(edge,"target",{point: to});
-      }
-      for (const node of board.value.nodes) {
-        while (node.parent && group.nodes.has(node.parent)) node.parent = nodeMap.value.get(node.parent)?.parent;
-      }
-      board.value.nodes = board.value.nodes.filter(n => !group.nodes.has(n.id));
-      pruneJunctions();
-      modified();
-      clearSelection();
+      removeObjects(group.nodes, preserve, group.edges);
     }
 
     function beginDrag(event, type, extra = {}) {
@@ -1230,16 +1381,27 @@ createApp({
     }
 
     function pressCanvas(event) {
+      cablePointer.value = world(event);
       finishField();
+      if (event.target.closest?.("[data-audio-player]")) return;
       if (event.target.closest("[role=link]")?.getAttribute?.("role") === "link") return;
       const hit = event.target.closest("[data-node], [data-edge]");
-      if (event.button === 0 && !event.ctrlKey && !reconnect.value) {
+      if (event.button === 0 && !reconnect.value) {
         if (event.altKey && !hit) {
-          clearSelection();
-          beginDrag(event, "rectangle");
+          if (!event.shiftKey) clearSelection();
+          beginDrag(event, "rectangle", {additive: event.shiftKey, touching: event.ctrlKey});
           return;
         }
-        if (!event.altKey && batch.value && (batch.value.nodes.has(hit?.dataset?.node) || batch.value.edges.has(hit?.dataset?.edge))) {
+        if (event.shiftKey && !event.altKey && !event.ctrlKey && hit) {
+          event.preventDefault();
+          event.stopPropagation();
+          const group = selectionMembers();
+          const set = hit.dataset.node ? group.nodes : group.edges, id = hit.dataset.node ?? hit.dataset.edge;
+          if (!set.delete(id)) set.add(id);
+          selectMembers(group);
+          return;
+        }
+        if (!event.altKey && !event.ctrlKey && batch.value && (batch.value.nodes.has(hit?.dataset?.node) || batch.value.edges.has(hit?.dataset?.edge))) {
           const members = new Set([...batch.value.nodes].flatMap(id => moveGroup(nodeMap.value.get(id)).map(n => n.id)));
           beginDrag(event, "batch", {members, hitID: hit.dataset.node ?? hit.dataset.edge, hitKind: hit.dataset.node ? "node" : "edge"});
           return;
@@ -1252,8 +1414,9 @@ createApp({
           event.stopPropagation();
           menu.value = null;
           const initial = clampPoint(world(event));
-          gesture.value = {type: "cable", pointer: event.pointerId, initial, screen: [event.clientX, event.clientY], moved: false};
-          preview.value = {edge: {sourcePoint: initial, target: {point: initial}, type: "straight", appearance: "plain"}};
+          const source = snap(initial) ?? {point: initial};
+          gesture.value = {type: "cable", source, pointer: event.pointerId, initial, screen: [event.clientX, event.clientY], moved: false};
+          preview.value = {edge: cablePreview(source, initial)};
           canvas.value.setPointerCapture(event.pointerId);
           return;
         }
@@ -1293,6 +1456,7 @@ createApp({
 
     async function showNote(node, select = true) {
       if (!node || reconnect.value) return;
+      if (node.file?.type === "image") { note.value = null; return; }
       if (select) { editingPanel.value = false; manuallyClosed.value = false; }
       if (select && !occupied(node.id) && held.value !== node.id) selectNode(node.id);
       menu.value = null;
@@ -1458,9 +1622,9 @@ createApp({
       if (["Delete", "Backspace"].includes(event.key) && (selected.value || batch.value) && !gesture.value) {
         event.preventDefault?.();
         if (event.repeat) return;
-        if (batch.value) { deleteBatch(); return; }
+        if (batch.value) { deleteBatch(event.ctrlKey); return; }
         const {kind, id} = selected.value;
-        if (kind === "node" && nodeMap.value.has(id)) deleteNode(nodeMap.value.get(id), event.ctrlKey);
+        if (kind === "node" && nodeMap.value.has(id)) deleteNode(nodeMap.value.get(id), event.ctrlKey, event.ctrlKey);
         else if (edgeMap.value.has(id)) removeEdge(edgeMap.value.get(id));
         return;
       }
@@ -1506,8 +1670,11 @@ createApp({
       event.returnValue = "";
     }
 
+    let audioControls;
     onMounted(async () => {
       currentCrumb?.addEventListener?.("click", switchToViewer);
+      window.addEventListener("copy", onCopy);
+      window.addEventListener("paste", onPaste);
       window.addEventListener("keydown", keyboard);
       window.addEventListener("keyup", modifiers);
       window.addEventListener("blur", cancelGesture);
@@ -1524,6 +1691,7 @@ createApp({
         live.start();
         await nextTick();
         initializeZoom();
+        if (canvas.value.addEventListener) audioControls = bindAudioPlayers(canvas.value);
         if (canvas.value.querySelector) mouse.bind(canvas.value, canvas.value.querySelector("[data-mouse-layer]"), mount.querySelector(".canvas-controls"));
       } catch (error) {
         problem.value = error.message;
@@ -1533,12 +1701,15 @@ createApp({
     function restore(event) { if (event.persisted) { held.value = null; clearSelection(); live.start(); } }
 
     onUnmounted(() => {
+      audioControls?.abort();
       currentCrumb?.removeEventListener?.("click", switchToViewer);
       mouse?.stop();
       live.stop();
       window.removeEventListener("pagehide", live.stop);
       window.removeEventListener("pageshow", restore);
       resizeObserver?.disconnect();
+      window.removeEventListener("copy", onCopy);
+      window.removeEventListener("paste", onPaste);
       window.removeEventListener("keydown", keyboard);
       window.removeEventListener("keyup", modifiers);
       window.removeEventListener("blur", cancelGesture);
@@ -1546,6 +1717,20 @@ createApp({
       window.removeEventListener("pointerup", outsideUp);
       window.removeEventListener("beforeunload", beforeUnload);
     });
+
+    function renderImage(node) {
+      const file = node.file;
+      const title = file.hideTitle ? "" : node.title;
+      const filename = file.showFilename ? imageStem(file) : "";
+      return h("foreignObject", {x: -node.width/2, y: -node.height/2 - (title ? 22 : 0),
+        width: node.width, height: node.height + (title ? 22 : 0) + (filename ? 22 : 0)}, [
+        h("div", {class: "canvas-image"}, [
+          title ? h("strong", title) : null,
+          h("img", {src: assetURL(path, file.asset), alt: title || imageStem(file), draggable: false}),
+          filename ? h("span", filename) : null,
+        ]),
+      ]);
+    }
 
     function renderNode(node) {
       const {node: drawn, layout} = drawings.value.get(node.id);
@@ -1558,11 +1743,11 @@ createApp({
       const inset = node.shape === "diamond" ? .45 : node.shape === "ellipse" ? .7 : .94;
       const [outline, dimensions] = selectionOutline(node.kind === "connectionPoint" ? "ellipse" : drawn.shape, drawn.width, drawn.height);
       const snapTarget = preview.value?.target === node.id;
-      return h("g", {key: node.id, "data-node": node.id, "data-width": drawn.width, "data-height": drawn.height, tabindex: 0, role: "button",
-        "aria-label": node.title, "data-link": destination ? "" : undefined, class: ["idea", {occupied: occupied(node.id), claimed: !!owner}],
+      return h("g", {key: node.id, "data-node": node.id, "data-width": drawn.width, "data-height": drawn.height, tabindex: 0, role: node.file?.type === "mp3" ? "group" : "button",
+        "aria-label": node.title || (node.file?.type === "image" ? imageStem(node.file) : ""), "data-link": destination ? "" : undefined, class: ["idea", {occupied: occupied(node.id), claimed: !!owner}],
         transform: "translate(" + position.x + " " + position.y + ")",
         onPointerenter: event => {
-          if (!gesture.value && (node.hideText || layout.overflow) && node.text) showTooltip(event, async signal => {
+          if (!gesture.value && (node.file?.type === "image" || node.hideText || layout.overflow) && node.text) showTooltip(event, async signal => {
             const result = await checked(await fetch("/api/text", {method: "POST", signal,
               headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify({text: node.text})}));
             return result.text();
@@ -1578,10 +1763,23 @@ createApp({
       }, [
         owner || snapTarget || batch.value?.nodes.has(node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-glow", color: owner?.color ?? "#16a085", fill: "none",
           stroke: owner?.color ?? "#16a085", "stroke-width": 3, "pointer-events": "none"}, [h("animate", {attributeName: "opacity", values: "1;.45;1", dur: "4s", repeatCount: "indefinite"})]) : null,
-        shape(drawn, !!destination),
+        node.file?.type === "image" ? null : shape(drawn, !!destination),
+        node.file?.type === "image" ? renderImage(node) : null,
+        node.file && node.file.type !== "image" ? h("foreignObject", {x: -drawn.width/2, y: -drawn.height/2, width: drawn.width, height: drawn.height}, [
+          h("div", {class: "canvas-file"}, [
+            !node.file.hideTitle ? h("strong",node.title) : null,
+            node.file.type === "mp3" ? h("div", {"data-audio-player": "", class: "canvas-audio",
+                onPointerdown: e => e.stopPropagation(), onDblclick: e => e.stopPropagation()}, [
+                h("audio", {src: assetURL(path, node.file.asset), preload: "metadata", hidden: true}),
+                button("", null, {symbol: "play", "data-audio-toggle": "", "aria-label": "Lejátszás", title: "Lejátszás"}),
+                h("input", {type: "range", min: 0, max: 0, step: "any", disabled: true, "data-audio-seek": "", "aria-label": "Lejátszási pozíció"}),
+                h("small", {"data-audio-status": "", role: "status"}),
+              ]) :
+              node.file.type === "md" ? h(FormattedText, {source: node.text}) : h("pre",node.text),
+            node.file.asset && node.text ? h("small",node.text) : null,
+          ]),
+        ]) : null,
         node.kind === "connectionPoint" && node.title ? h("text", {x: drawn.width/2 + 4, y: 4, fill: node.textColor, "font-size": 14}, node.title) : null,
-        layout.frame ? h("rect", {...layout.frame, "pointer-events": "none", transform: textDrag?.section === "textStyle" ?
-          "translate("+textDrag.delta.x+" "+textDrag.delta.y+")" : undefined}) : null,
         h("text", {"font-family": "system-ui, sans-serif", "pointer-events": "none"},
           layout.lines.map(line => h("tspan", {
             class: destination && !line.runs ? "link-label" : undefined,
@@ -1631,6 +1829,32 @@ createApp({
       ]);
     }
 
+    function renderConnectionHandles() {
+      const wiring = ctrl.value && !alt.value || reconnect.value || ["endpoint","cable"].includes(gesture.value?.type);
+      const active = gesture.value;
+      const retargeting = reconnect.value ?? (active?.type === "endpoint" ? active : null);
+      const edge = retargeting && edgeMap.value.get(retargeting.edgeID);
+      const exclude = edge ? edgeEndpoint(edge, otherEnd(retargeting.end)).node : active?.source?.node;
+      const point = active?.type === "endpoint" ? active.endPosition ?? cablePointer.value : cablePointer.value;
+      const nearest = wiring && point ? nearestBox(point, exclude)?.id : undefined;
+      // Transparent centers keep junctions reachable under the wires' wider hit areas.
+      const handles = orderedNodes.value.flatMap(node => {
+        const drawn = drawnNode(node.id);
+        const attrs = {"data-node": node.id, onPointerdown: event => pressNode(event,node),
+          onContextmenu: event => context(event,"node",node.id),
+          onDblclick: event => { event.stopPropagation(); openProperties("node",node.id,true); }};
+        if (node.kind === "connectionPoint") return h("circle", {...attrs, key: node.id,
+          cx: drawn.position.x, cy: drawn.position.y, r: drawn.width/2, fill: "transparent"});
+        if (node.id !== nearest) return [];
+        return sideAnchors.map(name => {
+          const p = anchorPoint(drawn, name);
+          return h("circle", {...attrs, key: node.id + "/" + name, "data-anchor": name, cx: p.x, cy: p.y,
+            r: Math.min(4/view.value.k, drawn.width/12, drawn.height/12), fill: "#fff", stroke: "#4168e9", "vector-effect": "non-scaling-stroke"});
+        });
+      });
+      return h("g", {"data-editor-only": ""}, handles);
+    }
+
     function renderEndpoint(edge, end, head, color, interactive = true) {
       const attached = Boolean(edgeEndpoint(edge,end).node);
       const attrs = {key: edge.id + end, transform: head.transform, stroke: "none",
@@ -1649,7 +1873,7 @@ createApp({
       if (drag?.type === "batch" && batch.value?.edges.has(edge.id)) edge = moveBatchEdge(edge,drag);
       if (drag?.edgeID === edge.id && drag.endPosition) {
         edge = {...edge};
-        setEndpoint(edge, drag.end, {point: drag.endPosition});
+        setEndpoint(edge, drag.end, preview.value?.attachment ?? {point: drag.endPosition});
       }
       const {d, labelPosition, angle, stroke, ends, paint} = wireDrawing(edge, drawnNode);
       const mine = selected.value?.id === edge.id && ["edge","endpoint"].includes(selected.value.kind);
@@ -1657,7 +1881,7 @@ createApp({
       if (batch.value?.edges.has(edge.id)) colors.push("#16a085");
       return h("g", {key: edge.id, "data-edge": edge.id, tabindex: 0, role: "button", "aria-label": edge.label || "Vonal",
         onPointerdown: event => {
-          if (!event.ctrlKey || event.button !== 0 || reconnect.value || !online.value) return;
+          if (event.shiftKey || event.button !== 0 || reconnect.value || !online.value) return;
           const pathElement = event.currentTarget.querySelector(".edge-hit");
           const length = pathElement.getTotalLength();
           const point = world(event);
@@ -1670,18 +1894,22 @@ createApp({
           for (let step = length/32; step > .1/view.value.k; step /= 2) {
             for (const t of [Math.max(0,nearest-step), Math.min(length,nearest+step)]) if (distance(t) < distance(nearest)) nearest = t;
           }
+          if (!event.ctrlKey) {
+            if (nearest <= length/3 || nearest >= 2*length/3) pressEndpoint(event,edge,nearest <= length/3 ? "source" : "target", true);
+            return;
+          }
           if (Math.min(nearest, length-nearest) < 8/view.value.k) return;
           event.preventDefault();
           event.stopPropagation();
           const p = pathElement.getPointAtLength(nearest);
           const joint = {...makeNode(clampPoint(p)), title: "", kind: "connectionPoint", shape: "ellipse",
             width: 12, height: 12, fill: paint.color};
-          const tail = {...edge, id: id(), source: joint.id, sourcePoint: undefined, startArrow: false, label: ""};
+          const tail = {...edge, id: id(), source: joint.id, sourceAnchor: undefined, sourcePoint: undefined, startArrow: false, label: ""};
           const head = {...copy(edge), target: {node: joint.id}, endArrow: false};
           beginDrag(event,"split",{edgeID: edge.id});
           stageInsertion({nodes: [joint], edges: [head,tail], original: copy(edge)});
         },
-        onClick: event => { if (event?.ctrlKey || batch.value?.edges.has(edge.id)) return; selectNode(null, edge.id); inspectNothing(); selected.value = {kind: "edge", id: edge.id}; },
+        onClick: event => { if (event?.ctrlKey || event?.shiftKey || batch.value?.edges.has(edge.id)) return; selectNode(null, edge.id); inspectNothing(); selected.value = {kind: "edge", id: edge.id}; },
         onDblclick: event => {
           event.stopPropagation();
           openProperties("edge", edge.id, true);
@@ -1712,8 +1940,15 @@ createApp({
       return h("div", {class: "canvas-area"}, [
         h("svg", {ref: canvas, class: ctrl.value ? "editor-canvas ctrl-held" : "editor-canvas", "aria-label": "Ötletvászon",
           onContextmenu: event => context(event),
+          onDragover: event => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); },
+          onDrop: event => {
+            event.preventDefault();
+            const files = Array.from(event.dataTransfer.files), point = world(event);
+            transfer(() => importFiles(files, point));
+          },
           onPointerdownCapture: pressCanvas,
           onPointermove: updatePointer,
+          onPointerleave: () => { if (!gesture.value) cablePointer.value = null; },
           onPointerup: event => finishPointer(event),
           onPointercancel: event => finishPointer(event, true),
 
@@ -1731,9 +1966,9 @@ createApp({
             h("path", {"data-editor-only": "", "pointer-events": "none", stroke: "#aab9cf", "stroke-width": 1,
               d: "M -8 0 H 8 M 0 -8 V 8"}),
             h("g", {"data-scene": ""}, [
-              ...layers.value.back.map(renderNode),
+              ...orderedNodes.value.map(renderNode),
               h("g", {fill: "none", "stroke-linecap": "round"}, sceneEdges.value.map(renderEdge)),
-              ...layers.value.front.map(renderNode),
+              renderConnectionHandles(),
             ]),
             preview.value?.junction ? h("circle", {"data-editor-only": "", cx: preview.value.junction.x, cy: preview.value.junction.y,
               r: 9 / view.value.k, stroke: "#078469", fill: "#b9f3e1", "stroke-width": 2 / view.value.k, "pointer-events": "none"}) : null,
@@ -1748,6 +1983,8 @@ createApp({
           !online.value && problem.value ? h("span", {class: "connection-lost guest", role: "status"}, "Kapcsolat megszakadt") : peers.value.map((p, index) =>
             h("span", {key: index, class: p.color ? "" : "guest", style: {"--peer": p.color}}, p.name))),
         h("div", {class: "canvas-controls"}, [
+          button("", () => transfer(() => copyBox(selectedBox())), {symbol: "copy", title: "Másolás (Ctrl+C / ⌘C)", "aria-label": "Másolás", disabled: !selectedBox()}),
+          button("", () => transfer(pasteClipboard), {symbol: "paste", title: "Beillesztés (Ctrl+V / ⌘V)", "aria-label": "Beillesztés", disabled: !online.value}),
           button("", () => zoomBy(0.8), {"aria-label": "Kicsinyítés", title: "Kicsinyítés", symbol: "minus"}),
           h("span", Math.round(view.value.k * 100) + "%"),
           button("", () => zoomBy(1.25), {"aria-label": "Nagyítás", title: "Nagyítás", symbol: "plus"}),
@@ -1776,6 +2013,7 @@ createApp({
       const edge = board.value?.edges.find(item => item.id === open.id);
       const type = open.kind;
       const entries = type === "node" && node ? [
+        node.file ? button("Link másolása", () => { menu.value = null; transfer(() => writeText(objectURL(path,node.id))); }, {symbol: "link"}) : null,
         button("Ping", () => ping({node: node.id}), {symbol: "center", disabled: !online.value}),
         node.kind !== "connectionPoint" ? button(node.link ? "Link feloldása" : "Link", async () => {
           menu.value = null;
@@ -1788,8 +2026,10 @@ createApp({
           updateItem(current, "link", link);
         }, {symbol: node.link ? "unlink" : "link", disabled: !!occupied(node.id)}) : null,
         button("Szerkesztés", () => openProperties("node", node.id), {symbol: "edit", disabled: !!occupied(node.id)}),
-        button("Text megnyitása", () => showNote(node), {symbol: "eye"}),
+        node.file?.type === "image" ? null : button("Text megnyitása", () => showNote(node), {symbol: "eye"}),
         button("Törlés", () => { menu.value = null; deleteNode(node); }, {class: "button danger", symbol: "trash", disabled: !!occupied(node.id)}),
+        button("Törlés bekötés meghagyásával", () => { menu.value = null; deleteNode(node, true); },
+          {class: "button danger", symbol: "trash", disabled: !!occupied(node.id)}),
       ] : type === "edge" && edge ? [
         button("Szerkesztés", () => openProperties("edge", edge.id), {symbol: "edit"}),
         ...endpointActions(edge),
@@ -1892,7 +2132,7 @@ createApp({
         const joints = nodes.filter(n => n.kind === "connectionPoint").length;
         const edges = board.value.edges.filter(e => batch.value.edges.has(e.id)).length;
         return sidebar("Objektumok", [h("h2","Objektumok:"), h("p", (nodes.length-joints)+" doboz, "+edges+" vonal, "+joints+" csomópont")],
-          button("Törlés",deleteBatch,{class: "button danger",symbol: "trash"}));
+          button("Törlés",() => deleteBatch(),{class: "button danger",symbol: "trash"}));
       }
       if (note.value) {
         const reading = note.value;
@@ -1909,7 +2149,7 @@ createApp({
         const sheet = board.value;
         if (!editingPanel.value) return sidebar("Munkalap", [
           h("h2", sheet.title), h(FormattedText, {source: sheet.text}),
-        ], role === "admin" ? button("Munkalap törlése", deleteBoard, {class: "button danger", symbol: "trash"}) : null, button("Szerkesztés", () => openProperties("worksheet"), {symbol: "edit"}));
+        ], null, button("Szerkesztés", () => openProperties("worksheet"), {symbol: "edit"}));
         return sidebar("Munkalap", [
           field("Cím", input(sheet.title, value => updateItem(sheet, "title", value), {maxlength: 120})),
           field("Text", textarea(sheet.text ?? "", value => updateItem(sheet, "text", value))),
@@ -1927,7 +2167,7 @@ createApp({
             link("Mentett JSON letöltése", "/export/json/" + path, "download"),
             link("Mentett Text letöltése", "/export/text/" + path, "download"),
           ]),
-        ], role === "admin" ? button("Munkalap törlése", deleteBoard, {class: "button danger", symbol: "trash"}) : null, button("Előnézet", () => { editingPanel.value = false; }, {symbol: "eye"}));
+        ], null, button("Előnézet", () => { editingPanel.value = false; }, {symbol: "eye"}));
       }
       if (inspector.value.kind === "edge") {
         const edge = board.value.edges.find(item => item.id === inspector.value.id);
@@ -1953,11 +2193,38 @@ createApp({
       const change = (key, value) => updateItem(node, key, value);
       const title = input(node.title, value => change("title", value), {"aria-label": "Címke", "data-object-label": "", maxlength: 120});
       const color = (label, key, fallback) => colorPicker(label, node[key] ?? fallback, v => change(key, v), node.id + "/" + key);
+      if (node.file?.type === "image") return sidebar("Kép szerkesztése", [
+        field("Cím", title),
+        field("Fájlnév", h("input", {type: "text", "aria-label": "Fájlnév", value: imageStem(node.file),
+          onBlur: event => { event.target.value = imageStem(node.file); },
+          onKeydown: event => {
+            if (event.key !== "Enter" || event.isComposing) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const filename = event.target.value.trim();
+            if (!validImageStem(filename)) { problem.value = "Érvénytelen képfájlnév."; return; }
+            if (filename !== imageStem(node.file)) change("file", {...node.file, filename});
+            event.target.blur();
+            finishField();
+            save();
+          }})),
+        checkbox("Fájlnév megjelenítése", !!node.file.showFilename, value => change("file", {...node.file, showFilename: value})),
+        field("Megjegyzés", textarea(node.text, value => change("text", value))),
+      ], deleteButton(node));
+      if (node.file) return sidebar("Fájl szerkesztése", [
+        field("Cím", title),
+        checkbox("Cím megjelenítése", !node.file.hideTitle, value => change("file", {...node.file, hideTitle: !value})),
+        field(node.file.asset ? "Megjegyzés" : "Szöveg", textarea(node.text, value => change("text", value))),
+      ], deleteButton(node), button("Előnézet", () => showNote(node), {symbol: "eye"}));
       if (node.kind === "connectionPoint") return sidebar("Csomópont", [
         field("Átmérő", numeric(node.width, size => { node.height = size; change("width", size); }, 4, 128)),
         field("Címke", title), color("Szín", "fill"),
       ], deleteButton(node), button("Előnézet", () => showNote(node), {symbol: "eye"}));
-      const alignments = {left: "Balra", center: "Középre", right: "Jobbra"};
+      const positions = [
+        ["top","left","Bal felső","↖"], ["top","center","Felső közép","↑"], ["top","right","Jobb felső","↗"],
+        ["middle","left","Bal oldal","←"], ["middle","center","Közép","•"], ["middle","right","Jobb oldal","→"],
+        ["bottom","left","Bal alsó","↙"], ["bottom","center","Alsó közép","↓"], ["bottom","right","Jobb alsó","↘"],
+      ];
       function typography(section) {
         const isTitle = section === "title";
         const style = isTitle ? node : node[section] ?? {};
@@ -1976,15 +2243,16 @@ createApp({
             v => update(colorKey, v), node.id + "/" + section + "/text"),
           h("div", {class: "fields-two"}, [
             field("Betűméret", numeric(style[sizeKey] ?? 13, v => update(sizeKey, Math.round(v)), 10, isTitle ? 1000 : 60, {step: 1})),
-              field("Igazítás", select((style.verticalAlignment ?? "middle") + "-" + (style.alignment ?? node.alignment), {
-                "top-left": "Bal felső", "top-center": "Felső közép", "top-right": "Jobb felső",
-                "middle-left": "Bal oldal", ...(outside ? {} : {"middle-center": "Közép"}), "middle-right": "Jobb oldal",
-                "bottom-left": "Bal alsó", "bottom-center": "Alsó közép", "bottom-right": "Jobb alsó",
-              }, value => {
-                const [verticalAlignment, alignment] = value.split("-");
-                update("verticalAlignment", verticalAlignment);
-                update("alignment", alignment);
-              })),
+            h("div", {class: "alignment-picker", role: "group", "aria-label": "Igazítás"},
+              positions.map(([vertical, horizontal, label, symbol]) => h("button", {
+                type: "button", title: label, "aria-label": label,
+                "aria-pressed": vertical === (style.verticalAlignment ?? "middle") && horizontal === (style.alignment ?? node.alignment),
+                onClick: () => {
+                  if (outside && horizontal === "center" && vertical === "middle") change("titleOutside", false);
+                  update("verticalAlignment", vertical);
+                  update("alignment", horizontal);
+                },
+              }, symbol))),
           ]),
           h("div", {class: "font-switches"}, [["bold","Félkövér"],["italic","Dőlt"],["underline","Aláhúzott"]]
             .map(([key, label]) => checkbox(label, !!style[key], v => update(key, v)))),
@@ -2004,7 +2272,6 @@ createApp({
           textarea(node.text, value => change("text", value)),
           checkbox("Hide text", Boolean(node.hideText), value => change("hideText", value)),
           ...typography("textStyle"),
-          color("Text keret", "textBorder", automaticBorder(node.fill)),
         ]),
         group("Link", [
           h("input", {"aria-label": "Link",
