@@ -11,7 +11,7 @@ Futtasd a projekt könyvtárából.
 ./run.sh
 ~~~
 
-Nyisd meg a [https://localhost:8443/admin](https://localhost:8443/admin) oldalt. Az első helyi megnyitáskor itt hozható létre az adminfiók. Az adminoldalon állítható a hozzáférés és kezelhetők a felhasználók. Adminfiókot parancssorból is létrehozhatsz a **./run.sh user admin admin** paranccsal, amely jelszót kér.
+Nyisd meg a [https://localhost/admin](https://localhost/admin) oldalt. Az első helyi megnyitáskor itt hozható létre az adminfiók. Az adminoldalon állítható a hozzáférés és kezelhetők a felhasználók. Adminfiókot parancssorból is létrehozhatsz a **./run.sh user admin admin** paranccsal, amely jelszót kér.
 
 A build először a **~/X-Code/Swift/6.0.3/usr/bin/swift** binárist keresi. A **THINKNODES_SWIFT** változóval megadható másik útvonal. Az első teljes build letölti a rögzített Vue- és D3-verziót a **Public/vendor/** könyvtárba. Utána a böngésző helyben tölti be őket. A **./build.sh --server-only** csak a szervert építi. A **THINKNODES_DATA**, **THINKNODES_HOST**, **THINKNODES_PORT** és **THINKNODES_CONFIGURATION** változók felülírják az alapértékeket. HTTPS mögött állítsd a **THINKNODES_SECURE_COOKIES=1** változót.
 
@@ -45,7 +45,12 @@ Indítás a szervergépen:
 ./run.sh
 ~~~
 
-A szerver alapból minden IPv4-hálózati interfészen a **8443**-as porton figyel. A másik eszköz böngészőjében nyisd meg az indításkor kiírt, közös hálózathoz tartozó HTTPS-címet. A szervergépen a **https://localhost:8443/admin** címen végezhető el az első adminisztrátori beállítás. A közös szerkesztés ugyanazon a porton használja a titkosított WebSocket-kapcsolatot.
+A **./run.sh** alapértelmezésben a release binárist indítja, és szükség esetén release módban fordít. Debug indításhoz használd a **./run.sh --debug** parancsot.
+
+
+Macen LAN-os teszthez a **./run.sh --local** debug binárist indít HTTP-n, alapból a 80-as porton. Így a böngészőben elég az **http://** előtag és a Mac címe. A szkript ezen a porton csak a szerver indításához kér adminisztrátori jogosultságot. Sudo nélküli futtatáshoz használd a **./run.sh --local --port:8080** parancsot.
+
+A szerver alapból minden IPv4-hálózati interfészen a **443**-as porton figyel. A másik eszköz böngészőjében nyisd meg az indításkor kiírt, közös hálózathoz tartozó HTTPS-címet. A szervergépen a **https://localhost/admin** címen végezhető el az első adminisztrátori beállítás. A közös szerkesztés ugyanazon a porton használja a titkosított WebSocket-kapcsolatot.
 
 A szkript OpenSSL-lel helyi hitelesítőt hoz létre a **.thinknodes-tls/** könyvtárban. Az eléréshez használt eszközökön egyszer telepítsd a **ca.crt** fájlt megbízható gyökértanúsítványként. A **.key** fájlok a szerveren maradjanak. Az indításkor kiadott szervertanúsítvány a felismert LAN-címekre is érvényes. IP-címváltozás után indítsd újra a szervert.
 
@@ -55,7 +60,7 @@ Saját PEM-tanúsítványlánc és hozzá tartozó, jelszó nélküli privát ku
 THINKNODES_TLS_CERT=/utvonal/fullchain.pem THINKNODES_TLS_KEY=/utvonal/server.key ./run.sh
 ~~~
 
-A **THINKNODES_HOST** és a **THINKNODES_PORT** mindkét módban felülírja a kötési címet és a portot. A **THINKNODES_TLS_DIR** a helyben előállított tanúsítványok könyvtárát adja meg. A **./run.sh --http** alapból minden IPv4-interfészen figyel a **8080**-as porton, és kiírja a helyi és hálózati HTTP-címeket. Csak a szervert futtató gépről való eléréshez indítsd így: **THINKNODES_HOST=127.0.0.1 ./run.sh --http**. A **--port:8000** mindkét módban felülírja a portot, a **--rate:100** pedig milliszekundumban adja meg a húzás közbeni előnézet két küldése közötti minimális időt. Az alapérték **100 ms**.
+A **THINKNODES_HOST** és a **THINKNODES_PORT** mindkét módban felülírja a kötési címet és a portot. A **THINKNODES_TLS_DIR** a helyben előállított tanúsítványok könyvtárát adja meg. A **./run.sh --http** alapból minden IPv4-interfészen figyel a **80**-as porton, és kiírja a helyi és hálózati HTTP-címeket. A böngészőben ehhez elég az **http://** előtag és a szerver címe. Csak a szervert futtató gépről való eléréshez indítsd így: **THINKNODES_HOST=127.0.0.1 ./run.sh --http**. A **--port:8000** mindkét módban felülírja a portot, a **--rate:100** pedig milliszekundumban adja meg a húzás közbeni előnézet két küldése közötti minimális időt. Az alapérték **33 ms**.
 
 A szerkesztőben és a megtekintőben a bejelentkezett felhasználó a vászon bal alsó gombjával kapcsolhatja be saját mutatója megosztását. Az újonnan megnyitott lapon a megosztás ki van kapcsolva.
 
@@ -115,8 +120,8 @@ A vászon jobb kattintásos menüjében az **Új munkalap** létrehozza az allap
 - A végpontot a teljes nyílhegy megfogásával lehet húzni. Nyílhegy nélküli végponton azonos méretű láthatatlan téglalap szolgál fogófelületként. Két kábel szabad végének összeillesztése címke nélküli csomópontot hoz létre. A címke, az átmérő és a szín a csomópont paneljén módosítható. Ha már csak egy kábel maradna a csomóponton, a csomópont eltűnik, és a kábel vége ugyanazon a helyen szabaddá válik.
 - Az **Alt** megjeleníti a méretező sarkokat. A sarkot húzva a doboz mérete változik. A cím és a Text betűmérete külön állítható. Alt+húzás a dobozon a kapcsolataival együtt másolja a dobozt. Alt+dupla kattintás a teljes Text mezőt kijelöli.
 - A **Konténer** gomb az átfedő, azonos szinten lévő dobozokat a konténerhez rendeli. Behúzáskor a mozgatott elem területének több mint fele kell, hogy a célkonténerben legyen. Egymásba ágyazott céloknál a legbelső alkalmas konténer fogadja az elemet. A **Lock** a tartalom önálló mozgatását rögzíti. A **Konténer feloldása** egy szinttel kijjebb helyezi a közvetlen tagokat a vásznon elfoglalt helyük megőrzésével.
-- A pontrács melletti **Rácsra igazítás** a mozgatott objektum közepét a legközelebbi rácspontra illeszti. Alapértelmezésben ki van kapcsolva. A **Munkalap** panelen állítható a pontrács láthatósága, színe és térköze. A láthatóság az összes résztvevő vásznára és az SVG-exportra is érvényes.
-- A **Dobozon kívül** kapcsoló a címet a doboz mellé helyezi. A Text a dobozon belül marad. Ilyenkor nyolc külső igazítás választható. A cím és a Text egymástól függetlenül a doboz kilenc pozíciójához igazítható. A cím és a szöveg helyét Ctrl+Alt+húzással is beállíthatod. A színmintára kattintva megnyílik a helyi paletta, az RGB-csúszkák és a rendszer színválasztója. A HEX-mező közvetlenül szerkeszthető.
+- A pontrács melletti **Rácsra igazítás** a mozgatott objektum közepét a legközelebbi rácspontra illeszti. Alapértelmezésben ki van kapcsolva. A **Munkalap** panelen állítható a pontrács láthatósága, színe és térköze. A vászon alján lévő Pontrács gomb az adott böngészőfülön felülbírálja a munkalap alapbeállítását. Az exportált SVG rács nélkül készül.
+- A **Dobozon kívül** kapcsoló a címet a doboz mellé helyezi. A Text a dobozon belül marad. Ilyenkor nyolc külső igazítás választható. A cím és a Text egymástól függetlenül a doboz kilenc pozíciójához igazítható. A cím és a szöveg helyét Ctrl+Alt+húzással is beállíthatod. A színmintára kattintva megnyílik a helyi paletta, az RGB-csúszkák és a rendszer színválasztója.
 
 A Munkalap panel **SVG letöltése** gombja a teljes vásznat exportálja egy SVG-fájlba, a képernyőn éppen látható nagyítástól és a mentéstől függetlenül. A megtekintő oldalon az SVG, a JSON és a Text export a mentett munkalapból készül. A Text export tartalmazza a dobozok szövegét és a kapcsolatokat.
 

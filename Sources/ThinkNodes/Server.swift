@@ -183,13 +183,21 @@ private func loginPage(_ req: Request, next: String, message: String? = nil) -> 
 func configure(_ application: Application, store: WorksheetStore) {
     let live = Collaboration(store: store)
     let assets = application.directory.publicDirectory
-    let rate = Int(Environment.get("THINKNODES_MOTION_RATE") ?? "") ?? 100
-    let motionRate = (1...999_999_999).contains(rate) ? rate : 100
+    let defaultMotionRate = 33
+    let rate = Int(Environment.get("THINKNODES_MOTION_RATE") ?? "") ?? defaultMotionRate
+    let motionRate = (1...999_999_999).contains(rate) ? rate : defaultMotionRate
     let secure = application.http.server.configuration.tlsConfiguration != nil || Environment.get("THINKNODES_SECURE_COOKIES") == "1"
     application.sessions.use(.memory)
     application.sessions.configuration = .init(cookieName: "thinknodes_session") { sessionID in
         .init(string: sessionID.string, path: "/", isSecure: secure, isHTTPOnly: true, sameSite: .lax)
     }
+    #if !DEBUG
+    var middlewares = Middlewares()
+    for middleware in application.middleware.resolve() where !(middleware is RouteLoggingMiddleware) {
+        middlewares.use(middleware)
+    }
+    application.middleware = middlewares
+    #endif
     application.middleware.use(FileMiddleware(publicDirectory: assets, cachePolicy: .noCache))
     let app = application.grouped(application.sessions.middleware)
     application.routes.defaultMaxBodySize = "16mb"
@@ -624,13 +632,13 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
             \(edit)
             <button class="button fullscreen" type="button" aria-label="Teljes képernyő">\(uiIcon("fit"))</button>
           </div>
-          \(tooltips)
-          \(notes)
-          \(note)
+          <div data-viewer-notes>\(tooltips)\(notes)\(note)</div>
           <nav class="viewer-downloads" aria-label="Letöltések és szerzők">\(downloads)\(credits(worksheet, access))</nav>
+          <div data-viewer-sections>
           <section class="worksheet-section"><h2>További oldalak:</h2><div class="project-list" data-current-sheet="\(path.url)">\(previews)\(newPage)</div></section>
           <section class="worksheet-section"><h2>Külső hivatkozások</h2>\(external.isEmpty ? "<p>Nincs külső hivatkozás.</p>" : "<ul>\(external)</ul>")</section>
           <section class="worksheet-section"><h2>Mappa tartalma</h2>\(attachments.isEmpty ? "<p>Nincs csatolt fájl.</p>" : "<ul>\(attachments)</ul>")</section>
+          </div>
         </main>
         """)
 }

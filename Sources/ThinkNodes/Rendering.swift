@@ -242,7 +242,7 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
         while !visible.isEmpty && remaining < marker.step { remaining += visible.removeLast().step }
         visible.append(marker)
     }
-    var extentX = node.width / 2, extentY = node.height / 2
+    var extentX = node.width / 2, extentY = max(node.height, available + iconSpace) / 2
     for key in groups.keys.sorted() {
         let rows = groups[key] ?? []
         let total = rows.reduce(0) { $0 + $1.step }
@@ -453,22 +453,11 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
     let renderedNodes = ordered[split...].map(render).joined(separator: "\n")
     let width = number(halfWidth * 2)
     let height = number(halfHeight * 2)
-    var grid = ""
-    if noteBase == nil && board.gridVisible != false {
-        let spacing = board.gridSpacing ?? 20
-        definitions.append("""
-            <pattern id="worksheet-grid" patternUnits="userSpaceOnUse" width="\(number(spacing))" height="\(number(spacing))"><circle cx="\(number(spacing/2))" cy="\(number(spacing/2))" r="1.1" fill="\(board.gridColor ?? "#ccd7eb")"/></pattern>
-            """)
-        grid = """
-            <rect x="\(number(-halfWidth))" y="\(number(-halfHeight))" width="\(width)" height="\(height)" fill="url(#worksheet-grid)"/>
-            """
-    }
     return """
         <svg xmlns="http://www.w3.org/2000/svg" class="passive-canvas" role="img" aria-label="\(escaped(board.title))" width="\(width)" height="\(height)" viewBox="\(number(-halfWidth)) \(number(-halfHeight)) \(width) \(height)">
           \(noteBase == nil ? "<title>\(escaped(board.title))</title>" : "")
           <defs>\(definitions.joined())</defs>
           <rect x="\(number(-halfWidth))" y="\(number(-halfHeight))" width="\(width)" height="\(height)" fill="\(escaped(board.backgroundColor))"/>
-          \(grid)
           \(containers)
           <g fill="none" stroke-linecap="round">
             \(edges)

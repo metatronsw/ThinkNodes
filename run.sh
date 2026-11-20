@@ -32,54 +32,24 @@ if [[ -e .git ]]; then
     unset THINKNODES_UPDATED_HEAD
 fi
 
-swift_bin="${THINKNODES_SWIFT:-$HOME/X-Code/Swift/6.0.3/usr/bin/swift}"
-if [[ ! -x "$swift_bin" && -z "${THINKNODES_SWIFT:-}" ]]; then
-    swift_bin="$(command -v swift || true)"
-fi
-configuration="${THINKNODES_CONFIGURATION:-debug}"
-executable="${THINKNODES_EXECUTABLE:-.build/$configuration/ThinkNodes}"
-
-if [[ -n "${THINKNODES_EXECUTABLE:-}" && ! -x "$executable" ]]; then
-    printf 'A kiválasztott fájl nem futtatható: %s\n' "$executable" >&2
-    exit 1
-fi
-
-build_stamp=".build/$configuration/.thinknodes-built-head"
-if [[ ! -x "$executable" || ( -z "${THINKNODES_EXECUTABLE:-}" && ( Sources/ThinkNodes/Server.swift -nt "$executable" ||
-        ( -n "$checkout_head" && "$(cat "$build_stamp" 2>/dev/null || true)" != "$checkout_head" ) ) ) ]]; then
-    if [[ ! -x "$swift_bin" ]]; then
-        printf '%s\n' 'A Swift nem található. A THINKNODES_SWIFT változóban megadható a swift futtatható fájl.' >&2
-        exit 1
-    fi
-    ./build.sh --skip-update -j 2
-    if [[ -n "$checkout_head" && -z "${THINKNODES_EXECUTABLE:-}" ]]; then
-        printf '%s\n' "$checkout_head" > "$build_stamp"
-    fi
-fi
-
-if [[ "${1:-}" == "user" ]]; then
-    if [[ ! -x "$executable" ]]; then
-        printf '%s\n' 'A futtatható fájlhoz indítsd el a ./build.sh szkriptet.' >&2
-        exit 1
-    fi
-    if [[ -t 0 ]]; then
-        read -r -s -p 'Jelszó: ' password
-        printf '\n' >&2
-        printf '%s\n' "$password" | "$executable" "$@"
-        exit
-    fi
-    exec "$executable" "$@"
-fi
-
 command=serve-https
+if [[ "${1:-}" == user ]]; then command=user; fi
+configuration="${THINKNODES_CONFIGURATION:-release}"
 port=""
-rate=100
+rate=33
 test_mode=0
+local_mode=0
 server_args=()
-while (( $# )); do
+while [[ "$command" != user ]] && (( $# )); do
     case "$1" in
+        --debug) configuration=debug ;;
         --test) test_mode=1 ;;
         --http) command=serve ;;
+        --local)
+            local_mode=1
+            command=serve
+            configuration=debug
+            ;;
         --port:*)
             port="${1#--port:}"
             if [[ ! "$port" =~ ^[1-9][0-9]{0,4}$ ]] || (( port > 65535 )); then
@@ -107,12 +77,51 @@ while (( $# )); do
     esac
     shift
 done
+swift_bin="${THINKNODES_SWIFT:-$HOME/X-Code/Swift/6.0.3/usr/bin/swift}"
+if [[ ! -x "$swift_bin" && -z "${THINKNODES_SWIFT:-}" ]]; then
+    swift_bin="$(command -v swift || true)"
+fi
+export THINKNODES_CONFIGURATION="$configuration"
+executable="${THINKNODES_EXECUTABLE:-.build/$configuration/ThinkNodes}"
+
+if [[ -n "${THINKNODES_EXECUTABLE:-}" && ! -x "$executable" ]]; then
+    printf 'A kiválasztott fájl nem futtatható: %s\n' "$executable" >&2
+    exit 1
+fi
+
+build_stamp=".build/$configuration/.thinknodes-built-head"
+if [[ ! -x "$executable" || ( -z "${THINKNODES_EXECUTABLE:-}" && ( Sources/ThinkNodes/Server.swift -nt "$executable" ||
+        ( -n "$checkout_head" && "$(cat "$build_stamp" 2>/dev/null || true)" != "$checkout_head" ) ) ) ]]; then
+    if [[ ! -x "$swift_bin" ]]; then
+        printf '%s\n' 'A Swift nem található. A THINKNODES_SWIFT változóban megadható a swift futtatható fájl.' >&2
+        exit 1
+    fi
+    ./build.sh --skip-update -j 2
+    if [[ -n "$checkout_head" && -z "${THINKNODES_EXECUTABLE:-}" ]]; then
+        printf '%s\n' "$checkout_head" > "$build_stamp"
+    fi
+fi
+
+if [[ "$command" == user ]]; then
+    if [[ ! -x "$executable" ]]; then
+        printf '%s\n' 'A futtatható fájlhoz indítsd el a ./build.sh szkriptet.' >&2
+        exit 1
+    fi
+    if [[ -t 0 ]]; then
+        read -r -s -p 'Jelszó: ' password
+        printf '\n' >&2
+        printf '%s\n' "$password" | "$executable" "$@"
+        exit
+    fi
+    exec "$executable" "$@"
+fi
+
 export THINKNODES_MOTION_RATE="$rate" THINKNODES_TEST_MODE="$test_mode"
 if [[ "$test_mode" == 1 ]]; then echo "Tesztmód: minden csatlakozó adminisztrátori jogot kap."; fi
 
 bind_host="${THINKNODES_HOST:-0.0.0.0}"
-default_port=8443
-if [[ "$command" == serve ]]; then default_port=8080; fi
+default_port=443
+if [[ "$command" == serve ]]; then default_port=80; fi
 port="${port:-${THINKNODES_PORT:-$default_port}}"
 addresses=(localhost 127.0.0.1)
 if [[ "$bind_host" == 0.0.0.0 || "$bind_host" == :: ]]; then
@@ -135,8 +144,19 @@ if [[ "$command" == serve ]]; then
     if [[ "$bind_host" != 0.0.0.0 && "$bind_host" != :: ]]; then addresses=("$bind_host"); fi
     for address in "${addresses[@]}"; do
         [[ "$address" != *:* ]] || address="[$address]"
-        printf 'HTTP-cím: http://%s:%s/\n' "$address" "$port"
+        if [[ "$port" != 80 ]]; then address="$address:$port"; fi
+        printf 'HTTP-cím: http://%s/\n' "$address"
     done
+    if [[ "$local_mode" == 1 ]]; then
+        export THINKNODES_SECURE_COOKIES=0
+        if [[ "$(uname -s)" == Darwin && "$EUID" != 0 && "$port" =~ ^[0-9]{1,5}$ ]] &&
+            (( 10#$port < 1024 )); then
+            exec sudo -- /usr/bin/env \
+                THINKNODES_DATA="${THINKNODES_DATA:-Data}" \
+                THINKNODES_MOTION_RATE="$rate" THINKNODES_TEST_MODE="$test_mode" THINKNODES_SECURE_COOKIES=0 \
+                "$executable" serve --hostname "$bind_host" --port "$port" ${server_args[@]+"${server_args[@]}"}
+        fi
+    fi
     exec "$executable" serve --hostname "$bind_host" --port "$port" ${server_args[@]+"${server_args[@]}"}
 fi
 

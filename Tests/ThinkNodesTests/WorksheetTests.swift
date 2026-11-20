@@ -82,7 +82,7 @@ import VaporTesting
         #expect(child.creator == "shared")
         let preview = try await browser.sendRequest(.GET, "/api/preview/" + path + "/terv")
         #expect(preview.status == .ok && preview.body.string.contains("<svg"))
-        #expect(FileManager.default.fileExists(atPath: file.deletingPathExtension().appendingPathComponent(".terv.preview-v3.svg").path))
+        #expect(FileManager.default.fileExists(atPath: file.deletingPathExtension().appendingPathComponent(".terv.preview-v4.svg").path))
         let parent = try await browser.sendRequest(.GET, "/" + path)
         #expect(parent.body.string.contains("További oldalak:") && parent.body.string.contains("Létrehozó: shared"))
         #expect(try await browser.sendRequest(.POST, childURL, headers: headers).status == .conflict)
@@ -295,6 +295,9 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     var board = Worksheet(schemaVersion: 1, title: "Ábra", gridColor: "#006699", gridSpacing: 32,
                           nodes: [child, junction, container], edges: [line, second])
     try board.validate()
+    var largeTitle = board
+    largeTitle.nodes[0].fontSize = 1000
+    try largeTitle.validate()
     var legacy = board
     var duplicate = line
     duplicate.id = "parallel"
@@ -309,8 +312,8 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     #expect(saved.nodes.first?.textStyle?.size == 17)
     #expect(saved.nodes.last?.locked == true)
     let svg = boardSVG(saved)
-    #expect(svg.contains("patternUnits=\"userSpaceOnUse\" width=\"32.000\""))
-    #expect(svg.contains("fill=\"#006699\""))
+    #expect(!svg.contains("worksheet-grid"))
+    #expect(!svg.contains("<pattern"))
     #expect(svg.contains("fill=\"#eecc99\" stroke=\"#663344\""))
     #expect(svg.contains("text-anchor=\"start\""))
     #expect(svg.contains("font-style=\"italic\" text-decoration=\"underline\""))

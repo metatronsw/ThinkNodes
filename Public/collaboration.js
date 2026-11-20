@@ -70,7 +70,7 @@ export function rebaseWorksheet(base, local, remote) {
   return result;
 }
 
-export function liveConnection(path, csrf, onState, onError, {editing = false, onMotion, onCursor, rate = 100} = {}) {
+export function liveConnection(path, csrf, onState, onError, {editing = false, onMotion, onCursor, rate = 33} = {}) {
   const client = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, "0")).join("");
   const headers = {"Content-Type": "application/json", "X-CSRF-Token": csrf, "X-Worksheet-Client": client};
   let controller;

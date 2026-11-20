@@ -281,7 +281,7 @@ export function labelLayout(node, blocks = []) {
       fit: textWidth(line.text, line.size) > labelWidth ? labelWidth : undefined};
   });
   let bodyX = 0;
-  let extentX = width / 2, extentY = height / 2;
+  let extentX = width / 2, extentY = Math.max(height, available + iconSpace) / 2;
   for (const {horizontal, vertical, rows} of external.values()) {
     const total = rows.reduce((sum, line) => sum + line.step, 0);
     const side = horizontal === "left" ? -1 : horizontal === "right" ? 1 : 0;

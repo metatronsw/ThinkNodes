@@ -75,7 +75,7 @@ struct Idea: Codable, Equatable, Sendable {
             && (link.map { $0.isEmpty || WorksheetLink($0) != nil } ?? true)
         return validContent && (textStyle?.isValid ?? true)
             && [textFill, textBorder].compactMap { $0 }.allSatisfy(validColor)
-            && (10...60).contains(fontSize) && fontSize.rounded() == fontSize
+            && (10...1000).contains(fontSize) && fontSize.rounded() == fontSize
             && [fill, textColor, border].allSatisfy(validColor)
     }
 }
@@ -622,7 +622,7 @@ final class WorksheetStore: @unchecked Sendable {
             let sheet = try readDocument(path, rules: rules)
             try authorize(accessLocked(path, sheet: sheet, user: user, unlocks: unlocks, rules: rules), user: user)
             guard files.fileExists(atPath: url.path) else { return boardSVG(sheet) }
-            let cache = url.deletingLastPathComponent().appendingPathComponent("." + path.name + ".preview-v3.svg")
+            let cache = url.deletingLastPathComponent().appendingPathComponent("." + path.name + ".preview-v4.svg")
             try rejectLink(cache)
             let modified = try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
             if let modified, let cached = try? cache.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,

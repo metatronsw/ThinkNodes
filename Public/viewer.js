@@ -11,7 +11,7 @@ import {ancestors} from "./containers.js";
 let selection;
 let peers = [];
 let selectionRequest = Promise.resolve();
-let main = document.querySelector("#worksheet-view");
+const main = document.querySelector("#worksheet-view");
 const {path, csrf} = main.dataset;
 const ns = "http://www.w3.org/2000/svg";
 const roster = document.createElement("div");
@@ -177,6 +177,12 @@ document.addEventListener("contextmenu", event => {
   if (documentLink) entries.push(...documentEntries(documentLink).slice(1));
   contextMenu(event, entries);
 });
+function updateSection(current, incoming, selector) {
+  const existing = current.querySelector(selector);
+  const replacement = incoming.querySelector(selector);
+  if (existing && replacement && existing.outerHTML !== replacement.outerHTML) existing.replaceWith(replacement);
+}
+
 const live = liveConnection(path, csrf, async state => {
   if (Number(main.dataset.revision) < state.revision) {
     const response = await fetch(location.href, {cache: "no-store"});
@@ -184,22 +190,27 @@ const live = liveConnection(path, csrf, async state => {
     const page = new DOMParser().parseFromString(await response.text(), "text/html");
     const next = page.querySelector("#worksheet-view");
     if (!next) { location.reload(); return; }
-    if (document.fullscreenElement) {
-      const currentFrame = main.querySelector(".passive-frame");
-      const nextFrame = next.querySelector(".passive-frame");
-      currentFrame.replaceChildren(...nextFrame.childNodes);
-      for (const element of [...main.children]) if (element !== currentFrame) element.remove();
-      for (const element of [...next.children]) if (element !== nextFrame) main.append(element);
-      Object.assign(main.dataset, next.dataset);
-    } else {
-      main.replaceWith(next);
-      main = next;
+    const frame = main.querySelector(".passive-frame");
+    frame.replaceChildren(...next.querySelector(".passive-frame").childNodes);
+    for (const selector of ["[data-current-document]", "[data-viewer-notes]", "[data-viewer-sections]"]) {
+      updateSection(main, next, selector);
     }
+    const downloadBar = ".viewer-downloads";
+    const oldCredits = main.querySelectorAll(downloadBar + " .card-meta");
+    const newCredits = next.querySelectorAll(downloadBar + " .card-meta");
+    oldCredits.forEach((credit, index) => {
+      const replacement = newCredits[index];
+      if (replacement && !credit.isEqualNode(replacement)) credit.replaceWith(replacement);
+    });
+    Object.assign(main.dataset, next.dataset);
     motions.clear();
     drawPreview = previewScene();
-    document.title = page.title;
-    const header = page.querySelector(".site-header");
-    document.querySelector(".site-header").replaceWith(header);
+    if (document.title !== page.title) document.title = page.title;
+    const header = document.querySelector(".site-header");
+    const nextHeader = page.querySelector(".site-header");
+    for (const selector of [".header-left", ".header-parent", ".header-actions"]) {
+      updateSection(header, nextHeader, selector);
+    }
     bindCanvas();
     if (selection) selectBox(main.querySelector('[data-node="' + CSS.escape(selection) + '"]'));
   }

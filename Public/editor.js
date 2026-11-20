@@ -35,41 +35,27 @@ const ColorPicker = {
   emits: ["update"],
   setup(props, {emit}) {
     const expanded = ref(false);
-    const draft = ref(props.color);
-    watch(() => props.color, color => { draft.value = color; });
-    const valid = value => /^#?[\da-f]{6}$/i.test(value);
-    function apply(color) {
-      draft.value = color;
-      emit("update", color);
-    }
-    function typed(event) {
-      draft.value = event.target.value;
-      if (valid(draft.value)) emit("update", "#" + draft.value.replace(/^#/, "").toLowerCase());
-    }
     function swatch(color) {
-      return h("svg", {viewBox: "0 0 40 12", preserveAspectRatio: "none", "aria-hidden": "true"},
-        [h("rect", {width: 40, height: 12, fill: color})]);
+      return h("svg", {viewBox: "0 0 4 3", preserveAspectRatio: "none", "aria-hidden": "true"},
+        [h("rect", {width: 4, height: 3, fill: color})]);
     }
     const presets = ["#ffffff", "#000000", "#e95c59", "#f3ae49", "#f3df65", "#60b77a", "#5aaed2", "#657ace", "#a375be", "#e198ad"];
     return () => h("div", {class: "color-field"}, [
       h("span", props.label),
       h("button", {type: "button", class: "color-sample", "aria-label": props.label + " színválasztó",
         "aria-expanded": expanded.value, onClick: () => { expanded.value = !expanded.value; }}, [swatch(props.color)]),
-      h("input", {type: "text", value: draft.value, maxlength: 7, spellcheck: false, autocomplete: "off",
-        "aria-label": props.label + " HEX", "aria-invalid": valid(draft.value) ? undefined : "true",
-        onInput: typed, onChange: typed, onKeydown: e => { if (e.key === "Escape") draft.value = props.color; }}),
       expanded.value ? h("div", {class: "color-tools"}, [
         h("div", {class: "color-presets"}, presets.map(color => h("button", {type: "button", key: color,
-          "aria-label": props.label + " " + color, title: color, onClick: () => apply(color)}, [swatch(color)]))),
+          "aria-label": props.label + " " + color, title: color, onClick: () => emit("update", color)}, [swatch(color)]))),
         ...["Piros", "Zöld", "Kék"].map((label, i) => {
           const offset = 1 + i * 2;
-          const change = event => apply(props.color.slice(0, offset) +
+          const change = event => emit("update", props.color.slice(0, offset) +
             Number(event.target.value).toString(16).padStart(2, "0") + props.color.slice(offset + 2));
           return field(label, h("input", {type: "range", min: 0, max: 255, step: 1,
             value: parseInt(props.color.slice(offset, offset+2), 16), onInput: change, onChange: change}));
         }),
         field("Rendszerpaletta", h("input", {type: "color", value: props.color,
-          onInput: e => apply(e.target.value), onChange: e => apply(e.target.value)})),
+          onInput: e => emit("update", e.target.value), onChange: e => emit("update", e.target.value)})),
       ]) : null,
     ]);
   },
@@ -260,6 +246,8 @@ createApp({
     const drawnBounds = () => canvasBounds({
       nodes: [...drawings.value.values()].map(({node, layout}) => ({...node, extentX: layout.extentX, extentY: layout.extentY})), edges: board.value.edges,
     });
+    const gridOverride = ref(null);
+    const gridVisible = computed(() => gridOverride.value ?? (board.value?.gridVisible !== false));
     const snapToGrid = ref(false);
     const selected = ref(null);
     const batch = ref(null);
@@ -386,7 +374,7 @@ createApp({
       if (gesture.value) finishPointer({pointerId: gesture.value.pointer}, true);
       if (inspector.value?.kind === "node") inspectNothing();
       problem.value = error.message;
-    }, {editing: true, onCursor: mouse?.receive, onMotion: receiveMotion, rate: Number(motionRate) || 100});
+    }, {editing: true, onCursor: mouse?.receive, onMotion: receiveMotion, rate: Number(motionRate) || 33});
 
     function scheduleSave() {
       if (saveTimer) return;
@@ -1431,13 +1419,7 @@ createApp({
       scene.querySelectorAll("[tabindex], [data-node], [data-edge]").forEach(element => {
         for (const attribute of ["tabindex", "data-node", "data-edge", "class"]) element.removeAttribute(attribute);
       });
-      output.append(title, canvas.value.querySelector("defs").cloneNode(true), background);
-      if (board.value.gridVisible !== false) {
-        const grid = background.cloneNode(false);
-        grid.setAttribute("fill", "url(#worksheet-grid)");
-        output.append(grid);
-      }
-      output.append(scene);
+      output.append(title, background, scene);
       const file = new Blob([new XMLSerializer().serializeToString(output)], {type: "image/svg+xml"});
       const url = URL.createObjectURL(file);
       const link = Object.assign(document.createElement("a"), {href: url, download: decodeURIComponent(path.split("/").at(-1)) + ".svg"});
@@ -1749,7 +1731,7 @@ createApp({
           ]),
           h("rect", {width: "100%", height: "100%", fill: board.value.background ?? paper, "pointer-events": "none"}),
           h("g", {transform: view.value + " translate(" + centerX + " " + centerY + ")"}, [
-            board.value.gridVisible !== false ? h("rect", {x: left-centerX, y: top-centerY, width: size.value.width/view.value.k,
+            gridVisible.value ? h("rect", {x: left-centerX, y: top-centerY, width: size.value.width/view.value.k,
               height: size.value.height/view.value.k, fill: "url(#worksheet-grid)", "pointer-events": "none"}) : null,
             h("path", {"data-editor-only": "", "pointer-events": "none", stroke: "#aab9cf", "stroke-width": 1,
               d: "M -8 0 H 8 M 0 -8 V 8"}),
@@ -1776,8 +1758,8 @@ createApp({
           button("", () => zoomBy(1.25), {"aria-label": "Nagyítás", title: "Nagyítás", symbol: "plus"}),
           button("Közép", centerOrigin, {title: "Középre állítás, (0, 0)", symbol: "center"}),
           button("Mind", fit, {title: "A teljes vászon megjelenítése", symbol: "fit"}),
-          button("", () => updateItem(board.value, "gridVisible", board.value.gridVisible === false), {
-            title: "Pontrács", "aria-label": "Pontrács", "aria-pressed": board.value.gridVisible !== false, symbol: "grid"}),
+          button("", () => { gridOverride.value = !gridVisible.value; }, {
+            title: "Pontrács ezen a kliensen", "aria-label": "Pontrács", "aria-pressed": gridVisible.value, symbol: "grid"}),
           button("", () => { snapToGrid.value = !snapToGrid.value; }, {title: "Rácsra igazítás", "aria-label": "Rácsra igazítás", "aria-pressed": snapToGrid.value, symbol: "snap"}),
 
         ]),
@@ -1937,7 +1919,10 @@ createApp({
           field("Text", textarea(sheet.text ?? "", value => updateItem(sheet, "text", value))),
           colorPicker("Munkalap háttérszíne", sheet.background ?? paper, value => updateItem(sheet, "background", value), "worksheet/background"),
           colorPicker("Rácspontok színe", sheet.gridColor ?? "#ccd7eb", value => updateItem(sheet, "gridColor", value), "worksheet/grid"),
-          checkbox("Pontrács megjelenítése", sheet.gridVisible !== false, v => updateItem(sheet, "gridVisible", v)),
+          checkbox("Pontrács megjelenítése", sheet.gridVisible !== false, v => {
+            gridOverride.value = null;
+            updateItem(sheet, "gridVisible", v);
+          }),
           field("Rácsköz", numeric(sheet.gridSpacing ?? 20, value => updateItem(sheet, "gridSpacing", value), 6, 160)),
           ...(canManage.value ? worksheetAccess(sheet) : []),
           h("div", {class: "inspector-links"}, [
@@ -1971,12 +1956,12 @@ createApp({
       const node = nodeMap.value.get(inspector.value.id);
       if (!node || held.value !== node.id || occupied(node.id)) return null;
       const change = (key, value) => updateItem(node, key, value);
-      const title = field("Címke", input(node.title, value => change("title", value), {"data-object-label": "", maxlength: 120}));
+      const title = input(node.title, value => change("title", value), {"aria-label": "Címke", "data-object-label": "", maxlength: 120});
       const color = (label, key, fallback) => colorPicker(label, node[key] ?? fallback, v => change(key, v), node.id + "/" + key);
       if (node.kind === "connectionPoint") return sidebar("Csomópont", [
         button("Előnézet", () => showNote(node), {symbol: "eye"}),
         field("Átmérő", numeric(node.width, size => { node.height = size; change("width", size); }, 4, 128)),
-        title, color("Szín", "fill"),
+        field("Címke", title), color("Szín", "fill"),
       ], deleteButton(node));
       const alignments = {left: "Balra", center: "Középre", right: "Jobbra"};
       function typography(section) {
@@ -1996,7 +1981,7 @@ createApp({
           colorPicker("Szövegszín", style[colorKey] ?? node.textColor,
             v => update(colorKey, v), node.id + "/" + section + "/text"),
           h("div", {class: "fields-two"}, [
-            field("Betűméret", numeric(style[sizeKey] ?? 13, v => update(sizeKey, Math.round(v)), 10, 60, {step: 1})),
+            field("Betűméret", numeric(style[sizeKey] ?? 13, v => update(sizeKey, Math.round(v)), 10, isTitle ? 1000 : 60, {step: 1})),
               field("Igazítás", select((style.verticalAlignment ?? "middle") + "-" + (style.alignment ?? node.alignment), {
                 "top-left": "Bal felső", "top-center": "Felső közép", "top-right": "Jobb felső",
                 "middle-left": "Bal oldal", ...(outside ? {} : {"middle-center": "Közép"}), "middle-right": "Jobb oldal",
@@ -2013,32 +1998,24 @@ createApp({
       }
       const group = (label, children) => h("fieldset", {class: "property-group stack"}, [h("legend", label), ...children]);
       const locked = groupBlocked(node) || ancestors(node, nodeMap.value).some(n => n.locked);
-      function coordinate(axis) {
-        return numeric(node.position[axis], v => {
-          const delta = v - node.position[axis];
-          translateGroup(moveGroup(node), axis === "x" ? delta : 0, axis === "y" ? delta : 0);
-          modified();
-        }, -100000, 100000, {disabled: locked});
-      }
       return sidebar("Ötlet szerkesztése", [
         button("Előnézet", () => showNote(node), {symbol: "eye"}),
         group("Cím", [title, ...typography("title")]),
         group("Doboz", [
-          field("Forma", select(node.shape, shapes, value => change("shape", value))),
-          h("div", {class: "fields-two"}, [field("X", coordinate("x")), field("Y", coordinate("y"))]),
+          select(node.shape, shapes, value => change("shape", value), {"aria-label": "Forma"}),
           h("div", {class: "fields-two"}, [color("Háttér", "fill"), color("Keret", "border")]),
           button(node.kind === "container" ? "Konténer feloldása" : "Konténer", () => toggleContainer(node), {symbol: "folder", disabled: locked}),
           node.kind === "container" ? checkbox("Lock · tartalom rögzítése", !!node.locked, v => change("locked", v)) : null,
         ]),
         group("Text", [
-          checkbox("Hide text", Boolean(node.hideText), value => change("hideText", value)),
           textarea(node.text, value => change("text", value)),
+          checkbox("Hide text", Boolean(node.hideText), value => change("hideText", value)),
           ...typography("textStyle"),
           h("div", {class: "fields-two"}, [color("Text háttér", "textFill", node.fill),
             color("Text keret", "textBorder", node.border)]),
         ]),
         group("Link", [
-          field("Link", h("input", {
+          h("input", {"aria-label": "Link",
             value: node.link ?? "", maxlength: 2048, placeholder: "allap, ../ vagy https://…",
             onChange: event => {
               const link = event.target.value.trim();
@@ -2049,7 +2026,7 @@ createApp({
               }
               change("link", link);
             },
-          })),
+          }),
         ]),
       ], deleteButton(node));
     }
@@ -2071,7 +2048,7 @@ createApp({
       const controls = [
           historyButton("Visszavonás", "undo", false, undo.value.length || fieldChanged),
           historyButton("Újra", "redo", true, redo.value.length),
-          button("Mentés", () => sessionAction("checkpoint"), {class: changed ? "button primary" : "button", symbol: "save",
+          button(h("span", {class: changed ? "save-label-changed" : undefined}, "Mentés"), () => sessionAction("checkpoint"), {symbol: "save",
             title: "Közös visszaállítási pont rögzítése", disabled: checkpointBusy.value || !online.value}),
           button("Resign", () => sessionAction("resign"), {symbol: "undo", title: "A közös visszaállítási pont betöltése",
             disabled: checkpointBusy.value || !online.value}),
