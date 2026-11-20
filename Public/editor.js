@@ -365,11 +365,11 @@ createApp({
       online.value = true;
       receiveCheckpoint(state);
       peers.value = state.participants;
-      motions.value = new Map([...motions.value].filter(([id, frame]) =>
-        frame.revision === state.revision && occupied(id)));
       if (state.revision > baseline.revision) await enqueue(async () => {
         if (state.revision > baseline.revision) await refresh();
       });
+      motions.value = new Map([...motions.value].filter(([id, frame]) =>
+        frame.revision === board.value.revision && occupied(id)));
       if (initialNode) {
         const id = initialNode;
         initialNode = null;
@@ -1096,7 +1096,11 @@ createApp({
         const node = nodeMap.value.get(operation.nodeID);
         if (cancel && !operation.locked) live.endMotion(node.id, baseline.revision);
         if (cancel && !operation.locked) translateGroup(operation.group, 0, 0);
-        else if (!operation.locked) { dropParent(node); modified(); }
+        else if (!operation.locked) {
+          live.flushMotion();
+          dropParent(node);
+          modified();
+        }
       } else if (!operation.moved && !cancel && (operation.nodeID || operation.edgeID || operation.hitID)) {
         const kind = operation.hitKind ?? (operation.nodeID ? "node" : "edge");
         const id = operation.hitID ?? operation.nodeID ?? operation.edgeID;
@@ -2049,9 +2053,14 @@ createApp({
     function renderHeader() {
       const changed = online.value && (dirty.value || (board.value.revision > checkpointState.value.revision
         ? board.value.revision !== checkpointRevision : checkpointState.value.changed));
+      const historyButton = (label, symbol, forward, available) =>
+        button(label, () => replay(forward), {
+          symbol, disabled: !available || !online.value || !!gesture.value,
+          class: available && online.value && gesture.value ? "button gesture-disabled" : "button",
+        });
       const controls = [
-          button("Visszavonás", () => replay(false), {symbol: "undo", disabled: !undo.value.length && !fieldChanged || !online.value || !!gesture.value}),
-          button("Újra", () => replay(true), {symbol: "redo", disabled: !redo.value.length || !online.value || !!gesture.value}),
+          historyButton("Visszavonás", "undo", false, undo.value.length || fieldChanged),
+          historyButton("Újra", "redo", true, redo.value.length),
           button("Mentés", () => sessionAction("checkpoint"), {class: changed ? "button primary" : "button", symbol: "save",
             title: "Közös visszaállítási pont rögzítése", disabled: checkpointBusy.value || !online.value}),
           button("Resign", () => sessionAction("resign"), {symbol: "undo", title: "A közös visszaállítási pont betöltése",

@@ -55,13 +55,18 @@ let sheet = {title: "Próba", revision: 1, nodes: [
   node("outer", 0, 0, 300, 240), node("inner", 10, 10, 160, 120), node("child", 10, 10, 64, 40),
   node("outside", 340, 0, 100, 80), {...node("auto", -420, 0, 120, 60), autoSize: true},
 ], edges: [{id: "one", source: "outside", target: {point: {x: 400, y: 230}}, style: "arrow"}]};
+let socket, finishPoll, fetchWorksheet;
+globalThis.location = new URL("http://localhost/test");
+globalThis.WebSocket = window.WebSocket = class {
+  constructor() { socket = this; }
+};
 let selectedNode;
 let writes = 0;
 let checkpoint = structuredClone(sheet);
 globalThis.fetch = async (url, options) => {
   if (url.includes("/presence/")) {
     const {action, node, since} = JSON.parse(options.body);
-    if (since) return new Promise(() => {});
+    if (since) return new Promise(resolve => { finishPoll = resolve; });
     if (action === "select") selectedNode = node;
     if (action === "checkpoint") checkpoint = structuredClone(sheet);
     if (action === "resign") {
@@ -82,6 +87,7 @@ globalThis.fetch = async (url, options) => {
     sheet = JSON.parse(options.body);
     sheet.revision++;
   }
+  if (fetchWorksheet) await fetchWorksheet;
   return Response.json(sheet);
 };
 await import("../../Public/editor.js");
@@ -128,6 +134,26 @@ async function detachDrag(id, end, x, y, cancel = false) {
   await drag(handle, +cx, +cy, x, y, {ctrlKey: true}, cancel);
   toggle("Control", false); await tick();
 }
+
+// The revision notice can arrive well before the worksheet GET finishes.
+socket.onmessage({data: JSON.stringify({node: "outside", revision: sheet.revision, delta: {x: 25, y: 0}})});
+await tick();
+const peerState = {participants: [{node: "outside", mine: false, name: "peer"}]};
+let deliverWorksheet;
+fetchWorksheet = new Promise(resolve => { deliverWorksheet = resolve; });
+sheet.revision++;
+model("outside").position.x = 365;
+finishPoll(Response.json({...peerState, version: "2", revision: sheet.revision}));
+await tick();
+assert.equal(graphic("outside").props.transform, "translate(365 0)", "keep the drag preview until the GET completes");
+deliverWorksheet();
+await tick();
+assert.equal(graphic("outside").props.transform, "translate(365 0)");
+model("outside").position.x = 340;
+sheet.revision++;
+finishPoll(Response.json({participants: [], version: "3", revision: sheet.revision}));
+await tick();
+checkpoint = structuredClone(sheet);
 
 const oneWire = () => find(n => n.tag === "g" && n.props["data-edge"] === "one");
 const panel = () => find(n => n.tag === "aside");

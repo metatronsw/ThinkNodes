@@ -112,6 +112,10 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
     pending = frame;
     if (timer == null) timer = setTimeout(sendPending, Math.max(0, nextFrame - performance.now()));
   }
+  function flushMotion() {
+    clearTimeout(timer);
+    sendPending();
+  }
   function endMotion(node, revision) {
     clearTimeout(timer);
     timer = null;
@@ -159,7 +163,7 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
     socket = null;
     request("leave", {}, {keepalive: true}).catch(() => {});
   }
-  return {client, start, stop, cursor, motion, endMotion, ping: target => request("ping", target), snapshot: () => request("poll", {editing}),
+  return {client, start, stop, cursor, motion, flushMotion, endMotion, ping: target => request("ping", target), snapshot: () => request("poll", {editing}),
     checkpoint: (action, revision, checkpointRevision) => request(action, {revision, checkpointRevision}),
     viewSelect: node => request("view-select", {node}),
     select: (node, edge) => request("select", {node, edge})};

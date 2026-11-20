@@ -410,6 +410,9 @@ final class WorksheetStore: @unchecked Sendable {
         if let rule = rules["sheet/" + path.url] {
             sheet.owner = rule.owner ?? sheet.owner
             sheet.editors = rule.editors ?? sheet.editors
+            if let users = rule.users, !users.isEmpty {
+                sheet.editors = Set((sheet.editors ?? []) + users).sorted()
+            }
             sheet.isPublic = rule.guestReadable ?? sheet.isPublic
             sheet.hidden = rule.hidden ?? sheet.hidden
         }
@@ -422,6 +425,7 @@ final class WorksheetStore: @unchecked Sendable {
         var next = rules
         var rule = rules[key] ?? DocumentPolicy()
         rule.owner = sheet.owner
+        rule.users = nil
         rule.editors = sheet.editors
         rule.guestReadable = sheet.isPublic
         rule.hidden = sheet.hidden
@@ -444,12 +448,13 @@ final class WorksheetStore: @unchecked Sendable {
         var protectedByPassword = false
         var granted = sheet.canEdit(user)
         var publicEditing: Bool?
-        var frozen = false, hidden = false, locked = false
+        var frozen = false, editingFrozen = false, hidden = false, locked = false
         for depth in 1...path.parts.count {
             let parent = try WorksheetPath(Array(path.parts.prefix(depth)))
             let ancestor = depth == path.parts.count ? sheet : (try? readDocument(parent, rules: rules))
             editors.formUnion(ancestor?.editors ?? [])
             if let user, ancestor?.canEdit(user) == true { granted = true }
+            let exempt = admin || (user != nil && (ancestor?.creator ?? ancestor?.owner) == user?.name)
             let project = depth == 1 ? rules["project/" + parent.url] : nil
             if ancestor?.hidden == true {
                 hidden = true
@@ -460,18 +465,19 @@ final class WorksheetStore: @unchecked Sendable {
                 if let mode = rule.publicEditing { publicEditing = mode }
                 if let user, rule.users?.contains(user.name) == true { granted = true }
                 frozen = frozen || rule.frozen == true
+                editingFrozen = editingFrozen || (rule.frozen == true && !exempt)
                 hidden = hidden || rule.hidden == true
-                if let hash = rule.passwordHash, !admin, !(user != nil && ((ancestor?.creator ?? ancestor?.owner) == user?.name || sheet.creator == user?.name)), !unlocks.contains(hash) {
+                if let hash = rule.passwordHash, !exempt, !unlocks.contains(hash) {
                     locked = true
                 }
             }
         }
-        let allowed = granted || (user != nil && publicEditing == true)
-        let readable = admin || allowed || (publicEditing != false && sheet.isPublic != false && !hidden)
+        let allowed = granted || (user != nil && publicEditing == true && sheet.isPublic != false)
+        let readable = admin || allowed || (publicEditing != false && sheet.isPublic != false)
         return DocumentAccess(readable: readable && !locked,
-                              editable: allowed && !locked && (!frozen || admin || (user != nil && sheet.creator == user?.name)),
+                              editable: allowed && !locked && !editingFrozen,
                               manageable: manager && !locked,
-                              listed: readable && (!hidden || allowed),
+                              listed: readable && (!hidden || granted),
                               locked: readable && locked, hidden: hidden,
                               projectRule: rules["project/" + path.url] ?? DocumentPolicy(),
                               sheetRule: rules["sheet/" + path.url] ?? DocumentPolicy(),
@@ -724,9 +730,15 @@ final class WorksheetStore: @unchecked Sendable {
                 guard let name = operation.value, try readUsers().contains(where: { $0.name == name }) else {
                     throw Abort(.badRequest, reason: "A felhasználó nem létezik.")
                 }
-                var users = Set(rule.users ?? [])
+                let sheetScope = operation.scope == "sheet"
+                var users = Set((sheetScope ? sheet.editors : rule.users) ?? [])
                 if operation.action == "grant" { users.insert(name) } else { users.remove(name) }
-                rule.users = users.sorted()
+                if sheetScope {
+                    rule.editors = users.sorted()
+                    rule.users = nil
+                } else {
+                    rule.users = users.sorted()
+                }
             case "rename", "delete":
                 let renamed: WorksheetPath?
                 let destination: URL

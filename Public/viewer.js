@@ -178,7 +178,7 @@ document.addEventListener("contextmenu", event => {
   contextMenu(event, entries);
 });
 const live = liveConnection(path, csrf, async state => {
-  if (Number(main.dataset.revision) !== state.revision) {
+  if (Number(main.dataset.revision) < state.revision) {
     const response = await fetch(location.href, {cache: "no-store"});
     if (!response.ok) throw new Error("A munkalap nem érhető el.");
     const page = new DOMParser().parseFromString(await response.text(), "text/html");
@@ -204,7 +204,8 @@ const live = liveConnection(path, csrf, async state => {
     if (selection) selectBox(main.querySelector('[data-node="' + CSS.escape(selection) + '"]'));
   }
   for (const id of motions.keys()) {
-    if (!state.participants.some(p => p.node === id)) motions.delete(id);
+    if (peers.some(p => !p.viewing && p.node === id) &&
+        !state.participants.some(p => !p.viewing && p.node === id)) motions.delete(id);
   }
   drawPreview();
   const previousMine = peers.find(peer => peer.mine);

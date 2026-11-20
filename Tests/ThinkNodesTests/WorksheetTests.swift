@@ -471,8 +471,12 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     func listed(for user: User?) throws -> Bool {
         try store.list(user: user, rootsOnly: true).contains { $0.path.url == project.url }
     }
+    #expect(try listed(for: nil))
+    let memberChild = try WorksheetPath(["main", "member-child"])
+    let memberSheet = try store.open(memberChild, user: editor)
     try action("hide")
-    #expect(try listed(for: editor))
+    #expect(try !listed(for: editor))
+    #expect(try store.load(child, user: nil).title == worksheet.title)
     #expect(try !listed(for: nil))
     try action("mode", "internal")
     #expect(try !listed(for: editor))
@@ -481,12 +485,14 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     try action("grant", editor.name)
     #expect(try listed(for: editor))
     try action("password", "abcdefgh")
+    #expect(throws: Abort.self) { try store.load(memberChild, user: editor) }
     #expect(throws: Abort.self) { try store.load(child, user: editor) }
     #expect(throws: Abort.self) { try store.update(child, worksheet: worksheet, user: editor) }
     #expect(try store.load(child, user: creator).creator == creator.name)
     let keys = Set(try store.unlock(child, password: "abcdefgh", user: editor))
     #expect(try store.load(child, user: editor, unlocks: keys).creator == creator.name)
     try action("freeze")
+    #expect(try !store.access(memberChild, sheet: memberSheet, user: editor, unlocks: keys).editable)
     #expect(throws: Abort.self) { try store.update(child, worksheet: worksheet, user: editor, unlocks: keys) }
     try action("rename", "uj")
     let renamed = try WorksheetPath(["uj", "child"])
