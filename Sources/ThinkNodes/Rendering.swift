@@ -22,7 +22,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false) -> Response {
     let assets = scripts ? """
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
-        <script type="module" src="/editor.js?v=2"></script>
+        <script type="module" src="/editor.js?v=3"></script>
         """ : ""
     return response("""
         <!doctype html>
@@ -248,31 +248,64 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
         return IdeaDrawing(node: node, labelWidth: 0, lines: [])
     }
     let (widthRatio, heightRatio, _) = node.shape.labelRatios
-    let bodySize = node.textStyle?.size ?? 13
+    let fitText = node.fitText == true && node.file == nil
     let text = node.hideText != true ? canvasMarkdown(node.text) :
         (node.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? [] : [MarkdownBlock(kind: .body, runs: [MarkdownRun(text: "•••")])])
     let labelWidth = max(12, node.width * widthRatio - 16)
-    var lines: [IdeaLabelLine] = []
-    func add(_ value: String, size: Double, weight: Int, color: String, style: TextStyle?) {
-        let text = value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        guard !text.isEmpty else { return }
-        let columns = max(2, Int(labelWidth / (size * 0.65)))
-        let rendered = textWidth(text, size: size) <= labelWidth ? [text] : wrap(text, columns: columns)
-        lines.append(contentsOf: rendered.map { IdeaLabelLine(text: $0, size: size, weight: weight, color: color, style: style) })
-    }
-    add(node.title, size: node.fontSize, weight: node.bold ? 650 : 400, color: node.textColor,
-        style: TextStyle(italic: node.italic, underline: node.underline, verticalAlignment: node.verticalAlignment))
-    for (index, block) in text.enumerated() {
-        let size = block.kind == .heading ? (bodySize * 1.15).rounded() : bodySize
-        let columns = max(node.hideText == true ? 3 : 2, Int(labelWidth / (size * 0.65)))
-        var runs = block.runs
-        if block.kind == .quote { runs.insert(MarkdownRun(text: "› "), at: 0) }
-        for (row, pieces) in wrapMarkdown(runs, columns: columns, preformatted: block.kind == .code).enumerated() {
-            let gap: Double = row == 0 ? (index == 0 ? 8 : 3) : 0
-            lines.append(IdeaLabelLine(text: pieces.map(\.text).joined(), size: size,
-                                       weight: block.kind == .heading || node.textStyle?.bold == true ? 700 : 400,
-                                       color: node.textStyle?.color ?? node.textColor, runs: pieces, gap: gap, style: node.textStyle))
+    let iconSpace: Double = (node.link ?? "").isEmpty ? 0 : 18
+    let labelHeight = node.height * heightRatio - 12 - iconSpace
+
+    func makeLines(titleSize: Double, bodySize: Double) -> [IdeaLabelLine] {
+        var lines: [IdeaLabelLine] = []
+        func add(_ value: String, size: Double, weight: Int, color: String, style: TextStyle?) {
+            let text = value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            guard !text.isEmpty else { return }
+            let columns = max(2, Int(labelWidth / (size * 0.65)))
+            let rendered = textWidth(text, size: size) <= labelWidth ? [text] : wrap(text, columns: columns)
+            lines.append(contentsOf: rendered.map { IdeaLabelLine(text: $0, size: size, weight: weight, color: color, style: style) })
         }
+        add(node.title, size: titleSize, weight: node.bold ? 650 : 400, color: node.textColor,
+            style: TextStyle(italic: node.italic, underline: node.underline, verticalAlignment: node.verticalAlignment))
+        for (index, block) in text.enumerated() {
+            let size = block.kind == .heading ? (fitText ? bodySize * 1.15 : (bodySize * 1.15).rounded()) : bodySize
+            let columns = max(node.hideText == true ? 3 : 2, Int(labelWidth / (size * 0.65)))
+            var runs = block.runs
+            if block.kind == .quote { runs.insert(MarkdownRun(text: "› "), at: 0) }
+            for (row, pieces) in wrapMarkdown(runs, columns: columns, preformatted: block.kind == .code).enumerated() {
+                let blockGap: Double = index == 0 ? 8 : 3
+                let gap = row == 0 ? (fitText ? min(blockGap, bodySize * 0.4) : blockGap) : 0
+                lines.append(IdeaLabelLine(text: pieces.map(\.text).joined(), size: size,
+                                           weight: block.kind == .heading || node.textStyle?.bold == true ? 700 : 400,
+                                           color: node.textStyle?.color ?? node.textColor, runs: pieces, gap: gap, style: node.textStyle))
+            }
+        }
+        return lines
+    }
+
+    var lines: [IdeaLabelLine]
+    if fitText {
+        var low = 1
+        var high = Int((labelHeight / 1.25).rounded(.down))
+        lines = makeLines(titleSize: 1.4, bodySize: 1)
+        while low <= high {
+            let size = (low + high) / 2
+            let candidate = makeLines(titleSize: Double(size) * 1.4, bodySize: Double(size))
+            var insideHeight = 0.0
+            var outsideHeight = 0.0
+            for line in candidate {
+                if node.titleOutside == true && line.runs.isEmpty { outsideHeight += line.step }
+                else { insideHeight += line.step }
+            }
+            if max(insideHeight, outsideHeight) <= labelHeight &&
+                candidate.allSatisfy({ textWidth($0.text, size: $0.size) <= labelWidth }) {
+                lines = candidate
+                low = size + 1
+            } else {
+                high = size - 1
+            }
+        }
+    } else {
+        lines = makeLines(titleSize: node.fontSize, bodySize: node.textStyle?.size ?? 13)
     }
     var groups: [String: [IdeaLabelLine]] = [:]
     lines.removeAll { line in
@@ -283,9 +316,8 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
         groups[horizontal.rawValue + "/" + vertical.rawValue, default: []].append(line)
         return true
     }
-    let iconSpace: Double = (node.link ?? "").isEmpty ? 0 : 18
     var visible: [IdeaLabelLine] = []
-    let available = max(node.fontSize * 1.25, node.height * heightRatio - 12 - iconSpace)
+    let available = fitText ? max(0, labelHeight) : max(node.fontSize * 1.25, labelHeight)
     var remaining = available
     for line in lines {
         guard remaining >= line.step else { break }
@@ -537,8 +569,13 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
             let image = file.type == .image
             let above: Double = image && !title.isEmpty ? 22 : 0
             let below: Double = image && file.showFilename == true ? 22 : 0
+            let background = image ? (file.alphaEnabled == false ? "#ffffff" : file.alphaBackground) : nil
+            let radius = file.asset?.hasSuffix(".svg") == true ? 0 : 6
+            let imageBackground = background.map {
+                "<rect x=\"\(number(node.position.x-node.width/2))\" y=\"\(number(node.position.y-node.height/2))\" width=\"\(number(node.width))\" height=\"\(number(node.height))\" rx=\"\(radius)\" fill=\"\(escaped($0))\"/>"
+            } ?? ""
             graphic = """
-                <foreignObject x="\(number(node.position.x-node.width/2))" y="\(number(node.position.y-node.height/2-above))" width="\(number(node.width))" height="\(number(node.height+above+below))"><div xmlns="http://www.w3.org/1999/xhtml" class="\(image ? "canvas-image" : "canvas-file")">\(title)\(content)</div></foreignObject>
+                \(imageBackground)<foreignObject x="\(number(node.position.x-node.width/2))" y="\(number(node.position.y-node.height/2-above))" width="\(number(node.width))" height="\(number(node.height+above+below))"><div xmlns="http://www.w3.org/1999/xhtml" class="\(image ? "canvas-image" : "canvas-file")">\(title)\(content)</div></foreignObject>
                 """
         } else { graphic = nodeSVG(drawing, siteHost: siteHost) }
         guard let noteBase else { return graphic }

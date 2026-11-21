@@ -7,7 +7,7 @@ import {flashNode, flashPoint} from "./ping.js";
 import {showTooltip, hideTooltip} from "./tooltip.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {automaticBorder, automaticGridColor, arrowTransform, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, lineAppearances, lineTypes, paper, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes} from "./geometry.js?v=3";
+import {automaticBorder, automaticGridColor, arrowTransform, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, lineAppearances, lineTypes, paper, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes} from "./geometry.js?v=4";
 
 import {ancestors, containerOrder, overlapFraction} from "./containers.js";
 
@@ -286,6 +286,14 @@ createApp({
     const batch = ref(null);
     const searchQuery = ref(null);
     const searchInput = ref(null);
+    const searchHistoryKey = "thinknodes/search-history/" + user;
+    const searchHistoryLimit = 10;
+    let searchHistory = [];
+    const searchHistoryIndex = ref(-1);
+    try {
+      const saved = JSON.parse(window.localStorage?.getItem(searchHistoryKey) ?? "[]");
+      if (Array.isArray(saved)) searchHistory = saved.filter(term => typeof term === "string" && term.trim()).slice(0, searchHistoryLimit);
+    } catch { /* History is still available in this tab. */ }
     const objectPanelOpen = ref(true);
     const canvasPanelOpen = ref(false);
     const reconnect = ref(null);
@@ -1592,7 +1600,38 @@ createApp({
       if (searchQuery.value !== null) {
         if (event.key === "Escape" || event.key === "Enter") {
           event.preventDefault?.();
-          searchQuery.value = null;
+          if (event.key === "Escape") closeSearch();
+          else if (!event.repeat && !event.isComposing) {
+            if (searchHistoryIndex.value >= 0) useSearchHistory(searchHistory[searchHistoryIndex.value]);
+            else if (event.shiftKey) addSearchResult();
+            else acceptSearch();
+          }
+        } else if (["ArrowUp", "ArrowDown"].includes(event.key)) {
+          const up = event.key === "ArrowUp";
+          if (!searchQuery.value.trim()) {
+            event.preventDefault?.();
+            if (!searchHistory.length) return;
+            const index = searchHistoryIndex.value;
+            const count = searchHistory.length;
+            searchHistoryIndex.value = index < 0 ? (up ? count - 1 : 0) :
+              (index + (up ? -1 : 1) + count) % count;
+            scrollToSearchRow();
+            return;
+          }
+          if (!searchHits.value.length) return;
+          event.preventDefault?.();
+          const hits = searchHits.value;
+          const index = hits.indexOf(activeHit.value);
+          const next = hits[(index + (up ? -1 : 1) + hits.length) % hits.length];
+          if (event.shiftKey && candidates.value.has(hits[index].key)) {
+            pinnedHits.value.set(hits[index].key, hits[index]);
+          }
+          activateHit(next);
+          if (event.shiftKey) {
+            pinnedHits.value.set(next.key, next);
+            omittedKey.value = null;
+          }
+          scrollToSearchRow();
         }
         return;
       }
@@ -1710,6 +1749,26 @@ createApp({
       window.removeEventListener("beforeunload", beforeUnload);
     });
 
+    const imageAlpha = ref(new Map());
+
+    function detectImageAlpha(event, asset) {
+      if (imageAlpha.value.has(asset)) return;
+      const image = event.target;
+      if (asset.endsWith(".jpg")) { imageAlpha.value.set(asset, false); return; }
+      const sample = document.createElement("canvas");
+      sample.width = Math.min(512, image.naturalWidth);
+      sample.height = Math.min(512, image.naturalHeight);
+      const context = sample.getContext("2d", {willReadFrequently: true});
+      if (!context || !sample.width || !sample.height) return;
+      try {
+        context.drawImage(image, 0, 0, sample.width, sample.height);
+        const pixels = context.getImageData(0, 0, sample.width, sample.height).data;
+        imageAlpha.value.set(asset, pixels.some((value, index) => index % 4 === 3 && value < 255));
+      } catch {
+        imageAlpha.value.set(asset, false);
+      }
+    }
+
     function renderImage(node) {
       const file = node.file;
       const title = file.hideTitle ? "" : node.title;
@@ -1718,7 +1777,9 @@ createApp({
         width: node.width, height: node.height + (title ? 22 : 0) + (filename ? 22 : 0)}, [
         h("div", {class: "canvas-image"}, [
           title ? h("strong", title) : null,
-          h("img", {src: assetURL(path, file.asset), alt: title || imageStem(file), draggable: false}),
+          h("img", {src: assetURL(path, file.asset), alt: title || imageStem(file), draggable: false,
+            style: {backgroundColor: file.alphaEnabled === false ? "#ffffff" : file.alphaBackground},
+            onLoad: event => detectImageAlpha(event, file.asset)}),
           filename ? h("span", filename) : null,
         ]),
       ]);
@@ -1754,7 +1815,8 @@ createApp({
         },
       }, [
         owner || snapTarget || batch.value?.nodes.has(node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-glow", color: owner?.color ?? "#16a085", fill: "none",
-          stroke: owner?.color ?? "#16a085", "stroke-width": 3, "pointer-events": "none"}, [h("animate", {attributeName: "opacity", values: "1;.45;1", dur: "4s", repeatCount: "indefinite"})]) : null,
+          stroke: owner?.color ?? "#16a085", "stroke-width": 3, "pointer-events": "none"}) : null,
+        candidates.value.has("node/" + node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "search-candidate", "stroke-width": 3}) : null,
         node.file?.type === "image" ? null : shape(drawn, !!destination),
         node.file?.type === "image" ? renderImage(node) : null,
         node.file && node.file.type !== "image" ? h("foreignObject", {x: -drawn.width/2, y: -drawn.height/2, width: drawn.width, height: drawn.height}, [
@@ -1898,10 +1960,12 @@ createApp({
         },
         onContextmenu: event => context(event, "edge", edge.id),
       }, [
-        ...colors.map((color, i) => h("path", {"data-editor-only": "", d: stroke.d, "stroke-linecap": paint.linecap, "stroke-dasharray": paint.dash, stroke: color,
+        ...colors.map((color, i) => h("path", {"data-editor-only": "", class: "selection-glow", color, d: stroke.d, "stroke-linecap": paint.linecap, "stroke-dasharray": paint.dash, stroke: color,
           "stroke-width": paint.width + 5 * (colors.length-i) / view.value.k, "pointer-events": "none"})),
         ...colors.flatMap(color => Object.values(ends).filter(head => head.visible).map(head =>
-          h("path", {"data-editor-only": "", transform: head.transform, d: "M0 0L-1 -.5V.5Z", fill: color, stroke: color, "stroke-width": .35, "pointer-events": "none"}))),
+          h("path", {"data-editor-only": "", class: "selection-glow", color, transform: head.transform, d: "M0 0L-1 -.5V.5Z", fill: color, stroke: color, "stroke-width": .35, "pointer-events": "none"}))),
+        candidates.value.has("edge/" + edge.id) ? h("path", {"data-editor-only": "", d: stroke.d, class: "search-candidate",
+          "stroke-width": paint.width + 9 / view.value.k}) : null,
         h("path", stroke),
         h("path", {"data-editor-only": "", d, stroke: "transparent", "stroke-width": Math.max(paint.width + 10, 14 / view.value.k),
           "pointer-events": "stroke", class: "edge-hit"}),
@@ -2062,27 +2126,153 @@ createApp({
       return h("fieldset", {class: "property-group stack"}, [h("legend", label), ...children]);
     }
 
+    const searchHits = computed(() => {
+      const term = searchQuery.value?.trim().toLocaleLowerCase("hu");
+      if (!term || !board.value) return [];
+      const titles = [], bodies = [];
+      const matches = text => text?.toLocaleLowerCase("hu").includes(term);
+      for (const n of board.value.nodes) {
+        const titleMatch = matches(n.title);
+        if (titleMatch || matches(n.text)) {
+          (titleMatch ? titles : bodies).push({key: "node/" + n.id, kind: "node", id: n.id, title: n.title || "Csomópont",
+            source: titleMatch ? "Cím" : n.file?.asset ? "Megjegyzés" : "Text"});
+        }
+      }
+      for (const e of board.value.edges) {
+        if (matches(e.label)) titles.push({key: "edge/" + e.id, kind: "edge", id: e.id, title: e.label, source: "Cím"});
+      }
+      return titles.concat(bodies);
+    });
+    const cursorKey = ref(null);
+    const pinnedHits = ref(new Map());
+    const omittedKey = ref(null);
+    const activeHit = computed(() => searchHits.value.find(hit => hit.key === cursorKey.value) ?? searchHits.value[0]);
+    const candidates = computed(() => {
+      if (searchHistoryIndex.value >= 0) return new Map();
+      const items = new Map(pinnedHits.value);
+      const active = activeHit.value;
+      if (active && active.key !== omittedKey.value) items.set(active.key, active);
+      return items;
+    });
+
+    function activateHit(hit) {
+      if (hit.key !== activeHit.value?.key) omittedKey.value = null;
+      cursorKey.value = hit.key;
+    }
+
+    function toggleCandidate(hit) {
+      activateHit(hit);
+      if (pinnedHits.value.delete(hit.key)) omittedKey.value = hit.key;
+      else {
+        pinnedHits.value.set(hit.key, hit);
+        omittedKey.value = null;
+      }
+    }
+
+    function closeSearch() {
+      searchHistoryIndex.value = -1;
+      searchQuery.value = null;
+      cursorKey.value = omittedKey.value = null;
+      pinnedHits.value.clear();
+    }
+
+    function setSearchQuery(query) {
+      searchHistoryIndex.value = -1;
+      searchQuery.value = query;
+      cursorKey.value = omittedKey.value = null;
+    }
+
+    function scrollToSearchRow() {
+      nextTick(() => searchInput.value?.parentElement?.querySelector('[data-active="true"]')?.scrollIntoView({block: "nearest"}));
+    }
+
+    function useSearchHistory(term) {
+      setSearchQuery(term);
+      nextTick(() => searchInput.value?.focus());
+    }
+
+    function rememberSearch() {
+      const term = searchQuery.value.trim();
+      if (term) {
+        const normalized = term.toLocaleLowerCase("hu");
+        searchHistory = [term, ...searchHistory.filter(query => query.toLocaleLowerCase("hu") !== normalized)]
+          .slice(0, searchHistoryLimit);
+        try { window.localStorage?.setItem(searchHistoryKey, JSON.stringify(searchHistory)); }
+        catch { /* Keep the history in this tab. */ }
+      }
+    }
+
+    function centerSearchSelection(group) {
+      const points = [
+        ...[...group.nodes].map(id => nodeMap.value.get(id)?.position),
+        ...[...group.edges].map(id => {
+          const edge = edgeMap.value.get(id);
+          return edge && edgeGeometry(edge, drawnNode).labelPosition;
+        }),
+      ].filter(Boolean);
+      if (!points.length) return;
+      let x = 0, y = 0;
+      for (const point of points) {
+        x += point.x;
+        y += point.y;
+      }
+      const [cx, cy] = center(), k = view.value.k;
+      d3.select(canvas.value).call(zoom.transform,
+        d3.zoomIdentity.translate(cx-(cx+x/points.length)*k, cy-(cy+y/points.length)*k).scale(k));
+    }
+
+    function addSearchResult() {
+      const hit = activeHit.value;
+      if (!hit) return;
+      const group = selectionMembers();
+      const members = hit.kind === "node" ? group.nodes : group.edges;
+      rememberSearch();
+      if (members.has(hit.id)) return;
+      members.add(hit.id);
+      selectMembers(group);
+      centerSearchSelection(group);
+    }
+
+    async function acceptSearch() {
+      rememberSearch();
+      const hits = [...candidates.value.values()].filter(hit =>
+        (hit.kind === "node" ? nodeMap.value : edgeMap.value).has(hit.id));
+      const focus = hits.find(hit => hit.key === activeHit.value?.key) ?? hits[0];
+      closeSearch();
+      if (!focus) return;
+      const group = {nodes: new Set(), edges: new Set()};
+      for (const hit of hits) {
+        (hit.kind === "node" ? group.nodes : group.edges).add(hit.id);
+      }
+      centerSearchSelection(group);
+      if (hits.length > 1) {
+        selectMembers(group);
+      } else if (focus.kind === "node") await selectNode(focus.id);
+      else if (await selectNode(null, focus.id)) selected.value = {kind: "edge", id: focus.id};
+    }
+
     function renderSearch() {
       if (searchQuery.value === null) return null;
-      const term = searchQuery.value.trim().toLocaleLowerCase("hu");
-      const matches = term ? [
-        ...board.value.nodes.filter(n => [n.title, n.text].some(t => t?.toLocaleLowerCase("hu").includes(term)))
-          .map(n => ({id: n.id, kind: "node", title: n.title || "Csomópont", point: n.position})),
-        ...board.value.edges.filter(e => e.label?.toLocaleLowerCase("hu").includes(term))
-          .map(e => ({id: e.id, kind: "edge", title: e.label, point: edgeGeometry(e, drawnNode).labelPosition})),
-      ] : [];
       return h("div", {class: "quick-search panel stack", role: "dialog", "aria-label": "Gyorskereső"}, [
         h("input", {ref: searchInput, type: "search", value: searchQuery.value, placeholder: "Keresés a munkalapon",
-          "aria-label": "Keresés a munkalapon", onInput: e => { searchQuery.value = e.target.value; }}),
-        ...matches.map(m => button(m.title, () => {
-          searchQuery.value = null;
-          const [cx, cy] = center();
-          const k = view.value.k;
-          d3.select(canvas.value).call(zoom.transform, d3.zoomIdentity.translate(cx-(cx+m.point.x)*k, cy-(cy+m.point.y)*k).scale(k));
-          if (m.kind === "node") selectNode(m.id);
-          else { selectNode(null, m.id); selected.value = {kind: "edge", id: m.id}; }
-        })),
-        term && !matches.length ? h("p", "Nincs találat.") : null,
+          "aria-label": "Keresés a munkalapon", onInput: e => setSearchQuery(e.target.value)}),
+        searchHistoryIndex.value >= 0 ? h("ul", {class: "search-history", "aria-label": "Keresési előzmények"},
+          searchHistory.map((term, index) => h("li", {key: term, "data-active": index === searchHistoryIndex.value}, [
+            button(h("span", {class: "search-title"}, term), () => useSearchHistory(term), {
+              symbol: "search", title: term, onFocus: () => { searchHistoryIndex.value = index; },
+            }),
+          ]))) : searchHits.value.map(hit => h("div", {key: hit.key, class: "search-row",
+          "data-candidate": candidates.value.has(hit.key),
+          "data-active": hit.key === activeHit.value?.key, onMouseenter: () => activateHit(hit)}, [
+          button(h("span", {class: "search-title"}, hit.title), () => activateHit(hit), {
+            symbol: hit.source === "Cím" ? "file" : "comment", title: hit.source + " · " + hit.title,
+            "aria-label": hit.title + " (" + hit.source + ")", onFocus: () => activateHit(hit),
+          }),
+          h("button", {type: "button", class: "button", title: "Candidate rögzítése",
+            "aria-label": "Candidate rögzítése · " + hit.title, "aria-pressed": pinnedHits.value.has(hit.key),
+            onClick: () => toggleCandidate(hit)}, "☞"),
+        ])),
+        searchQuery.value.trim() && !searchHits.value.length ? h("p", "Nincs találat.") : null,
       ]);
     }
 
@@ -2142,6 +2332,15 @@ createApp({
       const title = input(node.title, value => change("title", value), {"aria-label": "Címke", "data-object-label": "", maxlength: 120});
       const color = (label, key, fallback) => colorPicker(label, node[key] ?? fallback, v => change(key, v), node.id + "/" + key);
       if (node.file?.type === "image") return sidebar("Kép szerkesztése", [
+        group("Átlátszóság", [h("div", {class: "property-options image-alpha-options"}, [
+          iconToggle("Alpha csatorna", node.file.alphaEnabled !== false,
+            () => change("file", {...node.file, alphaEnabled: node.file.alphaEnabled === false}),
+            optionSymbol("path", {d: "M4 4h16v16H4z M4 12h16 M12 4v16 M4 4h8v8H4z M12 12h8v8h-8z", "fill-rule": "evenodd"})),
+          h("input", {type: "color", title: "Kép háttérszíne", "aria-label": "Kép háttérszíne",
+            value: node.file.alphaBackground ?? "#ffffff",
+            disabled: node.file.alphaEnabled === false || imageAlpha.value.get(node.file.asset) !== true,
+            onChange: event => change("file", {...node.file, alphaBackground: event.target.value})}),
+        ])]),
         group("Cím", [title]),
         group("Fájlnév", [h("input", {type: "text", "aria-label": "Fájlnév", value: imageStem(node.file),
           onBlur: event => { event.target.value = imageStem(node.file); },
@@ -2183,6 +2382,8 @@ createApp({
         const sizeKey = isTitle ? "fontSize" : "size";
         const colorKey = isTitle ? "textColor" : "color";
         const update = (key, value) => isTitle ? change(key, value) : change(section, {...node[section], [key]: value});
+        const fontSize = field("Betűméret", numeric(style[sizeKey] ?? 13,
+          v => update(sizeKey, Math.round(v)), 10, isTitle ? 1000 : 60, {step: 1, disabled: !!node.fitText}));
         return [
           isTitle ? checkbox("Dobozon kívül", outside, value => {
             if (value && (style.verticalAlignment ?? "middle") === "middle" && (style.alignment ?? node.alignment) === "center") {
@@ -2193,7 +2394,11 @@ createApp({
           colorPicker("Szövegszín", style[colorKey] ?? node.textColor,
             v => update(colorKey, v), node.id + "/" + section + "/text"),
           h("div", {class: "fields-two"}, [
-            field("Betűméret", numeric(style[sizeKey] ?? 13, v => update(sizeKey, Math.round(v)), 10, isTitle ? 1000 : 60, {step: 1})),
+            isTitle ? h("div", {class: "property-options font-size-options"}, [
+              iconToggle("AutoSize", !!node.fitText, () => change("fitText", !node.fitText),
+                optionSymbol("path", {d: "M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M8 16l4-8 4 8m-6.5-3h5"})),
+              fontSize,
+            ]) : fontSize,
             h("div", {class: "alignment-picker", role: "group", "aria-label": "Igazítás"},
               positions.map(([vertical, horizontal, label, symbol]) => h("button", {
                 type: "button", title: label, "aria-label": label,

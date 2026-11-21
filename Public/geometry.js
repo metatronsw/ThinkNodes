@@ -374,32 +374,64 @@ export function labelLayout(node, blocks = []) {
   if (node.kind === "connectionPoint") return {width: node.width, height: node.height, lines: []};
   const [widthRatio, heightRatio] = shapeLabelRatios(node.shape);
   const textStyle = node.textStyle ?? {};
-  const bodySize = textStyle.size ?? 13;
   const hiddenText = node.hideText && !!node.text?.trim();
   if (hiddenText) blocks = [{kind: "body", runs: [{text: "•••"}]}];
   const width = node.width;
   const labelWidth = Math.max(12, width * widthRatio - 16);
-  const lines = [];
+  const iconSpace = node.link ? 18 : 0;
+  const height = node.height;
+  const labelHeight = height * heightRatio - 12 - iconSpace;
 
-  function add(value, size, weight, color, style, section) {
-    const text = value.trim().replace(/\s+/g, " ");
-    if (!text) return;
-    const wrapped = textWidth(text, size) <= labelWidth
-      ? [text] : wrap(text, Math.max(2, Math.floor(labelWidth / (size * 0.65))));
-    for (const text of wrapped) lines.push({section, text, size, weight, color, italic: style.italic, underline: style.underline, alignment: style.alignment, vertical: style.verticalAlignment, step: size * 1.25});
+  function makeLines(titleSize, bodySize) {
+    const lines = [];
+
+    function add(value, size, weight, color, style, section) {
+      const text = value.trim().replace(/\s+/g, " ");
+      if (!text) return;
+      const wrapped = textWidth(text, size) <= labelWidth
+        ? [text] : wrap(text, Math.max(2, Math.floor(labelWidth / (size * 0.65))));
+      for (const text of wrapped) lines.push({section, text, size, weight, color, italic: style.italic, underline: style.underline, alignment: style.alignment, vertical: style.verticalAlignment, step: size * 1.25});
+    }
+
+    add(node.title, titleSize, node.bold ? 650 : 400, node.textColor, node, "title");
+    blocks.forEach((block, index) => {
+      const size = block.kind === "heading" ? (node.fitText ? bodySize * 1.15 : Math.round(bodySize * 1.15)) : bodySize;
+      const weight = block.kind === "heading" || textStyle.bold ? 700 : 400;
+      const runs = block.kind === "quote" ? [{text: "› "}, ...block.runs] : block.runs;
+      wrapRuns(runs, Math.max(hiddenText ? 3 : 2, Math.floor(labelWidth / (size * 0.65))), block.kind === "code").forEach((pieces, row) => {
+        const blockGap = index === 0 ? 8 : 3;
+        const gap = row === 0 ? (node.fitText ? Math.min(blockGap, bodySize * 0.4) : blockGap) : 0;
+        lines.push({section: "textStyle", runs: pieces, text: pieces.map(piece => piece.text).join(""), size, weight,
+          color: textStyle.color ?? node.textColor, italic: textStyle.italic, underline: textStyle.underline, alignment: textStyle.alignment, vertical: textStyle.verticalAlignment, step: size * 1.25 + gap, gap});
+      });
+    });
+
+    return lines;
   }
 
-  add(node.title, node.fontSize, node.bold ? 650 : 400, node.textColor, node, "title");
-  blocks.forEach((block, index) => {
-    const size = block.kind === "heading" ? Math.round(bodySize * 1.15) : bodySize;
-    const weight = block.kind === "heading" || textStyle.bold ? 700 : 400;
-    const runs = block.kind === "quote" ? [{text: "› "}, ...block.runs] : block.runs;
-    wrapRuns(runs, Math.max(hiddenText ? 3 : 2, Math.floor(labelWidth / (size * 0.65))), block.kind === "code").forEach((pieces, row) => {
-      const gap = row === 0 ? (index === 0 ? 8 : 3) : 0;
-      lines.push({section: "textStyle", runs: pieces, text: pieces.map(piece => piece.text).join(""), size, weight,
-        color: textStyle.color ?? node.textColor, italic: textStyle.italic, underline: textStyle.underline, alignment: textStyle.alignment, vertical: textStyle.verticalAlignment, step: size * 1.25 + gap, gap});
-    });
-  });
+  let lines;
+  if (node.fitText) {
+    let low = 1, high = Math.floor(labelHeight / 1.25);
+    lines = makeLines(1.4, 1);
+    while (low <= high) {
+      const size = Math.floor((low + high) / 2);
+      const candidate = makeLines(size * 1.4, size);
+      let insideHeight = 0, outsideHeight = 0;
+      for (const line of candidate) {
+        if (node.titleOutside && line.section === "title") outsideHeight += line.step;
+        else insideHeight += line.step;
+      }
+      if (Math.max(insideHeight, outsideHeight) <= labelHeight &&
+          candidate.every(line => textWidth(line.text, line.size) <= labelWidth)) {
+        lines = candidate;
+        low = size + 1;
+      } else {
+        high = size - 1;
+      }
+    }
+  } else {
+    lines = makeLines(node.fontSize, textStyle.size ?? 13);
+  }
 
   const external = new Map();
   const inside = lines.filter(line => {
@@ -412,10 +444,8 @@ export function labelLayout(node, blocks = []) {
     external.get(key).rows.push(line);
     return false;
   });
-  const iconSpace = node.link ? 18 : 0;
-  const height = node.height;
   const visible = [];
-  let remaining = Math.max(node.fontSize * 1.25, height * heightRatio - 12 - iconSpace);
+  let remaining = node.fitText ? Math.max(0, labelHeight) : Math.max(node.fontSize * 1.25, labelHeight);
   const available = remaining;
   for (const line of inside) {
     if (remaining < line.step) break;

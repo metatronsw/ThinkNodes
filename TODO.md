@@ -22,11 +22,6 @@ konténer:
 
 
 
-Doboz átméretezés: 
-- legyen egy gomb AutoSize (csak ikon kell) , ha ez aktív akkor próbálja meg mindig úgy méretezni a belső szöveget hogy kitöltse a dobozt
-- autoSize esetén a cím mindig nagyobb mint a text 
-- autoSize esetén a betűméret választó inaktív
-- tedd az autoSize gombot a betűméret választó mellé, bal oldalra
 
 HIBÁK:
 - doboz formák kijelölés kerete csúnyán jelenik meg elnyújtott képarányra átméretezéskor. A csúcsok (háromszög, ötszög) közelében hozzáér a belső formához. Legyen arányosan nagyobb a kijelölő keret a formánál.
@@ -39,4 +34,9 @@ CANVAS PROPERTY PANEL:
 FILE TÖRLÉS:
 - törlés a munkalapról (alap beállítás)
 - törlés a mappából is
-- 
+
+FILE BROWSER:
+
+
+
+

@@ -68,6 +68,8 @@ struct CanvasFile: Codable, Equatable, Sendable {
     var hideTitle: Bool?
     var filename: String?
     var showFilename: Bool?
+    var alphaEnabled: Bool?
+    var alphaBackground: String?
 
     var imageStem: String {
         filename ?? asset.map { ($0 as NSString).deletingPathExtension } ?? ""
@@ -161,6 +163,7 @@ struct Idea: Codable, Equatable, Sendable {
     var fill = "#dce9ff"
     var textColor = "#182335"
     var border: String { automaticBorder(fill) }
+    var fitText: Bool?
     var fontSize: Double = 16
     var bold = true
     var alignment: LabelAlignment = .center
@@ -176,7 +179,7 @@ struct Idea: Codable, Equatable, Sendable {
     var textStyle: TextStyle?
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, text, file, hideText, shape, fill, bold, titleOutside, link
+        case id, title, text, file, hideText, fitText, shape, fill, bold, titleOutside, link
         case kind, parent, locked, italic, underline, textStyle
         case position = "pos", width = "w", height = "h", textColor = "textCol"
         case fontSize = "fontSz", alignment = "align", verticalAlignment = "vAlign"
@@ -191,7 +194,7 @@ struct Idea: Codable, Equatable, Sendable {
             switch file.type {
             case .image:
                 guard file.asset.flatMap(canvasAssetType)?.hasPrefix("image/") == true,
-                      file.filename.map(validImageStem) ?? true else { return false }
+                      file.filename.map(validImageStem) ?? true, file.alphaBackground.map(validColor) ?? true else { return false }
             case .mp3: guard file.asset.flatMap(canvasAssetType) == "audio/mpeg" else { return false }
             case .txt, .json, .md: guard file.asset == nil else { return false }
             case .attachment:
@@ -1171,6 +1174,7 @@ extension Idea {
         shape = (try? fields.decode(Shape.self, forKey: .shape)) ?? .rounded
         fill = (try? fields.decode(String.self, forKey: .fill)) ?? "#dce9ff"
         textColor = (try? fields.decode(String.self, forKey: .textColor)) ?? "#182335"
+        fitText = try? fields.decode(Bool.self, forKey: .fitText)
         fontSize = (try? fields.decode(Double.self, forKey: .fontSize)) ?? 16
         bold = (try? fields.decode(Bool.self, forKey: .bold)) ?? true
         alignment = (try? fields.decode(LabelAlignment.self, forKey: .alignment)) ?? .center

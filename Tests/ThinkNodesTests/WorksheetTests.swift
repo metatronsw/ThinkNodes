@@ -366,6 +366,18 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     return try await app.responder.respond(to: req).get()
 }
 
+@Test func autoSizeSurvivesRoundTripAndFitsSVGText() throws {
+    let idea = Idea(id: "fit", title: "Cím", text: "Törzs", position: Point(x: 0, y: 0),
+                    width: 240, height: 100, shape: .rectangle, fitText: true)
+    let board = Worksheet(title: "AutoSize", nodes: [idea])
+    let saved = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(board))
+    #expect(saved.nodes[0].fitText == true)
+    #expect(saved.nodes[0].fontSize == 16)
+    let svg = boardSVG(saved)
+    #expect(svg.contains("font-size=\"33.600\" font-weight=\"650\">Cím</tspan>"))
+    #expect(svg.contains("font-size=\"24.000\" font-weight=\"400\">Törzs</tspan>"))
+}
+
 @Test func containerStylesAndJunctionsSurviveRoundTrip() throws {
     let origin = Point(x: 0, y: 0)
     var container = Idea(id: "group", title: "Konténer", position: origin, kind: .container, locked: true)

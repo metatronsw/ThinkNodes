@@ -99,9 +99,6 @@ function outline(box, marker, color) {
     stroke: color, "stroke-width": 3, fill: "none", "pointer-events": "none"})) frame.setAttribute(key, value);
   frame.setAttribute("class", "selection-glow");
   frame.style.color = color;
-  const pulse = document.createElementNS(ns, "animate");
-  for (const [key, value] of Object.entries({attributeName: "opacity", values: "1;.45;1", dur: "4s", repeatCount: "indefinite"})) pulse.setAttribute(key, value);
-  frame.append(pulse);
   frame.dataset.peerColor = color;
   box.prepend(frame);
 }
@@ -124,11 +121,12 @@ function paint(peers) {
     const id = JSON.parse(wire.dataset.wire).id;
     const owners = peers.filter(p => p.edge === id);
     for (const arrow of wire.parentElement.querySelectorAll(":scope > [data-arrow-end]")) {
-      arrow.style.filter = owners.length ? "drop-shadow(0 0 2px " + owners[0].color + ")" : "";
+      arrow.classList.toggle("selection-glow", owners.length > 0);
+      arrow.style.color = owners[0]?.color ?? "";
     }
     owners.forEach((peer, i) => {
       const line = document.createElementNS(ns, "path");
-      for (const [key, value] of Object.entries({"data-wire-highlight": "", d: wire.getAttribute("d"),
+      for (const [key, value] of Object.entries({"data-wire-highlight": "", class: "selection-glow", color: peer.color, d: wire.getAttribute("d"),
         stroke: peer.color, "stroke-width": Number(wire.getAttribute("stroke-width")) + (owners.length-i)*5,
         fill: "none", "pointer-events": "none"})) line.setAttribute(key, value);
       for (const key of ["stroke-dasharray", "stroke-linecap", "marker-start", "marker-end"]) {
