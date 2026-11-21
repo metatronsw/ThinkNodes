@@ -312,6 +312,7 @@ struct Worksheet: Content, Equatable {
     var resetRevision: Int?
     var title: String
     var text: String?
+    var previewImage: String?
     var textJustified: Bool?
     var background: String?
     var gridSpacing: Double?
@@ -321,7 +322,7 @@ struct Worksheet: Content, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, revision, resetRevision, title, text, textJustified, background
-        case creator, nodes, edges
+        case creator, nodes, edges, previewImage
         case gridSpacing = "gridStep"
     }
 
@@ -383,8 +384,23 @@ struct Worksheet: Content, Equatable {
     }
 }
 
+struct UserPreferences: Content {
+    var snap = false
+    var showGrid = true
+    var panLocked = false
+    var avatar: Int?
+    var theme: String?
+}
+
+func previewType(_ url: URL) -> String? {
+    let ext = url.pathExtension.lowercased()
+    let type = canvasMediaTypes[ext == "jpeg" ? "jpg" : ext]
+    return type?.hasPrefix("image/") == true ? type : nil
+}
+
 struct SiteSettings: Codable, Sendable {
     var requireLogin = false
+    var preferences: [String: UserPreferences]?
     var users: [User]?
 }
 
@@ -396,6 +412,7 @@ struct User: Codable, Sendable {
     var name: String
     var role: Role
     var passwordHash: String
+    var avatar: Int?
 }
 
 func isTesterName(_ value: String) -> Bool {
@@ -689,11 +706,25 @@ final class WorksheetStore: @unchecked Sendable {
         try lock.withLock { try readSettings() }
     }
 
+    func savePreferences(_ prefs: UserPreferences, for name: String) throws {
+        guard prefs.avatar.map({ (1...12).contains($0) }) ?? true,
+              prefs.theme.map(validSlug) ?? true else { throw Abort(.badRequest) }
+        try lock.withLock {
+            var settings = try readSettings()
+            var entries = settings.preferences ?? [:]
+            entries[name] = prefs
+            settings.preferences = entries
+            try saveSiteSettings(settings)
+        }
+    }
+
     func setSettings(_ settings: SiteSettings) throws {
         try lock.withLock {
             try rejectLink(settingsFile)
             var next = settings
-            next.users = try readUsers()
+            let existing = try readSettings()
+            next.users = existing.users
+            next.preferences = existing.preferences
             try saveSiteSettings(next)
         }
     }
@@ -755,21 +786,26 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    func previewSVG(_ path: WorksheetPath, user: User?, unlocks: Set<String> = []) throws -> String {
+    enum Preview { case drawing(String), image(URL, String) }
+
+    func preview(_ path: WorksheetPath, user: User?, unlocks: Set<String> = []) throws -> Preview {
         try lock.withLock {
             if try readSettings().requireLogin && user == nil { throw Abort(.unauthorized) }
             let url = try worksheetURL(path)
             let ctx = try context(path)
             try authorize(accessLocked(ctx, user: user, unlocks: unlocks), user: user)
             let sheet = try read(url)
+            if let name = sheet.previewImage,
+               let file = try attachments(at: url, named: name, metadata: ctx.local).first,
+               let mime = previewType(file) { return .image(file, mime) }
             let cache = url.deletingLastPathComponent().appendingPathComponent("." + path.name + ".preview-v8.svg")
             try rejectLink(cache)
             let modified = try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
             if let modified, let cached = try? cache.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
-               cached > modified { return try String(contentsOf: cache, encoding: .utf8) }
+               cached > modified { return .drawing(try String(contentsOf: cache, encoding: .utf8)) }
             let svg = boardSVG(sheet, assetBase: "/" + path.url)
             try Data(svg.utf8).write(to: cache, options: .atomic)
-            return svg
+            return .drawing(svg)
         }
     }
 
@@ -1069,7 +1105,12 @@ final class WorksheetStore: @unchecked Sendable {
     }
 
     func user(named name: String) throws -> User? {
-        try lock.withLock { try readUsers().first { $0.name == name } }
+        try lock.withLock {
+            let settings = try readSettings()
+            var user = settings.users?.first { $0.name == name }
+            user?.avatar = settings.preferences?[name]?.avatar
+            return user
+        }
     }
 
     func setUser(name: String, role: Role, passwordHash: String?, initialOnly: Bool = false) throws {
@@ -1209,6 +1250,7 @@ extension Worksheet {
         resetRevision = try? fields.decode(Int.self, forKey: .resetRevision)
         title = (try? fields.decode(String.self, forKey: .title)) ?? "Munkalap"
         text = try? fields.decode(String.self, forKey: .text)
+        previewImage = try? fields.decode(String.self, forKey: .previewImage)
         textJustified = try? fields.decode(Bool.self, forKey: .textJustified)
         background = try? fields.decode(String.self, forKey: .background)
         gridSpacing = try? fields.decode(Double.self, forKey: .gridSpacing)

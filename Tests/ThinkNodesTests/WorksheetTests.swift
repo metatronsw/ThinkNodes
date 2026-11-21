@@ -39,7 +39,7 @@ import VaporTesting
         #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("gondolatok/gondolatok.thnode").path))
         let index = try await browser.sendRequest(.GET, "/")
         #expect(index.body.string.contains("project-card panel layers-1"))
-        #expect(index.body.string.contains("class=\"guide-link panel\" href=\"/utmutato.html\""))
+        #expect(index.body.string.contains("class=\"button small\" href=\"/utmutato.html\""))
         let guide = try await browser.sendRequest(.GET, "/utmutato.html")
         #expect(guide.status == .ok && guide.body.string.contains("Példák a vásznon"))
         #expect(guide.body.string.contains("<kbd>Ctrl</kbd>") && !guide.body.string.contains("<script"))
@@ -165,6 +165,7 @@ import VaporTesting
         let preview = try await browser.sendRequest(.GET, "/api/preview/" + path + "/terv")
         #expect(preview.status == .ok && preview.body.string.contains("<svg"))
         #expect(FileManager.default.fileExists(atPath: file.deletingLastPathComponent().appendingPathComponent(".terv.preview-v8.svg").path))
+        try await checkPreviewAndPreferences(browser, path: path + "/terv", sheet: child, session: shared, png: png)
         let parent = try await browser.sendRequest(.GET, "/" + path)
         #expect(parent.body.string.contains("További oldalak:") && parent.body.string.contains("Létrehozó: shared"))
         #expect(try await browser.sendRequest(.POST, childURL, headers: headers).status == .conflict)
@@ -308,10 +309,35 @@ private func login(_ browser: some TestingApplicationTester, name: String, passw
         return (signedInCookie, try attribute("data-csrf=\"", in: viewer.body.string))
     }
     #expect(editor.status == .ok)
-    #expect(editor.body.string.contains("site-header"))
+    #expect(editor.body.string.contains("worksheet-nav"))
     #expect(editor.body.string.contains("brand-icon"))
     let token = try attribute("data-csrf=\"", in: editor.body.string)
     return (signedInCookie, token)
+}
+
+private func checkPreviewAndPreferences(_ browser: some TestingApplicationTester, path: String, sheet: Worksheet,
+                                        session: (cookie: String, csrf: String), png: Data) async throws {
+    let headers: HTTPHeaders = ["Cookie": session.cookie, "X-CSRF-Token": session.csrf]
+    let options = try await browser.sendRequest(.GET, "/api/preview-images/" + path, headers: headers)
+    #expect(try options.content.decode([String].self).contains("Kép.png"))
+    var selected = sheet
+    selected.previewImage = "Kép.png"
+    let saved = try await save(browser, path: path, worksheet: selected, session: session)
+    #expect(saved.status == .ok)
+    let image = try await browser.sendRequest(.GET, "/api/preview/" + path)
+    #expect(image.headers.first(name: .contentType) == "image/png")
+    #expect(Data(image.body.readableBytesView) == png)
+    selected.revision += 1
+    selected.previewImage = "hiányzó.svg"
+    #expect(try await save(browser, path: path, worksheet: selected, session: session).status == .ok)
+    #expect(try await browser.sendRequest(.GET, "/api/preview/" + path).body.string.contains("<svg"))
+    let preferences = UserPreferences(snap: true, showGrid: false, panLocked: true, avatar: 12)
+    let result = try await browser.sendRequest(.POST, "/api/preferences", headers: headers) { request in
+        try request.content.encode(preferences)
+    }
+    #expect(result.status == .noContent)
+    let page = try await browser.sendRequest(.GET, "/edit/" + path, headers: headers)
+    #expect(page.body.string.contains("&quot;avatar&quot;:12"))
 }
 
 private func save(_ browser: some TestingApplicationTester, path: String, worksheet: Worksheet,
@@ -624,7 +650,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     let child = try WorksheetPath(["project", "child"])
     let sheet = try store.open(child, user: owner)
     #expect(files.fileExists(atPath: root.appendingPathComponent("project/project.thnode").path))
-    #expect(try store.previewSVG(project, user: owner).contains("<svg"))
+    if case .drawing(let svg) = try store.preview(project, user: owner) { #expect(svg.contains("<svg")) } else { Issue.record("Expected worksheet SVG") }
     _ = try store.manage(child, operation: DocumentAction(scope: "sheet", action: "freeze"), user: owner, unlocks: [])
     try store.archive(child, expected: sheet.revision)
     let recreated = try store.open(child, user: owner)
@@ -898,7 +924,7 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     let settings = try String(contentsOf: root.appendingPathComponent("Team/.settings.json"), encoding: .utf8)
     #expect(settings.contains("Sub/Draft.thnode"))
     try change(folder, "revoke", editor.name)
-    #expect(throws: Abort.self) { try store.previewSVG(side, user: editor) }
+    #expect(throws: Abort.self) { try store.preview(side, user: editor) }
     #expect(throws: Abort.self) { try store.contents(side, user: editor, unlocks: [], named: "Draft.json") }
     try change(folder, "grant", editor.name)
     try change(project, "revoke", editor.name)

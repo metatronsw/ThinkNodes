@@ -199,7 +199,7 @@ function shape(node, linked, dropTarget = false) {
   const [tag, geometry] = shapeGeometry(node.shape, node.width, node.height);
   if (dropTarget) return h(tag, {...geometry, class: "container-drop-target", "data-container-candidate": "",
     fill: node.backgroundEnabled === false ? "none" : node.fill, "pointer-events": "fill",
-    stroke: "#08796c", "stroke-width": 2.5, "stroke-dasharray": "0 8", "stroke-linecap": "round",
+    stroke: "#08796c", "stroke-width": 5, "stroke-dasharray": "0 8", "stroke-linecap": "round",
     "vector-effect": "non-scaling-stroke"});
   if (node.backgroundEnabled === false) return h(tag, {...geometry, fill: "none", stroke: "none", "pointer-events": "fill"});
   const locked = node.kind === "container" && node.locked;
@@ -388,18 +388,30 @@ createApp({
         return {...node, extentX, extentY};
       }), edges: board.value.edges,
     });
-    const gridKey = "thinknodes/user-grid/" + user;
-    const gridVisible = ref(true);
-    try { gridVisible.value = window.localStorage?.getItem(gridKey) !== "false"; }
-    catch { /* The current tab can still hold the setting when storage is unavailable. */ }
-    function toggleGrid() {
-      gridVisible.value = !gridVisible.value;
-      try { window.localStorage?.setItem(gridKey, String(gridVisible.value)); }
-      catch { /* Keep the new value in the current tab. */ }
+    const preferences = JSON.parse(mount.dataset.preferences || "{}");
+    const gridVisible = ref(preferences.showGrid ?? true);
+    const snapToGrid = ref(preferences.snap ?? false);
+    const panLocked = ref(preferences.panLocked ?? false);
+    const avatar = ref(preferences.avatar);
+    const spacePan = ref(false);
+    const previewImages = ref([]);
+    async function loadPreviewImages() {
+      try {
+        previewImages.value = await (await checked(await fetch("/api/preview-images/" + path))).json();
+      } catch (error) { problem.value = error.message; }
     }
+    let preferenceWrite = Promise.resolve();
+    function savePreferences() {
+      const body = JSON.stringify({...preferences, showGrid: gridVisible.value, snap: snapToGrid.value,
+        panLocked: panLocked.value, avatar: avatar.value});
+      preferenceWrite = preferenceWrite.then(async () => checked(await fetch("/api/preferences", {
+        method: "POST", keepalive: true, headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body
+      }))).catch(error => { problem.value = error.message; });
+    }
+    function toggleGrid() { gridVisible.value = !gridVisible.value; savePreferences(); }
     const gridSpacing = computed(() => board.value?.gridSpacing ?? defaultGridSpacing);
     const gridColor = computed(() => automaticGridColor(board.value?.background ?? paper));
-    const snapToGrid = ref(false);
+
     const selected = ref(null);
     const batch = ref(null);
     const searchQuery = ref(null);
@@ -681,7 +693,7 @@ createApp({
     }
 
     const resizeTarget = computed(() => {
-      if (!alt.value || ctrl.value) return;
+      if (spacePan.value || !alt.value || ctrl.value) return;
       if (gesture.value?.type === "resize") return gesture.value.nodeID;
       if (!canvasPointer.value || !canvas.value) return;
       const point = world(canvasPointer.value);
@@ -721,7 +733,8 @@ createApp({
       zoom = d3.zoom().scaleExtent([0.0005, 4])
         .filter(event => {
           if (event.type === "wheel") return !gesture.value;
-          return !event.button && !event.altKey && !event.ctrlKey && !reconnect.value && !gesture.value
+          if (spacePan.value) return !event.button && !gesture.value;
+          return !panLocked.value && !event.button && !event.altKey && !event.ctrlKey && !reconnect.value && !gesture.value
             && !event.target.closest("[data-node], [data-edge]");
         })
         .on("start", event => { menu.value = null; if (event.sourceEvent) lastClick = null; })
@@ -1278,6 +1291,13 @@ createApp({
       const operation = gesture.value;
       if (!operation && !reconnect.value) return;
       if (operation && operation.pointer !== event.pointerId) return;
+      if (operation?.type === "pan") {
+        const [x, y] = operation.screen;
+        const start = operation.startView;
+        const next = start.translate((event.clientX - x) / start.k, (event.clientY - y) / start.k);
+        d3.select(canvas.value).call(zoom.transform, next);
+        return;
+      }
       if (operation?.waiting) {
         operation.latest = event;
         operation.moved ||= Math.hypot(event.clientX-operation.screen[0], event.clientY-operation.screen[1]) > 3;
@@ -1557,6 +1577,10 @@ createApp({
     }
 
     function pressCanvas(event) {
+      if (spacePan.value && event.button === 0) {
+        beginDrag(event, "pan", {startView: view.value});
+        return;
+      }
       finishField();
       canDeselectOnClick = false;
       if (event.target.closest?.("[data-audio-player]")) return;
@@ -1738,14 +1762,30 @@ createApp({
     }
 
     function modifiers(event) {
+      if (event.type === "keyup" && event.code === "Space") {
+        spacePan.value = false;
+        if (gesture.value?.type === "pan") gesture.value = null;
+      }
       ctrl.value = event.ctrlKey;
       alt.value = event.altKey;
       shift.value = event.shiftKey;
     }
-    function clearModifiers() { ctrl.value = false; alt.value = false; shift.value = false; panning.value = false; }
+    function clearModifiers() { spacePan.value = false; ctrl.value = false; alt.value = false; shift.value = false; panning.value = false; }
 
     function keyboard(event) {
       modifiers(event);
+      if (event.code === "Space" && !editingText(event.target) && (canvasPointer.value || !event.target?.closest?.("button, a"))) {
+        event.preventDefault();
+        spacePan.value = true;
+        const drag = gesture.value;
+        if (drag && drag.type !== "pan") {
+          const screen = canvasPointer.value ? [canvasPointer.value.clientX, canvasPointer.value.clientY] : drag.screen;
+          finishPointer({pointerId: drag.pointer}, true);
+          gesture.value = {type: "pan", pointer: drag.pointer, screen, startView: view.value};
+          canvas.value.setPointerCapture(drag.pointer);
+        }
+        return;
+      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
         sessionAction("checkpoint");
@@ -1795,7 +1835,7 @@ createApp({
         return;
       }
       if (event.key !== "Escape" && event.target?.closest?.("input, textarea, select, [contenteditable=true]")) return;
-      if (event.key === "Enter" && !event.shiftKey && !event.target?.closest?.("button, a")) {
+      if (event.key === "Enter" && !event.shiftKey && (canvasPointer.value || !event.target?.closest?.("button, a"))) {
         event.preventDefault?.();
         if (!event.repeat) {
           searchQuery.value = "";
@@ -2176,9 +2216,11 @@ createApp({
     };
 
     function dragCursor() {
+      if (spacePan.value) return gesture.value?.type === "pan" ? "grabbing" : "grab";
       const active = gesture.value;
       if (active?.type === "resize") return active.sx === active.sy ? "nwse-resize" : "nesw-resize";
       if (active?.type === "rectangle") return "crosshair";
+      if (active?.type === "move") return active.locked ? undefined : "move";
       if (active?.moved && !active.locked && !active.waiting) {
         return ["move", "batch", "clone", "text", "split"].includes(active.type) ? "move" : "grabbing";
       }
@@ -2195,13 +2237,15 @@ createApp({
         h("svg", {ref: canvas, class: ["editor-canvas", {"ctrl-held": ctrl.value, "alt-held": alt.value}],
           "data-drag-cursor": dragCursor(), "aria-label": "Ötletvászon",
           onContextmenu: event => context(event),
+          onClickCapture: event => { if (spacePan.value) { event.preventDefault(); event.stopPropagation(); } },
           onClick: event => {
             // D3 suppresses the click after a pan.
             if (canDeselectOnClick && !event.target.closest("[data-node], [data-edge]")) clearSelection();
             canDeselectOnClick = false;
           },
+          onDblclickCapture: event => { if (spacePan.value) { event.preventDefault(); event.stopPropagation(); } },
           onDblclick: event => {
-            if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
+            if (spacePan.value || event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
                 gesture.value || reconnect.value || event.target.closest("[data-node], [data-edge]")) return;
             addNode(world(event));
           },
@@ -2240,21 +2284,29 @@ createApp({
               fill: "#4168e922", stroke: "#4168e9", "vector-effect": "non-scaling-stroke", "pointer-events": "none"}) : null,
             mouse ? h("g", {"data-mouse-layer": ""}) : null,
           ]),
+          spacePan.value ? h("rect", {width: "100%", height: "100%", fill: "none",
+            "pointer-events": "all", "aria-hidden": "true", "data-editor-only": ""}) : null,
         ]),
         h("div", {class: "participants", "aria-label": "Jelenlévők"},
           !online.value && problem.value ? h("span", {class: "connection-lost guest", role: "status"}, "Kapcsolat megszakadt") : peers.value.map((p, index) =>
-            h("span", {key: index, class: p.color ? "" : "guest", style: {"--peer": p.color}}, p.name))),
+            h("span", {key: index, class: p.color ? "" : "guest", style: {"--peer": p.color}}, [(p.mine ? avatar.value : p.avatar) ? h("img", {class: "peer-avatar", src: "/icons/avatar-" + (p.mine ? avatar.value : p.avatar) + ".svg", alt: ""}) : null, p.name]))),
         h("div", {class: "canvas-controls"}, [
           button("", () => transfer(() => copyBox(selectedBox())), {symbol: "copy", title: "Másolás (Ctrl+C / ⌘C)", "aria-label": "Másolás", disabled: !selectedBox()}),
           button("", () => transfer(pasteClipboard), {symbol: "paste", title: "Beillesztés (Ctrl+V / ⌘V)", "aria-label": "Beillesztés", disabled: !online.value}),
           button("", () => zoomBy(0.8), {"aria-label": "Kicsinyítés", title: "Kicsinyítés", symbol: "minus"}),
           h("span", Math.round(view.value.k * 100) + "%"),
           button("", () => zoomBy(1.25), {"aria-label": "Nagyítás", title: "Nagyítás", symbol: "plus"}),
-          button("Közép", centerOrigin, {title: "Középre állítás, (0, 0)", symbol: "center"}),
-          button("Mind", fit, {title: "A teljes vászon megjelenítése", symbol: "fit"}),
+          button("", centerOrigin, {"aria-label": "Közép", title: "Középre állítás, (0, 0)", symbol: "center"}),
+          button("", fit, {"aria-label": "Mind", title: "A teljes vászon megjelenítése", symbol: "fit-objects"}),
+          button("", () => transfer(async () => {
+            if (document.fullscreenElement) await document.exitFullscreen();
+            else await document.documentElement.requestFullscreen();
+          }), {symbol: "fit", title: "Teljes képernyő", "aria-label": "Teljes képernyő"}),
+          button("", () => { panLocked.value = !panLocked.value; savePreferences(); },
+            {symbol: "hand", title: "Vászonmozgatás zárolása", "aria-label": "Vászonmozgatás zárolása", "aria-pressed": panLocked.value}),
           button("", toggleGrid, {
             title: "Saját pontrács megjelenítése", "aria-label": "Pontrács", "aria-pressed": gridVisible.value, symbol: "grid"}),
-          button("", () => { snapToGrid.value = !snapToGrid.value; }, {title: "Rácsra igazítás", "aria-label": "Rácsra igazítás", "aria-pressed": snapToGrid.value, symbol: "snap"}),
+          button("", () => { snapToGrid.value = !snapToGrid.value; savePreferences(); }, {title: "Rácsra igazítás", "aria-label": "Rácsra igazítás", "aria-pressed": snapToGrid.value, symbol: "snap"}),
 
         ]),
         board.value && !board.value.nodes.length ? h("p", {class: "canvas-empty"}, "Új dobozhoz kattints duplán az üres vászonra.") : null,
@@ -2490,6 +2542,13 @@ createApp({
           onChange: uploadAttachments}),
         group("Cím", [input(sheet.title, value => updateItem(sheet, "title", value), {"aria-label": "Cím", maxlength: 120})]),
         group("Szöveg", [textArea(sheet.text ?? "", value => updateItem(sheet, "text", value), 7, sheet.textJustified)]),
+        group("Előnézeti kép", [h("select", {"aria-label": "Előnézeti kép", value: previewImages.value.includes(sheet.previewImage) ? sheet.previewImage : "",
+          onFocus: loadPreviewImages, onChange: e => updateItem(sheet, "previewImage", e.target.value || undefined)}, [
+          h("option", {value: ""}, "Default · Munkalap SVG"), ...previewImages.value.map(name => h("option", {value: name}, name))
+        ])]),
+        group("Saját avatar", [h("div", {class: "avatar-picker"}, Array.from({length: 12}, (_, i) =>
+          h("button", {type: "button", "aria-label": "Avatar " + (i+1), "aria-pressed": avatar.value === i+1,
+            onClick: () => { avatar.value = i+1; savePreferences(); }}, [h("img", {src: "/icons/avatar-" + (i+1) + ".svg", alt: ""})])))]),
         group("Háttér", [colorPicker("Munkalap háttérszíne", sheet.background ?? paper,
           value => updateItem(sheet, "background", value), "worksheet/background")]),
         button(uploading.value ? "Feltöltés…" : "Fájl feltöltése", event => {
@@ -2674,29 +2733,27 @@ createApp({
       ]);
     }
 
-    const toolbar = document.getElementById?.("editor-tools");
     watch(() => board.value?.title, title => {
-      const current = toolbar?.closest("header")?.querySelector("[aria-current=page]");
-      if (current && title) current.textContent = title;
+      if (currentCrumb && title) currentCrumb.textContent = title;
     });
 
     function renderHeader() {
       const changed = online.value && (dirty.value || (board.value.revision > checkpointState.value.revision
         ? board.value.revision !== checkpointRevision : checkpointState.value.changed));
       const historyButton = (label, symbol, forward, available) =>
-        button(label, () => replay(forward), {
+        button("", () => replay(forward), {title: label, "aria-label": label,
           symbol, disabled: !available || !online.value || !!gesture.value,
           class: available && online.value && gesture.value ? "button gesture-disabled" : "button",
         });
       const controls = [
           historyButton("Visszavonás", "undo", false, undo.value.length || fieldChanged),
           historyButton("Újra", "redo", true, redo.value.length),
-          button("Resign", () => sessionAction("resign"), {symbol: "undo", title: "A közös visszaállítási pont betöltése",
+          button("", () => sessionAction("resign"), {"aria-label": "Resign", symbol: "restore", title: "A közös visszaállítási pont betöltése",
             disabled: checkpointBusy.value || !online.value}),
           button(h("span", {class: changed ? "save-label-changed" : undefined}, "Mentés"), () => sessionAction("checkpoint"), {symbol: "save",
             title: "Közös visszaállítási pont rögzítése", disabled: checkpointBusy.value || !online.value}),
       ];
-      return toolbar ? h(window.Vue.Teleport, {to: toolbar}, controls) : h("div", controls);
+      return h("div", {class: "worksheet-history"}, controls);
     }
 
     return () => {
@@ -2704,20 +2761,21 @@ createApp({
       const currentStatus = reconnect.value ? "Kattints az új célra vagy a vászonra. Esc a megszakításhoz."
         : "";
       return [
-        renderHeader(),
         h("div", {class: "editor-workspace"}, [
           renderCanvas(),
           problem.value || currentStatus ? h("p", {class: ["canvas-status", {error: problem.value}], role: "status"}, problem.value || currentStatus) : null,
           h("div", {class: "inspector-column"}, [renderInspector()]),
           canvasPanelOpen.value ? h("div", {class: "inspector-column canvas-inspector-column"}, [renderCanvasInspector()]) : null,
           renderSearch(),
+          renderHeader(),
+          h("a", {class: "button worksheet-close", href: "/" + path, title: "Szerkesztő bezárása", "aria-label": "Bezárás", onClick: switchToViewer}, [icon("close")]),
           button("", () => { finishField(); objectPanelOpen.value = !objectPanelOpen.value; }, {
             class: ["button", "sidebar-open", {active: (selected.value || batch.value) && !objectPanelOpen.value}],
             "aria-expanded": objectPanelOpen.value,
             "aria-label": objectPanelOpen.value ? "Oldalsáv bezárása" : "Oldalsáv megnyitása",
             symbol: objectPanelOpen.value ? "right" : "left",
           }),
-          button("", () => { finishField(); canvasPanelOpen.value = !canvasPanelOpen.value; }, {
+          button("", () => { finishField(); canvasPanelOpen.value = !canvasPanelOpen.value; if (canvasPanelOpen.value) loadPreviewImages(); }, {
             class: "button sidebar-open sidebar-open-canvas",
             "aria-expanded": canvasPanelOpen.value,
             "aria-label": canvasPanelOpen.value ? "Vászonbeállítások bezárása" : "Vászonbeállítások megnyitása",

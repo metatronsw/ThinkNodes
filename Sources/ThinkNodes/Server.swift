@@ -94,7 +94,7 @@ private struct SessionInfo: Sendable {
 }
 
 private func authenticatedUser(_ data: SessionData, store: WorksheetStore) throws -> User? {
-    if store.testMode, let name = data["tester"], isTesterName(name) { return User(name: name, role: .admin, passwordHash: "") }
+    if store.testMode, let name = data["tester"], isTesterName(name) { return User(name: name, role: .admin, passwordHash: "", avatar: try store.settings().preferences?[name]?.avatar) }
     guard let name = data["user"], let user = try store.user(named: name),
           data["credential"] == user.passwordHash else { return nil }
     return user
@@ -271,11 +271,12 @@ func configure(_ application: Application, store: WorksheetStore) {
         guard access.editable else { throw Abort(.forbidden) }
         let local = [assets + "vendor/vue.js", assets + "vendor/d3.js"].allSatisfy { FileManager.default.fileExists(atPath: $0) }
         let loading = local ? "Szerkesztő betöltése…" : "A szerkesztőhöz futtasd a teljes ./build.sh parancsot."
-        let actions = "<div id='editor-tools'></div>" + headerLink("/" + path.url, "Bezárás", symbol: "left")
+        let prefs = try store.settings().preferences?[user.name] ?? UserPreferences()
+        let preferences = String(decoding: try JSONEncoder().encode(prefs), as: UTF8.self)
         return htmlPage(title: worksheet.title, body: """
             <div class="editor-root">
-            \(siteHeader(path: path.url, project: worksheet.title, user: user, csrf: csrf, actions: actions, editing: true))
-            <main id="editor" data-folder="\(access.folderPath)" data-path="\(path.url)" data-csrf="\(csrf)" data-motion-rate="\(motionRate)" data-role="\(user.role.rawValue)" data-user="\(escaped(user.name))">
+            \(siteHeader(path: path.url, project: worksheet.title, user: user, csrf: csrf, editing: true, folder: access.folderPath))
+            <main id="editor" data-preferences="\(escaped(preferences))" data-folder="\(access.folderPath)" data-path="\(path.url)" data-csrf="\(csrf)" data-motion-rate="\(motionRate)" data-role="\(user.role.rawValue)" data-user="\(escaped(user.name))">
               <p class="editor-loading">\(loading)</p>
               <noscript><p>A szerkesztőhöz JavaScript szükséges.</p><a href="/\(path.url)">Megtekintés</a></noscript>
             </main></div>
@@ -417,11 +418,37 @@ func configure(_ application: Application, store: WorksheetStore) {
         }
     }
 
+    app.post("api", "preferences") { req async throws -> HTTPStatus in
+        let user = try session(req, store: store).editor()
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        let prefs = try req.content.decode(UserPreferences.self)
+        try await req.application.threadPool.runIfActive { try store.savePreferences(prefs, for: user.name) }
+        return .noContent
+    }
+
+    app.get("api", "preview-images", "**") { req async throws -> [String] in
+        let identity = try session(req, store: store)
+        _ = try identity.editor()
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        return try await req.application.threadPool.runIfActive {
+            try store.contents(path, user: identity.user, unlocks: identity.unlocks)
+                .filter { previewType($0) != nil }.map(\.lastPathComponent)
+        }
+    }
+
     app.get("api", "preview", "**") { req async throws -> Response in
         let identity = try session(req, store: store)
         let path = try WorksheetPath(req.parameters.getCatchall())
-        let svg = try await req.application.threadPool.runIfActive { try store.previewSVG(path, user: identity.user, unlocks: identity.unlocks) }
-        return response(svg, type: "image/svg+xml; charset=utf-8")
+        switch try await req.application.threadPool.runIfActive({ try store.preview(path, user: identity.user, unlocks: identity.unlocks) }) {
+        case .drawing(let svg): return response(svg, type: "image/svg+xml; charset=utf-8")
+        case .image(let file, let mime):
+            let result = try await req.fileio.asyncStreamFile(at: file.path)
+            result.headers.replaceOrAdd(name: .contentType, value: mime)
+            result.headers.replaceOrAdd(name: "Content-Security-Policy", value: "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:")
+            result.headers.replaceOrAdd(name: .cacheControl, value: "no-store")
+            return result
+        }
+
     }
 
     app.post("api", "unlock", "**") { req async throws -> Response in
@@ -597,18 +624,14 @@ private func indexPage(_ items: [ProjectCard], session: SessionInfo) -> Response
         """
     }.joined()
     let create = session.user == nil ? "" : "<button type=\"button\" class=\"panel sub-preview new-worksheet\">\(uiIcon("plus"))Új projekt</button>"
+    let openProject = """
+        <form class="header-open" method="get" action="/open"><input aria-label="Munkalap útvonala" name="path" placeholder="Munkalap útvonala" required><button class="button" aria-label="Megnyitás">\(uiIcon("folder"))</button></form>
+        """
     return htmlPage(title: "Munkalapok", body: """
-        \(siteHeader(user: session.user, csrf: session.csrf))
+        \(siteHeader(user: session.user, csrf: session.csrf, actions: headerLink("/utmutato.html", "Útmutató", symbol: "file"), centerAction: openProject))
         <main class="shell">
           <script type="module" src="/cards.js"></script>
           <div class="page-heading"><h1>Munkalapok</h1></div>
-          <div class="home-tools">
-            <form class="open-path panel" method="get" action="/open">
-              <label>Munkalap útvonala<input name="path" placeholder="gondolatok/otletek1" required></label>
-              <button class="button primary" type="submit">\(uiIcon("folder"))Megnyitás</button>
-            </form>
-            <a class="guide-link panel" href="/utmutato.html">\(uiIcon("file"))Útmutató</a>
-          </div>
           <div class="project-list" id="worksheet-cards" data-delete="\(session.user?.role == .admin)" data-csrf="\(session.csrf ?? "")">\(cards.isEmpty && create.isEmpty ? "<p class=\"muted\">Még nincs munkalap.</p>" : cards)\(create)</div>
         </main>
         """)
@@ -664,14 +687,14 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
     }.joined()
     let newPage = access.editable ? "<button type=\"button\" class=\"button new-worksheet\">\(uiIcon("plus"))Új munkalap</button><button type=\"button\" class=\"button new-worksheet\" data-folder=\"1\">Új almappa</button>" : ""
     return htmlPage(title: worksheet.title, body: """
-        \(siteHeader(path: path.url, project: worksheet.title, user: session.user, csrf: session.csrf, canEdit: access.editable))
+        \(siteHeader(path: path.url, project: worksheet.title, user: session.user, csrf: session.csrf, canEdit: access.editable, folder: access.folderPath))
         <script type="module" src="/viewer.js?v=5"></script>
         <main class="shell" id="worksheet-view" data-path="\(path.url)" data-csrf="\(token(req))" data-revision="\(worksheet.revision)" data-editable="\(access.editable)" data-member="\(session.user != nil)">
           <a hidden data-current-document data-scope="\(access.folderPath == path.url ? "project" : "sheet")" \(menuState(access.sheetRule)) data-manage="\(access.manageable)" href="\(base)">Munkalap</a>
+          <div class="viewer-edit-row">\(edit)</div>
           <div class="passive-frame panel">
             <svg class="passive-backdrop" aria-hidden="true"><rect width="100%" height="100%" fill="\(worksheet.backgroundColor)"/></svg>
             \(canvas.svg)
-            \(edit)
             <button class="button fullscreen" type="button" aria-label="Teljes képernyő">\(uiIcon("fit"))</button>
           </div>
           <div data-viewer-notes>\(tooltips)\(notes)\(note)</div>

@@ -36,7 +36,8 @@ const zoomEvents = {};
 let requestedZoom;
 function zoom() {
   const behavior = () => {};
-  behavior.filter = behavior.scaleExtent = () => behavior;
+  behavior.scaleExtent = () => behavior;
+  behavior.filter = filter => { zoomEvents.filter = filter; return behavior; };
   behavior.on = (key, fn) => { zoomEvents[key] = fn; return behavior; };
   behavior.transform = (_, transform) => { requestedZoom = transform; };
   return behavior;
@@ -69,7 +70,13 @@ let writes = 0;
 const attachmentUploads = [];
 let svgUpload;
 let checkpoint = structuredClone(sheet);
+let savedPreferences;
 globalThis.fetch = async (url, options) => {
+  if (url.startsWith("/api/preview-images/")) return Response.json([]);
+  if (url === "/api/preferences") {
+    savedPreferences = JSON.parse(options.body);
+    return new Response(null, {status: 204});
+  }
   if (url === "/api/subworksheet/test/jegyzet" && options?.method === "POST") {
     return Response.json({title: "Jegyzet"});
   }
@@ -203,6 +210,23 @@ assert.ok(find(n => n.tag === "input" && n.props.value === sheet.title, canvasPa
 assert.equal(find(n => n.tag === "button" && text(n) === "Sorkizárás", canvasPanel()), undefined);
 assert.equal(text(canvasPanel().children[0].children.find(n => n.tag === "button")), "Fájl feltöltése");
 const emptyCanvasEvent = (x, y) => event(canvas(), x, y, {target: {closest: () => null}});
+const panLock = prop("aria-label", "Vászonmozgatás zárolása");
+const plainPress = {button: 0, type: "mousedown", target: {closest: () => null}};
+panLock.props.onClick(); await tick();
+assert.equal(zoomEvents.filter(plainPress), false);
+listeners.keydown({key: " ", code: "Space", preventDefault() {}});
+await tick();
+assert.equal(canvas().props["data-drag-cursor"], "grab");
+assert.equal(zoomEvents.filter({...plainPress, target: {closest: () => graphic("outer")}}), true);
+canvas().props.onPointerdownCapture(event(canvas(), 0, 0, {target: graphic("outer")}));
+canvas().props.onPointermove(event(canvas(), 35, -12));
+await tick();
+assert.deepEqual([requestedZoom.x, requestedZoom.y], [35, -12]);
+assert.equal(canvas().props["data-drag-cursor"], "grabbing");
+canvas().props.onPointerup(event(canvas(), 35, -12));
+listeners.keyup({type: "keyup", code: "Space"});
+panLock.props.onClick(); await tick();
+assert.equal(zoomEvents.filter(plainPress), true);
 const wirePointerHandler = oneWire().props.onPointerdown;
 canvas().props.onPointerdownCapture(emptyCanvasEvent(280, 180));
 zoomEvents.zoom({transform: d3.zoomIdentity.translate(25, 15), sourceEvent: {type: "mousemove"}});
@@ -702,7 +726,7 @@ prop("aria-label", "Pontrács").props.onClick(); await tick();
 await new Promise(resolve => setTimeout(resolve, 100));
 assert.equal(writes, gridWrites);
 assert.equal(sheet.gridVisible, undefined);
-assert.equal(storage.get("thinknodes/user-grid/admin"), "false");
+assert.equal(savedPreferences.showGrid, false);
 assert.equal(prop("fill", "url(#worksheet-grid)"), undefined);
 toggle("Enter", true); await tick();
 const search = prop("aria-label", "Keresés a munkalapon");

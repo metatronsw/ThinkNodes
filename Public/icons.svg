@@ -49,4 +49,9 @@
   <symbol id="paste" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5H4v16h16V5h-4"/><rect x="8" y="3" width="8" height="5" rx="1"/></g></symbol>
   <symbol id="play" viewBox="0 0 24 24"><path fill="currentColor" d="M7 4v16l13-8z"/></symbol>
   <symbol id="pause" viewBox="0 0 24 24"><path fill="currentColor" d="M6 4h4v16H6zm8 0h4v16h-4z"/></symbol>
+<symbol id="close" viewBox="0 0 24 24"><path d="M5 5l14 14M19 5 5 19" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+<symbol id="parent-up" viewBox="0 0 24 24"><path d="M12 20V4m-7 7 7-7 7 7M7 20h10" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+<symbol id="parent-left" viewBox="0 0 24 24"><path d="M20 12H4m7-7-7 7 7 7M20 7v10" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+<symbol id="restore" viewBox="0 0 24 24"><path d="M4 9a8 8 0 1 1 0 7M4 3v6h6" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+  <symbol id="fit-objects" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/><rect x="6" y="7" width="7" height="5" rx="1"/><rect x="12" y="13" width="6" height="4" rx="1"/></g></symbol>
 </svg>

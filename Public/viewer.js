@@ -149,7 +149,7 @@ let rosterSignature;
 let paintedWireOwners = new Map();
 function paint(peers) {
   roster.classList.remove("connection-lost");
-  const signature = JSON.stringify(peers.map(({name, color}) => [name, color]));
+  const signature = JSON.stringify(peers.map(({name, color, avatar}) => [name, color, avatar]));
   if (signature !== rosterSignature) {
     rosterSignature = signature;
     roster.replaceChildren(...peers.map(peer => {
@@ -157,6 +157,13 @@ function paint(peers) {
       if (peer.color) label.style.setProperty("--peer", peer.color);
       else label.className = "guest";
       label.textContent = peer.name;
+      if (peer.avatar) {
+        const img = document.createElement("img");
+        img.src = "/icons/avatar-" + peer.avatar + ".svg";
+        img.className = "peer-avatar";
+        img.alt = "";
+        label.prepend(img);
+      }
       return label;
     }));
   }
@@ -295,17 +302,15 @@ const live = liveConnection(path, csrf, async state => {
       const replacement = newCredits[index];
       if (replacement && !credit.isEqualNode(replacement)) credit.replaceWith(replacement);
     });
-    const oldEdit = frame.querySelector(".viewer-edit"), newEdit = nextFrame.querySelector(".viewer-edit");
-    if (!newEdit) oldEdit?.remove();
-    else if (!oldEdit) frame.append(newEdit);
+    updateSection(main, next, ".viewer-edit-row");
     Object.assign(main.dataset, next.dataset);
     motions.clear();
     changedMovers.clear();
     scene = previewScene();
     paintedWireOwners.clear();
     if (document.title !== page.title) document.title = page.title;
-    const header = document.querySelector(".site-header");
-    const nextHeader = page.querySelector(".site-header");
+    const header = document.querySelector(".worksheet-nav");
+    const nextHeader = page.querySelector(".worksheet-nav");
     for (const selector of [".header-left", ".header-parent", ".header-actions"]) {
       updateSection(header, nextHeader, selector);
     }

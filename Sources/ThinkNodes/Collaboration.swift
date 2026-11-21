@@ -6,6 +6,7 @@ struct Participant: Content {
     let color: String
     let node: String?
     let edge: String?
+    var avatar: Int?
     let mine: Bool
     let viewing: Bool
 }
@@ -37,6 +38,7 @@ final class Collaboration: @unchecked Sendable {
         let name: String?
         let role: Role?
         let color: String
+        var avatar: Int?
         var editing = false
         var viewing = false
         var socket: WebSocket?
@@ -152,6 +154,10 @@ final class Collaboration: @unchecked Sendable {
                     room.peers[client] = Peer(name: user?.name, role: user?.role, color: user == nil ? "" : room.color(for: user?.name))
                     room.changed()
                 }
+                if room.peers[client]?.avatar != user?.avatar {
+                    room.peers[client]?.avatar = user?.avatar
+                    room.changed()
+                }
                 if editing && action == "poll" {
                     guard access.editable else { throw Abort(.forbidden) }
                     room.peers[client]?.editing = true
@@ -212,7 +218,7 @@ final class Collaboration: @unchecked Sendable {
                 if adminA != adminB { return adminA }
                 return a.value.joined == b.value.joined ? a.key < b.key : a.value.joined < b.value.joined
             }.map {
-                Participant(name: $0.value.name ?? "Vendég", color: $0.value.color, node: $0.value.node, edge: $0.value.edge, mine: $0.key == client, viewing: $0.value.viewing)
+                Participant(name: $0.value.name ?? "Vendég", color: $0.value.color, node: $0.value.node, edge: $0.value.edge, avatar: $0.value.avatar, mine: $0.key == client, viewing: $0.value.viewing)
             })
             rooms[path.url] = room.peers.isEmpty ? nil : room
             return (state, wait)

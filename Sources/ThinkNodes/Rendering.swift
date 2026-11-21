@@ -69,7 +69,7 @@ func headerLink(_ url: String, _ label: String, symbol: String) -> String {
     "<a class=\"button small\" href=\"\(escaped(url))\">\(uiIcon(symbol))\(escaped(label))</a>"
 }
 
-func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: String?, actions: String = "", canEdit: Bool = false, editing: Bool = false, showAdminLogout: Bool = false) -> String {
+func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: String?, actions: String = "", centerAction: String = "", canEdit: Bool = false, editing: Bool = false, showAdminLogout: Bool = false, folder: String? = nil) -> String {
     let parts = path?.split(separator: "/").map(String.init) ?? []
     let base = editing ? "/edit/" : "/"
     let crumb = parts.indices.map { i in
@@ -79,7 +79,7 @@ func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: 
         let label = last ? (project ?? parts[i]) : (parts[i].removingPercentEncoding ?? parts[i])
         return "<span class=\"slash\" aria-hidden=\"true\">/</span><a \(last ? "aria-current='page'" : "") href=\"\(escaped(url))\">\(escaped(label))</a>"
     }.joined()
-    let parent = parts.count > 1 ? "<a class=\"button small\" aria-label=\"Szülő munkalap\" href=\"\(escaped(base + parts.dropLast().joined(separator: "/")))\">\(uiIcon("up"))</a>" : ""
+    let parent = parts.count > 1 ? "<a class=\"button small\" aria-label=\"Szülő munkalap\" href=\"\(escaped(base + parts.dropLast().joined(separator: "/")))\">\(uiIcon(path == folder ? "parent-up" : "parent-left"))</a>" : ""
     let session: String
     if let user, let csrf {
         let logout = (user.role != .admin || showAdminLogout) ? "<button class=\"button small\" type=\"submit\" aria-label=\"Kijelentkezés\" title=\"Kijelentkezés\">\(uiIcon("logout"))</button>" : ""
@@ -95,11 +95,14 @@ func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: 
             <a class="button small" href="/login\(path.map { "?next=/\($0)" } ?? "")">\(uiIcon("login"))Bejelentkezés</a>
             """
     }
+    let tag = path == nil ? "header" : "div"
+    let navigationClass = path == nil ? "site-header" : "worksheet-nav"
     return """
-        <header class="site-header"><div class="header-left"><nav aria-label="Fő navigáció" class="breadcrumbs">
+        <\(tag) class="\(navigationClass)"><div class="header-left"><nav aria-label="Fő navigáció" class="breadcrumbs">
+          \(user?.role == .admin ? headerLink("/admin", "Admin", symbol: "settings") : "")
           <a class="brand" href="/"><span class="brand-icon" aria-hidden="true"><span></span><span></span><span></span></span>ThinkNodes</a>
           \(crumb)
-        </nav></div><div class="header-parent">\(parent)</div><div class="header-actions">\(actions)<div class="header-user">\(user?.role == .admin ? headerLink("/admin", "Admin", symbol: "settings") : "")\(session)</div></div></header>
+        </nav></div><div class="header-parent">\(parent)\(centerAction)</div><div class="header-actions">\(actions)<div class="header-user">\(session)</div></div></\(tag)>
         """
 }
 
