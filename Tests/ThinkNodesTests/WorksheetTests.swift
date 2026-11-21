@@ -337,7 +337,7 @@ private func checkPreviewAndPreferences(_ browser: some TestingApplicationTester
     }
     #expect(result.status == .noContent)
     let page = try await browser.sendRequest(.GET, "/edit/" + path, headers: headers)
-    #expect(page.body.string.contains("&quot;avatar&quot;:12"))
+    #expect(!page.body.string.contains("&quot;avatar&quot;:12"))
 }
 
 private func save(_ browser: some TestingApplicationTester, path: String, worksheet: Worksheet,

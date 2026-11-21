@@ -135,7 +135,7 @@ export async function importFile(blob, path, csrf) {
   }
   checkText(text);
   await storeAttachment(blob, path, csrf, name);
-  return {title, text, file: {type: ext}, width: 340, height: 220};
+  return {title, text, file: ext === "json" ? {type: ext} : {type: ext, filename: name}, width: 340, height: 220};
 }
 
 export async function pngForClipboard(url) {

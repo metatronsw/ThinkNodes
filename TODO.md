@@ -22,52 +22,63 @@ SHIFT DRAG:
 - szín váltás ? 
 - shift duplakatt: doboz, nyíl, forma váltás
 
+{ 
+SPACE INSERT: 
+- kereső ablak nyílik, rendszer parancsokat lehet megadni, vagy a könyvtárból / közös könyvtárból dokumentumokat - szimbólumokat beilleszteni
+}
 
 
 
-FILE TÖRLÉS:
-- törlés a munkalapról (alap beállítás)
-- törlés a mappából is
+
+
+FILE KEZELÉS: 
+- engedni hogy kívülről is elérhető legyen link alapján ? 
 
 FILE BROWSER:
 - a project mappából és azok almappáiból tud válogatni, drag & drop módszerrel, vagy file hozzá adása gomb-al
 
 
-SPACE INSERT: 
-- kereső ablak nyílik, rendszer parancsokat lehet megadni, vagy a könyvtárból / közös könyvtárból dokumentumokat - szimbólumokat beilleszteni
--
+FILE TÖRLÉS: 
+(kép, hang, zip, dokumentum esetén kérdezze meg)
+- törlés a munkalapról (alap beállítás)
+- törlés a mappából is
+
+
+ÉRVÉNYTELEN URL:
+ha a felhasználó nem létező útvonalat ad meg akkor most egy sima json üzenet van: 
+{"error":true,"reason":"Érvénytelen munkalapútvonal."}
+
+Ezt cseréld le egy statikus lapra, amin azt írja ilyen oldal nem létezik. 
+linket a fő oldalra, és hogy jelentkezzen be  vagy regisztráljon, hozzon létre új oldalt
 
 
 
 
-doboz link szöveget vedd nagyobra
-locked konténer keret vastagsága legyen duplája
-canvas property: töröld a sorkizárás gombot
+igazítsd úgy a grid-et, hogy az első pont a 0,0 origóba legyen
 
-CURSOR HIBA:
-- vizsgáld felül az egér cursor viselkedését, bizonyos esetekben nem tudja kikötni elsőre a dobozba bekötött vonal véget
-- nézd át a rendszert, tegyél optimalizálási javaslatot
+mikor be van csukva a property panel, dupla kattintásra akkor is tudni kell editálni a címet (ne nyiljon ki a property - csak jelenjen meg a szöveg kiemelés az objektum címén (vagy azon amit editálok) 
 
-ha végeztél akkor egyszerűsítsd: 
-- alapból üres canvas felett normál cursor
-- drag közben váltson csak hand -re 
-- alt lenyomásakor váltson cursort (rád bízom mire, de sorold fel a lehetőségeket) 
-- objektum felett ha nincs még szelektálva akkor csak a hand-pointing ikon legyen, ha már mozgatom akkor váltson a 4 nyil ikonra
+editáláskor a szöveg háttérszíne az objektum színe legyen sötétebb/világosabb verzióban attól függően melyik látszik jobban, a rectangle legyen lekerekített.
 
+saját avatar választót töröld a canvas property -ból
+az avatar választó helye az admin menüben van, az admin választja ki az usereknek
 
-# Fejléc megszűntetése: 
+a canvas property menübe került a hand ikon, ami a pan lock, ezt tedd át a toolbar menübe
 
-editor módban: 
-- teljesen töröld a fejlécet, nincs rá szükség
-- Admin gomb a ThinkNodes ikon és path elé kerüljön balolralra (csak akkor ha admin van bejelentkezve)
-- visszavonás, újra,  resign, gomboj a property panel becsukó nyil gombbal egy sorba kerüljenek át, csak ikon kell
-- bezárás gomb a canvas becsukó gomb mellé kerüljön át egy sorba, csak ikon kell, legyen más ikon, egyértelműbb
-- ha egy munkalap nem a legfelsőbb mappában van, akkor középen felül egy felfele mutató talpas szárú ikon jelenjen meg (mint most) 
-- ha egy munkalap nem a fő munka lap (nem egyezik a neve a mappával) tehát mellék lap, akkor egy ballra mutató talpas ikon legyen ott fent középen, amit megnyomva a mappa fő lapra ugrik
+adj hozzá egy gombot, file beillesztése (a már meglévő projectben lévő file -ok közül tallózzon ) 
+a file feltöltés és beillesztés gomb egy sorba egymás mellett legyen a canvas property alján
 
-megtekintő módban: 
-- azonos az editor mód új elrendezésével, itt is törölni kell a kék fejléc sávot
-- a munkalap nézeten belül van a jobb felső sarokban a ceruza ikon: ezt helyezd a munkalap fölé középre
+a canvas property becsukó/kinyitó gomb -nak adj új ikont, egy menü rendszer legyen
+
+a jobboldali property ki/be csukónak is adj új ikont
+
+jobb felül a mentés ikon legyen olyan mint a többi, ha disabled és ha lehet nyomni ( ne legyen kék ) 
+
+admin gomb kerüljön át a jobboldal legszélére, utolsó előtti gomb legyen (a property bezáró legyen a legszélén jobboldalon ) 
+
+nézd meg a .txt boxot, megjelenik rajta a görgető sáv, de nem lehet használni. 
 
 
+---
 
+nyilak húzása belül - konténerből befelé (hibás)

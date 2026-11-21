@@ -712,7 +712,20 @@ final class WorksheetStore: @unchecked Sendable {
         try lock.withLock {
             var settings = try readSettings()
             var entries = settings.preferences ?? [:]
-            entries[name] = prefs
+            var updated = prefs
+            updated.avatar = entries[name]?.avatar
+            entries[name] = updated
+            settings.preferences = entries
+            try saveSiteSettings(settings)
+        }
+    }
+
+    func assignAvatar(_ avatar: Int, to name: String) throws {
+        try lock.withLock {
+            var settings = try readSettings()
+            guard (1...12).contains(avatar), settings.users?.contains(where: { $0.name == name }) == true else { throw Abort(.badRequest) }
+            var entries = settings.preferences ?? [:]
+            entries[name, default: UserPreferences()].avatar = avatar
             settings.preferences = entries
             try saveSiteSettings(settings)
         }
@@ -1034,7 +1047,7 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    func storeAttachment(_ bytes: Data, named name: String, at path: WorksheetPath, user: User, unlocks: Set<String>) throws {
+    func storeAttachment(_ bytes: Data, named name: String, at path: WorksheetPath, user: User, unlocks: Set<String>, replaceText: Bool = false) throws {
         try lock.withLock {
             let ctx = try context(path)
             _ = try read(worksheetURL(path))
@@ -1053,6 +1066,13 @@ final class WorksheetStore: @unchecked Sendable {
             let worksheet = try worksheetURL(path)
             let directory = ctx.directory
             let metadata = ctx.local
+            if replaceText {
+                guard ["md", "txt"].contains(ext), bytes.count <= 100_000,
+                      let existing = try attachments(at: worksheet, named: name, metadata: metadata).first,
+                      existing.lastPathComponent == name else { throw Abort(.badRequest) }
+                try bytes.write(to: existing, options: .atomic)
+                return
+            }
             let destination = try unusedAttachment(name, in: directory, metadata: metadata)
             guard try attachments(at: worksheet, named: name, metadata: metadata).isEmpty else {
                 throw Abort(.conflict, reason: "Ilyen nevű melléklet már létezik.")

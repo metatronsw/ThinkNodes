@@ -392,7 +392,7 @@ createApp({
     const gridVisible = ref(preferences.showGrid ?? true);
     const snapToGrid = ref(preferences.snap ?? false);
     const panLocked = ref(preferences.panLocked ?? false);
-    const avatar = ref(preferences.avatar);
+    const projectFiles = ref(null);
     const spacePan = ref(false);
     const previewImages = ref([]);
     async function loadPreviewImages() {
@@ -402,8 +402,8 @@ createApp({
     }
     let preferenceWrite = Promise.resolve();
     function savePreferences() {
-      const body = JSON.stringify({...preferences, showGrid: gridVisible.value, snap: snapToGrid.value,
-        panLocked: panLocked.value, avatar: avatar.value});
+      const body = JSON.stringify({theme: preferences.theme, showGrid: gridVisible.value, snap: snapToGrid.value,
+        panLocked: panLocked.value});
       preferenceWrite = preferenceWrite.then(async () => checked(await fetch("/api/preferences", {
         method: "POST", keepalive: true, headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body
       }))).catch(error => { problem.value = error.message; });
@@ -424,6 +424,8 @@ createApp({
       const saved = JSON.parse(window.localStorage?.getItem(searchHistoryKey) ?? "[]");
       if (Array.isArray(saved)) searchHistory = saved.filter(term => typeof term === "string" && term.trim()).slice(0, searchHistoryLimit);
     } catch { /* History is still available in this tab. */ }
+    const toolbarOpen = ref(true);
+    const editingObject = ref(null);
     const objectPanelOpen = ref(true);
     const canvasPanelOpen = ref(false);
     const reconnect = ref(null);
@@ -727,12 +729,55 @@ createApp({
       if (svg) size.value = {width: svg.clientWidth, height: svg.clientHeight};
     }
 
+    const pinchTolerance = 6; // CSS pixels between the two touch points
+    let touchView;
+    function touchPair(event) {
+      const points = [...event.touches].sort((a, b) => a.identifier - b.identifier)
+        .slice(0, 2).map(touch => d3.pointer(touch, canvas.value));
+      const [[ax, ay], [bx, by]] = points;
+      return {x: (ax + bx) / 2, y: (ay + by) / 2, distance: Math.max(1, Math.hypot(ax - bx, ay - by))};
+    }
+    function startTouchView(event) {
+      if (event.touches.length < 2) return;
+      event.preventDefault();
+      const drag = gesture.value;
+      if (drag) {
+        if (drag.waiting) gesture.value = null;
+        else finishPointer({pointerId: drag.pointer}, true);
+      }
+      const pair = touchPair(event);
+      touchView = {...pair, zoomDistance: pair.distance, transform: view.value};
+      canDeselectOnClick = false;
+    }
+    function moveTouchView(event) {
+      if (!touchView || event.touches.length < 2) return;
+      event.preventDefault();
+      const pair = touchPair(event);
+      const start = touchView.transform;
+      touchView.zoomDistance = limit(touchView.zoomDistance, pair.distance - pinchTolerance, pair.distance + pinchTolerance);
+      const k = limit(start.k * touchView.zoomDistance / touchView.distance, 0.0005, 4);
+      const [x, y] = start.invert([touchView.x, touchView.y]);
+      d3.select(canvas.value).call(zoom.transform, d3.zoomIdentity.translate(pair.x - x*k, pair.y - y*k).scale(k));
+    }
+    function endTouchView(event) {
+      if (!touchView) return;
+      if (event.touches.length >= 2) startTouchView(event);
+      else if (!event.touches.length) touchView = null;
+    }
+    function scrollsSelectedText(event) {
+      if (event.ctrlKey || selected.value?.kind !== "node") return false;
+      const content = event.target.closest(".folded-note, .canvas-file pre, .inline-edit textarea");
+      return content?.closest("[data-node]")?.dataset.node === selected.value.id
+        && content.scrollHeight > content.clientHeight;
+    }
+
     function initializeZoom() {
       if (!canvas.value || zoom) return;
       measure();
       zoom = d3.zoom().scaleExtent([0.0005, 4])
         .filter(event => {
-          if (event.type === "wheel") return !gesture.value;
+          if (event.type === "wheel") return !gesture.value && !scrollsSelectedText(event);
+          if (event.type === "touchstart") return false;
           if (spacePan.value) return !event.button && !gesture.value;
           return !panLocked.value && !event.button && !event.altKey && !event.ctrlKey && !reconnect.value && !gesture.value
             && !event.target.closest("[data-node], [data-edge]");
@@ -761,10 +806,6 @@ createApp({
     function centerOrigin() {
       if (!zoom) return;
       d3.select(canvas.value).call(zoom.transform, d3.zoomIdentity);
-    }
-
-    function zoomBy(multiplier) {
-      if (zoom) d3.select(canvas.value).call(zoom.scaleBy, multiplier);
     }
 
     function id() {
@@ -818,7 +859,7 @@ createApp({
       checkText(text);
       const box = selectedBox();
       if (box && !box.file && !box.kind && held.value === box.id && !occupied(box.id)) updateItem(box, "text", checkText([box.text,text].filter(Boolean).join("\n")));
-      else addNode(position, {text});
+      else addNode(position, {text, title: "Szöveg", file: {type: "txt"}, width: 340, height: 220});
     }
 
     async function importFiles(files, position, belowButton = false) {
@@ -858,22 +899,6 @@ createApp({
       const position = pastePosition();
       transfer(() => files.length ? importFiles(files, position) : pasteText(text, position));
     }
-    async function pasteClipboard() {
-      const position = pastePosition();
-      if (!navigator.clipboard?.read) {
-        if (navigator.clipboard?.readText) return pasteText(await navigator.clipboard.readText(), position);
-        throw Error("A beillesztéshez nyomj Ctrl+V-t vagy ⌘V-t a vásznon.");
-      }
-      const items = await navigator.clipboard.read();
-      for (const item of items) {
-        const image = item.types.find(t => t.startsWith("image/"));
-        if (image) await importFiles([await item.getType(image)], position);
-        else {
-          const type = item.types.includes("text/plain") ? "text/plain" : "text/markdown";
-          if (item.types.includes(type)) await pasteText(await (await item.getType(type)).text(), position);
-        }
-      }
-    }
     function copyBox(node) {
       if (!node) return;
       if (node.file?.type === "image" && navigator.clipboard?.write && window.ClipboardItem) {
@@ -907,7 +932,23 @@ createApp({
       } catch (error) { problem.value = error.message; }
     }
 
-    async function openProperties(kind, itemID, focusLabel = false) {
+    const editKey = ref("title");
+    const inlineDraft = ref("");
+    async function editObject(kind, id, focus = true) {
+      if (objectPanelOpen.value) return openProperties(kind, id, focus);
+      await openProperties(kind, id);
+      if (selected.value?.id !== id) return;
+      editKey.value = kind === "edge" ? "label" : focus === "text" ? "text" : "title";
+      const item = kind === "edge" ? edgeMap.value.get(id) : nodeMap.value.get(id);
+      inlineDraft.value = item?.[editKey.value] ?? "";
+      editingObject.value = id;
+      await nextTick();
+      const input = mount.querySelector?.(".inline-edit input, .inline-edit textarea");
+      input?.focus?.();
+      input?.select?.();
+    }
+
+    async function openProperties(kind, itemID, focusLabel = false, showCanvasInput = true) {
       if (kind === "node" && !(await selectNode(itemID))) return;
       if (kind !== "node") selectNode(null, kind === "edge" ? itemID : null);
       selected.value = {kind, id: itemID};
@@ -919,6 +960,8 @@ createApp({
         const field = mount.querySelector?.(focusLabel === "text" ? ".object-inspector textarea" : ".object-inspector [data-object-label]");
         if (selected.value?.id === itemID && field) {
           field.focus();
+          editKey.value = kind === "edge" ? "label" : focusLabel === "text" ? "text" : "title";
+          editingObject.value = showCanvasInput ? itemID : null;
           field.select();
         }
       }
@@ -988,6 +1031,7 @@ createApp({
     }
 
     function inspectNothing() {
+      editingObject.value = null;
       finishField();
       inspector.value = null;
       menu.value = null;
@@ -1079,8 +1123,8 @@ createApp({
     function gridPoint(point) {
       if (!snapToGrid.value) return clampPoint(point);
       const spacing = gridSpacing.value;
-      const minIndex = Math.ceil(-100000 / spacing - .5), maxIndex = Math.floor(100000 / spacing - .5);
-      const snapAxis = value => (limit(Math.round(value / spacing - .5), minIndex, maxIndex) + .5) * spacing;
+      const minIndex = Math.ceil(-100000 / spacing), maxIndex = Math.floor(100000 / spacing);
+      const snapAxis = value => limit(Math.round(value / spacing), minIndex, maxIndex) * spacing;
       return {x: snapAxis(point.x), y: snapAxis(point.y)};
     }
 
@@ -1431,7 +1475,7 @@ createApp({
         if (lastClick?.id === id && lastClick.kind === kind && time-lastClick.time < 450 &&
             Math.hypot(x-lastClick.x,y-lastClick.y) < 10) {
           lastClick = null;
-          openProperties(kind,id,event.altKey && kind === "node" ? "text" : true);
+          editObject(kind,id,event.altKey && kind === "node" ? "text" : true);
         } else {
           lastClick = {id,kind,time,x,y};
         }
@@ -1443,7 +1487,7 @@ createApp({
           setEndpoint(edge, "target", endpoint);
           board.value.edges.push(edge);
           modified();
-          openProperties("edge", edge.id, true);
+          openProperties("edge", edge.id, true, false);
         }
       } else if (operation.type === "endpoint" && operation.moved) {
         const edge = edgeMap.value.get(operation.edgeID);
@@ -1455,7 +1499,7 @@ createApp({
           pruneJunctions();
           if (endpoint.node && !endpoint.createdJunction) selected.value = {kind: "edge", id: edge.id};
           modified();
-          if (endpoint.createdJunction) openProperties("node", endpoint.node, true);
+          if (endpoint.createdJunction) openProperties("node", endpoint.node);
         }
       }
       gesture.value = null;
@@ -1577,7 +1621,13 @@ createApp({
     }
 
     function pressCanvas(event) {
-      if (spacePan.value && event.button === 0) {
+      if (event.pointerType === "touch" && (!event.isPrimary || touchView)) {
+        event.stopPropagation();
+        return;
+      }
+      const touchPan = event.pointerType === "touch" && !panLocked.value && !reconnect.value &&
+        !event.target.closest("[data-node], [data-edge]");
+      if ((spacePan.value || touchPan) && event.button === 0) {
         beginDrag(event, "pan", {startView: view.value});
         return;
       }
@@ -1638,7 +1688,7 @@ createApp({
       reconnect.value = null;
       preview.value = null;
       modified();
-      if (endpoint.createdJunction) openProperties("node", endpoint.node, true);
+      if (endpoint.createdJunction) openProperties("node", endpoint.node);
     }
 
     function context(event, kind = "canvas", itemID) {
@@ -1875,6 +1925,7 @@ createApp({
       if (gesture.value && !canvas.value?.contains(event.target)) finishPointer(event);
     }
     function cancelGesture() {
+      touchView = null;
       if (gesture.value) finishPointer({pointerId: gesture.value.pointer}, true);
       canvasPointer.value = null;
       clearModifiers();
@@ -1962,14 +2013,43 @@ createApp({
       }
     }
 
-    function renderImage(node) {
+    const isNote = file => ["txt", "md"].includes(file?.type);
+    function editOverlay(item, x, y, width, height) {
+      if (editingObject.value !== item.id) return null;
+      const key = editKey.value, inline = !objectPanelOpen.value;
+      const background = automaticGridColor(item.fill || "#ffffff");
+      const light = parseInt(background.slice(1,3),16)*.299 + parseInt(background.slice(3,5),16)*.587 + parseInt(background.slice(5),16)*.114 > 150;
+      return h("foreignObject", {class: "inline-edit", x, y, width, height, "pointer-events": inline ? "all" : "none",
+        onPointerdown: e => e.stopPropagation(), onClick: e => e.stopPropagation(), onDblclick: e => e.stopPropagation()}, [
+        h(key === "text" ? "textarea" : "input", {value: inline ? inlineDraft.value : item[key] || "", onInput: e => { if (inline) inlineDraft.value = e.target.value; }, readonly: !inline, tabindex: inline ? 0 : -1,
+          maxlength: key === "text" ? 100000 : 120, style: {background, color: light ? "#101010" : "white"},
+          onChange: e => {
+            if (!inline) return;
+            const target = key === "label" ? edgeMap.value.get(item.id) : nodeMap.value.get(item.id);
+            if (!target || (key !== "label" && held.value !== item.id)) return;
+            const value = e.target.value;
+            if (key === "title" && !value.trim() && target.file?.type !== "image" && target.kind !== "connectionPoint") return;
+            if (key === "title" && isNote(target.file) && !target.file.filename && /\.(txt|md)$/i.test(target.title)) target.file.filename = target.title;
+            updateItem(target, key, value);
+          },
+          onBlur: () => { if (inline) editingObject.value = null; },
+          onKeydown: e => { e.stopPropagation(); if (e.key === "Enter" && !e.isComposing && !e.shiftKey) { e.preventDefault(); e.target.blur(); } }})
+      ]);
+    }
+    function renderCaptionedFile(node) {
       const file = node.file;
       const title = file.hideTitle ? "" : node.title;
-      const filename = file.showFilename ? imageStem(file) : "";
+      const filename = file.showFilename ? (isNote(file) ? file.filename || node.title : imageStem(file)) : "";
       return h("foreignObject", {x: -node.width/2, y: -node.height/2 - (title ? 22 : 0),
         width: node.width, height: node.height + (title ? 22 : 0) + (filename ? 22 : 0)}, [
         h("div", {class: "canvas-image"}, [
           title ? h("strong", title) : null,
+          isNote(file) ? h("div", {class: "folded-note", onPointerdown: e => {
+            const el = e.currentTarget;
+            if (el.scrollHeight > el.clientHeight && e.clientX >= el.getBoundingClientRect().right - Math.max(16, el.offsetWidth - el.clientWidth) * view.value.k) e.stopPropagation();
+          }, style: {backgroundColor: node.fill}},
+            file.type === "md" ? [h(FormattedText, {source: node.text, justified: node.textStyle?.justified})] :
+            [h("pre", {class: {"justified-text": node.textStyle?.justified}}, node.text)]) :
           h("img", {src: assetURL(path, file.asset), alt: title || imageStem(file), draggable: false,
             style: {backgroundColor: file.alphaEnabled === false ? "#ffffff" : file.alphaBackground},
             onLoad: event => detectImageAlpha(event, file.asset)}),
@@ -2020,7 +2100,7 @@ createApp({
               "text-decoration": format.link ? "underline" : undefined}, run.text);
           }) : line.text))) : null;
       return h("g", {key: node.id, "data-node": node.id, "data-width": drawn.width, "data-height": drawn.height, tabindex: 0, role: node.file?.type === "mp3" ? "group" : "button",
-        "aria-label": node.title || (node.file?.type === "image" ? imageStem(node.file) : ""), "data-link": destination ? "" : undefined, class: ["idea", {occupied: occupied(node.id), claimed: !!owner}],
+        "aria-label": node.title || (node.file?.type === "image" ? imageStem(node.file) : ""), "data-link": destination ? "" : undefined, class: ["idea", {"editing-object": editingObject.value === node.id, occupied: occupied(node.id), claimed: !!owner}],
         transform: "translate(" + position.x + " " + position.y + ")",
         onPointerenter: event => {
           if (!gesture.value && (node.file?.type === "image" || node.hideText || layout.overflow) && node.text) showTooltip(event, async signal => {
@@ -2031,7 +2111,7 @@ createApp({
         },
         onPointerleave: hideTooltip,
         onPointerdown: event => { hideTooltip(); pressNode(event, node); },
-        onDblclick: event => { event.stopPropagation(); openProperties("node",node.id,event.altKey ? "text" : true); },
+        onDblclick: event => { event.stopPropagation(); editObject("node",node.id,event.altKey ? "text" : true); },
         onContextmenu: event => context(event, "node", node.id),
         onKeydown: event => {
           if (event.key === "Enter" && event.shiftKey) openProperties("node", node.id);
@@ -2041,9 +2121,9 @@ createApp({
           stroke: owner?.color ?? "#16a085", "stroke-width": 3, "pointer-events": "none"}) : null,
         candidates.value.has("node/" + node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "search-candidate", "stroke-width": 3}) : null,
         ...animateBox(!node.file && node.kind !== "connectionPoint" ? node.animation : undefined, [
-          node.file?.type === "image" ? null : shape(drawn, !!destination, containerDropTargets.value.has(node.id)),
-          node.file?.type === "image" ? renderImage(node) : null,
-          node.file && node.file.type !== "image" ? h("foreignObject", {x: -drawn.width/2, y: -drawn.height/2, width: drawn.width, height: drawn.height}, [
+          node.file?.type === "image" || isNote(node.file) ? null : shape(drawn, !!destination, containerDropTargets.value.has(node.id)),
+          node.file?.type === "image" || isNote(node.file) ? renderCaptionedFile(node) : null,
+          node.file && !isNote(node.file) && node.file.type !== "image" ? h("foreignObject", {x: -drawn.width/2, y: -drawn.height/2, width: drawn.width, height: drawn.height}, [
             h("div", {class: "canvas-file"}, [
               !node.file.hideTitle ? h("strong",node.title) : null,
               node.file.type === "mp3" ? h("div", {"data-audio-player": "", class: "canvas-audio",
@@ -2055,13 +2135,16 @@ createApp({
                 ]) :
                 node.file.type === "attachment" ? h("a", {class: "button small", href: attachmentURL(path, node.file.asset),
                   onPointerdown: event => event.stopPropagation(), onDblclick: event => event.stopPropagation()}, "Letöltés") :
-                node.file.type === "md" ? h(FormattedText, {source: node.text, justified: node.textStyle?.justified}) :
                   h("pre", {class: {"justified-text": node.textStyle?.justified}}, node.text),
               node.file.asset && node.text ? h("small", {class: {"justified-text": node.textStyle?.justified}}, node.text) : null,
             ]),
           ]) : null,
           node.kind === "connectionPoint" && node.title ? h("text", {x: drawn.width/2 + 4, y: 4, fill: node.textColor, "font-size": 14}, node.title) : null,
           labels,
+          editingObject.value === node.id ? editOverlay(node, -drawn.width/2,
+            (layout.lines.find(line => (line.section === "textStyle") === (editKey.value === "text"))?.y ??
+             (node.file && editKey.value === "title" ? -drawn.height/2 - 6 : 0)) - 18,
+            drawn.width, editKey.value === "text" ? Math.max(34, drawn.height/2) : 28) : null,
           destination ? h("svg", {overflow: "visible", x: drawn.width/2*inset-15, y: drawn.height/2*inset-16, width: 14, height: 14,
             viewBox: "0 0 24 24", fill: "none", stroke: node.textColor, "stroke-width": 1.8,
             "stroke-linecap": "round", "stroke-linejoin": "round", "pointer-events": "all",
@@ -2090,7 +2173,7 @@ createApp({
           cx: drawn.position.x, cy: drawn.position.y, r: drawn.width/2, fill: "transparent",
           class: "junction-handle", onPointerdown: event => pressNode(event,node),
           onContextmenu: event => context(event,"node",node.id),
-          onDblclick: event => { event.stopPropagation(); openProperties("node",node.id,true); }});
+          onDblclick: event => { event.stopPropagation(); editObject("node",node.id,true); }});
       });
       return h("g", {"data-editor-only": ""}, handles);
     }
@@ -2109,7 +2192,7 @@ createApp({
         onPointerdown: event => pressEndpoint(event, edge, end),
         onContextmenu: event => context(event, "edge", edge.id),
         onClick: event => event.stopPropagation(),
-        onDblclick: event => { event.stopPropagation(); openProperties("edge", edge.id, true); },
+        onDblclick: event => { event.stopPropagation(); editObject("edge", edge.id, true); },
       });
     }
 
@@ -2178,7 +2261,7 @@ createApp({
         onClick: event => { if (event?.ctrlKey || event?.shiftKey || batch.value?.edges.has(edge.id)) return; selectNode(null, edge.id); inspectNothing(); selected.value = {kind: "edge", id: edge.id}; },
         onDblclick: event => {
           event.stopPropagation();
-          openProperties("edge", edge.id, true);
+          editObject("edge", edge.id, true);
         },
         onContextmenu: event => context(event, "edge", edge.id),
       }, [
@@ -2195,6 +2278,7 @@ createApp({
         label ? h("text", {transform: "translate(" + label.x + " " + label.y + ") rotate(" + geometry.angle + ")",
           y: -paint.width / 2 - 6, "font-family": "system-ui, sans-serif", "font-size": 14, "text-anchor": "middle",
           stroke: "none", fill: paint.color, class: "edge-label"}, edge.label) : null,
+        editingObject.value === edge.id ? editOverlay(original, geometry.labelPosition.x-80, geometry.labelPosition.y-30,160,28) : null,
       ]);
     }
 
@@ -2255,6 +2339,10 @@ createApp({
             const files = Array.from(event.dataTransfer.files), point = world(event);
             transfer(() => importFiles(files, point));
           },
+          onTouchstartCapture: startTouchView,
+          onTouchmoveCapture: moveTouchView,
+          onTouchendCapture: endTouchView,
+          onTouchcancelCapture: endTouchView,
           onPointerdownCapture: pressCanvas,
           onPointerenter: rememberCanvasPointer,
           onPointermove: event => { rememberCanvasPointer(event); updatePointer(event); },
@@ -2265,7 +2353,7 @@ createApp({
 
         }, [
           h("defs", [
-            h("pattern", {id: "worksheet-grid", patternUnits: "userSpaceOnUse", width: spacing, height: spacing}, [
+            h("pattern", {id: "worksheet-grid", patternUnits: "userSpaceOnUse", x: -spacing/2, y: -spacing/2, width: spacing, height: spacing}, [
               h("circle", {cx: spacing/2, cy: spacing/2, r: 1.1, fill: gridColor.value}),
             ]),
           ]),
@@ -2289,25 +2377,20 @@ createApp({
         ]),
         h("div", {class: "participants", "aria-label": "Jelenlévők"},
           !online.value && problem.value ? h("span", {class: "connection-lost guest", role: "status"}, "Kapcsolat megszakadt") : peers.value.map((p, index) =>
-            h("span", {key: index, class: p.color ? "" : "guest", style: {"--peer": p.color}}, [(p.mine ? avatar.value : p.avatar) ? h("img", {class: "peer-avatar", src: "/icons/avatar-" + (p.mine ? avatar.value : p.avatar) + ".svg", alt: ""}) : null, p.name]))),
-        h("div", {class: "canvas-controls"}, [
-          button("", () => transfer(() => copyBox(selectedBox())), {symbol: "copy", title: "Másolás (Ctrl+C / ⌘C)", "aria-label": "Másolás", disabled: !selectedBox()}),
-          button("", () => transfer(pasteClipboard), {symbol: "paste", title: "Beillesztés (Ctrl+V / ⌘V)", "aria-label": "Beillesztés", disabled: !online.value}),
-          button("", () => zoomBy(0.8), {"aria-label": "Kicsinyítés", title: "Kicsinyítés", symbol: "minus"}),
-          h("span", Math.round(view.value.k * 100) + "%"),
-          button("", () => zoomBy(1.25), {"aria-label": "Nagyítás", title: "Nagyítás", symbol: "plus"}),
-          button("", centerOrigin, {"aria-label": "Közép", title: "Középre állítás, (0, 0)", symbol: "center"}),
+            h("span", {key: index, class: p.color ? "" : "guest", style: {"--peer": p.color}}, [p.avatar ? h("img", {class: "peer-avatar", src: "/icons/avatar-" + p.avatar + ".svg", alt: ""}) : null, p.name]))),
+        h("div", {class: "canvas-controls", "data-open": toolbarOpen.value}, [
+          button("", () => { toolbarOpen.value = !toolbarOpen.value; }, {symbol: toolbarOpen.value ? "left" : "right",
+            "aria-label": "Eszköztár", "aria-expanded": toolbarOpen.value}),
+          button("", toggleGrid, {
+            title: "Saját pontrács megjelenítése", "aria-label": "Pontrács", "aria-pressed": gridVisible.value, symbol: "grid"}),
+          button("", () => { snapToGrid.value = !snapToGrid.value; savePreferences(); }, {title: "Rácsra igazítás", "aria-label": "Rácsra igazítás", "aria-pressed": snapToGrid.value, symbol: "snap"}),
+          button("", () => { panLocked.value = !panLocked.value; savePreferences(); },
+            {symbol: "hand", title: "Vászonmozgatás zárolása", "aria-label": "Vászonmozgatás zárolása", "aria-pressed": panLocked.value}),
           button("", fit, {"aria-label": "Mind", title: "A teljes vászon megjelenítése", symbol: "fit-objects"}),
           button("", () => transfer(async () => {
             if (document.fullscreenElement) await document.exitFullscreen();
             else await document.documentElement.requestFullscreen();
           }), {symbol: "fit", title: "Teljes képernyő", "aria-label": "Teljes képernyő"}),
-          button("", () => { panLocked.value = !panLocked.value; savePreferences(); },
-            {symbol: "hand", title: "Vászonmozgatás zárolása", "aria-label": "Vászonmozgatás zárolása", "aria-pressed": panLocked.value}),
-          button("", toggleGrid, {
-            title: "Saját pontrács megjelenítése", "aria-label": "Pontrács", "aria-pressed": gridVisible.value, symbol: "grid"}),
-          button("", () => { snapToGrid.value = !snapToGrid.value; savePreferences(); }, {title: "Rácsra igazítás", "aria-label": "Rácsra igazítás", "aria-pressed": snapToGrid.value, symbol: "snap"}),
-
         ]),
         board.value && !board.value.nodes.length ? h("p", {class: "canvas-empty"}, "Új dobozhoz kattints duplán az üres vászonra.") : null,
       ]);
@@ -2363,7 +2446,12 @@ createApp({
     function sidebar(label, contents, canvasSettings = false) {
       return h("aside", {class: ["inspector", canvasSettings ? "canvas-inspector" : "object-inspector"], "aria-label": label,
         onFocusin: event => { editingField = event.target.matches("textarea,input,select"); },
-        onFocusout: finishField,
+        onFocusout: () => { editingObject.value = null; finishField(); },
+        onKeydown: e => {
+          if (editingObject.value && e.key === "Enter" && !e.isComposing && !e.shiftKey) {
+            e.preventDefault(); e.stopPropagation(); e.target.blur();
+          }
+        },
         onChange: event => { if (event.target.matches("select,input[type=checkbox],input[type=range],input[type=color]")) finishField(); },
         onInputCapture: () => { editingField = true; }}, [
         h("div", {class: "inspector-content stack"}, contents),
@@ -2546,16 +2634,33 @@ createApp({
           onFocus: loadPreviewImages, onChange: e => updateItem(sheet, "previewImage", e.target.value || undefined)}, [
           h("option", {value: ""}, "Default · Munkalap SVG"), ...previewImages.value.map(name => h("option", {value: name}, name))
         ])]),
-        group("Saját avatar", [h("div", {class: "avatar-picker"}, Array.from({length: 12}, (_, i) =>
-          h("button", {type: "button", "aria-label": "Avatar " + (i+1), "aria-pressed": avatar.value === i+1,
-            onClick: () => { avatar.value = i+1; savePreferences(); }}, [h("img", {src: "/icons/avatar-" + (i+1) + ".svg", alt: ""})])))]),
         group("Háttér", [colorPicker("Munkalap háttérszíne", sheet.background ?? paper,
           value => updateItem(sheet, "background", value), "worksheet/background")]),
-        button(uploading.value ? "Feltöltés…" : "Fájl feltöltése", event => {
+        h("div", {class: "property-inline file-actions"}, [button(uploading.value ? "Feltöltés…" : "Fájl feltöltése", event => {
           const bounds = event.currentTarget.getBoundingClientRect();
           uploadAnchor = {clientX: bounds.left + bounds.width / 2, clientY: bounds.bottom + 12};
           attachmentInput.value?.click();
         }, {symbol: "plus", disabled: uploading.value || !online.value, title: "Fájl feltöltése"}),
+          button("Beillesztés", () => transfer(async () => {
+            projectFiles.value = await (await checked(await fetch("/api/project-files/" + path))).json();
+          }), {symbol: "folder", title: "Projektfájl beillesztése"})]),
+        projectFiles.value ? h("select", {"aria-label": "Projektfájl", value: "", onChange: e => {
+          const entry = projectFiles.value.find(item => item.name === e.target.value);
+          if (!entry) return;
+          projectFiles.value = null;
+          transfer(async () => {
+            const {name, asset} = entry, ext = name.split(".").pop().toLowerCase();
+            let file = {type: "attachment", asset: name}, text = "";
+            if (["txt","md","json"].includes(ext)) {
+              const response = await checked(await fetch(attachmentURL(path,name)));
+              const blob = await response.blob();
+              if (blob.size <= 100000) { file = {type: ext, filename:name}; text = await blob.text(); }
+            } else if (/^[a-f0-9-]{36}\.(png|jpg|gif|webp|svg|mp3)$/i.test(asset)) {
+              file = ext === "mp3" ? {type:"mp3",asset} : {type:"image",asset,filename:name.replace(/\.[^.]+$/,"")};
+            }
+            addNode(worldAtCenter(), {title:Array.from(name).slice(0,120).join(""), file,text,width:320,height:180});
+          });
+        }}, [h("option",{value:""},projectFiles.value.length ? "Válassz fájlt…" : "A mappában nincs fájl"), ...projectFiles.value.map(f=>h("option",{value:f.name},f.name))]) : null,
       ], true);
     }
 
@@ -2599,7 +2704,10 @@ createApp({
       const node = nodeMap.value.get(inspector.value.id);
       if (!node || held.value !== node.id || occupied(node.id)) return null;
       const change = (key, value) => updateItem(node, key, value);
-      const title = input(node.title, value => change("title", value), {"aria-label": "Címke", "data-object-label": "", maxlength: 120});
+      const title = input(node.title, value => {
+        if (isNote(node.file) && !node.file.filename && /\.(txt|md)$/i.test(node.title)) node.file.filename = node.title;
+        change("title", value);
+      }, {"aria-label": "Címke", "data-object-label": "", maxlength: 120});
       const bodyEditor = () => textArea(node.text, value => change("text", value));
       const justify = () => {
         const active = !!node.textStyle?.justified;
@@ -2638,6 +2746,32 @@ createApp({
         ])]),
         group("Megjegyzés", [bodyEditor(), propertyTools(justify())]),
       ]);
+      if (isNote(node.file)) {
+        const name = node.file.filename || (/\.(txt|md)$/i.test(node.title) ? node.title : "");
+        async function syncText(write) {
+          if (!name && write) {
+            const filename = node.id + ".txt";
+            await checked(await fetch(attachmentURL(path, filename), {method: "POST", headers: {"X-CSRF-Token": csrf}, body: checkText(node.text)}));
+            change("file", {...node.file, filename});
+            return;
+          }
+          const url = attachmentURL(path, name);
+          if (write) await checked(await fetch(url, {method: "PUT", headers: {"X-CSRF-Token": csrf}, body: checkText(node.text)}));
+          else {
+            const before = node.text;
+            const source = checkText(await (await checked(await fetch(url))).text());
+            const current = nodeMap.value.get(node.id);
+            if (held.value === node.id && current?.text === before) updateItem(current, "text", source);
+          }
+        }
+        return sidebar("Szövegfájl", [group("Cím", [h("div", {class: "property-inline"}, [title,
+          iconToggle("Cím megjelenítése", !node.file.hideTitle, () => change("file", {...node.file, hideTitle: !node.file.hideTitle}),
+            icon(node.file.hideTitle ? "eye-off" : "eye"))])]), group("Megjelenés", [propertyTools(color("Háttér", "fill"),
+          iconToggle("Fájlnév megjelenítése", !!node.file.showFilename, () => change("file", {...node.file, showFilename: !node.file.showFilename}), icon("eye")))]),
+          group("Szöveg", [bodyEditor(), propertyTools(justify(),
+            ...[[true,"save","Szöveg mentése"], [false,"restore","Szöveg újratöltése"]].map(([write,symbol,label]) =>
+              button("", () => transfer(() => syncText(write)), {symbol,title:label,"aria-label":label,disabled:(!name && !write) || !online.value})))])]);
+      }
       if (node.file) return sidebar("Fájl szerkesztése", [
         group("Cím", [h("div", {class: "property-inline"}, [title, iconToggle("Cím megjelenítése", !node.file.hideTitle,
           () => change("file", {...node.file, hideTitle: !node.file.hideTitle}), icon(node.file.hideTitle ? "eye-off" : "eye"))])]),
@@ -2737,6 +2871,7 @@ createApp({
       if (currentCrumb && title) currentCrumb.textContent = title;
     });
 
+    const topRow = mount.closest?.(".editor-root")?.querySelector(".worksheet-nav");
     function renderHeader() {
       const changed = online.value && (dirty.value || (board.value.revision > checkpointState.value.revision
         ? board.value.revision !== checkpointRevision : checkpointState.value.changed));
@@ -2750,7 +2885,7 @@ createApp({
           historyButton("Újra", "redo", true, redo.value.length),
           button("", () => sessionAction("resign"), {"aria-label": "Resign", symbol: "restore", title: "A közös visszaállítási pont betöltése",
             disabled: checkpointBusy.value || !online.value}),
-          button(h("span", {class: changed ? "save-label-changed" : undefined}, "Mentés"), () => sessionAction("checkpoint"), {symbol: "save",
+          button("", () => sessionAction("checkpoint"), {symbol: "save", "aria-label": "Mentés", class: ["button", {"save-label-changed": changed}],
             title: "Közös visszaállítási pont rögzítése", disabled: checkpointBusy.value || !online.value}),
       ];
       return h("div", {class: "worksheet-history"}, controls);
@@ -2767,20 +2902,22 @@ createApp({
           h("div", {class: "inspector-column"}, [renderInspector()]),
           canvasPanelOpen.value ? h("div", {class: "inspector-column canvas-inspector-column"}, [renderCanvasInspector()]) : null,
           renderSearch(),
+          h(topRow ? window.Vue.Teleport : "div", topRow ? {to: topRow} : {}, [
           renderHeader(),
           h("a", {class: "button worksheet-close", href: "/" + path, title: "Szerkesztő bezárása", "aria-label": "Bezárás", onClick: switchToViewer}, [icon("close")]),
-          button("", () => { finishField(); objectPanelOpen.value = !objectPanelOpen.value; }, {
+          button("", () => { finishField(); editingObject.value = null; objectPanelOpen.value = !objectPanelOpen.value; }, {
             class: ["button", "sidebar-open", {active: (selected.value || batch.value) && !objectPanelOpen.value}],
             "aria-expanded": objectPanelOpen.value,
             "aria-label": objectPanelOpen.value ? "Oldalsáv bezárása" : "Oldalsáv megnyitása",
-            symbol: objectPanelOpen.value ? "right" : "left",
+            symbol: "property-panel",
           }),
           button("", () => { finishField(); canvasPanelOpen.value = !canvasPanelOpen.value; if (canvasPanelOpen.value) loadPreviewImages(); }, {
             class: "button sidebar-open sidebar-open-canvas",
             "aria-expanded": canvasPanelOpen.value,
             "aria-label": canvasPanelOpen.value ? "Vászonbeállítások bezárása" : "Vászonbeállítások megnyitása",
-            symbol: "up",
+            symbol: "canvas-menu",
           }),
+          ]),
         ]),
         renderMenu(),
       ];

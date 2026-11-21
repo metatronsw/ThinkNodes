@@ -99,10 +99,10 @@ func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: 
     let navigationClass = path == nil ? "site-header" : "worksheet-nav"
     return """
         <\(tag) class="\(navigationClass)"><div class="header-left"><nav aria-label="Fő navigáció" class="breadcrumbs">
-          \(user?.role == .admin ? headerLink("/admin", "Admin", symbol: "settings") : "")
+          \(path == nil && user?.role == .admin ? headerLink("/admin", "Admin", symbol: "settings") : "")
           <a class="brand" href="/"><span class="brand-icon" aria-hidden="true"><span></span><span></span><span></span></span>ThinkNodes</a>
           \(crumb)
-        </nav></div><div class="header-parent">\(parent)\(centerAction)</div><div class="header-actions">\(actions)<div class="header-user">\(session)</div></div></\(tag)>
+        </nav></div><div class="header-parent">\(parent)\(centerAction)</div><div class="header-actions">\(actions)<div class="header-user">\(session)</div>\(path != nil && !editing && user?.role == .admin ? headerLink("/admin", "Admin", symbol: "settings") : "")</div>\(editing && user?.role == .admin ? headerLink("/admin", "Admin", symbol: "settings") : "")</\(tag)>
         """
 }
 
@@ -715,16 +715,19 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
                 let download = escaped("/api/attachment" + (assetBase ?? noteBase ?? "") + "?name=" + encodeQuery(file.asset ?? ""))
                 content = "<a class=\"button small\" href=\"\(download)\">Letöltés</a><small\(commentClass)>\(escaped(node.text))</small>"
             }
+            let note = file.type == .md || file.type == .txt
+            let filename = note && file.showFilename == true ? "<span>\(escaped(file.filename ?? node.title))</span>" : ""
+            let body = note ? "<div class=\"folded-note\" style=\"background-color:\(escaped(node.fill))\">\(content)</div>\(filename)" : content
             let image = file.type == .image
-            let above: Double = image && !title.isEmpty ? 22 : 0
-            let below: Double = image && file.showFilename == true ? 22 : 0
+            let above: Double = (image || note) && !title.isEmpty ? 22 : 0
+            let below: Double = (image || note) && file.showFilename == true ? 22 : 0
             let background = image ? (file.alphaEnabled == false ? "#ffffff" : file.alphaBackground) : nil
             let radius = file.asset?.hasSuffix(".svg") == true ? 0 : 6
             let imageBackground = background.map {
                 "<rect x=\"\(number(node.position.x-node.width/2))\" y=\"\(number(node.position.y-node.height/2))\" width=\"\(number(node.width))\" height=\"\(number(node.height))\" rx=\"\(radius)\" fill=\"\(escaped($0))\"/>"
             } ?? ""
             graphic = """
-                \(imageBackground)<foreignObject x="\(number(node.position.x-node.width/2))" y="\(number(node.position.y-node.height/2-above))" width="\(number(node.width))" height="\(number(node.height+above+below))"><div xmlns="http://www.w3.org/1999/xhtml" class="\(image ? "canvas-image" : "canvas-file")">\(title)\(content)</div></foreignObject>
+                \(imageBackground)<foreignObject x="\(number(node.position.x-node.width/2))" y="\(number(node.position.y-node.height/2-above))" width="\(number(node.width))" height="\(number(node.height+above+below))"><div xmlns="http://www.w3.org/1999/xhtml" class="\(image || note ? "canvas-image" : "canvas-file")">\(title)\(body)</div></foreignObject>
                 """
         } else { graphic = nodeSVG(drawing, siteHost: siteHost) }
         guard let noteBase else { return graphic }

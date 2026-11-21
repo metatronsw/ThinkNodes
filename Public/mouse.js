@@ -51,7 +51,7 @@ export function sharedMouse(send) {
     button.setAttribute("aria-label", button.title);
     button.setAttribute("aria-pressed", String(enabled));
     button.innerHTML = '<svg class="ui-icon" aria-hidden="true" viewBox="0 0 24 24"><path fill="currentColor" d="M4 2l4 19 4-7 8-3z"/></svg>';
-    controls.prepend(button);
+    controls.append(button);
     button.addEventListener("click", () => {
       enabled = !enabled;
       button.setAttribute("aria-pressed", String(enabled));

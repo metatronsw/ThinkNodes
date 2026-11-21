@@ -426,6 +426,21 @@ func configure(_ application: Application, store: WorksheetStore) {
         return .noContent
     }
 
+    app.get("api", "project-files", "**") { req async throws -> [[String: String]] in
+        let identity = try session(req, store: store)
+        let user = try identity.editor()
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        return try await req.application.threadPool.runIfActive {
+            let sheet = try store.load(path, user: user, unlocks: identity.unlocks)
+            let access = try store.access(path, sheet: sheet, user: user, unlocks: identity.unlocks)
+            let media = access.projectRule.mediaFiles ?? [:]
+            return try store.contents(path, user: user, unlocks: identity.unlocks).map { file in
+                let name = file.lastPathComponent
+                return ["name": name, "asset": media.first(where: { $0.value == name })?.key ?? name]
+            }
+        }
+    }
+
     app.get("api", "preview-images", "**") { req async throws -> [String] in
         let identity = try session(req, store: store)
         _ = try identity.editor()
@@ -502,6 +517,19 @@ func configure(_ application: Application, store: WorksheetStore) {
             try store.storeAttachment(bytes, named: name, at: path, user: user, unlocks: identity.unlocks)
         }
         return .created
+    }
+
+    app.put("api", "attachment", "**") { req async throws -> HTTPStatus in
+        let identity = try session(req, store: store)
+        let user = try identity.editor()
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        guard let name = req.query[String.self, at: "name"] else { throw Abort(.badRequest) }
+        let bytes = req.body.data.map { Data($0.readableBytesView) } ?? Data()
+        try await req.application.threadPool.runIfActive {
+            try store.storeAttachment(bytes, named: name, at: path, user: user, unlocks: identity.unlocks, replaceText: true)
+        }
+        return .noContent
     }
 
     app.get("api", "attachment", "**") { req async throws -> Response in
@@ -649,7 +677,8 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
     }.joined()
     let base = "/" + path.url
     let edit = access.editable
-        ? "<a class=\"button small viewer-edit\" href=\"/edit/\(path.url)\" aria-label=\"Szerkesztés\" title=\"Szerkesztés\">\(uiIcon("edit"))</a>" : ""
+        ? "<a class=\"button small viewer-edit\" href=\"/edit/\(path.url)\" aria-label=\"Szerkesztés\" title=\"Szerkesztés\">\(uiIcon("edit"))Szerkesztés</a>"
+        : "<button type=\"button\" class=\"button small viewer-edit\" disabled>\(uiIcon("edit"))Szerkesztés</button>"
     let downloads = [
         ("svg", "SVG"), ("thnode", "ThinkNodes"), ("text", "Text"),
     ].map { format, title in
@@ -691,14 +720,13 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
         <script type="module" src="/viewer.js?v=5"></script>
         <main class="shell" id="worksheet-view" data-path="\(path.url)" data-csrf="\(token(req))" data-revision="\(worksheet.revision)" data-editable="\(access.editable)" data-member="\(session.user != nil)">
           <a hidden data-current-document data-scope="\(access.folderPath == path.url ? "project" : "sheet")" \(menuState(access.sheetRule)) data-manage="\(access.manageable)" href="\(base)">Munkalap</a>
-          <div class="viewer-edit-row">\(edit)</div>
           <div class="passive-frame panel">
             <svg class="passive-backdrop" aria-hidden="true"><rect width="100%" height="100%" fill="\(worksheet.backgroundColor)"/></svg>
             \(canvas.svg)
             <button class="button fullscreen" type="button" aria-label="Teljes képernyő">\(uiIcon("fit"))</button>
           </div>
           <div data-viewer-notes>\(tooltips)\(notes)\(note)</div>
-          <nav class="viewer-downloads" aria-label="Letöltések és szerzők">\(downloads)\(credits(worksheet, access))</nav>
+          <nav class="viewer-downloads" aria-label="Letöltések és szerzők">\(downloads)\(credits(worksheet, access))<div class="viewer-edit-row">\(edit)</div></nav>
           <div data-viewer-sections>
           <section class="worksheet-section"><h2>További oldalak:</h2><div class="project-list" data-current-sheet="\(access.folderPath)">\(previews)\(newPage)</div></section>
           <section class="worksheet-section"><h2>Külső hivatkozások</h2>\(external.isEmpty ? "<p>Nincs külső hivatkozás.</p>" : "<ul>\(external)</ul>")</section>
@@ -782,6 +810,15 @@ private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, liv
         return redirect("/admin")
     }
 
+    app.post("admin", "avatar") { req -> Response in
+        struct Form: Content { var name: String; var avatar: Int; var csrf: String }
+        _ = try requireAdmin(req, store: store)
+        let form = try req.content.decode(Form.self)
+        try verify(req, token: form.csrf)
+        try store.assignAvatar(form.avatar, to: form.name)
+        return redirect("/admin")
+    }
+
     app.post("admin", "users") { req async throws -> Response in
         _ = try requireAdmin(req, store: store)
         let form = try req.content.decode(AdminUserForm.self)
@@ -822,6 +859,9 @@ private func adminPage(users: [User], settings: SiteSettings, user: User, csrf: 
         """
     }
     let accountRows = users.map { account in
+        let avatars = (1...12).map { number in
+            "<button name='avatar' value='\(number)' aria-label='Avatar \(number)' aria-pressed='\(settings.preferences?[account.name]?.avatar == number)'><img src='/icons/avatar-\(number).svg' alt=''></button>"
+        }.joined()
         let delete = user.name == account.name ? "" : """
             <form method="post" action="/admin/users/delete">
               \(csrfInput(csrf))<input type="hidden" name="name" value="\(escaped(account.name))">
@@ -837,6 +877,7 @@ private func adminPage(users: [User], settings: SiteSettings, user: User, csrf: 
                 <label>Új jelszó<input name="password" type="password" autocomplete="new-password" minlength="10" placeholder="Változatlan"></label>
                 <button class="button" type="submit">\(uiIcon("save"))Mentés</button>
               </form>
+              <form class="avatar-picker" method="post" action="/admin/avatar">\(csrfInput(csrf))<input type="hidden" name="name" value="\(escaped(account.name))">\(avatars)</form>
               \(delete)
             </div>
             """

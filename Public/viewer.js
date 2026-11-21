@@ -224,7 +224,14 @@ document.addEventListener("click", async event => {
 });
 document.addEventListener("dblclick", event => {
   const box = event.target.closest(".passive-canvas a[data-link]");
-  if (!box) return;
+  if (event.target.closest("button, audio, [data-audio-player], .canvas-file a")) return;
+  if (!box) {
+    if (event.target.closest(".passive-frame") && !event.target.closest("a[href]")) {
+      const edit = main.querySelector("a.viewer-edit");
+      if (edit) location.assign(edit.href);
+    }
+    return;
+  }
   event.preventDefault();
   if (box.getAttribute("target") === "_blank") openExternalLink(box.getAttribute("href"));
   else location.assign(box.getAttribute("href"));
