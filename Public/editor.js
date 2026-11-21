@@ -7,7 +7,7 @@ import {flashNode, flashPoint} from "./ping.js";
 import {showTooltip, hideTooltip} from "./tooltip.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {automaticBorder, automaticGridColor, arrowTransform, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, lineAppearances, lineTypes, paper, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes} from "./geometry.js?v=4";
+import {automaticBorder, automaticGridColor, arrowTransform, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, lineAppearances, lineTypes, paper, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes} from "./geometry.js?v=7";
 
 import {ancestors, containerOrder, overlapFraction} from "./containers.js";
 
@@ -31,10 +31,11 @@ function button(label, onClick, props = {}) {
 const palette = ["#ffffff", "#000000", "#e95c59", "#f3ae49", "#f3df65", "#60b77a", "#5aaed2", "#657ace", "#a375be", "#e198ad"];
 
 const ColorPicker = {
-  props: {label: String, color: String},
+  props: {label: String, color: String, disabled: Boolean},
   emits: ["update"],
   setup(props, {emit}) {
     const expanded = ref(false);
+    watch(() => props.disabled, disabled => { if (disabled) expanded.value = false; });
     function swatch(color) {
       return h("svg", {viewBox: "0 0 4 3", preserveAspectRatio: "none", "aria-hidden": "true"},
         [h("rect", {width: 4, height: 3, fill: color})]);
@@ -43,8 +44,9 @@ const ColorPicker = {
     return () => h("div", {class: "color-field"}, [
       h("span", props.label),
       h("button", {type: "button", class: "color-sample", "aria-label": props.label + " színválasztó",
-        "aria-expanded": expanded.value, onClick: () => { expanded.value = !expanded.value; }}, [swatch(props.color)]),
-      expanded.value ? h("div", {class: "color-tools"}, [
+        disabled: props.disabled, "aria-expanded": expanded.value && !props.disabled,
+        onClick: () => { expanded.value = !expanded.value; }}, [swatch(props.color)]),
+      expanded.value && !props.disabled ? h("div", {class: "color-tools"}, [
         h("div", {class: "color-presets"}, palette.map(color => h("button", {type: "button", key: color,
           "aria-label": props.label + " " + color, title: color, onClick: () => emit("update", color)}, [swatch(color)]))),
         ...["Piros", "Zöld", "Kék"].map((label, i) => {
@@ -61,8 +63,8 @@ const ColorPicker = {
   },
 };
 
-function colorPicker(label, value, change, key) {
-  return h(ColorPicker, {key, label, color: value, onUpdate: change});
+function colorPicker(label, value, change, key, disabled = false) {
+  return h(ColorPicker, {key, label, color: value, disabled, onUpdate: change});
 }
 
 function iconToggle(title, pressed, onClick, symbol) {
@@ -110,11 +112,17 @@ function input(value, change, props = {}) {
   return h("input", {value, onInput: event => change(event.target.value), ...props});
 }
 
-function numeric(value, change, min, max, props = {}) {
-  return input(value, next => {
-    const parsed = Number(next);
-    if (next !== "" && parsed >= min && parsed <= max) change(parsed);
-  }, {
+function numeric(value, change, min, max, {clampValue = false, ...props} = {}) {
+  return h("input", {
+    value,
+    onInput: ({target}) => {
+      if (target.value === "") return;
+      const parsed = Number(target.value);
+      const bounded = clampValue ? limit(parsed, min, max) : parsed;
+      if (!(bounded >= min && bounded <= max)) return;
+      if (bounded !== parsed) target.value = String(bounded);
+      change(bounded);
+    },
     type: "number", min, max, step: "any",
     onBlur: event => { event.target.value = value; },
     ...props,
@@ -128,12 +136,16 @@ function checkbox(label, checked, change) {
   ]);
 }
 
-function textarea(value, change) {
-  return h("textarea", {"aria-label": "Text", value, maxlength: 30000, rows: 7, onInput: event => change(event.target.value)});
+function textEditor(value, change, justified, toggleJustification) {
+  return [
+    h("textarea", {"aria-label": "Text", class: {"justified-text": justified}, value, maxlength: 30000, rows: 7,
+      onInput: event => change(event.target.value)}),
+    button("Sorkizárás", () => toggleJustification(!justified), {symbol: "justify", "aria-pressed": !!justified}),
+  ];
 }
 
 const FormattedText = {
-  props: {source: String},
+  props: {source: String, justified: Boolean},
   setup(props) {
     const html = ref(""), error = ref("");
     watch(() => props.source, (source, _, cleanup) => {
@@ -150,15 +162,16 @@ const FormattedText = {
       }, 80);
       cleanup(() => { clearTimeout(timer); controller.abort(); });
     }, {immediate: true});
-    return () => error.value ? h("p", {class: "error"}, error.value) : h("div", {class: "formatted-text", innerHTML: html.value});
+    return () => error.value ? h("p", {class: "error"}, error.value) : h("div", {class: ["formatted-text", {"justified-text": props.justified}], innerHTML: html.value});
   },
 };
 
 function shape(node, linked) {
   if (node.kind === "connectionPoint") return h("circle", {r: node.width / 2, fill: node.fill});
+  const [tag, geometry] = shapeGeometry(node.shape, node.width, node.height);
+  if (node.backgroundEnabled === false) return h(tag, {...geometry, fill: "none", stroke: "none", "pointer-events": "fill"});
   const style = {fill: node.fill, stroke: automaticBorder(node.fill), "stroke-width": node.kind === "container" && node.locked ? 3.2 : 1.6,
     "stroke-dasharray": linked ? "7 4" : undefined};
-  const [tag, geometry] = shapeGeometry(node.shape, node.width, node.height);
   return h(tag, {...style, ...geometry});
 }
 
@@ -1796,6 +1809,35 @@ createApp({
       const [, , inset] = shapeLabelRatios(node.shape);
       const [outline, dimensions] = selectionOutline(node.kind === "connectionPoint" ? "ellipse" : drawn.shape, drawn.width, drawn.height);
       const snapTarget = preview.value?.target === node.id;
+      const labels = layout.lines.length ? h("text", {"font-family": "system-ui, sans-serif", "pointer-events": "none"},
+          layout.lines.map(line => h("tspan", {
+            class: destination && !line.runs ? "link-label" : undefined,
+            "data-body-row": line.section === "textStyle" ? "" : undefined,
+            "pointer-events": "visiblePainted", cursor: alt.value && ctrl.value ? "grab" : undefined,
+            onPointerdown: e => {
+              if (!e.ctrlKey || !e.altKey || ![0,2].includes(e.button) || occupied(node.id) || ancestors(node,nodeMap.value).some(n => n.locked)) return;
+              let bounds;
+              if (line.section === "textStyle") {
+                const rows = Array.from(e.currentTarget.parentNode.querySelectorAll("[data-body-row]"), row => row.getBBox());
+                if (rows.length) bounds = {
+                  left: Math.min(...rows.map(r => r.x)), right: Math.max(...rows.map(r => r.x+r.width)),
+                  top: Math.min(...rows.map(r => r.y)), bottom: Math.max(...rows.map(r => r.y+r.height)),
+                };
+              }
+              beginDrag(e,"text",{nodeID: node.id, section: line.section, bounds});
+              claimGesture(node);
+            },
+            x: line.x + (textDrag?.section === line.section ? textDrag.delta.x : 0),
+            y: line.y + (textDrag?.section === line.section ? textDrag.delta.y : 0), "text-anchor": line.anchor, "font-style": line.italic ? "italic" : undefined,
+            "text-decoration": line.underline ? "underline" : undefined, "word-spacing": line.wordSpacing, fill: line.color, "font-size": line.size, "font-weight": line.weight,
+          }, line.runs ? line.runs.map(run => {
+            const format = run.format || {};
+            if (!format.bold && !format.italic && !format.code && !format.link) return run.text;
+            return h("tspan", {"font-weight": format.bold ? 700 : undefined,
+              "font-style": format.italic ? "italic" : undefined, "font-family": format.code ? "monospace" : undefined,
+              "xml:space": format.code ? "preserve" : undefined,
+              "text-decoration": format.link ? "underline" : undefined}, run.text);
+          }) : line.text))) : null;
       return h("g", {key: node.id, "data-node": node.id, "data-width": drawn.width, "data-height": drawn.height, tabindex: 0, role: node.file?.type === "mp3" ? "group" : "button",
         "aria-label": node.title || (node.file?.type === "image" ? imageStem(node.file) : ""), "data-link": destination ? "" : undefined, class: ["idea", {occupied: occupied(node.id), claimed: !!owner}],
         transform: "translate(" + position.x + " " + position.y + ")",
@@ -1804,7 +1846,7 @@ createApp({
             const result = await checked(await fetch("/api/text", {method: "POST", signal,
               headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify({text: node.text})}));
             return result.text();
-          });
+          }, node.textStyle?.justified);
         },
         onPointerleave: hideTooltip,
         onPointerdown: event => { hideTooltip(); pressNode(event, node); },
@@ -1831,41 +1873,13 @@ createApp({
               ]) :
               node.file.type === "attachment" ? h("a", {class: "button small", href: attachmentURL(path, node.file.asset),
                 onPointerdown: event => event.stopPropagation(), onDblclick: event => event.stopPropagation()}, "Letöltés") :
-              node.file.type === "md" ? h(FormattedText, {source: node.text}) : h("pre",node.text),
-            node.file.asset && node.text ? h("small",node.text) : null,
+              node.file.type === "md" ? h(FormattedText, {source: node.text, justified: node.textStyle?.justified}) :
+                h("pre", {class: {"justified-text": node.textStyle?.justified}}, node.text),
+            node.file.asset && node.text ? h("small", {class: {"justified-text": node.textStyle?.justified}}, node.text) : null,
           ]),
         ]) : null,
         node.kind === "connectionPoint" && node.title ? h("text", {x: drawn.width/2 + 4, y: 4, fill: node.textColor, "font-size": 14}, node.title) : null,
-        h("text", {"font-family": "system-ui, sans-serif", "pointer-events": "none"},
-          layout.lines.map(line => h("tspan", {
-            class: destination && !line.runs ? "link-label" : undefined,
-            "data-body-row": line.section === "textStyle" ? "" : undefined,
-            "pointer-events": "visiblePainted", cursor: alt.value && ctrl.value ? "grab" : undefined,
-            onPointerdown: e => {
-              if (!e.ctrlKey || !e.altKey || ![0,2].includes(e.button) || occupied(node.id) || ancestors(node,nodeMap.value).some(n => n.locked)) return;
-              let bounds;
-              if (line.section === "textStyle") {
-                const rows = Array.from(e.currentTarget.parentNode.querySelectorAll("[data-body-row]"), row => row.getBBox());
-                if (rows.length) bounds = {
-                  left: Math.min(...rows.map(r => r.x)), right: Math.max(...rows.map(r => r.x+r.width)),
-                  top: Math.min(...rows.map(r => r.y)), bottom: Math.max(...rows.map(r => r.y+r.height)),
-                };
-              }
-              beginDrag(e,"text",{nodeID: node.id, section: line.section, bounds});
-              claimGesture(node);
-            },
-            x: line.x + (textDrag?.section === line.section ? textDrag.delta.x : 0),
-            y: line.y + (textDrag?.section === line.section ? textDrag.delta.y : 0), "text-anchor": line.anchor, "font-style": line.italic ? "italic" : undefined,
-            "text-decoration": line.underline ? "underline" : undefined, fill: line.color, "font-size": line.size, "font-weight": line.weight,
-            textLength: line.fit, lengthAdjust: line.fit ? "spacingAndGlyphs" : undefined,
-          }, line.runs ? line.runs.map(run => {
-            const format = run.format || {};
-            if (!format.bold && !format.italic && !format.code && !format.link) return run.text;
-            return h("tspan", {"font-weight": format.bold ? 700 : undefined,
-              "font-style": format.italic ? "italic" : undefined, "font-family": format.code ? "monospace" : undefined,
-              "xml:space": format.code ? "preserve" : undefined,
-              "text-decoration": format.link ? "underline" : undefined}, run.text);
-          }) : line.text))),
+        labels,
         destination ? h("svg", {overflow: "visible", x: drawn.width/2*inset-15, y: drawn.height/2*inset-16, width: 14, height: 14,
           viewBox: "0 0 24 24", fill: "none", stroke: node.textColor, "stroke-width": 1.8,
           "stroke-linecap": "round", "stroke-linejoin": "round", "pointer-events": "all",
@@ -2283,7 +2297,8 @@ createApp({
         h("input", {ref: attachmentInput, type: "file", multiple: true, hidden: true,
           onChange: uploadAttachments}),
         group("Cím", [input(sheet.title, value => updateItem(sheet, "title", value), {"aria-label": "Cím", maxlength: 120})]),
-        group("Szöveg", [textarea(sheet.text ?? "", value => updateItem(sheet, "text", value))]),
+        group("Szöveg", textEditor(sheet.text ?? "", value => updateItem(sheet, "text", value), sheet.textJustified,
+          value => updateItem(sheet, "textJustified", value))),
         group("Háttér", [colorPicker("Munkalap háttérszíne", sheet.background ?? paper,
           value => updateItem(sheet, "background", value), "worksheet/background")]),
         button(uploading.value ? "Feltöltés…" : "Fájl feltöltése", event => {
@@ -2330,7 +2345,10 @@ createApp({
       if (!node || held.value !== node.id || occupied(node.id)) return null;
       const change = (key, value) => updateItem(node, key, value);
       const title = input(node.title, value => change("title", value), {"aria-label": "Címke", "data-object-label": "", maxlength: 120});
-      const color = (label, key, fallback) => colorPicker(label, node[key] ?? fallback, v => change(key, v), node.id + "/" + key);
+      const bodyEditor = () => textEditor(node.text, value => change("text", value), node.textStyle?.justified,
+        value => change("textStyle", {...node.textStyle, justified: value}));
+      const color = (label, key, disabled) => colorPicker(label, node[key],
+        v => change(key, v), node.id + "/" + key, disabled);
       if (node.file?.type === "image") return sidebar("Kép szerkesztése", [
         group("Átlátszóság", [h("div", {class: "property-options image-alpha-options"}, [
           iconToggle("Alpha csatorna", node.file.alphaEnabled !== false,
@@ -2356,12 +2374,12 @@ createApp({
           }}),
           checkbox("Fájlnév megjelenítése", !!node.file.showFilename, value => change("file", {...node.file, showFilename: value})),
         ]),
-        group("Megjegyzés", [textarea(node.text, value => change("text", value))]),
+        group("Megjegyzés", bodyEditor()),
       ]);
       if (node.file) return sidebar("Fájl szerkesztése", [
         group("Cím", [title, checkbox("Cím megjelenítése", !node.file.hideTitle,
           value => change("file", {...node.file, hideTitle: !value}))]),
-        group(node.file.asset ? "Megjegyzés" : "Szöveg", [textarea(node.text, value => change("text", value))]),
+        group(node.file.asset ? "Megjegyzés" : "Szöveg", bodyEditor()),
       ]);
       if (node.kind === "connectionPoint") return sidebar("Csomópont", [
         group("Címke", [title]),
@@ -2383,7 +2401,7 @@ createApp({
         const colorKey = isTitle ? "textColor" : "color";
         const update = (key, value) => isTitle ? change(key, value) : change(section, {...node[section], [key]: value});
         const fontSize = field("Betűméret", numeric(style[sizeKey] ?? 13,
-          v => update(sizeKey, Math.round(v)), 10, isTitle ? 1000 : 60, {step: 1, disabled: !!node.fitText}));
+          v => update(sizeKey, Math.round(v)), 1, 10000, {step: 1, clampValue: true, disabled: !!node.fitText}));
         return [
           isTitle ? checkbox("Dobozon kívül", outside, value => {
             if (value && (style.verticalAlignment ?? "middle") === "middle" && (style.alignment ?? node.alignment) === "center") {
@@ -2419,12 +2437,13 @@ createApp({
         group("Cím", [title, ...typography("title")]),
         group("Doboz", [
           optionPicker("Forma", shapes, node.shape, value => change("shape", value), shapeSymbol),
-          color("Háttér", "fill"),
+          checkbox("Háttér megjelenítése", node.backgroundEnabled !== false, v => change("backgroundEnabled", v)),
+          color("Háttér", "fill", node.backgroundEnabled === false),
           button(node.kind === "container" ? "Konténer feloldása" : "Konténer", () => toggleContainer(node), {symbol: "folder", disabled: locked}),
           node.kind === "container" ? checkbox("Lock · tartalom rögzítése", !!node.locked, v => change("locked", v)) : null,
         ]),
         group("Text", [
-          textarea(node.text, value => change("text", value)),
+          ...bodyEditor(),
           checkbox("Hide text", Boolean(node.hideText), value => change("hideText", value)),
           ...typography("textStyle"),
         ]),

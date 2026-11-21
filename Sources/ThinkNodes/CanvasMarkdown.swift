@@ -101,14 +101,14 @@ func canvasMarkdown(_ source: String) -> [MarkdownBlock] {
     }
 }
 
-func wrapMarkdown(_ runs: [MarkdownRun], columns: Int, preformatted: Bool = false) -> [[MarkdownRun]] {
-    var rows: [[MarkdownRun]] = []
+func wrapMarkdown(_ runs: [MarkdownRun], columns: Int, preformatted: Bool = false) -> [(pieces: [MarkdownRun], wrapped: Bool)] {
+    var rows: [(pieces: [MarkdownRun], wrapped: Bool)] = []
     var line: [MarkdownRun] = []
     var word: [(Character, MarkdownFormat)] = []
     var count = 0
 
-    func endLine() {
-        if !line.isEmpty { rows.append(line) }
+    func endLine(wrapped: Bool = false) {
+        if !line.isEmpty { rows.append((line, wrapped)) }
         line = []
         count = 0
     }
@@ -125,11 +125,11 @@ func wrapMarkdown(_ runs: [MarkdownRun], columns: Int, preformatted: Bool = fals
     func endWord() {
         guard !word.isEmpty else { return }
         if count > 0 {
-            if count + word.count + 1 > columns { endLine() }
+            if count + word.count + 1 > columns { endLine(wrapped: true) }
             else { append(" ", format: MarkdownFormat()) }
         }
         for (character, format) in word {
-            if count == columns { endLine() }
+            if count == columns { endLine(wrapped: true) }
             append(character, format: format)
         }
         word.removeAll(keepingCapacity: true)
@@ -142,7 +142,7 @@ func wrapMarkdown(_ runs: [MarkdownRun], columns: Int, preformatted: Bool = fals
                     if line.isEmpty { line.append(MarkdownRun(text: "", format: run.format)) }
                     endLine()
                 } else {
-                    if count == columns { endLine() }
+                    if count == columns { endLine(wrapped: true) }
                     append(character, format: run.format)
                 }
             } else if character.isNewline {

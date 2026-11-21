@@ -318,8 +318,8 @@ function wrapRuns(runs, columns, preformatted) {
   let count = 0;
   let lastFormat;
 
-  function endLine() {
-    if (line.length) rows.push(line);
+  function endLine(wrapped = false) {
+    if (line.length) rows.push({pieces: line, wrapped});
     line = [];
     count = 0;
     lastFormat = undefined;
@@ -335,11 +335,11 @@ function wrapRuns(runs, columns, preformatted) {
   function endWord() {
     if (!word.length) return;
     if (count > 0) {
-      if (count + word.length + 1 > columns) endLine();
+      if (count + word.length + 1 > columns) endLine(true);
       else append(" ", undefined);
     }
     for (const [letter, format] of word) {
-      if (count === columns) endLine();
+      if (count === columns) endLine(true);
       append(letter, format);
     }
     word = [];
@@ -352,7 +352,7 @@ function wrapRuns(runs, columns, preformatted) {
           if (!line.length) line.push({text: "", format: run.format});
           endLine();
         } else {
-          if (count === columns) endLine();
+          if (count === columns) endLine(true);
           append(letter, run.format);
         }
       } else if (letter === "\n") {
@@ -370,9 +370,28 @@ function wrapRuns(runs, columns, preformatted) {
   return rows;
 }
 
+function shortenLine(line, width) {
+  let remaining = width - textWidth("…", line.size);
+  const runs = [];
+  for (const run of line.runs ?? [{text: line.text}]) {
+    let prefix = "";
+    for (const letter of run.text) {
+      remaining -= textWidth(letter, line.size);
+      if (remaining < 0) break;
+      prefix += letter;
+    }
+    if (prefix) runs.push({...run, text: prefix});
+    if (remaining < 0) break;
+  }
+  runs.push({text: "…"});
+  return {...line, text: runs.map(run => run.text).join(""), runs: line.runs ? runs : undefined, wrapped: false};
+}
+
 export function labelLayout(node, blocks = []) {
   if (node.kind === "connectionPoint") return {width: node.width, height: node.height, lines: []};
   const [widthRatio, heightRatio] = shapeLabelRatios(node.shape);
+  const bounded = node.backgroundEnabled !== false;
+  const wrapToBox = bounded || node.fitText;
   const textStyle = node.textStyle ?? {};
   const hiddenText = node.hideText && !!node.text?.trim();
   if (hiddenText) blocks = [{kind: "body", runs: [{text: "•••"}]}];
@@ -388,7 +407,7 @@ export function labelLayout(node, blocks = []) {
     function add(value, size, weight, color, style, section) {
       const text = value.trim().replace(/\s+/g, " ");
       if (!text) return;
-      const wrapped = textWidth(text, size) <= labelWidth
+      const wrapped = !wrapToBox || textWidth(text, size) <= labelWidth
         ? [text] : wrap(text, Math.max(2, Math.floor(labelWidth / (size * 0.65))));
       for (const text of wrapped) lines.push({section, text, size, weight, color, italic: style.italic, underline: style.underline, alignment: style.alignment, vertical: style.verticalAlignment, step: size * 1.25});
     }
@@ -398,10 +417,11 @@ export function labelLayout(node, blocks = []) {
       const size = block.kind === "heading" ? (node.fitText ? bodySize * 1.15 : Math.round(bodySize * 1.15)) : bodySize;
       const weight = block.kind === "heading" || textStyle.bold ? 700 : 400;
       const runs = block.kind === "quote" ? [{text: "› "}, ...block.runs] : block.runs;
-      wrapRuns(runs, Math.max(hiddenText ? 3 : 2, Math.floor(labelWidth / (size * 0.65))), block.kind === "code").forEach((pieces, row) => {
+      const columns = wrapToBox || textStyle.justified ? Math.max(hiddenText ? 3 : 2, Math.floor(labelWidth / (size * 0.65))) : Infinity;
+      wrapRuns(runs, columns, block.kind === "code").forEach(({pieces, wrapped}, row) => {
         const blockGap = index === 0 ? 8 : 3;
         const gap = row === 0 ? (node.fitText ? Math.min(blockGap, bodySize * 0.4) : blockGap) : 0;
-        lines.push({section: "textStyle", runs: pieces, text: pieces.map(piece => piece.text).join(""), size, weight,
+        lines.push({section: "textStyle", justify: textStyle.justified && block.kind !== "code", wrapped, runs: pieces, text: pieces.map(piece => piece.text).join(""), size, weight,
           color: textStyle.color ?? node.textColor, italic: textStyle.italic, underline: textStyle.underline, alignment: textStyle.alignment, vertical: textStyle.verticalAlignment, step: size * 1.25 + gap, gap});
       });
     });
@@ -444,40 +464,57 @@ export function labelLayout(node, blocks = []) {
     external.get(key).rows.push(line);
     return false;
   });
+  const available = bounded ? Math.max(0, labelHeight) :
+    Math.max(0, labelHeight, inside.reduce((sum, line) => sum + line.step, 0));
   const visible = [];
-  let remaining = node.fitText ? Math.max(0, labelHeight) : Math.max(node.fontSize * 1.25, labelHeight);
-  const available = remaining;
+  let remaining = available;
   for (const line of inside) {
-    if (remaining < line.step) break;
+    if (bounded && remaining < line.step) break;
     visible.push(line);
     remaining -= line.step;
   }
-  if (visible.length && visible.length < inside.length) {
-    const last = visible.at(-1);
-    last.text += "…";
-    last.runs?.push({text: "…"});
+  const omitted = visible.length < inside.length;
+  if (bounded && omitted && !visible.length) {
+    visible.push(inside[0]);
+    remaining = available - inside[0].step;
+  }
+  let overflow = omitted;
+  if (bounded) {
+    for (let i = 0; i < visible.length; i++) {
+      const line = visible[i];
+      if (textWidth(line.text, line.size) > labelWidth || (omitted && i === visible.length - 1)) {
+        visible[i] = shortenLine(line, labelWidth);
+        overflow = true;
+      }
+    }
   }
 
   if (hiddenText && !visible.some(line => line.runs)) {
     const marker = inside.at(-1);
     while (visible.length && remaining < marker.step) remaining += visible.pop().step;
     visible.push(marker);
-    remaining = Math.max(0, remaining-marker.step);
+    remaining -= marker.step;
   }
 
   const rank = line => ({top: 0, bottom: 1}[line.vertical] ?? 0.5);
   visible.sort((a, b) => rank(a) - rank(b));
   let offset = -(available + iconSpace) / 2;
+  let extentX = width / 2, extentY = Math.max(height, available + iconSpace) / 2;
   const positioned = visible.map(line => {
     const top = offset + remaining * rank(line);
     const y = top + (line.gap ?? 0) + line.size * (1.25 / 2 + 0.33);
     offset += line.step;
-    const align = line.alignment ?? node.alignment;
+    const align = line.justify ? "left" : line.alignment ?? node.alignment;
     const x = align === "left" ? -labelWidth / 2 : align === "right" ? labelWidth / 2 : 0;
-    return {...line, x, y, anchor: {left: "start", center: "middle", right: "end"}[align],
-      fit: textWidth(line.text, line.size) > labelWidth ? labelWidth : undefined};
+    let wordSpacing;
+    if (line.justify && line.wrapped) {
+      const spaces = line.text.split(" ").length - 1;
+      const lineWidth = textWidth(line.text, line.size);
+      if (spaces && lineWidth < labelWidth) wordSpacing = (labelWidth - lineWidth) / spaces;
+    }
+    if (!bounded) extentX = Math.max(extentX, Math.abs(x) + textWidth(line.text, line.size) * 1.25 + line.size);
+    return {...line, x, y, anchor: {left: "start", center: "middle", right: "end"}[align], wordSpacing};
   });
-  let extentX = width / 2, extentY = Math.max(height, available + iconSpace) / 2;
   for (const {horizontal, vertical, rows} of external.values()) {
     const total = rows.reduce((sum, line) => sum + line.step, 0);
     const side = horizontal === "left" ? -1 : horizontal === "right" ? 1 : 0;
@@ -487,10 +524,11 @@ export function labelLayout(node, blocks = []) {
     extentY = Math.max(extentY, Math.abs(y), Math.abs(y + total));
     for (const line of rows) {
       const anchor = horizontal === "left" ? "end" : horizontal === "right" ? "start" : "middle";
-      positioned.push({...line, anchor, x: centerX - side * labelWidth/2,
-        y: y + (line.gap ?? 0) + line.size * .955, fit: textWidth(line.text, line.size) > labelWidth ? labelWidth : undefined});
+      const x = centerX - side * labelWidth/2;
+      extentX = Math.max(extentX, Math.abs(x) + textWidth(line.text, line.size) * 1.25 + line.size);
+      positioned.push({...line, anchor, x, y: y + (line.gap ?? 0) + line.size * .955});
       y += line.step;
     }
   }
-  return {width, height, extentX, extentY, overflow: visible.length < inside.length, lines: positioned};
+  return {width, height, extentX, extentY, overflow, lines: positioned};
 }

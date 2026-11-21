@@ -47,16 +47,17 @@ struct TextStyle: Codable, Equatable, Sendable {
     var bold: Bool?
     var italic: Bool?
     var underline: Bool?
+    var justified: Bool?
     var alignment: LabelAlignment?
     var verticalAlignment: VerticalAlignment?
 
     private enum CodingKeys: String, CodingKey {
-        case color, size, bold, italic, underline
+        case color, size, bold, italic, underline, justified
         case alignment = "align", verticalAlignment = "vAlign"
     }
 
     var isValid: Bool {
-        (color.map(validColor) ?? true) && (size.map { (10...60).contains($0) && $0.rounded() == $0 } ?? true)
+        (color.map(validColor) ?? true) && (size.map { (1...10000).contains($0) && $0.rounded() == $0 } ?? true)
     }
 }
 
@@ -161,6 +162,7 @@ struct Idea: Codable, Equatable, Sendable {
     var height: Double = 80
     var shape: Shape = .rounded
     var fill = "#dce9ff"
+    var backgroundEnabled: Bool?
     var textColor = "#182335"
     var border: String { automaticBorder(fill) }
     var fitText: Bool?
@@ -179,7 +181,7 @@ struct Idea: Codable, Equatable, Sendable {
     var textStyle: TextStyle?
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, text, file, hideText, fitText, shape, fill, bold, titleOutside, link
+        case id, title, text, file, hideText, fitText, shape, fill, backgroundEnabled, bold, titleOutside, link
         case kind, parent, locked, italic, underline, textStyle
         case position = "pos", width = "w", height = "h", textColor = "textCol"
         case fontSize = "fontSz", alignment = "align", verticalAlignment = "vAlign"
@@ -205,7 +207,7 @@ struct Idea: Codable, Equatable, Sendable {
         let validContent = position.isValid
             && (link.map { $0.isEmpty || WorksheetLink($0) != nil } ?? true)
         return validContent && (textStyle?.isValid ?? true)
-            && (10...1000).contains(fontSize) && fontSize.rounded() == fontSize
+            && (1...10000).contains(fontSize) && fontSize.rounded() == fontSize
             && [fill, textColor, border].allSatisfy(validColor)
     }
 }
@@ -303,6 +305,7 @@ struct Worksheet: Content, Equatable {
     var resetRevision: Int?
     var title: String
     var text: String?
+    var textJustified: Bool?
     var background: String?
     var gridSpacing: Double?
     var creator: String?
@@ -310,7 +313,7 @@ struct Worksheet: Content, Equatable {
     var edges: [Connection] = []
 
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, revision, resetRevision, title, text, background
+        case schemaVersion, revision, resetRevision, title, text, textJustified, background
         case creator, nodes, edges
         case gridSpacing = "gridStep"
     }
@@ -1173,6 +1176,7 @@ extension Idea {
         height = (try? fields.decode(Double.self, forKey: .height)) ?? (kind == .connectionPoint ? width : 80)
         shape = (try? fields.decode(Shape.self, forKey: .shape)) ?? .rounded
         fill = (try? fields.decode(String.self, forKey: .fill)) ?? "#dce9ff"
+        backgroundEnabled = try? fields.decode(Bool.self, forKey: .backgroundEnabled)
         textColor = (try? fields.decode(String.self, forKey: .textColor)) ?? "#182335"
         fitText = try? fields.decode(Bool.self, forKey: .fitText)
         fontSize = (try? fields.decode(Double.self, forKey: .fontSize)) ?? 16
@@ -1197,6 +1201,7 @@ extension Worksheet {
         resetRevision = try? fields.decode(Int.self, forKey: .resetRevision)
         title = (try? fields.decode(String.self, forKey: .title)) ?? "Munkalap"
         text = try? fields.decode(String.self, forKey: .text)
+        textJustified = try? fields.decode(Bool.self, forKey: .textJustified)
         background = try? fields.decode(String.self, forKey: .background)
         gridSpacing = try? fields.decode(Double.self, forKey: .gridSpacing)
         creator = try? fields.decode(String.self, forKey: .creator)

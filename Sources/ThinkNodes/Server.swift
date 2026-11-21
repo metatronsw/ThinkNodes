@@ -638,18 +638,19 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
         note = """
             <article class="panel passive-note"><a class="muted" href="\(base)">Vissza a munkalaphoz</a>
               <h2>\(escaped(node.title))</h2>
-              <div class="formatted-text">\(node.text.isEmpty ? "<p>Még nincs leírás.</p>" : markdownHTML(node.text))</div>
+              <div class="formatted-text\(node.textStyle?.justified == true ? " justified-text" : "")">\(node.text.isEmpty ? "<p>Még nincs leírás.</p>" : markdownHTML(node.text))</div>
             </article>
             """
     } else {
         note = ""
     }
     let tooltips = worksheet.nodes.filter(needsTextTooltip).map {
-        "<template data-tooltip=\"\($0.id)\">\(markdownHTML($0.text))</template>"
+        let justification = $0.textStyle?.justified == true ? " data-justified" : ""
+        return "<template data-tooltip=\"\($0.id)\"\(justification)>\(markdownHTML($0.text))</template>"
     }.joined()
     let introduction = worksheet.text.map(markdownHTML) ?? ""
     let notes = introduction.isEmpty ? "" :
-        "<section class=\"panel worksheet-notes\"><div class=\"formatted-text\">\(introduction)</div></section>"
+        "<section class=\"panel worksheet-notes\"><div class=\"formatted-text\(worksheet.textJustified == true ? " justified-text" : "")\">\(introduction)</div></section>"
     let host = req.headers.first(name: .host)
     let external = worksheet.nodes.compactMap { node -> String? in
         guard let raw = node.link, let link = WorksheetLink(raw), link.isExternal(siteHost: host),

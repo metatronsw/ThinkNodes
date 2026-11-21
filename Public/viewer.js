@@ -29,7 +29,7 @@ function bindCanvas() {
   main.querySelector(".passive-frame").append(roster);
   for (const template of main.querySelectorAll("template[data-tooltip]")) {
     const box = main.querySelector('[data-node="' + CSS.escape(template.dataset.tooltip) + '"]');
-    box?.addEventListener("pointerenter", event => showTooltip(event, () => template.innerHTML));
+    box?.addEventListener("pointerenter", event => showTooltip(event, () => template.innerHTML, template.hasAttribute("data-justified")));
     box?.addEventListener("pointerleave", hideTooltip);
     box?.addEventListener("pointerdown", hideTooltip);
   }

@@ -115,6 +115,9 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .passive-note { margin-top: 18px; padding: 22px; }
 .passive-note h2 { margin: 14px 0; }
 .formatted-text { line-height: 1.6; overflow-wrap: anywhere; }
+.justified-text { text-align: justify; }
+.justified-text pre { text-align: start; }
+.canvas-file small.justified-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .formatted-text pre { overflow: auto; padding: 12px; background: var(--paper); border-radius: 7px; }
 .formatted-text img { max-width: 100%; }
 .empty, .editor-loading { padding: 22px; margin: 0; }
@@ -259,6 +262,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .color-sample, .color-presets button { padding: 3px; background: white; border: 1px solid #bbc8d8; border-radius: 5px; cursor: pointer; }
 .color-sample svg, .color-presets svg { display: block; width: 100%; aspect-ratio: 4 / 3; }
 .color-sample { width: 32px; }
+.color-sample:disabled { opacity: .5; cursor: default; }
 .color-tools { display: grid; gap: 5px; }
 .color-presets { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; }
 .color-tools input[type="range"] { padding: 0; }

@@ -368,14 +368,33 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
 
 @Test func autoSizeSurvivesRoundTripAndFitsSVGText() throws {
     let idea = Idea(id: "fit", title: "Cím", text: "Törzs", position: Point(x: 0, y: 0),
-                    width: 240, height: 100, shape: .rectangle, fitText: true)
+                    width: 240, height: 100, shape: .rectangle, backgroundEnabled: false, fitText: true)
     let board = Worksheet(title: "AutoSize", nodes: [idea])
     let saved = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(board))
     #expect(saved.nodes[0].fitText == true)
+    #expect(saved.nodes[0].backgroundEnabled == false)
     #expect(saved.nodes[0].fontSize == 16)
     let svg = boardSVG(saved)
+    #expect(svg.contains("rx=\"0\" fill=\"none\" stroke=\"none\" pointer-events=\"fill\""))
     #expect(svg.contains("font-size=\"33.600\" font-weight=\"650\">Cím</tspan>"))
     #expect(svg.contains("font-size=\"24.000\" font-weight=\"400\">Törzs</tspan>"))
+}
+
+@Test func svgShortensBoxLabelsWithoutClipping() throws {
+    var node = Idea(id: "box", title: "Hosszú cím", text: "**Nagy szöveg**", position: Point(x: 0, y: 0),
+                    width: 64, height: 40, shape: .ellipse, fontSize: 80, textStyle: TextStyle(size: 120))
+    let bounded = boardSVG(Worksheet(title: "Doboz", nodes: [node]))
+    #expect(!bounded.contains("<clipPath"))
+    #expect(!bounded.contains("clip-path="))
+    #expect(bounded.contains("…</tspan>"))
+    node.backgroundEnabled = false
+    let board = Worksheet(title: "Doboz", nodes: [node])
+    try board.validate()
+    let free = boardSVG(board)
+    #expect(!free.contains("<clipPath"))
+    #expect(!free.contains("textLength"))
+    #expect(free.contains(">Hosszú cím</tspan>"))
+    #expect(free.contains(">Nagy</tspan> <tspan font-weight=\"700\">szöveg</tspan>"))
 }
 
 @Test func containerStylesAndJunctionsSurviveRoundTrip() throws {
@@ -392,7 +411,8 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
                           nodes: [child, junction, container], edges: [line, second])
     try board.validate()
     var largeTitle = board
-    largeTitle.nodes[0].fontSize = 1000
+    largeTitle.nodes[0].fontSize = 10000
+    largeTitle.nodes[0].textStyle?.size = 1
     try largeTitle.validate()
     var legacy = board
     var duplicate = line
@@ -612,7 +632,19 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
 @Test func codeBlockWhitespace() throws {
     let block = try #require(canvasMarkdown("```\n  a  b\n\n c\n```").first)
     let rows = wrapMarkdown(block.runs, columns: 40, preformatted: true)
-    #expect(rows.map { $0.map(\.text).joined() } == ["  a  b", "", " c"])
+    #expect(rows.map { $0.pieces.map(\.text).joined() } == ["  a  b", "", " c"])
+}
+
+@Test func bodyJustificationSurvivesRoundTrip() throws {
+    let node = Idea(id: "box", title: "Cím", text: "Ez egy rövid példa több szövegsorral.",
+                    position: Point(x: 0, y: 0), width: 130, height: 180, textStyle: TextStyle(justified: true))
+    let board = Worksheet(title: "Munkalap", text: "Bevezetés", textJustified: true, nodes: [node])
+    let saved = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(board))
+    #expect(saved.textJustified == true)
+    #expect(saved.nodes[0].textStyle?.justified == true)
+    let svg = boardSVG(saved)
+    #expect(svg.contains("word-spacing="))
+    #expect(!svg.contains("class=\"link-label\" word-spacing="))
 }
 
 @Test func compactWorksheetKeysRoundTrip() throws {

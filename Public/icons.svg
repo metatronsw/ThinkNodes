@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg">
+  <symbol id="justify" viewBox="0 0 24 24"><path d="M4 5h16M4 10h16M4 15h16M4 20h10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
   <symbol id="search" viewBox="0 0 24 24"><circle cx="10" cy="10" r="5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m14 14 5 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
   <symbol id="plus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14"/></symbol>
   <symbol id="minus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="M5 12h14"/></symbol>

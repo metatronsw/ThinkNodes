@@ -4,7 +4,7 @@ export function hideTooltip() {
   request?.abort();
   tooltip?.remove();
 }
-export function showTooltip(event, render) {
+export function showTooltip(event, render, justified) {
   hideTooltip();
   const {currentTarget} = event;
   const signal = (request = new AbortController()).signal;
@@ -14,6 +14,7 @@ export function showTooltip(event, render) {
       if (signal.aborted || !currentTarget.isConnected) return;
       tooltip = document.createElement("div");
       tooltip.className = "formatted-text canvas-tooltip";
+      if (justified) tooltip.classList.add("justified-text");
       tooltip.setAttribute("role", "tooltip");
       tooltip.innerHTML = html;
       document.body.append(tooltip);

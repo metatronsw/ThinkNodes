@@ -22,7 +22,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false) -> Response {
     let assets = scripts ? """
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
-        <script type="module" src="/editor.js?v=3"></script>
+        <script type="module" src="/editor.js?v=6"></script>
         """ : ""
     return response("""
         <!doctype html>
@@ -217,6 +217,8 @@ private struct IdeaLabelLine {
     var outsideX: Double?
     var outsideTop: Double?
     var gap: Double = 0
+    var justify = false
+    var wrapped = false
     var style: TextStyle?
 
     var step: Double { size * 1.25 + gap }
@@ -241,6 +243,27 @@ private func textWidth(_ value: String, size: Double) -> Double {
     } * size
 }
 
+private func shortenLine(_ line: IdeaLabelLine, width: Double) -> IdeaLabelLine {
+    var result = line
+    var remaining = width - textWidth("…", size: line.size)
+    var runs: [MarkdownRun] = []
+    for run in line.runs.isEmpty ? [MarkdownRun(text: line.text)] : line.runs {
+        var prefix = ""
+        for letter in run.text {
+            remaining -= textWidth(String(letter), size: line.size)
+            if remaining < 0 { break }
+            prefix.append(letter)
+        }
+        if !prefix.isEmpty { runs.append(MarkdownRun(text: prefix, format: run.format)) }
+        if remaining < 0 { break }
+    }
+    runs.append(MarkdownRun(text: "…"))
+    result.text = runs.map(\.text).joined()
+    result.wrapped = false
+    if !line.runs.isEmpty { result.runs = runs }
+    return result
+}
+
 private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
     var node = idea
     if node.kind == .connectionPoint {
@@ -248,7 +271,9 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
         return IdeaDrawing(node: node, labelWidth: 0, lines: [])
     }
     let (widthRatio, heightRatio, _) = node.shape.labelRatios
+    let bounded = node.backgroundEnabled != false
     let fitText = node.fitText == true && node.file == nil
+    let wrapToBox = bounded || fitText
     let text = node.hideText != true ? canvasMarkdown(node.text) :
         (node.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? [] : [MarkdownBlock(kind: .body, runs: [MarkdownRun(text: "•••")])])
     let labelWidth = max(12, node.width * widthRatio - 16)
@@ -261,22 +286,26 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
             let text = value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
             guard !text.isEmpty else { return }
             let columns = max(2, Int(labelWidth / (size * 0.65)))
-            let rendered = textWidth(text, size: size) <= labelWidth ? [text] : wrap(text, columns: columns)
+            let rendered = !wrapToBox || textWidth(text, size: size) <= labelWidth ? [text] : wrap(text, columns: columns)
             lines.append(contentsOf: rendered.map { IdeaLabelLine(text: $0, size: size, weight: weight, color: color, style: style) })
         }
         add(node.title, size: titleSize, weight: node.bold ? 650 : 400, color: node.textColor,
             style: TextStyle(italic: node.italic, underline: node.underline, verticalAlignment: node.verticalAlignment))
         for (index, block) in text.enumerated() {
             let size = block.kind == .heading ? (fitText ? bodySize * 1.15 : (bodySize * 1.15).rounded()) : bodySize
-            let columns = max(node.hideText == true ? 3 : 2, Int(labelWidth / (size * 0.65)))
+            let columns = wrapToBox || node.textStyle?.justified == true ? max(node.hideText == true ? 3 : 2, Int(labelWidth / (size * 0.65))) : Int.max
             var runs = block.runs
             if block.kind == .quote { runs.insert(MarkdownRun(text: "› "), at: 0) }
-            for (row, pieces) in wrapMarkdown(runs, columns: columns, preformatted: block.kind == .code).enumerated() {
+            for (row, wrappedLine) in wrapMarkdown(runs, columns: columns, preformatted: block.kind == .code).enumerated() {
+                let pieces = wrappedLine.pieces
                 let blockGap: Double = index == 0 ? 8 : 3
                 let gap = row == 0 ? (fitText ? min(blockGap, bodySize * 0.4) : blockGap) : 0
                 lines.append(IdeaLabelLine(text: pieces.map(\.text).joined(), size: size,
                                            weight: block.kind == .heading || node.textStyle?.bold == true ? 700 : 400,
-                                           color: node.textStyle?.color ?? node.textColor, runs: pieces, gap: gap, style: node.textStyle))
+                                           color: node.textStyle?.color ?? node.textColor, runs: pieces, gap: gap,
+                                           justify: node.textStyle?.justified == true && block.kind != .code,
+                                           wrapped: wrappedLine.wrapped,
+                                           style: node.textStyle))
             }
         }
         return lines
@@ -316,19 +345,25 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
         groups[horizontal.rawValue + "/" + vertical.rawValue, default: []].append(line)
         return true
     }
+    let available = bounded ? max(0, labelHeight) : max(0, labelHeight, lines.reduce(0) { $0 + $1.step })
     var visible: [IdeaLabelLine] = []
-    let available = fitText ? max(0, labelHeight) : max(node.fontSize * 1.25, labelHeight)
     var remaining = available
     for line in lines {
-        guard remaining >= line.step else { break }
+        if bounded && remaining < line.step { break }
         visible.append(line)
         remaining -= line.step
     }
-    let overflow = visible.count < lines.count
-    if !visible.isEmpty && overflow {
-        let last = visible.count - 1
-        visible[last].text += "…"
-        if !visible[last].runs.isEmpty { visible[last].runs.append(MarkdownRun(text: "…")) }
+    let omitted = visible.count < lines.count
+    if bounded && omitted && visible.isEmpty { visible.append(lines[0]); remaining -= lines[0].step }
+    var overflow = omitted
+    if bounded {
+        for index in visible.indices {
+            let line = visible[index]
+            if textWidth(line.text, size: line.size) > labelWidth || (omitted && index == visible.count - 1) {
+                visible[index] = shortenLine(line, width: labelWidth)
+                overflow = true
+            }
+        }
     }
     if node.hideText == true,
        let marker = lines.last, !marker.runs.isEmpty, !visible.contains(where: { !$0.runs.isEmpty }) {
@@ -336,6 +371,11 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
         visible.append(marker)
     }
     var extentX = node.width / 2, extentY = max(node.height, available + iconSpace) / 2
+    if !bounded {
+        for line in visible {
+            extentX = max(extentX, labelWidth/2 + textWidth(line.text, size: line.size) * 1.25 + line.size)
+        }
+    }
     for key in groups.keys.sorted() {
         let rows = groups[key] ?? []
         let total = rows.reduce(0) { $0 + $1.step }
@@ -345,6 +385,7 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
         extentX = max(extentX, abs(center) + labelWidth/2 + 4)
         extentY = max(extentY, abs(top), abs(top+total))
         for var line in rows {
+            extentX = max(extentX, abs(center - side * labelWidth/2) + textWidth(line.text, size: line.size) * 1.25 + line.size)
             line.outsideX = center
             line.outsideTop = top
             visible.append(line)
@@ -373,7 +414,9 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
     let y = height / 2
     let strokeWidth = node.kind == .container && node.locked == true ? "3.2" : "1.6"
     let dash = node.link.flatMap(WorksheetLink.init) == nil ? "" : " stroke-dasharray=\"7 4\""
-    let appearance = "fill=\"\(escaped(node.fill))\" stroke=\"\(escaped(node.border))\" stroke-width=\"\(strokeWidth)\"\(dash)"
+    let appearance = node.backgroundEnabled == false
+        ? "fill=\"none\" stroke=\"none\" pointer-events=\"fill\""
+        : "fill=\"\(escaped(node.fill))\" stroke=\"\(escaped(node.border))\" stroke-width=\"\(strokeWidth)\"\(dash)"
     let geometry: String
     switch node.shape {
     case .rectangle, .rounded:
@@ -403,18 +446,23 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
         if let center = line.outsideX {
             let side: Double = center < 0 ? -1 : center > 0 ? 1 : 0
             (textX, anchor) = (center - side * labelWidth/2, side < 0 ? "end" : side > 0 ? "start" : "middle")
-        } else { switch line.style?.alignment ?? node.alignment {
+        } else { switch line.justify ? .left : line.style?.alignment ?? node.alignment {
         case .left: (textX, anchor) = (-labelWidth / 2, "start")
         case .right: (textX, anchor) = (labelWidth / 2, "end")
         case .center: (textX, anchor) = (0, "middle")
         } }
         var style = line.runs.isEmpty ? " class=\"link-label\"" : ""
+        if line.justify && line.wrapped {
+            let spaces = line.text.filter { $0 == " " }.count
+            let width = textWidth(line.text, size: line.size)
+            if spaces > 0 && width < labelWidth {
+                style += " word-spacing=\"\(number((labelWidth - width) / Double(spaces)))\""
+            }
+        }
         if line.style?.italic == true { style += " font-style=\"italic\"" }
         if line.style?.underline == true { style += " text-decoration=\"underline\"" }
         let baseline = top + line.gap + line.size * (1.25 / 2 + 0.33)
         if line.outsideTop == nil { offset += line.step }
-        let fit = textWidth(line.text, size: line.size) > labelWidth
-            ? " textLength=\"\(number(labelWidth))\" lengthAdjust=\"spacingAndGlyphs\"" : ""
         let content = line.runs.isEmpty ? escaped(line.text) : line.runs.map { run in
             let format = run.format
             var attributes = ""
@@ -425,7 +473,7 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
             return attributes.isEmpty ? escaped(run.text) : "<tspan\(attributes)>\(escaped(run.text))</tspan>"
         }.joined()
         return """
-            <tspan text-anchor="\(anchor)"\(style) x="\(number(textX))" y="\(number(baseline))" fill="\(escaped(line.color))" font-size="\(number(line.size))" font-weight="\(line.weight)"\(fit)>\(content)</tspan>
+            <tspan text-anchor="\(anchor)"\(style) x="\(number(textX))" y="\(number(baseline))" fill="\(escaped(line.color))" font-size="\(number(line.size))" font-weight="\(line.weight)">\(content)</tspan>
             """
     }.joined()
     let symbol = node.link.flatMap(WorksheetLink.init).map { link in
@@ -545,6 +593,8 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
         if let file = node.file {
             let url = escaped("/api/attachment" + (assetBase ?? noteBase ?? "") + "?inline=1&name=" + encodeQuery(file.asset ?? ""))
             let title = file.hideTitle == true || node.title.isEmpty ? "" : "<strong>\(escaped(node.title))</strong>"
+            let justification = node.textStyle?.justified == true ? " justified-text" : ""
+            let commentClass = justification.isEmpty ? "" : " class=\"justified-text\""
             let content: String
             switch file.type {
             case .image:
@@ -558,13 +608,13 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
                       <button type="button" class="button" data-audio-toggle="" aria-label="Lejátszás" title="Lejátszás">\(uiIcon("play"))</button>
                       <input type="range" min="0" max="0" step="any" disabled="disabled" data-audio-seek="" aria-label="Lejátszási pozíció"/>
                       <small data-audio-status="" role="status"></small>
-                    </div><small>\(escaped(node.text))</small>
+                    </div><small\(commentClass)>\(escaped(node.text))</small>
                     """
-            case .md: content = "<div class=\"formatted-text\">\(markdownHTML(node.text))</div>"
-            case .txt, .json: content = "<pre>\(escaped(node.text))</pre>"
+            case .md: content = "<div class=\"formatted-text\(justification)\">\(markdownHTML(node.text))</div>"
+            case .txt, .json: content = "<pre\(commentClass)>\(escaped(node.text))</pre>"
             case .attachment:
                 let download = escaped("/api/attachment" + (assetBase ?? noteBase ?? "") + "?name=" + encodeQuery(file.asset ?? ""))
-                content = "<a class=\"button small\" href=\"\(download)\">Letöltés</a><small>\(escaped(node.text))</small>"
+                content = "<a class=\"button small\" href=\"\(download)\">Letöltés</a><small\(commentClass)>\(escaped(node.text))</small>"
             }
             let image = file.type == .image
             let above: Double = image && !title.isEmpty ? 22 : 0
