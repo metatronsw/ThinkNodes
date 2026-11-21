@@ -644,14 +644,15 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
     } else {
         note = ""
     }
-    let tooltips = worksheet.nodes.filter(needsTextTooltip).map {
+    let host = req.headers.first(name: .host)
+    let canvas = renderWorksheetCanvas(worksheet, noteBase: base, siteHost: host)
+    let tooltips = canvas.tooltipNodes.map {
         let justification = $0.textStyle?.justified == true ? " data-justified" : ""
         return "<template data-tooltip=\"\($0.id)\"\(justification)>\(markdownHTML($0.text))</template>"
     }.joined()
     let introduction = worksheet.text.map(markdownHTML) ?? ""
     let notes = introduction.isEmpty ? "" :
         "<section class=\"panel worksheet-notes\"><div class=\"formatted-text\(worksheet.textJustified == true ? " justified-text" : "")\">\(introduction)</div></section>"
-    let host = req.headers.first(name: .host)
     let external = worksheet.nodes.compactMap { node -> String? in
         guard let raw = node.link, let link = WorksheetLink(raw), link.isExternal(siteHost: host),
               let href = link.destination(from: path) else { return nil }
@@ -664,12 +665,12 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
     let newPage = access.editable ? "<button type=\"button\" class=\"button new-worksheet\">\(uiIcon("plus"))Új munkalap</button><button type=\"button\" class=\"button new-worksheet\" data-folder=\"1\">Új almappa</button>" : ""
     return htmlPage(title: worksheet.title, body: """
         \(siteHeader(path: path.url, project: worksheet.title, user: session.user, csrf: session.csrf, canEdit: access.editable))
-        <script type="module" src="/viewer.js?v=4"></script>
+        <script type="module" src="/viewer.js?v=5"></script>
         <main class="shell" id="worksheet-view" data-path="\(path.url)" data-csrf="\(token(req))" data-revision="\(worksheet.revision)" data-editable="\(access.editable)" data-member="\(session.user != nil)">
           <a hidden data-current-document data-scope="\(access.folderPath == path.url ? "project" : "sheet")" \(menuState(access.sheetRule)) data-manage="\(access.manageable)" href="\(base)">Munkalap</a>
           <div class="passive-frame panel">
             <svg class="passive-backdrop" aria-hidden="true"><rect width="100%" height="100%" fill="\(worksheet.backgroundColor)"/></svg>
-            \(boardSVG(worksheet, noteBase: base, siteHost: host))
+            \(canvas.svg)
             \(edit)
             <button class="button fullscreen" type="button" aria-label="Teljes képernyő">\(uiIcon("fit"))</button>
           </div>

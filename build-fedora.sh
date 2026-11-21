@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 
 usage() {
     cat <<'EOF'
-Usage: ./build-fedora.sh [--server-only] [--skip-update] [--] [SwiftPM build options]
+Usage: ./build-fedora.sh [--server-only] [--disable-automatic-resolution] [--] [SwiftPM build options]
 
 Builds the ThinkNodes release executable on Fedora Linux.
 Environment:
@@ -19,12 +19,16 @@ args=()
 while (($#)); do
     case "$1" in
         --server-only) server_only=true ;;
-        --skip-update) args+=(--skip-update) ;;
         -h|--help) usage; exit 0 ;;
         --) shift; args+=("$@"); break ;;
         *) args+=("$1") ;;
     esac
     shift
+done
+for index in "${!args[@]}"; do
+    if [[ "${args[index]}" == "--skip-update" ]]; then
+        args[index]=--disable-automatic-resolution
+    fi
 done
 
 if [[ "$(uname -s)" != Linux ]]; then

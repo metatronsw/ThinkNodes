@@ -17,8 +17,10 @@ konténer:
 
 
 
-?? shift nyomvatartása közben: 
+SHIFT DRAG: 
 - vonal húzáskor, vagy kijelölt vonal vastagítás legyen
+- szín váltás ? 
+- shift duplakatt: doboz, nyíl, forma váltás
 
 
 
@@ -35,17 +37,18 @@ SPACE INSERT:
 - kereső ablak nyílik, rendszer parancsokat lehet megadni, vagy a könyvtárból / közös könyvtárból dokumentumokat - szimbólumokat beilleszteni
 -
 
-HIBA: 
-Snap bekapcsolásakor a vonalakra nem hat a grid point snap
 
 
-HIBA: 
-sorkizárás gomb nak csak ikon kell, szöveg nem. Váltáskor változzon az ikon, a módnak megfelelő ikont mutassa.
-Sorkizárás a property editor text box -on belül nem kell
-Lehet ez okozza a problémát! Gomb megnyomáskor egy pillanatra sorkizárt lesz, majd vissza vált.
 
-PROPERTY PANEL:
-Szűntess meg minden panelen minden feliratos gombot vagy kapcsolót, CSAK felirat nélküli ikonok gombok / kapcsolók legyenek. CSAK a szekció tetején lévő cimkék maradkanak meg szöveges elemek. 
-Ahol lehet rendezd át úgy a szekció box-okat hogy a lehető legtömörebb legyen és jó helykihasználtság 
-ahol lehet tedd egymás mellé a gombokat.
+doboz link szöveget vedd nagyobra
+locked konténer keret vastagsága legyen duplája
 
+HIBA:
+- vizsgáld felül az egér cursor viselkedését, bizonyos esetekben nem tudja kikötni elsőre a dobozba bekötött vonal véget
+
+egyszerűsítsd: 
+- alapból üres canvas felett normál cursor
+- drag közben váltson csak hand -re 
+- alt lenyomásakor váltson cursort (rád bízom mire, de sorold fel a lehetőségeket) 
+- objektum felett ha nincs még szelektálva akkor csak a hand-pointing ikon legyen, ha már mozgatom akkor váltson a 4 nyil ikonra
+- 

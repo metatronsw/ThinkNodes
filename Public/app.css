@@ -199,12 +199,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
   box-shadow: 0 4px 14px #1c31531b;
 }
 .inspector-content h2, .inspector-content p { margin: 0; }
-.fields-two, .fields-three, .color-field { display: grid; gap: 7px; min-width: 0; }
-.fields-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.property-options.font-size-options { align-self: start; align-items: end; flex-wrap: nowrap; }
-.font-size-options > label { flex: 1; min-width: 0; }
-.font-size-options > .option-icon { flex-shrink: 0; }
-.fields-two input[type="number"]:disabled { color: var(--muted); background: #f1f4f9; }
+.fields-three, .color-field { display: grid; gap: 7px; min-width: 0; }
 .fields-three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .color-field { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
 .color-field > .color-tools { grid-column: 1 / -1; }
@@ -260,7 +255,17 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .property-options .option-icon { width: 32px; height: 32px; min-height: 0; padding: 0; }
 .property-options .option-icon .ui-icon { width: 22px; height: 22px; }
 .property-group legend { font-weight: 650; padding: 0 5px; }
-.font-switches { display: flex; gap: 8px; flex-wrap: wrap; }
+.object-inspector .inspector-content { gap: 5px; }
+.object-inspector .property-group { gap: 5px; padding: 5px 7px; }
+.object-inspector :is(input:not([type="range"]), textarea) { padding: 5px 7px; }
+.object-inspector input[type="number"]:disabled { color: var(--muted); background: #f1f4f9; }
+.property-tools { min-width: 0; align-items: center; }
+.property-tools > input[type="number"] { flex: 0 1 68px; width: 68px; }
+.property-inline, .typography-tools { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px; align-items: start; }
+.object-inspector .option-icon { display: inline-flex; width: 32px; height: 32px; min-height: 0; padding: 0; }
+.object-inspector .compact-color { display: contents; }
+.compact-color .color-tools { flex-basis: 100%; }
+.object-inspector .color-sample { height: 32px; }
 .color-sample, .color-presets button { padding: 3px; background: white; border: 1px solid #bbc8d8; border-radius: 5px; cursor: pointer; }
 .color-sample svg, .color-presets svg { display: block; width: 100%; aspect-ratio: 4 / 3; }
 .color-sample { width: 32px; }
@@ -405,6 +410,10 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .selection-glow, .search-candidate { filter: drop-shadow(0 0 6px currentColor); }
 .wire-selected { filter: drop-shadow(0 0 4px currentColor) drop-shadow(0 0 8px currentColor); }
 
+@keyframes container-drop-pulse {
+  50% { stroke-width: 5px; }
+}
+
 @keyframes search-button-pulse {
   50% { box-shadow: 0 0 16px #cf8200; }
 }
@@ -412,6 +421,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
   50% { opacity: .45; filter: drop-shadow(0 0 12px currentColor); }
 }
 @media (prefers-reduced-motion: no-preference) {
+  .container-drop-target { animation: container-drop-pulse 1.25s ease-in-out infinite; }
   .search-row[data-candidate="true"] > :first-child { animation: search-button-pulse 2s ease-in-out infinite; }
   .selection-glow, .search-candidate { animation: selection-pulse 2s ease-in-out infinite; }
 }

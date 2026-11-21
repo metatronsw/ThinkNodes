@@ -22,7 +22,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false) -> Response {
     let assets = scripts ? """
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
-        <script type="module" src="/editor.js?v=10"></script>
+        <script type="module" src="/editor.js?v=11"></script>
         """ : ""
     return response("""
         <!doctype html>
@@ -396,8 +396,12 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
                        overflow: overflow, lines: visible, extentX: extentX, extentY: extentY)
 }
 
+func needsTextTooltip(_ node: Idea, overflow: @autoclosure () -> Bool) -> Bool {
+    !node.text.isEmpty && (node.file?.type == .image || node.hideText == true || overflow())
+}
+
 func needsTextTooltip(_ node: Idea) -> Bool {
-    !node.text.isEmpty && (node.file?.type == .image || node.hideText == true || ideaDrawing(node).overflow)
+    needsTextTooltip(node, overflow: ideaDrawing(node).overflow)
 }
 
 private func animatedBox(_ contents: String, mode: BoxAnimation?) -> String {
@@ -483,7 +487,7 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
             let spaces = line.text.filter { $0 == " " }.count
             let width = textWidth(line.text, size: line.size)
             if spaces > 0 && width < labelWidth {
-                style += " word-spacing=\"\(number((labelWidth - width) / Double(spaces)))\""
+                style += " word-spacing=\"\(number((labelWidth - width) / Double(spaces)))px\""
             }
         }
         if line.style?.italic == true { style += " font-style=\"italic\"" }
@@ -556,6 +560,10 @@ private func wireAnimation(_ edge: Connection, from: Point, to: Point) -> (strok
 }
 
 func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = nil, assetBase: String? = nil) -> String {
+    renderWorksheetCanvas(board, noteBase: noteBase, siteHost: siteHost, assetBase: assetBase).svg
+}
+
+func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: String?, assetBase: String? = nil) -> (svg: String, tooltipNodes: [Idea]) {
     let drawings = board.nodes.map(ideaDrawing)
     let renderedIdeas = drawings.map(\.node)
     let nodes = Dictionary(uniqueKeysWithValues: renderedIdeas.map { ($0.id, $0) })
@@ -735,7 +743,7 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
     scene.append(contentsOf: wiresByLayer[ordered.count, default: []].map(\.markup))
     let width = number(halfWidth * 2)
     let height = number(halfHeight * 2)
-    return """
+    let svg = """
         <svg xmlns="http://www.w3.org/2000/svg" class="passive-canvas" role="\(noteBase == nil ? "img" : "group")" aria-label="\(escaped(board.title))" width="\(width)" height="\(height)" viewBox="\(number(-halfWidth)) \(number(-halfHeight)) \(width) \(height)">
           \(noteBase == nil ? "<title>\(escaped(board.title))</title>" : "")
           <defs>\(definitions.joined())</defs>
@@ -743,6 +751,10 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
           \(scene.joined(separator: "\n"))
         </svg>
         """
+    let tooltipNodes = noteBase == nil ? [] : drawings.compactMap { drawing in
+        needsTextTooltip(drawing.node, overflow: drawing.overflow) ? drawing.node : nil
+    }
+    return (svg, tooltipNodes)
 }
 
 func worksheetMarkdown(_ worksheet: Worksheet) -> String {

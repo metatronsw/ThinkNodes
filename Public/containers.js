@@ -11,12 +11,6 @@ export function ancestors(node, byID) {
   return parents;
 }
 
-export function containerOrder(nodes, byID) {
-  return nodes.filter(n => n.kind === "container")
-    .map(node => ({node, depth: ancestors(node, byID).length}))
-    .sort((a, b) => a.depth - b.depth).map(entry => entry.node);
-}
-
 function outline(node) {
   const {x, y} = node.position;
   const w = node.width / 2, h = node.height / 2;

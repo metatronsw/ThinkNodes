@@ -8,7 +8,7 @@ import {flashNode, flashPoint} from "./ping.js";
 import {hideTooltip, showTooltip} from "./tooltip.js";
 import {liveConnection} from "./collaboration.js";
 
-import {arrowTransform, edgeGeometry, edgePaint, selectionOutline, wireGradientValues} from "./geometry.js?v=8";
+import {arrowTransform, edgeGeometry, edgePaint, selectionOutline, wireGradientValues} from "./geometry.js?v=9";
 import {ancestors} from "./containers.js";
 
 let selection;
@@ -44,56 +44,93 @@ function previewScene() {
     return [node, {id: node, anchor, parent, shape, width: +width, height: +height,
       origin: {x: +x, y: +y}, position: {x: +x, y: +y}}];
   }));
-  const wires = [...main.querySelectorAll("[data-wire]")].map(path => {
+  const wires = new Map(), nodesByMover = new Map(), wiresByNode = new Map();
+  function index(map, id, item) {
+    if (!id) return;
+    if (!map.has(id)) map.set(id, []);
+    map.get(id).push(item);
+  }
+  for (const node of nodes.values()) {
+    node.movers = [node.id, ...ancestors(node, nodes).map(parent => parent.id)];
+    for (const id of node.movers) index(nodesByMover, id, node);
+  }
+  for (const path of main.querySelectorAll("[data-wire]")) {
     const edge = decodeConnection(JSON.parse(path.dataset.wire));
+    const frame = path.parentElement;
     const gradient = edge.animated && (edge.appearance ?? "plain") === "plain"
-      ? main.querySelector("#wire-gradient-" + CSS.escape(edge.id)) : null;
-    return {path, edge, gradient, sweep: gradient?.querySelector("animateTransform")};
-  });
-  return () => {
-    const changed = new Set();
-    for (const node of nodes.values()) {
-      const delta = [node, ...ancestors(node, nodes)].map(n => motions.get(n.id)).find(Boolean);
+      ? document.getElementById("wire-gradient-" + edge.id) : null;
+    const wire = {path, frame, edge, gradient, sweep: gradient?.querySelector("animateTransform"), paint: edgePaint(edge),
+      marker: document.getElementById("arrow-" + edge.id), arrows: [...frame.querySelectorAll("[data-arrow-end]")],
+      label: edge.label?.trim() ? frame.nextElementSibling : null};
+    wires.set(edge.id, wire);
+    index(wiresByNode, edge.source, wire);
+    index(wiresByNode, edge.target.node, wire);
+  }
+  function draw(changedMovers) {
+    const affectedNodes = new Set();
+    const affectedWires = new Set();
+    for (const id of changedMovers) {
+      for (const node of nodesByMover.get(id) ?? []) affectedNodes.add(node);
+    }
+    for (const node of affectedNodes) {
+      const mover = node.movers.find(id => motions.has(id));
+      const delta = motions.get(mover);
       const x = node.origin.x + (delta?.x ?? 0), y = node.origin.y + (delta?.y ?? 0);
       if (x === node.position.x && y === node.position.y) continue;
       node.position = {x, y};
-      changed.add(node.id);
+      for (const wire of wiresByNode.get(node.id) ?? []) affectedWires.add(wire);
       if (delta) node.anchor.setAttribute("transform", "translate(" + delta.x + " " + delta.y + ")");
       else node.anchor.removeAttribute("transform");
     }
-    for (const {path, edge, gradient, sweep} of wires) {
-      if (!changed.has(edge.source) && !changed.has(edge.target.node)) continue;
-      const {d, labelPosition, angle, from, to, sourceToward, targetToward} = edgeGeometry(edge, id => nodes.get(id));
+    for (const {path, edge, gradient, sweep, paint, arrows, label} of affectedWires) {
+      const geometry = edgeGeometry(edge, id => nodes.get(id));
+      const {d, from, to, sourceToward, targetToward} = geometry;
       path.setAttribute("d", d);
       if (sweep) {
         for (const [key, value] of Object.entries({x1: from.x, y1: from.y, x2: to.x, y2: to.y})) {
           gradient.setAttribute(key, value);
         }
-        sweep.setAttribute("values", wireGradientValues(from, to, edgePaint(edge)));
+        sweep.setAttribute("values", wireGradientValues(from, to, paint));
       }
-      const wire = path.parentElement;
-      for (const arrow of wire.querySelectorAll("[data-arrow-end]")) {
+      for (const arrow of arrows) {
         const start = arrow.dataset.arrowEnd === "source";
-        const transform = arrowTransform(start ? from : to, start ? sourceToward : targetToward, edgePaint(edge).width);
-        arrow.setAttribute("transform", transform);
+        arrow.setAttribute("transform", arrowTransform(start ? from : to, start ? sourceToward : targetToward, paint.width));
       }
-      if (edge.label?.trim()) wire.nextElementSibling?.setAttribute("transform",
-        "translate(" + labelPosition.x + " " + labelPosition.y + ") rotate(" + angle + ")");
+      if (label) {
+        const {labelPosition, angle} = geometry;
+        label.setAttribute("transform", "translate(" + labelPosition.x + " " + labelPosition.y + ") rotate(" + angle + ")");
+      }
     }
-  };
+  }
+  return {nodes, wires, draw};
 }
-let drawPreview = previewScene();
+let scene = previewScene();
+const changedMovers = new Set();
+let motionFrame;
+function scheduleMotion() {
+  if (motionFrame !== undefined || !changedMovers.size) return;
+  motionFrame = requestAnimationFrame(() => {
+    motionFrame = undefined;
+    scene.draw(changedMovers);
+    changedMovers.clear();
+  });
+}
+
 function receiveMotion(frame) {
-  if (!frame) motions.clear();
-  else if (frame.revision !== Number(main.dataset.revision)) return;
+  if (!frame) {
+    for (const id of motions.keys()) changedMovers.add(id);
+    motions.clear();
+  } else if (frame.revision !== Number(main.dataset.revision)) return;
   else if (frame.ping) {
     if (frame.point) flashPoint(main.querySelector(".passive-canvas"), frame.point);
     else flashNode(main, frame.node);
     return;
+  } else {
+    if (frame.delta) motions.set(frame.node, frame.delta);
+    else motions.delete(frame.node);
+    changedMovers.add(frame.node);
   }
-  else if (frame.delta) motions.set(frame.node, frame.delta);
-  else motions.delete(frame.node);
-  drawPreview();
+  scheduleMotion();
 }
 
 function outline(box, marker, color) {
@@ -108,15 +145,20 @@ function outline(box, marker, color) {
   box.prepend(frame);
 }
 
+let rosterSignature;
+let paintedWireOwners = new Map();
 function paint(peers) {
   roster.classList.remove("connection-lost");
-  roster.replaceChildren();
-  for (const peer of peers) {
-    const label = document.createElement("span");
-    if (peer.color) label.style.setProperty("--peer", peer.color);
-    else label.className = "guest";
-    label.textContent = peer.name;
-    roster.append(label);
+  const signature = JSON.stringify(peers.map(({name, color}) => [name, color]));
+  if (signature !== rosterSignature) {
+    rosterSignature = signature;
+    roster.replaceChildren(...peers.map(peer => {
+      const label = document.createElement("span");
+      if (peer.color) label.style.setProperty("--peer", peer.color);
+      else label.className = "guest";
+      label.textContent = peer.name;
+      return label;
+    }));
   }
   for (const frame of main.querySelectorAll("[data-selection]")) {
     if (!peers.some(peer => !peer.mine && peer.node === frame.parentElement.dataset.node && peer.color === frame.dataset.peerColor)) frame.remove();
@@ -125,23 +167,23 @@ function paint(peers) {
   for (const peer of peers) {
     if (peer.edge && (peer.mine || !wireOwners.has(peer.edge))) wireOwners.set(peer.edge, peer.color);
   }
-  for (const wire of main.querySelectorAll("[data-wire]")) {
-    const id = JSON.parse(wire.dataset.wire).id;
+  for (const id of new Set([...paintedWireOwners.keys(), ...wireOwners.keys()])) {
     const color = wireOwners.get(id) ?? "";
-    const frame = wire.parentElement;
+    if (color === (paintedWireOwners.get(id) ?? "")) continue;
+    const wire = scene.wires.get(id);
+    if (!wire) continue;
+    const {frame, gradient, path, marker, arrows} = wire;
     frame.classList.toggle("wire-selected", !!color);
     frame.style.color = color;
-
-    const gradient = document.getElementById("wire-gradient-" + id);
     if (gradient) gradient.style.color = color;
-    else wire.style.stroke = color;
-    const marker = document.getElementById("arrow-" + id);
+    else path.style.stroke = color;
     if (marker) marker.style.color = color;
-    for (const arrow of frame.querySelectorAll("[data-arrow-end]")) arrow.style.fill = color;
+    for (const arrow of arrows) arrow.style.fill = color;
   }
+  paintedWireOwners = wireOwners;
   for (const peer of peers) {
     if (!peer.node || peer.mine) continue;
-    const anchor = main.querySelector('[data-node="' + CSS.escape(peer.node) + '"]');
+    const anchor = scene.nodes.get(peer.node)?.anchor;
     if (!anchor || [...anchor.querySelectorAll("[data-selection]")].some(frame => frame.dataset.peerColor === peer.color)) continue;
     outline(anchor, "data-selection", peer.color);
   }
@@ -258,7 +300,9 @@ const live = liveConnection(path, csrf, async state => {
     else if (!oldEdit) frame.append(newEdit);
     Object.assign(main.dataset, next.dataset);
     motions.clear();
-    drawPreview = previewScene();
+    changedMovers.clear();
+    scene = previewScene();
+    paintedWireOwners.clear();
     if (document.title !== page.title) document.title = page.title;
     const header = document.querySelector(".site-header");
     const nextHeader = page.querySelector(".site-header");
@@ -271,9 +315,12 @@ const live = liveConnection(path, csrf, async state => {
   }
   for (const id of motions.keys()) {
     if (peers.some(p => !p.viewing && p.node === id) &&
-        !state.participants.some(p => !p.viewing && p.node === id)) motions.delete(id);
+        !state.participants.some(p => !p.viewing && p.node === id)) {
+      motions.delete(id);
+      changedMovers.add(id);
+    }
   }
-  drawPreview();
+  scheduleMotion();
   const previousMine = peers.find(peer => peer.mine);
   peers = state.participants;
   const mine = peers.find(peer => peer.mine);
@@ -285,6 +332,7 @@ const live = liveConnection(path, csrf, async state => {
   if ([401, 403, 404, 423].includes(error.status)) main.textContent = error.message;
   roster.classList.add("connection-lost");
   roster.textContent = "Kapcsolat megszakadt";
+  rosterSignature = undefined;
   peers = [];
   if (!roster.isConnected) main.prepend(roster);
 }, {onMotion: receiveMotion, onCursor: mouse?.receive});

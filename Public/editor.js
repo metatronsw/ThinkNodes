@@ -7,9 +7,9 @@ import {flashNode, flashPoint} from "./ping.js";
 import {showTooltip, hideTooltip} from "./tooltip.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {automaticBorder, automaticGridColor, arrowTransform, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, lineAppearances, lineTypes, paper, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, wireGradientValues} from "./geometry.js?v=8";
+import {automaticBorder, automaticGridColor, arrowTransform, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, lineAppearances, lineTypes, paper, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, wireGradientValues} from "./geometry.js?v=9";
 
-import {ancestors, containerOrder, overlapFraction} from "./containers.js";
+import {ancestors, overlapFraction} from "./containers.js?v=2";
 
 const mount = document.querySelector("#editor");
 const {path, csrf, user, motionRate} = mount.dataset;
@@ -31,7 +31,7 @@ function button(label, onClick, props = {}) {
 const palette = ["#ffffff", "#000000", "#e95c59", "#f3ae49", "#f3df65", "#60b77a", "#5aaed2", "#657ace", "#a375be", "#e198ad"];
 
 const ColorPicker = {
-  props: {label: String, color: String, disabled: Boolean},
+  props: {label: String, color: String, disabled: Boolean, compact: Boolean},
   emits: ["update"],
   setup(props, {emit}) {
     const expanded = ref(false);
@@ -41,9 +41,15 @@ const ColorPicker = {
         [h("rect", {width: 4, height: 3, fill: color})]);
     }
 
-    return () => h("div", {class: "color-field"}, [
-      h("span", props.label),
+    function colorInput(label, attributes) {
+      const control = h("input", {...attributes, ...(props.compact ? controlName(label) : {})});
+      return props.compact ? control : field(label, control);
+    }
+
+    return () => h("div", {class: ["color-field", {"compact-color": props.compact}]}, [
+      props.compact ? null : h("span", props.label),
       h("button", {type: "button", class: "color-sample", "aria-label": props.label + " színválasztó",
+        title: props.compact ? props.label + " színválasztó" : undefined,
         disabled: props.disabled, "aria-expanded": expanded.value && !props.disabled,
         onClick: () => { expanded.value = !expanded.value; }}, [swatch(props.color)]),
       expanded.value && !props.disabled ? h("div", {class: "color-tools"}, [
@@ -53,23 +59,27 @@ const ColorPicker = {
           const offset = 1 + i * 2;
           const change = event => emit("update", props.color.slice(0, offset) +
             Number(event.target.value).toString(16).padStart(2, "0") + props.color.slice(offset + 2));
-          return field(label, h("input", {type: "range", min: 0, max: 255, step: 1,
-            value: parseInt(props.color.slice(offset, offset+2), 16), onInput: change, onChange: change}));
+          return colorInput(label, {type: "range", min: 0, max: 255, step: 1,
+            value: parseInt(props.color.slice(offset, offset+2), 16), onInput: change, onChange: change});
         }),
-        field("Rendszerpaletta", h("input", {type: "color", value: props.color,
-          onInput: e => emit("update", e.target.value), onChange: e => emit("update", e.target.value)})),
+        colorInput("Rendszerpaletta", {type: "color", value: props.color,
+          onInput: e => emit("update", e.target.value), onChange: e => emit("update", e.target.value)}),
       ]) : null,
     ]);
   },
 };
 
-function colorPicker(label, value, change, key, disabled = false) {
-  return h(ColorPicker, {key, label, color: value, disabled, onUpdate: change});
+function colorPicker(label, value, change, key, disabled = false, compact = false) {
+  return h(ColorPicker, {key, label, color: value, disabled, compact, onUpdate: change});
 }
 
-function iconToggle(title, pressed, onClick, symbol) {
-  return h("button", {type: "button", class: "button option-icon", title, "aria-label": title,
-    "aria-pressed": pressed, onClick}, [symbol]);
+function controlName(label) {
+  return {title: label, "aria-label": label};
+}
+
+function iconToggle(title, pressed, onClick, symbol, disabled = false) {
+  return h("button", {type: "button", class: "button option-icon", ...controlName(title),
+    "aria-pressed": pressed, onClick, disabled}, [symbol]);
 }
 
 function optionPicker(label, choices, current, change, preview) {
@@ -129,11 +139,12 @@ function numeric(value, change, min, max, {clampValue = false, ...props} = {}) {
   });
 }
 
-function checkbox(label, checked, change) {
-  return h("label", {class: "check"}, [
-    h("input", {type: "checkbox", checked, onChange: event => change(event.target.checked)}),
-    h("span", label),
-  ]);
+function propertyTools(...controls) {
+  return h("div", {class: "property-options property-tools"}, controls);
+}
+
+function objectTextArea(value, change) {
+  return h("textarea", {"aria-label": "Text", value, maxlength: 30000, rows: 4, onInput: event => change(event.target.value)});
 }
 
 function textEditor(value, change, justified, toggleJustification) {
@@ -190,9 +201,13 @@ function animateBox(mode, contents) {
   return [h("g", {"data-box-animation": mode}, [...animations, ...contents])];
 }
 
-function shape(node, linked) {
+function shape(node, linked, dropTarget = false) {
   if (node.kind === "connectionPoint") return h("circle", {r: node.width / 2, fill: node.fill});
   const [tag, geometry] = shapeGeometry(node.shape, node.width, node.height);
+  if (dropTarget) return h(tag, {...geometry, class: "container-drop-target", "data-container-candidate": "",
+    fill: node.backgroundEnabled === false ? "none" : node.fill, "pointer-events": "fill",
+    stroke: "#08796c", "stroke-width": 2.5, "stroke-dasharray": "0 8", "stroke-linecap": "round",
+    "vector-effect": "non-scaling-stroke"});
   if (node.backgroundEnabled === false) return h(tag, {...geometry, fill: "none", stroke: "none", "pointer-events": "fill"});
   const style = {fill: node.fill, stroke: automaticBorder(node.fill), "stroke-width": node.kind === "container" && node.locked ? 3.2 : 1.6,
     "stroke-dasharray": linked ? "7 4" : undefined};
@@ -200,8 +215,7 @@ function shape(node, linked) {
 }
 
 // The stored endpoints are the tips. Stop the shaft at each triangle's base.
-function wireDrawing(edge, findNode) {
-  const geometry = edgeGeometry(edge, findNode);
+function wireDrawing(edge, geometry) {
   const {from, to, sourceToward, targetToward, bent, path} = geometry;
   const paint = edgePaint(edge);
   const ends = {};
@@ -218,7 +232,7 @@ function wireDrawing(edge, findNode) {
   }
   const stroke = {d: path(ends.source.base, ends.target.base), fill: "none", stroke: paint.color,
     "stroke-width": paint.lineWidth, "stroke-linecap": paint.linecap, "stroke-dasharray": paint.dash};
-  return {...geometry, ends, stroke, paint};
+  return {ends, stroke, paint};
 }
 
 function animatedWire(edge, paint, from, to) {
@@ -301,7 +315,9 @@ createApp({
     });
     const nodeMap = computed(() => new Map(sceneNodes.value.map(node => [node.id, node])));
     const edgeMap = computed(() => new Map(board.value?.edges.map(edge => [edge.id, edge])));
-    const containers = computed(() => containerOrder(board.value?.nodes ?? [], nodeMap.value));
+    const containerReceivers = computed(() => (board.value?.nodes ?? [])
+      .filter(node => node.kind !== "connectionPoint" && (!node.file || node.kind === "container"))
+      .sort((a, b) => a.width * a.height - b.width * b.height));
     const ctrl = ref(false);
     const alt = ref(false);
     const canvasText = shallowRef(new Map());
@@ -322,12 +338,18 @@ createApp({
       else next.delete(frame.node);
       motions.value = next;
     }
-    const drawings = computed(() => new Map(sceneNodes.value.map(node => {
-      const text = !node.hideText && node.text
-        ? canvasText.value.get(node.text) ?? [] : [];
-      const layout = node.file ? {width: node.width, height: node.height, lines: []} : labelLayout(node, text);
-      return [node.id, {node: {...node, width: layout.width, height: layout.height}, layout}];
-    })));
+    const nodeLayouts = new WeakMap();
+    const emptyBlocks = [];
+    function nodeLayout(node) {
+      let layout = nodeLayouts.get(node);
+      if (!layout) {
+        const text = computed(() => !node.hideText && node.text
+          ? canvasText.value.get(node.text) ?? emptyBlocks : emptyBlocks);
+        layout = computed(() => node.file ? {width: node.width, height: node.height, lines: []} : labelLayout(node, text.value));
+        nodeLayouts.set(node, layout);
+      }
+      return layout.value;
+    }
     function displayPosition(node) {
       const drag = gesture.value;
       if (drag?.type === "batch" && drag.members.has(node.id)) return shifted(node.position, drag.delta);
@@ -339,11 +361,38 @@ createApp({
       return node.position;
     }
     function drawnNode(id) {
-      const node = drawings.value.get(id)?.node;
+      const node = nodeMap.value.get(id);
       return node && (motions.value.size || gesture.value?.type === "batch") ? {...node, position: displayPosition(node)} : node;
     }
+    const edgeGeometries = new WeakMap();
+    const wireDrawings = new WeakMap();
+    function wireGeometry(edge) {
+      const source = drawnNode(edge.source), target = drawnNode(edge.target.node);
+      const start = source?.position ?? edge.sourcePoint, end = target?.position ?? edge.target.point;
+      const inputs = [edge.type,
+        start.x, start.y, source?.width, source?.height, source?.shape, source?.kind,
+        end.x, end.y, target?.width, target?.height, target?.shape, target?.kind];
+      const cached = edgeGeometries.get(edge);
+      if (cached && inputs.every((value, i) => value === cached.inputs[i])) return cached.geometry;
+      const geometry = edgeGeometry(edge, id => id === edge.source ? source : target);
+      edgeGeometries.set(edge, {inputs, geometry});
+      return geometry;
+    }
+
+    function cachedWireDrawing(edge, geometry) {
+      const inputs = [edge.appearance, edge.color, edge.width, edge.startArrow, edge.endArrow];
+      const cached = wireDrawings.get(edge);
+      if (cached?.geometry === geometry && inputs.every((value, i) => value === cached.inputs[i])) return cached.drawing;
+      const drawing = wireDrawing(edge, geometry);
+      wireDrawings.set(edge, {geometry, inputs, drawing});
+      return drawing;
+    }
+
     const drawnBounds = () => canvasBounds({
-      nodes: [...drawings.value.values()].map(({node, layout}) => ({...node, extentX: layout.extentX, extentY: layout.extentY})), edges: board.value.edges,
+      nodes: sceneNodes.value.map(node => {
+        const {extentX, extentY} = nodeLayout(node);
+        return {...node, extentX, extentY};
+      }), edges: board.value.edges,
     });
     const gridKey = "thinknodes/user-grid/" + user;
     const gridVisible = ref(true);
@@ -380,6 +429,7 @@ createApp({
     const canvas = ref(null);
     const canvasPointer = ref(null);
     const view = shallowRef(d3.zoomIdentity);
+    const zoomScale = computed(() => view.value.k);
     const size = ref({width: 0, height: 0});
     const gesture = ref(null);
     const preview = ref(null);
@@ -863,7 +913,7 @@ createApp({
 
     function joinAtJunction(id, connected) {
       if (connected.length !== 2) return;
-      const [keep, shorter] = connected.sort((a,b) => edgeGeometry(b, drawnNode).length - edgeGeometry(a, drawnNode).length);
+      const [keep, shorter] = connected.sort((a,b) => wireGeometry(b).length - wireGeometry(a).length);
       const end = keep.source === id ? "source" : "target";
       const far = shorter.source === id ? "target" : "source";
       const destination = edgeEndpoint(shorter, far);
@@ -890,7 +940,7 @@ createApp({
       }
       for (const edge of board.value.edges) {
         if (!ids.has(edge.source) && !ids.has(edge.target.node)) continue;
-        const {from, to} = edgeGeometry(edge, drawnNode);
+        const {from, to} = wireGeometry(edge);
         if (ids.has(edge.source)) setEndpoint(edge, "source", {point: clampPoint(from)});
         if (ids.has(edge.target.node)) setEndpoint(edge, "target", {point: clampPoint(to)});
       }
@@ -918,8 +968,8 @@ createApp({
 
     function detach(edge, end) {
       if (!edgeEndpoint(edge, end).node) return;
-      const {from, to} = edgeGeometry(edge, drawnNode);
-      setEndpoint(edge, end, {point: clampPoint(end === "source" ? from : to)});
+      const {from, to} = wireGeometry(edge);
+      setEndpoint(edge, end, {point: gridPoint(end === "source" ? from : to)});
       pruneJunctions();
       modified();
     }
@@ -928,28 +978,6 @@ createApp({
       finishField();
       inspector.value = null;
       menu.value = null;
-    }
-
-    function releaseChildren(node) {
-      for (const child of board.value.nodes) {
-        if (child.parent === node.id) child.parent = node.parent;
-      }
-    }
-
-    function toggleContainer(node) {
-      if (node.kind === "container") {
-        if (groupBlocked(node)) return;
-        releaseChildren(node);
-        delete node.kind;
-        delete node.locked;
-      } else {
-        node.kind = "container";
-        for (const child of board.value.nodes) {
-          if (!occupied(child.id) && child.id !== node.id && child.parent === node.parent &&
-              overlapFraction(drawnNode(child.id), drawnNode(node.id)) > 0) child.parent = node.id;
-        }
-      }
-      modified();
     }
 
     function moveGroup(node) {
@@ -965,12 +993,47 @@ createApp({
       for (const {id, x, y} of group) nodeMap.value.get(id).position = {x: x+dx, y: y+dy};
     }
 
-    function dropParent(node) {
-      const target = containers.value.slice().reverse().find(c => c.id !== node.id &&
-        !ancestors(c, nodeMap.value).some(p => p.id === node.id) &&
-        overlapFraction(drawnNode(node.id), drawnNode(c.id)) > 0.5);
+    function dropReceiver(node, excluded) {
+      const dragged = drawnNode(node.id);
+      return containerReceivers.value.find(candidate => candidate.id !== node.id && !excluded?.has(candidate.id) &&
+        (node.kind !== "connectionPoint" || candidate.kind === "container") &&
+        candidate.width >= dragged.width && candidate.height >= dragged.height &&
+        (candidate.width > dragged.width || candidate.height > dragged.height) &&
+        overlapFraction(dragged, drawnNode(candidate.id)) > 0.5 &&
+        !occupied(candidate.id) && !ancestors(candidate, nodeMap.value).some(parent => parent.id === node.id));
+    }
+
+    function dropParent(node, excluded) {
+      const target = dropReceiver(node, excluded);
+      if (target) target.kind = "container";
       node.parent = target?.id;
     }
+
+    const containerDropTargets = computed(() => {
+      const drag = gesture.value;
+      const targets = new Set();
+      if (!drag?.moved || drag.waiting || drag.locked) return targets;
+      function mark(node, excluded) {
+        const target = node && node.kind !== "connectionPoint" && dropReceiver(node, excluded);
+        if (target && target.id !== node.parent) targets.add(target.id);
+      }
+      if (drag.type === "move" && !drag.group.some(member => occupied(member.id))) {
+        mark(nodeMap.value.get(drag.nodeID));
+      } else if (drag.type === "clone") {
+        mark(insertion.value?.nodes[0]);
+      } else if (drag.type === "batch" && batch.value &&
+          [...drag.members].every(id => {
+            const node = nodeMap.value.get(id);
+            return node && !occupied(id) && !ancestors(node, nodeMap.value)
+              .some(parent => parent.locked && !drag.members.has(parent.id));
+          })) {
+        for (const id of batch.value.nodes) {
+          const node = nodeMap.value.get(id);
+          if (node && !drag.members.has(node.parent)) mark(node, drag.members);
+        }
+      }
+      return targets;
+    });
 
     function pruneJunctions() {
       const counts = new Map();
@@ -997,6 +1060,14 @@ createApp({
       const node = orderedNodes.value.findLast(node => node.id !== exclude &&
         shapeDistance(drawnNode(node.id), point, 8/view.value.k) <= 1);
       if (node) return {node: node.id};
+    }
+
+    function gridPoint(point) {
+      if (!snapToGrid.value) return clampPoint(point);
+      const spacing = gridSpacing.value;
+      const minIndex = Math.ceil(-100000 / spacing - .5), maxIndex = Math.floor(100000 / spacing - .5);
+      const snapAxis = value => (limit(Math.round(value / spacing - .5), minIndex, maxIndex) + .5) * spacing;
+      return {x: snapAxis(point.x), y: snapAxis(point.y)};
     }
 
     function cablePreview(source, point) {
@@ -1136,7 +1207,7 @@ createApp({
       finishField();
       if ((event.button !== 0 && !(event.ctrlKey && event.button === 2)) || reconnect.value) return;
       const original = edgeEndpoint(edge, end);
-      const geometry = edgeGeometry(edge, drawnNode);
+      const geometry = wireGeometry(edge);
       const position = fromShaft ? world(event) : end === "source" ? geometry.from : geometry.to;
       event.preventDefault();
       event.stopPropagation();
@@ -1168,7 +1239,7 @@ createApp({
           edgeEndpoint(candidate, end).node === target.node && edgeEndpoint(candidate, otherEnd(end)).node === opposite)) {
         return {point, blocked: true};
       }
-      return target ?? {point: clampPoint(point)};
+      return target ?? {point: gridPoint(point)};
     }
 
     function pressCorner(event, node, sx, sy) {
@@ -1224,8 +1295,12 @@ createApp({
           const delta = {x: point.x-operation.initial.x, y: point.y-operation.initial.y};
           if (operation.type === "batch") {
             if (snapToGrid.value) {
-              const spacing = gridSpacing.value;
-              for (const k of ["x","y"]) delta[k] = Math.round(delta[k]/spacing)*spacing;
+              const anchor = operation.snapAnchor;
+              if (anchor) {
+                const snapped = gridPoint(shifted(anchor, delta));
+                delta.x = snapped.x - anchor.x;
+                delta.y = snapped.y - anchor.y;
+              }
             }
             const points = [...operation.members].map(id => nodeMap.value.get(id)?.position).filter(Boolean);
             for (const edge of board.value.edges) if (batch.value?.edges.has(edge.id)) {
@@ -1253,11 +1328,8 @@ createApp({
             y: operation.position.y + point.y - operation.initial.y});
           if (operation.type === "move") {
             if (!operation.locked && !operation.group.some(member => occupied(member.id))) {
-              if (snapToGrid.value) {
-                const spacing = gridSpacing.value;
-                for (const axis of ["x", "y"]) position[axis] = (Math.round(position[axis] / spacing - .5) + .5) * spacing;
-              }
-              translateGroup(operation.group, position.x-operation.position.x, position.y-operation.position.y);
+              const snapped = gridPoint(position);
+              translateGroup(operation.group, snapped.x-operation.position.x, snapped.y-operation.position.y);
               const current = nodeMap.value.get(operation.nodeID).position;
               live.motion({node: operation.nodeID, revision: baseline.revision,
                 delta: {x: current.x-operation.position.x, y: current.y-operation.position.y}});
@@ -1266,7 +1338,6 @@ createApp({
             const edge = edgeMap.value.get(operation.edgeID);
             operation.endPosition = position;
             const endpoint = endpointAt(position, edge, operation.end);
-            operation.endPosition = endpoint.point ?? position;
             preview.value = {target: endpoint.node, attachment: endpoint, junction: endpoint.junction};
           }
           return;
@@ -1324,7 +1395,7 @@ createApp({
         const node = nodeMap.value.get(operation.nodeID);
         if (cancel && !operation.locked) live.endMotion(node.id, baseline.revision);
         if (cancel && !operation.locked) translateGroup(operation.group, 0, 0);
-        else if (!operation.locked) {
+        else if (!operation.locked && !operation.group.some(member => occupied(member.id))) {
           live.flushMotion();
           dropParent(node);
           modified();
@@ -1402,7 +1473,7 @@ createApp({
       const right = box.x + box.width, bottom = box.y + box.height;
       const inside = p => p.x >= box.x && p.x <= right && p.y >= box.y && p.y <= bottom;
       const group = drag.additive ? selectionMembers() : {nodes: new Set(), edges: new Set()};
-      for (const {node} of drawings.value.values()) {
+      for (const node of sceneNodes.value) {
         const closest = {x: limit(node.position.x, box.x, right), y: limit(node.position.y, box.y, bottom)};
         let touches = shapeDistance(node, closest) <= 1;
         if (drag.touching && !touches) {
@@ -1420,7 +1491,7 @@ createApp({
         if (drag.touching ? touches : [-1,1].every(k => inside({x: node.position.x+k*node.width/2, y: node.position.y+k*node.height/2}))) group.nodes.add(node.id);
       }
       for (const edge of board.value.edges) {
-        if (edgeInRectangle(edgeGeometry(edge, drawnNode), box, drag.touching)) group.edges.add(edge.id);
+        if (edgeInRectangle(wireGeometry(edge), box, drag.touching)) group.edges.add(edge.id);
       }
       selectMembers(group);
     }
@@ -1461,7 +1532,7 @@ createApp({
       }
       for (const id of batch.value.nodes) {
         const node = nodeMap.value.get(id);
-        if (!drag.members.has(node.parent)) dropParent(node);
+        if (!drag.members.has(node.parent)) dropParent(node, drag.members);
       }
       modified();
     }
@@ -1505,7 +1576,10 @@ createApp({
         }
         if (!event.altKey && !event.ctrlKey && batch.value && (batch.value.nodes.has(hit?.dataset?.node) || batch.value.edges.has(hit?.dataset?.edge))) {
           const members = new Set([...batch.value.nodes].flatMap(id => moveGroup(nodeMap.value.get(id)).map(n => n.id)));
-          beginDrag(event, "batch", {members, hitID: hit.dataset.node ?? hit.dataset.edge, hitKind: hit.dataset.node ? "node" : "edge"});
+          const hitEdge = edgeMap.value.get(hit.dataset.edge);
+          const snapAnchor = nodeMap.value.get(hit.dataset.node)?.position ?? hitEdge?.sourcePoint ?? hitEdge?.target.point ??
+            nodeMap.value.get(members.values().next().value)?.position;
+          beginDrag(event, "batch", {members, snapAnchor, hitID: hit.dataset.node ?? hit.dataset.edge, hitKind: hit.dataset.node ? "node" : "edge"});
           return;
         }
       }
@@ -1515,7 +1589,7 @@ createApp({
           event.preventDefault();
           event.stopPropagation();
           menu.value = null;
-          const initial = clampPoint(world(event));
+          const initial = gridPoint(world(event));
           const source = {point: initial};
           gesture.value = {type: "cable", source, pointer: event.pointerId, initial, screen: [event.clientX, event.clientY], moved: false};
           preview.value = {edge: cablePreview(source, initial)};
@@ -1861,7 +1935,8 @@ createApp({
     }
 
     function renderNode(node) {
-      const {node: drawn, layout} = drawings.value.get(node.id);
+      const drawn = node;
+      const layout = nodeLayout(node);
       const position = displayPosition(node);
       const selectors = peers.value.filter(p => p.node === node.id && (!p.mine || (selected.value?.kind === "node" && selected.value.id === node.id)));
       const owner = selectors.find(p => !p.viewing) ?? selectors[0];
@@ -1891,7 +1966,7 @@ createApp({
             },
             x: line.x + (textDrag?.section === line.section ? textDrag.delta.x : 0),
             y: line.y + (textDrag?.section === line.section ? textDrag.delta.y : 0), "text-anchor": line.anchor, "font-style": line.italic ? "italic" : undefined,
-            "text-decoration": line.underline ? "underline" : undefined, "word-spacing": line.wordSpacing, fill: line.color, "font-size": line.size, "font-weight": line.weight,
+            "text-decoration": line.underline ? "underline" : undefined, "word-spacing": line.wordSpacing ? line.wordSpacing + "px" : undefined, fill: line.color, "font-size": line.size, "font-weight": line.weight,
           }, line.runs ? line.runs.map(run => {
             const format = run.format || {};
             if (!format.bold && !format.italic && !format.code && !format.link) return run.text;
@@ -1922,7 +1997,7 @@ createApp({
           stroke: owner?.color ?? "#16a085", "stroke-width": 3, "pointer-events": "none"}) : null,
         candidates.value.has("node/" + node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "search-candidate", "stroke-width": 3}) : null,
         ...animateBox(!node.file && node.kind !== "connectionPoint" ? node.animation : undefined, [
-          node.file?.type === "image" ? null : shape(drawn, !!destination),
+          node.file?.type === "image" ? null : shape(drawn, !!destination, containerDropTargets.value.has(node.id)),
           node.file?.type === "image" ? renderImage(node) : null,
           node.file && node.file.type !== "image" ? h("foreignObject", {x: -drawn.width/2, y: -drawn.height/2, width: drawn.width, height: drawn.height}, [
             h("div", {class: "canvas-file"}, [
@@ -1955,9 +2030,9 @@ createApp({
         ]),
         ...(resizeTarget.value === node.id && !occupied(node.id) && !ancestors(node, nodeMap.value).some(n => n.locked)
           ? [[-1,-1], [1,-1], [1,1], [-1,1]].map(([sx, sy]) => {
-            const r = 5/view.value.k;
+            const r = 5 / zoomScale.value;
             return h("rect", {"data-editor-only": "", x: sx*drawn.width/2-r, y: sy*drawn.height/2-r,
-              width: 2*r, height: 2*r, fill: "#ffffff", stroke: "#4168e9", "stroke-width": 1/view.value.k,
+              width: 2*r, height: 2*r, fill: "#ffffff", stroke: "#4168e9", "stroke-width": 1 / zoomScale.value,
               cursor: sx === sy ? "nwse-resize" : "nesw-resize", onPointerdown: e => pressCorner(e, node, sx, sy)});
           }) : []),
       ]);
@@ -2000,7 +2075,10 @@ createApp({
         edge = {...edge};
         setEndpoint(edge, drag.end, preview.value?.attachment ?? {point: drag.endPosition});
       }
-      const {d, from, to, labelPosition, angle, stroke, ends, paint} = wireDrawing(edge, drawnNode);
+      const geometry = wireGeometry(edge);
+      const {d, from, to} = geometry;
+      const {stroke, ends, paint} = cachedWireDrawing(edge, geometry);
+      const label = edge.label?.trim() ? geometry.labelPosition : null;
       const mine = selected.value?.id === edge.id && ["edge","endpoint"].includes(selected.value.kind);
       const local = mine || batch.value?.edges.has(edge.id);
       const selectionColor = local ? (peers.value.find(peer => peer.mine)?.color ?? "#16a085") :
@@ -2047,27 +2125,41 @@ createApp({
         onContextmenu: event => context(event, "edge", edge.id),
       }, [
         candidates.value.has("edge/" + edge.id) ? h("path", {"data-editor-only": "", d: stroke.d, class: "search-candidate",
-          "stroke-width": paint.width + 9 / view.value.k}) : null,
+          "stroke-width": paint.width + 9 / zoomScale.value}) : null,
         animation.gradient ? h("defs", [animation.gradient]) : null,
-        h("path", {"data-editor-only": "", d, stroke: "transparent", "stroke-width": Math.max(paint.width + 10, 14 / view.value.k),
+        h("path", {"data-editor-only": "", d, stroke: "transparent", "stroke-width": Math.max(paint.width + 10, 14 / zoomScale.value),
           "pointer-events": "stroke", class: "edge-hit"}),
         h("g", {class: {"wire-selected": !!selectionColor}, color: selectionColor}, [
           h("path", {...stroke, stroke: animation.color ?? color, "pointer-events": "none"}, animation.shaft ? [animation.shaft] : undefined),
           renderEndpoint(edge, "source", ends.source, color),
           renderEndpoint(edge, "target", ends.target, color),
         ]),
-        edge.label?.trim() ? h("text", {transform: "translate(" + labelPosition.x + " " + labelPosition.y + ") rotate(" + angle + ")",
+        label ? h("text", {transform: "translate(" + label.x + " " + label.y + ") rotate(" + geometry.angle + ")",
           y: -paint.width / 2 - 6, "font-family": "system-ui, sans-serif", "font-size": 14, "text-anchor": "middle",
           stroke: "none", fill: paint.color, class: "edge-label"}, edge.label) : null,
       ]);
     }
+
+    const CanvasScene = {
+      setup: () => () => {
+        const layers = wireLayers.value;
+        const children = [];
+        orderedNodes.value.forEach((node, index) => {
+          for (const edge of layers[index]) children.push(renderEdge(edge));
+          children.push(renderNode(node));
+        });
+        for (const edge of layers.at(-1)) children.push(renderEdge(edge));
+        children.push(renderJunctionHandles());
+        return h("g", {"data-scene": ""}, children);
+      },
+    };
 
     function renderCanvas() {
       const [centerX, centerY] = center();
       const spacing = gridSpacing.value;
       const [left, top] = view.value.invert([0, 0]);
       const cable = preview.value?.edge;
-      const shown = cable ? wireDrawing({...cable, color: "#4168e9"}, drawnNode) : null;
+      const shown = cable ? wireDrawing({...cable, color: "#4168e9"}, wireGeometry(cable)) : null;
       return h("div", {class: "canvas-area"}, [
         h("svg", {ref: canvas, class: ctrl.value ? "editor-canvas ctrl-held" : "editor-canvas", "aria-label": "Ötletvászon",
           onContextmenu: event => context(event),
@@ -2107,11 +2199,7 @@ createApp({
               height: size.value.height/view.value.k, fill: "url(#worksheet-grid)", "pointer-events": "none"}) : null,
             h("path", {"data-editor-only": "", "pointer-events": "none", stroke: "#aab9cf", "stroke-width": 1,
               d: "M -8 0 H 8 M 0 -8 V 8"}),
-            h("g", {"data-scene": ""}, [
-              ...orderedNodes.value.flatMap((node, index) => [...wireLayers.value[index].map(renderEdge), renderNode(node)]),
-              ...wireLayers.value.at(-1).map(renderEdge),
-              renderJunctionHandles(),
-            ]),
+            h(CanvasScene),
             preview.value?.junction ? h("circle", {"data-editor-only": "", cx: preview.value.junction.x, cy: preview.value.junction.y,
               r: 9 / view.value.k, stroke: "#078469", fill: "#b9f3e1", "stroke-width": 2 / view.value.k, "pointer-events": "none"}) : null,
             shown ? h("g", {"pointer-events": "none"}, [h("path", shown.stroke),
@@ -2198,12 +2286,13 @@ createApp({
       ]);
     }
 
-    function endpointActions(edge) {
+    function endpointActions(edge, compact = false) {
       return [["source", "Kezdőpont"], ["target", "Végpont"]].map(([end, label]) => {
-        if (edgeEndpoint(edge, end).node) {
-          return button(label + " leválasztása", () => { detach(edge, end); menu.value = null; }, {symbol: "unlink"});
-        }
-        return button(label + " újrakötése", () => retarget(edge, end), {symbol: "right"});
+        const attached = !!edgeEndpoint(edge, end).node;
+        const name = label + (attached ? " leválasztása" : " újrakötése");
+        const action = attached ? () => { detach(edge, end); menu.value = null; } : () => retarget(edge, end);
+        const symbol = compact ? "endpoint-" + end : attached ? "unlink" : "right";
+        return compact ? iconToggle(name, attached, action, icon(symbol)) : button(name, action, {symbol});
       });
     }
 
@@ -2292,7 +2381,7 @@ createApp({
         ...[...group.nodes].map(id => nodeMap.value.get(id)?.position),
         ...[...group.edges].map(id => {
           const edge = edgeMap.value.get(id);
-          return edge && edgeGeometry(edge, drawnNode).labelPosition;
+          return edge && wireGeometry(edge).labelPosition;
         }),
       ].filter(Boolean);
       if (!points.length) return;
@@ -2386,9 +2475,8 @@ createApp({
         const nodes = board.value.nodes.filter(n => batch.value.nodes.has(n.id));
         const joints = nodes.filter(n => n.kind === "connectionPoint").length;
         const edges = board.value.edges.filter(e => batch.value.edges.has(e.id)).length;
-        return sidebar("Objektumok", [group("Objektumok", [
-          h("p", (nodes.length-joints)+" doboz, "+edges+" vonal, "+joints+" csomópont"),
-        ])]);
+        const summary = (nodes.length-joints)+" doboz, "+edges+" vonal, "+joints+" csomópont";
+        return sidebar("Objektumok", [group(summary, [])]);
       }
       if (!inspector.value) return null;
       if (inspector.value.kind === "edge") {
@@ -2397,9 +2485,11 @@ createApp({
         const paint = edgePaint(edge);
         return sidebar("Vonal szerkesztése", [
           group("Vonal", [
-            field("Címke", input(edge.label || "", value => updateItem(edge, "label", value), {"data-object-label": "", maxlength: 120})),
-            colorPicker("Vonal színe", paint.color, value => updateItem(edge, "color", value), edge.id + "/line"),
-            field("Alapvastagság", numeric(edge.width ?? 2, value => updateItem(edge, "width", value), 0.5, 24)),
+            input(edge.label || "", value => updateItem(edge, "label", value), {...controlName("Címke"), "data-object-label": "", maxlength: 120}),
+            propertyTools(
+              colorPicker("Vonal színe", paint.color, value => updateItem(edge, "color", value), edge.id + "/line", false, true),
+              numeric(edge.width ?? 2, value => updateItem(edge, "width", value), 0.5, 24, controlName("Alapvastagság")),
+            ),
           ]),
           group("Vonaltípus", [optionPicker("Vonaltípus", lineTypes, edge.type ?? "straight",
             value => updateItem(edge, "type", value), lineTypeSymbol)]),
@@ -2409,21 +2499,27 @@ createApp({
             iconToggle("Animáció bekapcsolása", !!edge.animated,
               () => updateItem(edge, "animated", !edge.animated), icon("play")),
           ])]),
-          group("Végpontok", [h("div", {class: "property-options"}, [
+          group("Végpontok", [propertyTools(
             iconToggle("Nyíl a vonal elején", paint.startArrow, () => updateItem(edge, "startArrow", !paint.startArrow), icon("left")),
             iconToggle("Nyíl a vonal végén", paint.endArrow, () => updateItem(edge, "endArrow", !paint.endArrow), icon("right")),
-          ])]),
-          group("Csatlakozás", endpointActions(edge)),
+            ...endpointActions(edge, true),
+          )]),
         ]);
       }
       const node = nodeMap.value.get(inspector.value.id);
       if (!node || held.value !== node.id || occupied(node.id)) return null;
       const change = (key, value) => updateItem(node, key, value);
       const title = input(node.title, value => change("title", value), {"aria-label": "Címke", "data-object-label": "", maxlength: 120});
-      const bodyEditor = () => textEditor(node.text, value => change("text", value), node.textStyle?.justified,
-        value => change("textStyle", {...node.textStyle, justified: value}));
+      const bodyEditor = () => objectTextArea(node.text, value => change("text", value));
+      const justify = () => {
+        const active = !!node.textStyle?.justified;
+        const alignment = node.file ? "left" : node.textStyle?.alignment ?? node.alignment;
+        return iconToggle("Sorkizárás", active,
+          () => change("textStyle", {...node.textStyle, justified: !active}),
+          icon(active ? "justify" : "text-" + alignment));
+      };
       const color = (label, key, disabled) => colorPicker(label, node[key],
-        v => change(key, v), node.id + "/" + key, disabled);
+        v => change(key, v), node.id + "/" + key, disabled, true);
       if (node.file?.type === "image") return sidebar("Kép szerkesztése", [
         group("Átlátszóság", [h("div", {class: "property-options image-alpha-options"}, [
           iconToggle("Alpha csatorna", node.file.alphaEnabled !== false,
@@ -2435,7 +2531,7 @@ createApp({
             onChange: event => change("file", {...node.file, alphaBackground: event.target.value})}),
         ])]),
         group("Cím", [title]),
-        group("Fájlnév", [h("input", {type: "text", "aria-label": "Fájlnév", value: imageStem(node.file),
+        group("Fájlnév", [h("div", {class: "property-inline"}, [h("input", {type: "text", "aria-label": "Fájlnév", value: imageStem(node.file),
           onBlur: event => { event.target.value = imageStem(node.file); },
           onKeydown: event => {
             if (event.key !== "Enter" || event.isComposing) return;
@@ -2447,21 +2543,22 @@ createApp({
             finishField();
             if (filename !== imageStem(node.file)) transfer(() => renameImage(node.id, filename));
           }}),
-          checkbox("Fájlnév megjelenítése", !!node.file.showFilename, value => change("file", {...node.file, showFilename: value})),
-        ]),
-        group("Megjegyzés", bodyEditor()),
+          iconToggle("Fájlnév megjelenítése", !!node.file.showFilename,
+            () => change("file", {...node.file, showFilename: !node.file.showFilename}), icon(node.file.showFilename ? "eye" : "eye-off")),
+        ])]),
+        group("Megjegyzés", [bodyEditor(), propertyTools(justify())]),
       ]);
       if (node.file) return sidebar("Fájl szerkesztése", [
-        group("Cím", [title, checkbox("Cím megjelenítése", !node.file.hideTitle,
-          value => change("file", {...node.file, hideTitle: !value}))]),
-        group(node.file.asset ? "Megjegyzés" : "Szöveg", bodyEditor()),
+        group("Cím", [h("div", {class: "property-inline"}, [title, iconToggle("Cím megjelenítése", !node.file.hideTitle,
+          () => change("file", {...node.file, hideTitle: !node.file.hideTitle}), icon(node.file.hideTitle ? "eye-off" : "eye"))])]),
+        group(node.file.asset ? "Megjegyzés" : "Szöveg", [bodyEditor(), propertyTools(justify())]),
       ]);
       if (node.kind === "connectionPoint") return sidebar("Csomópont", [
         group("Címke", [title]),
-        group("Megjelenés", [field("Átmérő", numeric(node.width, size => {
-          node.height = size;
-          change("width", size);
-        }, 4, 128)), color("Szín", "fill")]),
+        group("Megjelenés", [propertyTools(
+          numeric(node.width, size => { node.height = size; change("width", size); }, 4, 128, controlName("Átmérő")),
+          color("Szín", "fill"),
+        )]),
       ]);
       const positions = [
         ["top","left","Bal felső","↖"], ["top","center","Felső közép","↑"], ["top","right","Jobb felső","↗"],
@@ -2475,58 +2572,63 @@ createApp({
         const sizeKey = isTitle ? "fontSize" : "size";
         const colorKey = isTitle ? "textColor" : "color";
         const update = (key, value) => isTitle ? change(key, value) : change(section, {...node[section], [key]: value});
-        const fontSize = field("Betűméret", numeric(style[sizeKey] ?? 13,
-          v => update(sizeKey, Math.round(v)), 1, 10000, {step: 1, clampValue: true, disabled: !!node.fitText}));
-        return [
-          isTitle ? checkbox("Dobozon kívül", outside, value => {
-            if (value && (style.verticalAlignment ?? "middle") === "middle" && (style.alignment ?? node.alignment) === "center") {
-              update("verticalAlignment", "top");
-            }
-            change("titleOutside", value);
-          }) : null,
-          colorPicker("Szövegszín", style[colorKey] ?? node.textColor,
-            v => update(colorKey, v), node.id + "/" + section + "/text"),
-          h("div", {class: "fields-two"}, [
-            isTitle ? h("div", {class: "property-options font-size-options"}, [
-              iconToggle("AutoSize", !!node.fitText, () => change("fitText", !node.fitText),
-                optionSymbol("path", {d: "M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M8 16l4-8 4 8m-6.5-3h5"})),
-              fontSize,
-            ]) : fontSize,
-            h("div", {class: "alignment-picker", role: "group", "aria-label": "Igazítás"},
-              positions.map(([vertical, horizontal, label, symbol]) => h("button", {
-                type: "button", title: label, "aria-label": label,
-                "aria-pressed": vertical === (style.verticalAlignment ?? "middle") && horizontal === (style.alignment ?? node.alignment),
-                onClick: () => {
-                  if (outside && horizontal === "center" && vertical === "middle") change("titleOutside", false);
-                  update("verticalAlignment", vertical);
-                  update("alignment", horizontal);
-                },
-              }, symbol))),
-          ]),
-          h("div", {class: "font-switches"}, [["bold","Félkövér"],["italic","Dőlt"],["underline","Aláhúzott"]]
-            .map(([key, label]) => checkbox(label, !!style[key], v => update(key, v)))),
-        ];
+        const fontSize = numeric(style[sizeKey] ?? 13,
+          v => update(sizeKey, Math.round(v)), 1, 10000,
+          {...controlName("Betűméret"), step: 1, clampValue: true, disabled: !!node.fitText});
+        const autoSize = isTitle ? iconToggle("AutoSize", !!node.fitText, () => change("fitText", !node.fitText),
+          optionSymbol("path", {d: "M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M8 16l4-8 4 8m-6.5-3h5"})) : null;
+        const outsideToggle = isTitle ? iconToggle("Dobozon kívül", outside, () => {
+          if (!outside && (style.verticalAlignment ?? "middle") === "middle" && (style.alignment ?? node.alignment) === "center") {
+            update("verticalAlignment", "top");
+          }
+          change("titleOutside", !outside);
+        }, icon("title-outside")) : null;
+        const hideText = isTitle ? null : iconToggle("Hide text", !!node.hideText,
+          () => change("hideText", !node.hideText), icon(node.hideText ? "eye-off" : "eye"));
+        return h("div", {class: "typography-tools"}, [
+          propertyTools(
+            autoSize, fontSize,
+            colorPicker("Szövegszín", style[colorKey] ?? node.textColor,
+              v => update(colorKey, v), node.id + "/" + section + "/text", false, true),
+            ...[["bold","Félkövér"],["italic","Dőlt"],["underline","Aláhúzott"]].map(([key, label]) =>
+              iconToggle(label, !!style[key], () => update(key, !style[key]), icon(key))),
+            outsideToggle, hideText, isTitle ? null : justify(),
+          ),
+          h("div", {class: "alignment-picker", role: "group", "aria-label": "Igazítás"},
+            positions.map(([vertical, horizontal, label, symbol]) => h("button", {
+              type: "button", ...controlName(label),
+              "aria-pressed": vertical === (style.verticalAlignment ?? "middle") &&
+                horizontal === (style.justified ? "left" : style.alignment ?? node.alignment),
+              onClick: () => {
+                if (!isTitle) {
+                  change(section, {...node[section], verticalAlignment: vertical, alignment: horizontal, justified: false});
+                  return;
+                }
+                if (outside && horizontal === "center" && vertical === "middle") change("titleOutside", false);
+                update("verticalAlignment", vertical);
+                update("alignment", horizontal);
+              },
+            }, symbol))),
+        ]);
       }
-      const locked = groupBlocked(node) || ancestors(node, nodeMap.value).some(n => n.locked);
       return sidebar("Ötlet szerkesztése", [
-        group("Cím", [title, ...typography("title")]),
+        group("Cím", [title, typography("title")]),
         group("Doboz", [
           optionPicker("Forma", shapes, node.shape, value => change("shape", value), shapeSymbol),
           optionPicker("Animáció", boxAnimations, node.animation ?? "none",
             value => change("animation", value), value => icon("box-" + value)),
-          checkbox("Háttér megjelenítése", node.backgroundEnabled !== false, v => change("backgroundEnabled", v)),
-          color("Háttér", "fill", node.backgroundEnabled === false),
-          button(node.kind === "container" ? "Konténer feloldása" : "Konténer", () => toggleContainer(node), {symbol: "folder", disabled: locked}),
-          node.kind === "container" ? checkbox("Lock · tartalom rögzítése", !!node.locked, v => change("locked", v)) : null,
+          propertyTools(
+            iconToggle("Háttér megjelenítése", node.backgroundEnabled !== false,
+              () => change("backgroundEnabled", node.backgroundEnabled === false), icon("box-background")),
+            color("Háttér", "fill", node.backgroundEnabled === false),
+            node.kind === "container" ? iconToggle("Tartalom rögzítése", !!node.locked,
+              () => change("locked", !node.locked), icon(node.locked ? "lock" : "unlock")) : null,
+          ),
         ]),
-        group("Text", [
-          ...bodyEditor(),
-          checkbox("Hide text", Boolean(node.hideText), value => change("hideText", value)),
-          ...typography("textStyle"),
-        ]),
+        group("Text", [bodyEditor(), typography("textStyle")]),
         group("Link", [
           h("input", {"aria-label": "Link",
-            value: node.link ?? "", maxlength: 2048, placeholder: "allap, ../ vagy https://…",
+            value: node.link ?? "", maxlength: 2048,
             onChange: event => {
               const link = event.target.value.trim();
               if (link && !worksheetLink(link, path)) {

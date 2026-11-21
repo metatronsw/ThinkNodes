@@ -187,23 +187,30 @@ export function edgeGeometry(edge, findNode) {
   const pair = p => `${p.x} ${p.y}`;
   const path = (start, end) => `M ${pair(start)} ${command} ${[...points, end].map(pair).join(" ")}`;
   const vertices = [from, ...points, to];
-  const boundsPoints = vertices;
-  const samples = command === "L" ? vertices : Array.from({length: 33}, (_, i) => {
-    const t = i / 32, u = 1 - t;
-    const weights = command === "Q" ? [u*u, 2*u*t, t*t] : [u**3, 3*u*u*t, 3*u*t*t, t**3];
-    return {x: vertices.reduce((v,p,j) => v+p.x*weights[j],0), y: vertices.reduce((v,p,j) => v+p.y*weights[j],0)};
-  });
-  const lengths = samples.slice(1).map((p,i) => Math.hypot(p.x-samples[i].x,p.y-samples[i].y));
-  const length = lengths.reduce((sum,n) => sum+n,0);
-  let remaining = length/2;
-  let index = 0;
-  while (index < lengths.length-1 && remaining > lengths[index]) remaining -= lengths[index++];
-  const a = samples[index], b = samples[index+1], fraction = lengths[index] ? remaining/lengths[index] : 0;
-  const labelPosition = {x: a.x+(b.x-a.x)*fraction, y: a.y+(b.y-a.y)*fraction};
-  let angle = Math.atan2(b.y-a.y,b.x-a.x) * 180 / Math.PI;
-  if (angle > 90) angle -= 180;
-  if (angle < -90) angle += 180;
-  return {from, to, sourceToward, targetToward, bent: points.length > 0, boundsPoints, command, length, labelPosition, angle,
+  let metrics;
+  function measure() {
+    if (metrics) return metrics;
+    const samples = command === "L" ? vertices : Array.from({length: 33}, (_, i) => {
+      const t = i / 32, u = 1 - t;
+      const weights = command === "Q" ? [u*u, 2*u*t, t*t] : [u**3, 3*u*u*t, 3*u*t*t, t**3];
+      return {x: vertices.reduce((v,p,j) => v+p.x*weights[j],0), y: vertices.reduce((v,p,j) => v+p.y*weights[j],0)};
+    });
+    const lengths = samples.slice(1).map((p,i) => Math.hypot(p.x-samples[i].x,p.y-samples[i].y));
+    const length = lengths.reduce((sum,n) => sum+n,0);
+    let remaining = length/2;
+    let index = 0;
+    while (index < lengths.length-1 && remaining > lengths[index]) remaining -= lengths[index++];
+    const a = samples[index], b = samples[index+1], fraction = lengths[index] ? remaining/lengths[index] : 0;
+    const labelPosition = {x: a.x+(b.x-a.x)*fraction, y: a.y+(b.y-a.y)*fraction};
+    let angle = Math.atan2(b.y-a.y,b.x-a.x) * 180 / Math.PI;
+    if (angle > 90) angle -= 180;
+    if (angle < -90) angle += 180;
+    return metrics = {length, labelPosition, angle};
+  }
+  return {from, to, sourceToward, targetToward, bent: points.length > 0, boundsPoints: vertices, command,
+    get length() { return measure().length; },
+    get labelPosition() { return measure().labelPosition; },
+    get angle() { return measure().angle; },
     path, d: path(from, to)};
 }
 
@@ -271,12 +278,13 @@ export function canvasBounds(board) {
     halfHeight = Math.max(halfHeight, Math.abs(node.position.y) + (node.extentY ?? node.height / 2) + 40);
   }
   for (const edge of board.edges) {
-    const {boundsPoints, labelPosition, angle} = edgeGeometry(edge, id => nodes.get(id));
-    for (const {x, y} of boundsPoints) {
+    const geometry = edgeGeometry(edge, id => nodes.get(id));
+    for (const {x, y} of geometry.boundsPoints) {
       halfWidth = Math.max(halfWidth, Math.abs(x) + 40);
       halfHeight = Math.max(halfHeight, Math.abs(y) + 40);
     }
     if (edge.label?.trim()) {
+      const {labelPosition, angle} = geometry;
       const radius = textWidth(edge.label, 14) / 2;
       const radians = angle * Math.PI / 180;
       halfWidth = Math.max(halfWidth, Math.abs(labelPosition.x) + Math.abs(Math.cos(radians)) * radius + 28);

@@ -17,6 +17,14 @@ if [[ "${1:-}" == "--server-only" ]]; then
     server_only=true
     shift
 fi
+# Accept older launcher commands without passing the deprecated flag to SwiftPM.
+for argument in "$@"; do
+    shift
+    if [[ "$argument" == "--skip-update" ]]; then
+        argument=--disable-automatic-resolution
+    fi
+    set -- "$@" "$argument"
+done
 configuration="${THINKNODES_CONFIGURATION:-debug}"
 
 if [[ "$server_only" == false ]]; then
@@ -61,7 +69,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     sdk_major="$(xcrun --sdk macosx --show-sdk-version | cut -d. -f1)"
     if [[ "$sdk_major" -lt 15 ]]; then
         if [[ ! -d .build/checkouts/swift-nio || ! -d .build/checkouts/async-http-client ]]; then
-            "$swift_bin" package "${swift_paths[@]}" --skip-update resolve
+            "$swift_bin" package "${swift_paths[@]}" --disable-automatic-resolution resolve
         fi
         for patch in Patches/*.patch; do
             name="${patch##*/}"
