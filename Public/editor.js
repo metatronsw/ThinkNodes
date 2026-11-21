@@ -7,7 +7,7 @@ import {flashNode, flashPoint} from "./ping.js";
 import {showTooltip, hideTooltip} from "./tooltip.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {automaticBorder, automaticGridColor, arrowTransform, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, lineAppearances, lineTypes, paper, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes} from "./geometry.js?v=2";
+import {automaticBorder, automaticGridColor, arrowTransform, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, lineAppearances, lineTypes, paper, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes} from "./geometry.js?v=3";
 
 import {ancestors, containerOrder, overlapFraction} from "./containers.js";
 
@@ -292,9 +292,10 @@ createApp({
     const menu = ref(null);
     const inspector = ref(null);
     const attachmentInput = ref(null);
+    let uploadAnchor;
     const uploading = ref(false);
     const canvas = ref(null);
-    let canvasPointer;
+    const canvasPointer = ref(null);
     const view = shallowRef(d3.zoomIdentity);
     const size = ref({width: 0, height: 0});
     const gesture = ref(null);
@@ -551,14 +552,28 @@ createApp({
       return {x: x - centerX, y: y - centerY};
     }
 
+    const resizeTarget = computed(() => {
+      if (!alt.value || ctrl.value) return;
+      if (gesture.value?.type === "resize") return gesture.value.nodeID;
+      if (!canvasPointer.value || !canvas.value) return;
+      const point = world(canvasPointer.value);
+      const padding = 16 / view.value.k;
+      return orderedNodes.value.findLast(node => {
+        if (node.kind === "connectionPoint") return false;
+        const drawn = drawnNode(node.id);
+        return Math.abs(point.x - drawn.position.x) <= drawn.width / 2 + padding
+          && Math.abs(point.y - drawn.position.y) <= drawn.height / 2 + padding;
+      })?.id;
+    });
+
     function rememberCanvasPointer({clientX, clientY}) {
-      canvasPointer = {clientX, clientY};
+      canvasPointer.value = {clientX, clientY};
     }
 
     function pastePosition() {
-      if (canvasPointer) {
-        const hit = document.elementFromPoint?.(canvasPointer.clientX, canvasPointer.clientY);
-        if (!document.elementFromPoint || hit && canvas.value?.contains(hit)) return world(canvasPointer);
+      if (canvasPointer.value) {
+        const hit = document.elementFromPoint?.(canvasPointer.value.clientX, canvasPointer.value.clientY);
+        if (!document.elementFromPoint || hit && canvas.value?.contains(hit)) return world(canvasPointer.value);
       }
       return worldAtCenter();
     }
@@ -660,14 +675,15 @@ createApp({
       else addNode(position, {text});
     }
 
-    async function importFiles(files, position) {
+    async function importFiles(files, position, belowButton = false) {
       if (!online.value) throw Error("A beillesztéshez aktív szerkesztői kapcsolat szükséges.");
       const failures = [];
       for (const [index, blob] of files.entries()) {
         try {
           const properties = await importFile(blob, path, csrf);
           if (!online.value) throw Error("A kapcsolat megszakadt.");
-          addNode({x: position.x + 24*index, y: position.y + 24*index}, properties);
+          const offset = belowButton ? properties.height / 2 : 0;
+          addNode({x: position.x + 24*index, y: position.y + offset + 24*index}, properties);
         } catch (error) { failures.push((blob.name || "Vágólap") + " · " + error.message); }
       }
       if (failures.length) throw Error(failures.join("\n"));
@@ -679,7 +695,8 @@ createApp({
       if (!files.length || uploading.value) return;
       uploading.value = true;
       try {
-        await importFiles(files, worldAtCenter());
+        const position = uploadAnchor ? world(uploadAnchor) : worldAtCenter();
+        await importFiles(files, position, !!uploadAnchor);
       } catch (error) {
         problem.value = error.message;
       } finally { uploading.value = false; }
@@ -1627,7 +1644,7 @@ createApp({
     }
     function cancelGesture() {
       if (gesture.value) finishPointer({pointerId: gesture.value.pointer}, true);
-      canvasPointer = undefined;
+      canvasPointer.value = null;
       clearModifiers();
     }
 
@@ -1796,7 +1813,7 @@ createApp({
           onKeydown: e => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); followBoxLink(destination); } }},
           [h("text", {class: "box-link", x: -5, y: 19, fill: node.textColor, stroke: "none", "text-anchor": "end", "font-size": 18,
             textLength: node.link.length * 11 > (drawn.width*inset-22)*24/14 ? Math.max(12,drawn.width*inset-22)*24/14 : undefined, lengthAdjust: "spacingAndGlyphs"}, node.link), h("rect", {width: 24, height: 24, fill: "transparent", stroke: "none"}), h("path", {d: linkIcons[destination.kind]})]) : null,
-        ...(alt.value && !ctrl.value && !occupied(node.id) && node.kind !== "connectionPoint" && !ancestors(node, nodeMap.value).some(n => n.locked)
+        ...(resizeTarget.value === node.id && !occupied(node.id) && !ancestors(node, nodeMap.value).some(n => n.locked)
           ? [[-1,-1], [1,-1], [1,1], [-1,1]].map(([sx, sy]) => {
             const r = 5/view.value.k;
             return h("rect", {"data-editor-only": "", x: sx*drawn.width/2-r, y: sy*drawn.height/2-r,
@@ -1924,7 +1941,7 @@ createApp({
           onPointerdownCapture: pressCanvas,
           onPointerenter: rememberCanvasPointer,
           onPointermove: event => { rememberCanvasPointer(event); updatePointer(event); },
-          onPointerleave: () => { canvasPointer = undefined; },
+          onPointerleave: () => { canvasPointer.value = null; },
           onPointerup: event => finishPointer(event),
           onPointercancel: event => finishPointer(event, true),
 
@@ -2075,12 +2092,15 @@ createApp({
       return sidebar("Munkalap", [
         h("input", {ref: attachmentInput, type: "file", multiple: true, hidden: true,
           onChange: uploadAttachments}),
-        button(uploading.value ? "Feltöltés…" : "Fájl feltöltése", () => attachmentInput.value?.click(),
-          {symbol: "plus", disabled: uploading.value || !online.value, title: "Hang, dokumentum, kép vagy ZIP"}),
         group("Cím", [input(sheet.title, value => updateItem(sheet, "title", value), {"aria-label": "Cím", maxlength: 120})]),
         group("Szöveg", [textarea(sheet.text ?? "", value => updateItem(sheet, "text", value))]),
         group("Háttér", [colorPicker("Munkalap háttérszíne", sheet.background ?? paper,
           value => updateItem(sheet, "background", value), "worksheet/background")]),
+        button(uploading.value ? "Feltöltés…" : "Fájl feltöltése", event => {
+          const bounds = event.currentTarget.getBoundingClientRect();
+          uploadAnchor = {clientX: bounds.left + bounds.width / 2, clientY: bounds.bottom + 12};
+          attachmentInput.value?.click();
+        }, {symbol: "plus", disabled: uploading.value || !online.value, title: "Fájl feltöltése"}),
       ], true);
     }
 
@@ -2254,7 +2274,8 @@ createApp({
         h("div", {class: "editor-workspace"}, [
           renderCanvas(),
           problem.value || currentStatus ? h("p", {class: ["canvas-status", {error: problem.value}], role: "status"}, problem.value || currentStatus) : null,
-          h("div", {class: "inspector-column"}, [renderInspector(), renderCanvasInspector()]),
+          h("div", {class: "inspector-column"}, [renderInspector()]),
+          canvasPanelOpen.value ? h("div", {class: "inspector-column canvas-inspector-column"}, [renderCanvasInspector()]) : null,
           renderSearch(),
           button("", () => { finishField(); objectPanelOpen.value = !objectPanelOpen.value; }, {
             class: ["button", "sidebar-open", {active: (selected.value || batch.value) && !objectPanelOpen.value}],
@@ -2263,7 +2284,7 @@ createApp({
             symbol: objectPanelOpen.value ? "right" : "left",
           }),
           button("", () => { finishField(); canvasPanelOpen.value = !canvasPanelOpen.value; }, {
-            class: "button sidebar-open sidebar-open-bottom",
+            class: "button sidebar-open sidebar-open-canvas",
             "aria-expanded": canvasPanelOpen.value,
             "aria-label": canvasPanelOpen.value ? "Vászonbeállítások bezárása" : "Vászonbeállítások megnyitása",
             symbol: "up",

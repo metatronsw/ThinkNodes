@@ -31,7 +31,7 @@
       {"id": "clone-link", "action": "Klónozás összekötéssel", "icon": "link", "keys": [["Alt", "Shift", "Húzás"]], "where": "Doboz", "detail": "Ha elengedéskor nyomva van a Shift, az eredetiből nyíl mutat a klónra."},
       {"action": "Másolás", "icon": "copy", "keys": [["Ctrl", "C"], ["⌘", "C"]], "where": "Kijelölt doboz", "detail": "Szöveget, képet vagy a fájlobjektum hivatkozását másolja a vágólapra. A bal alsó gomb ugyanezt végzi."},
       {"action": "Beillesztés", "icon": "paste", "keys": [["Ctrl", "V"], ["⌘", "V"]], "where": "Szerkesztő", "detail": "Az új objektum a kurzornál, a vásznon kívül lévő kurzor esetén középen jön létre. Kijelölt szövegdobozhoz a beillesztett szöveg hozzáfűződik."},
-      {"action": "Fájl hozzáadása", "icon": "file", "keys": [["Behúzás"], ["Fájl feltöltése"]], "where": "Vászon vagy jobb alsó panel", "detail": "A támogatott képek, szöveges dokumentumok és MP3-as hangok saját objektumként jelennek meg. A ZIP és a többi melléklet letölthető."},
+      {"action": "Fájl hozzáadása", "icon": "file", "keys": [["Behúzás"], ["Fájl feltöltése"]], "where": "Vászon vagy bal felső panel", "detail": "A támogatott képek, szöveges dokumentumok és MP3-as hangok saját objektumként jelennek meg. A ZIP és a többi melléklet letölthető."},
       {"action": "Dobozhivatkozás megnyitása", "icon": "link", "keys": [["Dupla kattintás"], ["Enter"]], "where": "A doboz hivatkozásikonja", "detail": "Megnyitja a munkalapot vagy a webcímet."},
       {"action": "Cím- vagy fájlnévszerkesztés", "keys": [["Shift", "Enter"], ["Enter"]], "where": "Fókuszban lévő doboz, illetve a képfájlnév mezője", "detail": "A Shift+Enter a fókuszban lévő doboz tulajdonságait választja ki. A képfájlnév mezőjében az Enter véglegesíti az átnevezést."}
     ]

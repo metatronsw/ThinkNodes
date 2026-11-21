@@ -100,7 +100,7 @@ A mentés atomi fájlcserét és revízióellenőrzést használ. Egy adatkönyv
 
 ## Közös szerkesztés
 
-A vászon bal felső sarkában, csatlakozási sorrendben megjelenő névsor mutatja, kik vannak a munkalapon. A név melletti szín a kijelölt doboz körüli keret színe is. A kijelölés a szerkesztő böngészőfülhöz tartozik. Másik szerkesztő közben kábelt köthet a dobozhoz és le is választhat róla kábelt. Üres területre kattintás, az Escape vagy másik elem kiválasztása elengedi a kijelölést. Lapváltáskor és a fül bezárásakor is felszabadul a doboz. Megszakadt kapcsolat esetén a szerver időkorláttal oldja fel a zárolást.
+A vászon bal alsó sarkában, csatlakozási sorrendben megjelenő névsor mutatja, kik vannak a munkalapon. A név melletti szín a kijelölt doboz körüli keret színe is. A kijelölés a szerkesztő böngészőfülhöz tartozik. Másik szerkesztő közben kábelt köthet a dobozhoz és le is választhat róla kábelt. Üres területre kattintás, az Escape vagy másik elem kiválasztása elengedi a kijelölést. Lapváltáskor és a fül bezárásakor is felszabadul a doboz. Megszakadt kapcsolat esetén a szerver időkorláttal oldja fel a zárolást.
 
 A vászon módosításai automatikusan szinkronizálódnak. Húzáskor a saját doboz folyamatosan követi az egeret. A többi résztvevő egy WebSocket-kapcsolaton, alapból legfeljebb 100 milliszekundumonként kap pozíció-előnézetet. Az elengedés egy munkalapírást indít, az Escape megszakítja a húzást. A végleges hely WebSocket nélkül is megjelenik a többi résztvevőnél.
 

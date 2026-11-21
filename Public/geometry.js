@@ -72,7 +72,17 @@ export function shapeGeometry(shape, width, height, padding = 0) {
 }
 
 export function selectionOutline(shape, width, height) {
-  return shapeGeometry(shape, width, height, 10);
+  const padding = 10;
+  const vertices = polygonVertices(shape, width / 2, height / 2);
+  if (!vertices) return shapeGeometry(shape, width, height, padding);
+
+  // Uniform scaling preserves the angles. The closest edge sets the minimum gap.
+  const nearestEdge = Math.min(...vertices.map(([x, y], index) => {
+    const [nextX, nextY] = vertices[(index + 1) % vertices.length];
+    return Math.abs(x * nextY - y * nextX) / Math.hypot(nextX - x, nextY - y);
+  }));
+  const scale = 1 + padding / nearestEdge;
+  return shapeGeometry(shape, width * scale, height * scale);
 }
 
 export function shapeDistance(node, point, padding = 0) {

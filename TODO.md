@@ -36,5 +36,7 @@ CANVAS PROPERTY PANEL:
 - file feltöltése gomb most legyen az alsó, feltöltés után a file a gomb alatt jelenjen meg a canvas-on
 - a bejelentkezett felhasználók a bal alsó sarokba kerüljenek át 
 
-KÉPKEZELÉS: 
-- használd az alpha csatornát, átlátszó képeknél (svg) 
+FILE TÖRLÉS:
+- törlés a munkalapról (alap beállítás)
+- törlés a mappából is
+- 

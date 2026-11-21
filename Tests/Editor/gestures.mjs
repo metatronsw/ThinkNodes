@@ -498,7 +498,9 @@ assert.deepEqual(titleActions, ["focus", ""]);
 await press("Visszavonás"); await save();
 
 for (const [id, x, y, automatic] of [["outside",180,30,false], ["auto",-420,0,true]]) {
+  canvas().props.onPointermove(event(canvas(), x, y));
   toggle("Alt", true); await tick();
+  assert.equal(find(n => n.props.cursor === "nwse-resize", graphic(id === "auto" ? "outside" : "auto")), undefined);
   const corner = find(n => n.props.cursor === "nwse-resize" && n.props.x > 0, graphic(id));
   const cx = x + corner.props.x + 5, cy = y + corner.props.y + 5;
   await drag(corner, cx, cy, cx+40, cy+30, {altKey: true});
@@ -801,10 +803,24 @@ for (const [label, shape, vertices] of [["Háromszög", "triangle", 3], ["Ötsz�
 }
 await press("Téglalap"); await save();
 
-const {edgeGeometry, edgePaint, edgeInRectangle, borderPoint} = await import("../../Public/geometry.js");
+const {edgeGeometry, edgePaint, edgeInRectangle, borderPoint, polygonVertices, selectionOutline} = await import("../../Public/geometry.js");
 for (const [shape, x] of [["triangle", 30], ["pentagon", 55.587096774], ["hexagon", 60], ["parallelogram", 46.5]]) {
   const box = {...node("polygon", 0, 0, 120, 80), shape};
   assert.ok(Math.abs(borderPoint(box, {x: 200, y: 0}).x - x) < 1e-8);
+}
+for (const shape of ["triangle", "pentagon"]) {
+  for (const [width, height] of [[880, 40], [64, 680]]) {
+    const vertices = polygonVertices(shape, width / 2, height / 2);
+    const [, outline] = selectionOutline(shape, width, height);
+    const outer = outline.points.split(" ").map(point => point.split(",").map(Number));
+    vertices.forEach(([x, y], index) => {
+      const [ax, ay] = outer[index];
+      const [bx, by] = outer[(index + 1) % outer.length];
+      const gap = Math.abs((bx - ax) * (y - ay) - (by - ay) * (x - ax)) / Math.hypot(bx - ax, by - ay);
+      assert.ok(gap >= 10 - 1e-8, shape + " has clearance along every edge");
+      assert.ok(Math.abs(x * ay - y * ax) < 1e-8, shape + " preserves its proportions");
+    });
+  }
 }
 const route = (type, y = 0) => edgeGeometry({
   type, sourcePoint: {x: -100, y: 0}, target: {point: {x: 100, y}},
