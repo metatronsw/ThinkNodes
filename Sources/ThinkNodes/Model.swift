@@ -151,6 +151,10 @@ private func matchesAttachmentType(_ bytes: Data, extension ext: String) -> Bool
     }
 }
 
+enum BoxAnimation: String, Codable, Sendable {
+    case none, pulse, blink, rock, hop
+}
+
 struct Idea: Codable, Equatable, Sendable {
     var id: String
     var title: String
@@ -163,6 +167,7 @@ struct Idea: Codable, Equatable, Sendable {
     var shape: Shape = .rounded
     var fill = "#dce9ff"
     var backgroundEnabled: Bool?
+    var animation: BoxAnimation?
     var textColor = "#182335"
     var border: String { automaticBorder(fill) }
     var fitText: Bool?
@@ -181,7 +186,7 @@ struct Idea: Codable, Equatable, Sendable {
     var textStyle: TextStyle?
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, text, file, hideText, fitText, shape, fill, backgroundEnabled, bold, titleOutside, link
+        case id, title, text, file, hideText, fitText, shape, fill, backgroundEnabled, animation, bold, titleOutside, link
         case kind, parent, locked, italic, underline, textStyle
         case position = "pos", width = "w", height = "h", textColor = "textCol"
         case fontSize = "fontSz", alignment = "align", verticalAlignment = "vAlign"
@@ -258,6 +263,7 @@ struct Connection: Equatable, Codable, Sendable {
     var target: ConnectionTarget
     var type: ConnectionType = .straight
     var appearance: ConnectionAppearance = .plain
+    var animated: Bool?
     var color: String?
     var width: Double?
     var startArrow: Bool?
@@ -265,7 +271,7 @@ struct Connection: Equatable, Codable, Sendable {
     var label: String?
 
     private enum CodingKeys: String, CodingKey {
-        case id, source, target, type, appearance, color, startArrow, endArrow, label
+        case id, source, target, type, appearance, animated, color, startArrow, endArrow, label
         case sourcePoint = "srcPt", width = "w"
     }
 
@@ -291,6 +297,7 @@ extension Connection {
         if source == nil && sourcePoint == nil { sourcePoint = Point(x: 0, y: 0) }
         type = (try? fields.decode(ConnectionType.self, forKey: .type)) ?? (legacy == .rope ? .rope : .straight)
         appearance = (try? fields.decode(ConnectionAppearance.self, forKey: .appearance)) ?? (legacy == .dashed ? .dashed : .plain)
+        animated = try? fields.decode(Bool.self, forKey: .animated)
         color = (try? fields.decode(String.self, forKey: .color))
         width = (try? fields.decode(Double.self, forKey: .width))
         startArrow = (try? fields.decode(Bool.self, forKey: .startArrow)) ?? (legacy == .both ? true : nil)
@@ -1177,6 +1184,7 @@ extension Idea {
         shape = (try? fields.decode(Shape.self, forKey: .shape)) ?? .rounded
         fill = (try? fields.decode(String.self, forKey: .fill)) ?? "#dce9ff"
         backgroundEnabled = try? fields.decode(Bool.self, forKey: .backgroundEnabled)
+        animation = try? fields.decode(BoxAnimation.self, forKey: .animation)
         textColor = (try? fields.decode(String.self, forKey: .textColor)) ?? "#182335"
         fitText = try? fields.decode(Bool.self, forKey: .fitText)
         fontSize = (try? fields.decode(Double.self, forKey: .fontSize)) ?? 16

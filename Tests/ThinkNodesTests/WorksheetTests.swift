@@ -436,7 +436,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     let groupStart = try #require(svg.range(of: "aria-label=\"Konténer\" transform="))
     let edgeStart = try #require(svg.range(of: "marker-end=\"url(#arrow-line)"))
     let childStart = try #require(svg.range(of: "aria-label=\"Ötlet\" transform="))
-    #expect(groupStart.lowerBound < childStart.lowerBound && childStart.lowerBound < edgeStart.lowerBound)
+    #expect(groupStart.lowerBound < edgeStart.lowerBound && edgeStart.lowerBound < childStart.lowerBound)
     let plain = boardSVG(board)
     #expect(!plain.contains("worksheet-grid"))
     #expect(!plain.contains("stroke=\"none\"/>"))
@@ -694,6 +694,62 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     #expect(decoded.type == .rope && decoded.appearance == .plain && !decoded.hasEndArrow)
     let saved = String(decoding: try JSONEncoder().encode(decoded), as: UTF8.self)
     #expect(!saved.contains("\"style\""))
+}
+
+@Test func animatedConnectionsRoundTripAndRenderSVG() throws {
+    var edge = Connection(id: "animated", sourcePoint: Point(x: 0, y: 0),
+                          target: ConnectionTarget(point: Point(x: 100, y: 0)),
+                          animated: true, startArrow: true, endArrow: true)
+    edge = try JSONDecoder().decode(Connection.self, from: JSONEncoder().encode(edge))
+    #expect(edge.animated == true)
+    func render() -> String { boardSVG(Worksheet(title: "Animáció", edges: [edge])) }
+    #expect(render().contains("stroke=\"url(#wire-gradient-animated)\""))
+    #expect(render().contains("dur=\"12s\" repeatCount=\"indefinite\""))
+    #expect(render().contains("<stop offset=\".25\" stop-color=\"currentColor\"/>"))
+    #expect(render().contains("<stop offset=\".5\" stop-color=\"currentColor\" stop-opacity=\".5\"/>"))
+    #expect(render().contains("<stop offset=\".75\" stop-color=\"currentColor\"/>"))
+    edge.appearance = .thick
+    #expect(render().contains("attributeName=\"stroke-width\" values=\"4.000;5.800;4.000\""))
+    #expect(render().contains("type=\"scale\" additive=\"sum\""))
+    edge.appearance = .dashed
+    #expect(render().contains("attributeName=\"stroke-dashoffset\" values=\"0;-12.000;0\""))
+    edge.appearance = .dotted
+    edge.endArrow = false
+    #expect(render().contains("attributeName=\"stroke-dashoffset\" values=\"0;16.000\""))
+    edge.animated = false
+    #expect(!render().contains("<animate"))
+}
+
+@Test func boxAnimationsRoundTripAndRenderSVG() throws {
+    var box = Idea(id: "box", title: "Doboz", position: Point(x: 0, y: 0))
+    for (mode, track): (BoxAnimation, String) in [
+        (.pulse, "type=\"scale\""), (.blink, "attributeName=\"opacity\""),
+        (.rock, "type=\"rotate\""), (.hop, "type=\"translate\""),
+    ] {
+        box.animation = mode
+        let saved = try JSONDecoder().decode(Idea.self, from: JSONEncoder().encode(box))
+        #expect(saved.animation == mode)
+        let svg = boardSVG(Worksheet(title: "Animáció", nodes: [saved]))
+        #expect(svg.contains("data-box-animation=\"\(mode.rawValue)\""))
+        #expect(svg.contains(track))
+        #expect(svg.contains("repeatCount=\"indefinite\""))
+    }
+    box.animation = BoxAnimation.none
+    #expect(!boardSVG(Worksheet(title: "Animáció", nodes: [box])).contains("data-box-animation"))
+}
+
+@Test func connectedWiresRenderBelowTheirEndpointsInsideContainers() throws {
+    let container = Idea(id: "container", title: "Konténer", position: Point(x: 0, y: 0),
+                         width: 600, height: 320, kind: .container)
+    let source = Idea(id: "source", title: "Kezdőpont", position: Point(x: -120, y: 0), parent: container.id)
+    let target = Idea(id: "target", title: "Végpont", position: Point(x: 120, y: 0), animation: .pulse, parent: container.id)
+    let edge = Connection(id: "wire", source: source.id, target: ConnectionTarget(node: target.id))
+    let svg = boardSVG(Worksheet(title: "Rétegek", nodes: [source, target, container], edges: [edge]), noteBase: "/retegek")
+    let containerOffset = try #require(svg.range(of: "id=\"object-container\"")).lowerBound
+    let wireOffset = try #require(svg.range(of: "data-wire-group=")).lowerBound
+    let sourceOffset = try #require(svg.range(of: "id=\"object-source\"")).lowerBound
+    let targetOffset = try #require(svg.range(of: "id=\"object-target\"")).lowerBound
+    #expect(containerOffset < wireOffset && wireOffset < sourceOffset && wireOffset < targetOffset)
 }
 
 @Test(arguments: [

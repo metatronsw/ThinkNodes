@@ -255,6 +255,8 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .editor-canvas .detach-endpoint { cursor: url("/detach-cursor.svg") 2 2, alias; }
 .property-group { margin: 0; border: 1px solid var(--line); border-radius: 8px; padding: 9px; min-width: 0; }
 .property-options { display: flex; flex-wrap: wrap; gap: 4px; }
+.line-appearance-options { justify-content: space-between; }
+.line-appearance-options > .option-icon { margin-inline-start: auto; }
 .property-options .option-icon { width: 32px; height: 32px; min-height: 0; padding: 0; }
 .property-options .option-icon .ui-icon { width: 22px; height: 22px; }
 .property-group legend { font-weight: 650; padding: 0 5px; }
@@ -401,6 +403,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .search-candidate { color: #cf8200; fill: none; stroke: currentColor; stroke-dasharray: 6 3; pointer-events: none; }
 
 .selection-glow, .search-candidate { filter: drop-shadow(0 0 6px currentColor); }
+.wire-selected { filter: drop-shadow(0 0 4px currentColor) drop-shadow(0 0 8px currentColor); }
 
 @keyframes search-button-pulse {
   50% { box-shadow: 0 0 16px #cf8200; }

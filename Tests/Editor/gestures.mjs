@@ -177,6 +177,7 @@ await tick();
 checkpoint = structuredClone(sheet);
 
 const oneWire = () => find(n => n.tag === "g" && n.props["data-edge"] === "one");
+assert.ok(oneWire().parent.children.indexOf(oneWire()) < oneWire().parent.children.indexOf(graphic("outside")));
 const panel = () => find(n => n.tag === "aside" && n.props["aria-label"] !== "Munkalap");
 const titleActions = [];
 const labelInput = () => prop("data-object-label", "", panel());
@@ -522,6 +523,22 @@ const control = (scope, label) => find(n => n.tag === "label" && n.children[0]?.
 const check = (scope, label) => find(n => n.tag === "label" && text(n) === label, scope).children[0];
 const edit = (control, value) => control.props.onInput({target: {value}});
 const enable = control => control.props.onChange({target: {checked: true}});
+const animationPicker = prop("aria-label", "Animáció", section("Doboz"));
+assert.equal(animationPicker.children.length, 5);
+assert.ok(animationPicker.children.every(option => text(option) === ""));
+assert.equal(button("Nincs animáció").props["aria-pressed"], true);
+for (const [option, mode, tracks] of [
+  ["Pulzálás", "pulse", ["scale"]], ["Villogás", "blink", ["opacity"]],
+  ["Ringatózás", "rock", ["rotate"]], ["Ugrálás", "hop", ["translate", "scale"]],
+]) {
+  await press(option);
+  const animated = prop("data-box-animation", mode, graphic("outside"));
+  assert.deepEqual(animated.children.filter(n => n.tag.startsWith("animate")).map(n => n.props.type ?? n.props.attributeName), tracks);
+}
+await save();
+assert.equal(model("outside").animation, "hop");
+await press("Nincs animáció");
+assert.equal(prop("data-box-animation", "hop", graphic("outside")), undefined);
 const backgroundSwitch = check(section("Doboz"), "Háttér megjelenítése");
 assert.equal(backgroundSwitch.props.checked, true);
 backgroundSwitch.props.onChange({target: {checked: false}}); await tick(); await save();
@@ -941,30 +958,57 @@ oneWire().props.onDblclick({stopPropagation() {}});
 await tick();
 assert.equal(button("Egyenes").props["aria-pressed"], true);
 assert.equal(button("Sima").props["aria-pressed"], true);
-for (const label of ["Egyenes", "Sima", "Nyíl a vonal elején", "Nyíl a vonal végén"]) {
+for (const label of ["Egyenes", "Sima", "Nyíl a vonal elején", "Nyíl a vonal végén", "Animáció bekapcsolása"]) {
   assert.equal(text(button(label)), "", label + " uses an icon and an accessible name");
 }
 assert.equal(button("Nyíl a vonal elején").props["aria-pressed"], false);
 assert.equal(button("Nyíl a vonal végén").props["aria-pressed"], true);
+await press("Animáció bekapcsolása");
+assert.equal(button("Animáció bekapcsolása").props["aria-pressed"], true);
+assert.equal(prop("attributeName", "gradientTransform", oneWire()).props.dur, "6s");
+const gradient = find(n => n.tag === "linearGradient", oneWire());
+const stops = gradient.children.filter(n => n.tag === "stop");
+assert.deepEqual(stops.map(n => n.props.offset), [0, .25, .5, .75, 1]);
+assert.deepEqual(stops.map(n => n.props["stop-opacity"]), [1, 1, .5, 1, 1]);
+assert.ok(stops.every(n => n.props["stop-color"] === "#365bd6"));
 await press("Nyíl a vonal elején");
+assert.equal(prop("attributeName", "gradientTransform", oneWire()).props.dur, "12s");
 await press("Nyíl a vonal végén");
 await press("S-forma");
 await press("Pontozott");
 assert.equal(button("S-forma").props["aria-pressed"], true);
 assert.equal(button("Pontozott").props["aria-pressed"], true);
 assert.ok(find(n => n.props.d?.includes(" C ") && n.props["stroke-dasharray"] === "0 16", oneWire()));
+assert.equal(prop("attributeName", "stroke-dashoffset", oneWire()).props.values, "0;16");
 await save();
+assert.equal(edge("one").animated, true);
 assert.equal(edge("one").type, "sCurve");
 assert.equal(edge("one").appearance, "dotted");
 assert.equal(edge("one").startArrow, true);
 assert.equal(edge("one").endArrow, false);
 await press("Nyíl a vonal elején");
 await press("Nyíl a vonal végén");
+assert.equal(prop("attributeName", "stroke-dashoffset", oneWire()).props.values, "0;-16");
+await press("Szaggatott");
+assert.equal(prop("attributeName", "stroke-dashoffset", oneWire()).props.values, "0;-12");
+await press("Vastag");
+assert.equal(prop("attributeName", "stroke-width", oneWire()).props.values, "4;5.8;4");
+assert.equal(prop("attributeName", "transform", endpoint("one", "target")).props.type, "scale");
+const selectionGlow = prop("class", "wire-selected", oneWire());
+assert.ok(selectionGlow);
+assert.equal(selectionGlow.children.filter(n => n.props["stroke-width"] !== undefined).length, 1);
+assert.equal(prop("attributeName", "stroke-width", selectionGlow).parent.props.stroke, "#365bd6");
+assert.equal(endpoint("one", "target").props.fill, "#365bd6");
+assert.equal(prop("class", "selection-glow", oneWire()), undefined);
+await press("Animáció bekapcsolása");
+assert.equal(prop("attributeName", "stroke-width", oneWire()), undefined);
 await press("Egyenes");
 await press("Sima");
 await save();
 
 await properties("outside");
+assert.equal(prop("class", "wire-selected", oneWire()), undefined);
+assert.ok(prop("stroke", "#526982", oneWire()));
 for (const [label, shape, vertices] of [["Háromszög", "triangle", 3], ["Ötszög", "pentagon", 5],
   ["Hatszög", "hexagon", 6], ["Paralelogramma", "parallelogram", 4]]) {
   const option = button(label);

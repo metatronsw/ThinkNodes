@@ -8,7 +8,7 @@ import {flashNode, flashPoint} from "./ping.js";
 import {hideTooltip, showTooltip} from "./tooltip.js";
 import {liveConnection} from "./collaboration.js";
 
-import {arrowTransform, edgeGeometry, edgePaint, selectionOutline} from "./geometry.js?v=2";
+import {arrowTransform, edgeGeometry, edgePaint, selectionOutline, wireGradientValues} from "./geometry.js?v=8";
 import {ancestors} from "./containers.js";
 
 let selection;
@@ -44,7 +44,12 @@ function previewScene() {
     return [node, {id: node, anchor, parent, shape, width: +width, height: +height,
       origin: {x: +x, y: +y}, position: {x: +x, y: +y}}];
   }));
-  const wires = [...main.querySelectorAll("[data-wire]")].map(path => ({path, edge: decodeConnection(JSON.parse(path.dataset.wire))}));
+  const wires = [...main.querySelectorAll("[data-wire]")].map(path => {
+    const edge = decodeConnection(JSON.parse(path.dataset.wire));
+    const gradient = edge.animated && (edge.appearance ?? "plain") === "plain"
+      ? main.querySelector("#wire-gradient-" + CSS.escape(edge.id)) : null;
+    return {path, edge, gradient, sweep: gradient?.querySelector("animateTransform")};
+  });
   return () => {
     const changed = new Set();
     for (const node of nodes.values()) {
@@ -56,22 +61,22 @@ function previewScene() {
       if (delta) node.anchor.setAttribute("transform", "translate(" + delta.x + " " + delta.y + ")");
       else node.anchor.removeAttribute("transform");
     }
-    for (const {path, edge} of wires) {
+    for (const {path, edge, gradient, sweep} of wires) {
       if (!changed.has(edge.source) && !changed.has(edge.target.node)) continue;
       const {d, labelPosition, angle, from, to, sourceToward, targetToward} = edgeGeometry(edge, id => nodes.get(id));
       path.setAttribute("d", d);
-      if (path.parentElement.hasAttribute("data-free-arrows")) {
-        for (const arrow of path.parentElement.querySelectorAll("[data-arrow-end]")) {
-          const start = arrow.dataset.arrowEnd === "source";
-          arrow.setAttribute("transform", arrowTransform(start ? from : to, start ? sourceToward : targetToward, edgePaint(edge).width));
+      if (sweep) {
+        for (const [key, value] of Object.entries({x1: from.x, y1: from.y, x2: to.x, y2: to.y})) {
+          gradient.setAttribute(key, value);
         }
+        sweep.setAttribute("values", wireGradientValues(from, to, edgePaint(edge)));
       }
-      let underlay = path.previousElementSibling;
-      while (underlay?.hasAttribute("data-wire-highlight")) {
-        underlay.setAttribute("d", d);
-        underlay = underlay.previousElementSibling;
+      const wire = path.parentElement;
+      for (const arrow of wire.querySelectorAll("[data-arrow-end]")) {
+        const start = arrow.dataset.arrowEnd === "source";
+        const transform = arrowTransform(start ? from : to, start ? sourceToward : targetToward, edgePaint(edge).width);
+        arrow.setAttribute("transform", transform);
       }
-      const wire = path.parentElement.hasAttribute("data-free-arrows") ? path.parentElement : path;
       if (edge.label?.trim()) wire.nextElementSibling?.setAttribute("transform",
         "translate(" + labelPosition.x + " " + labelPosition.y + ") rotate(" + angle + ")");
     }
@@ -116,24 +121,23 @@ function paint(peers) {
   for (const frame of main.querySelectorAll("[data-selection]")) {
     if (!peers.some(peer => !peer.mine && peer.node === frame.parentElement.dataset.node && peer.color === frame.dataset.peerColor)) frame.remove();
   }
-  main.querySelectorAll("[data-wire-highlight]").forEach(line => line.remove());
+  const wireOwners = new Map();
+  for (const peer of peers) {
+    if (peer.edge && (peer.mine || !wireOwners.has(peer.edge))) wireOwners.set(peer.edge, peer.color);
+  }
   for (const wire of main.querySelectorAll("[data-wire]")) {
     const id = JSON.parse(wire.dataset.wire).id;
-    const owners = peers.filter(p => p.edge === id);
-    for (const arrow of wire.parentElement.querySelectorAll(":scope > [data-arrow-end]")) {
-      arrow.classList.toggle("selection-glow", owners.length > 0);
-      arrow.style.color = owners[0]?.color ?? "";
-    }
-    owners.forEach((peer, i) => {
-      const line = document.createElementNS(ns, "path");
-      for (const [key, value] of Object.entries({"data-wire-highlight": "", class: "selection-glow", color: peer.color, d: wire.getAttribute("d"),
-        stroke: peer.color, "stroke-width": Number(wire.getAttribute("stroke-width")) + (owners.length-i)*5,
-        fill: "none", "pointer-events": "none"})) line.setAttribute(key, value);
-      for (const key of ["stroke-dasharray", "stroke-linecap", "marker-start", "marker-end"]) {
-        if (wire.hasAttribute(key)) line.setAttribute(key, wire.getAttribute(key));
-      }
-      wire.before(line);
-    });
+    const color = wireOwners.get(id) ?? "";
+    const frame = wire.parentElement;
+    frame.classList.toggle("wire-selected", !!color);
+    frame.style.color = color;
+
+    const gradient = document.getElementById("wire-gradient-" + id);
+    if (gradient) gradient.style.color = color;
+    else wire.style.stroke = color;
+    const marker = document.getElementById("arrow-" + id);
+    if (marker) marker.style.color = color;
+    for (const arrow of frame.querySelectorAll("[data-arrow-end]")) arrow.style.fill = color;
   }
   for (const peer of peers) {
     if (!peer.node || peer.mine) continue;

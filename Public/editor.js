@@ -7,7 +7,7 @@ import {flashNode, flashPoint} from "./ping.js";
 import {showTooltip, hideTooltip} from "./tooltip.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {automaticBorder, automaticGridColor, arrowTransform, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, lineAppearances, lineTypes, paper, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes} from "./geometry.js?v=7";
+import {automaticBorder, automaticGridColor, arrowTransform, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, lineAppearances, lineTypes, paper, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, wireGradientValues} from "./geometry.js?v=8";
 
 import {ancestors, containerOrder, overlapFraction} from "./containers.js";
 
@@ -166,6 +166,30 @@ const FormattedText = {
   },
 };
 
+const boxAnimations = {
+  none: "Nincs animáció", pulse: "Pulzálás", blink: "Villogás", rock: "Ringatózás", hop: "Ugrálás",
+};
+
+const boxMotion = {
+  pulse: {dur: "2.8s", times: "0;.5;1", scale: "1;1.09;1"},
+  blink: {dur: "2.4s", times: "0;.5;1", opacity: "1;.28;1"},
+  rock: {dur: "4.8s", times: "0;.08;.19;.3;.4;.49;1", rotate: "0;8;-6;3;-1;0;0"},
+  hop: {dur: "5.8s", times: "0;.06;.15;.24;.32;.4;1",
+    translate: "0 0;0 1;0 -17;0 0;0 -4;0 0;0 0", scale: "1 1;1.03 .95;1.035 1.06;1.045 .96;.99 1.02;1 1;1 1"},
+};
+
+function animateBox(mode, contents) {
+  const motion = Object.hasOwn(boxMotion, mode) ? boxMotion[mode] : null;
+  if (!motion) return contents;
+  const {dur, times, ...tracks} = motion;
+  const timing = {dur, repeatCount: "indefinite", calcMode: "spline", keyTimes: times,
+    keySplines: times.split(";").slice(1).map(() => ".33 0 .67 1").join(";")};
+  const animations = Object.entries(tracks).map(([type, values]) => type === "opacity"
+    ? h("animate", {...timing, attributeName: "opacity", values})
+    : h("animateTransform", {...timing, attributeName: "transform", type, additive: "sum", values}));
+  return [h("g", {"data-box-animation": mode}, [...animations, ...contents])];
+}
+
 function shape(node, linked) {
   if (node.kind === "connectionPoint") return h("circle", {r: node.width / 2, fill: node.fill});
   const [tag, geometry] = shapeGeometry(node.shape, node.width, node.height);
@@ -195,6 +219,34 @@ function wireDrawing(edge, findNode) {
   const stroke = {d: path(ends.source.base, ends.target.base), fill: "none", stroke: paint.color,
     "stroke-width": paint.lineWidth, "stroke-linecap": paint.linecap, "stroke-dasharray": paint.dash};
   return {...geometry, ends, stroke, paint};
+}
+
+function animatedWire(edge, paint, from, to) {
+  if (!edge.animated) return {};
+  const loop = {repeatCount: "indefinite"};
+  if (edge.appearance === "thick") {
+    return {shaft: h("animate", {...loop, attributeName: "stroke-width",
+      values: [paint.lineWidth, paint.lineWidth * 1.45, paint.lineWidth].join(";"), dur: "3s"})};
+  }
+  const reverse = paint.startArrow && !paint.endArrow;
+  const roundTrip = paint.startArrow && paint.endArrow;
+  if (paint.dash) {
+    const shift = paint.width * (edge.appearance === "dotted" ? 8 : 6) * (reverse ? 1 : -1);
+    return {shaft: h("animate", {...loop, attributeName: "stroke-dashoffset",
+      values: roundTrip ? "0;" + shift + ";0" : "0;" + shift, dur: roundTrip ? "3.2s" : "1.6s"})};
+  }
+  const dx = to.x - from.x, dy = to.y - from.y;
+  if (dx === 0 && dy === 0) return {};
+  const id = "editor-wire-gradient-" + edge.id;
+  const values = wireGradientValues(from, to, paint);
+  const gradient = h("linearGradient", {id, gradientUnits: "userSpaceOnUse",
+    x1: from.x, y1: from.y, x2: to.x, y2: to.y}, [
+    ...[0, .25, .5, .75, 1].map(offset => h("stop", {offset,
+      "stop-color": paint.color, "stop-opacity": offset === .5 ? .5 : 1})),
+    h("animateTransform", {...loop, attributeName: "gradientTransform", type: "translate",
+      values, dur: roundTrip ? "12s" : "6s"}),
+  ]);
+  return {gradient, color: "url(#" + id + ")"};
 }
 
 function setEndpoint(edge, end, endpoint) {
@@ -237,6 +289,16 @@ createApp({
     });
     const orderedNodes = computed(() => [...sceneNodes.value].sort((a,b) =>
       Number(b.kind === "container")-Number(a.kind === "container") || b.width*b.height-a.width*a.height));
+    const wireLayers = computed(() => {
+      const nodes = orderedNodes.value;
+      const order = new Map(nodes.map((node, index) => [node.id, index]));
+      const layers = Array.from({length: nodes.length + 1}, () => []);
+      for (const edge of sceneEdges.value) {
+        const index = Math.min(order.get(edge.source) ?? nodes.length, order.get(edge.target.node) ?? nodes.length);
+        layers[index].push(edge);
+      }
+      return layers;
+    });
     const nodeMap = computed(() => new Map(sceneNodes.value.map(node => [node.id, node])));
     const edgeMap = computed(() => new Map(board.value?.edges.map(edge => [edge.id, edge])));
     const containers = computed(() => containerOrder(board.value?.nodes ?? [], nodeMap.value));
@@ -1859,36 +1921,38 @@ createApp({
         owner || snapTarget || batch.value?.nodes.has(node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-glow", color: owner?.color ?? "#16a085", fill: "none",
           stroke: owner?.color ?? "#16a085", "stroke-width": 3, "pointer-events": "none"}) : null,
         candidates.value.has("node/" + node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "search-candidate", "stroke-width": 3}) : null,
-        node.file?.type === "image" ? null : shape(drawn, !!destination),
-        node.file?.type === "image" ? renderImage(node) : null,
-        node.file && node.file.type !== "image" ? h("foreignObject", {x: -drawn.width/2, y: -drawn.height/2, width: drawn.width, height: drawn.height}, [
-          h("div", {class: "canvas-file"}, [
-            !node.file.hideTitle ? h("strong",node.title) : null,
-            node.file.type === "mp3" ? h("div", {"data-audio-player": "", class: "canvas-audio",
-                onPointerdown: e => e.stopPropagation(), onDblclick: e => e.stopPropagation()}, [
-                h("audio", {src: assetURL(path, node.file.asset), preload: "metadata", hidden: true}),
-                button("", null, {symbol: "play", "data-audio-toggle": "", "aria-label": "Lejátszás", title: "Lejátszás"}),
-                h("input", {type: "range", min: 0, max: 0, step: "any", disabled: true, "data-audio-seek": "", "aria-label": "Lejátszási pozíció"}),
-                h("small", {"data-audio-status": "", role: "status"}),
-              ]) :
-              node.file.type === "attachment" ? h("a", {class: "button small", href: attachmentURL(path, node.file.asset),
-                onPointerdown: event => event.stopPropagation(), onDblclick: event => event.stopPropagation()}, "Letöltés") :
-              node.file.type === "md" ? h(FormattedText, {source: node.text, justified: node.textStyle?.justified}) :
-                h("pre", {class: {"justified-text": node.textStyle?.justified}}, node.text),
-            node.file.asset && node.text ? h("small", {class: {"justified-text": node.textStyle?.justified}}, node.text) : null,
-          ]),
-        ]) : null,
-        node.kind === "connectionPoint" && node.title ? h("text", {x: drawn.width/2 + 4, y: 4, fill: node.textColor, "font-size": 14}, node.title) : null,
-        labels,
-        destination ? h("svg", {overflow: "visible", x: drawn.width/2*inset-15, y: drawn.height/2*inset-16, width: 14, height: 14,
-          viewBox: "0 0 24 24", fill: "none", stroke: node.textColor, "stroke-width": 1.8,
-          "stroke-linecap": "round", "stroke-linejoin": "round", "pointer-events": "all",
-          role: "link", tabindex: 0, "aria-label": "Hivatkozás megnyitása", cursor: "pointer",
-          onPointerdown: e => { if (!e.altKey) e.stopPropagation(); }, onClick: e => e.stopPropagation(),
-          onDblclick: e => { if (e.altKey) return; e.preventDefault(); e.stopPropagation(); followBoxLink(destination); },
-          onKeydown: e => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); followBoxLink(destination); } }},
-          [h("text", {class: "box-link", x: -5, y: 19, fill: node.textColor, stroke: "none", "text-anchor": "end", "font-size": 18,
-            textLength: node.link.length * 11 > (drawn.width*inset-22)*24/14 ? Math.max(12,drawn.width*inset-22)*24/14 : undefined, lengthAdjust: "spacingAndGlyphs"}, node.link), h("rect", {width: 24, height: 24, fill: "transparent", stroke: "none"}), h("path", {d: linkIcons[destination.kind]})]) : null,
+        ...animateBox(!node.file && node.kind !== "connectionPoint" ? node.animation : undefined, [
+          node.file?.type === "image" ? null : shape(drawn, !!destination),
+          node.file?.type === "image" ? renderImage(node) : null,
+          node.file && node.file.type !== "image" ? h("foreignObject", {x: -drawn.width/2, y: -drawn.height/2, width: drawn.width, height: drawn.height}, [
+            h("div", {class: "canvas-file"}, [
+              !node.file.hideTitle ? h("strong",node.title) : null,
+              node.file.type === "mp3" ? h("div", {"data-audio-player": "", class: "canvas-audio",
+                  onPointerdown: e => e.stopPropagation(), onDblclick: e => e.stopPropagation()}, [
+                  h("audio", {src: assetURL(path, node.file.asset), preload: "metadata", hidden: true}),
+                  button("", null, {symbol: "play", "data-audio-toggle": "", "aria-label": "Lejátszás", title: "Lejátszás"}),
+                  h("input", {type: "range", min: 0, max: 0, step: "any", disabled: true, "data-audio-seek": "", "aria-label": "Lejátszási pozíció"}),
+                  h("small", {"data-audio-status": "", role: "status"}),
+                ]) :
+                node.file.type === "attachment" ? h("a", {class: "button small", href: attachmentURL(path, node.file.asset),
+                  onPointerdown: event => event.stopPropagation(), onDblclick: event => event.stopPropagation()}, "Letöltés") :
+                node.file.type === "md" ? h(FormattedText, {source: node.text, justified: node.textStyle?.justified}) :
+                  h("pre", {class: {"justified-text": node.textStyle?.justified}}, node.text),
+              node.file.asset && node.text ? h("small", {class: {"justified-text": node.textStyle?.justified}}, node.text) : null,
+            ]),
+          ]) : null,
+          node.kind === "connectionPoint" && node.title ? h("text", {x: drawn.width/2 + 4, y: 4, fill: node.textColor, "font-size": 14}, node.title) : null,
+          labels,
+          destination ? h("svg", {overflow: "visible", x: drawn.width/2*inset-15, y: drawn.height/2*inset-16, width: 14, height: 14,
+            viewBox: "0 0 24 24", fill: "none", stroke: node.textColor, "stroke-width": 1.8,
+            "stroke-linecap": "round", "stroke-linejoin": "round", "pointer-events": "all",
+            role: "link", tabindex: 0, "aria-label": "Hivatkozás megnyitása", cursor: "pointer",
+            onPointerdown: e => { if (!e.altKey) e.stopPropagation(); }, onClick: e => e.stopPropagation(),
+            onDblclick: e => { if (e.altKey) return; e.preventDefault(); e.stopPropagation(); followBoxLink(destination); },
+            onKeydown: e => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); followBoxLink(destination); } }},
+            [h("text", {class: "box-link", x: -5, y: 19, fill: node.textColor, stroke: "none", "text-anchor": "end", "font-size": 18,
+              textLength: node.link.length * 11 > (drawn.width*inset-22)*24/14 ? Math.max(12,drawn.width*inset-22)*24/14 : undefined, lengthAdjust: "spacingAndGlyphs"}, node.link), h("rect", {width: 24, height: 24, fill: "transparent", stroke: "none"}), h("path", {d: linkIcons[destination.kind]})]) : null,
+        ]),
         ...(resizeTarget.value === node.id && !occupied(node.id) && !ancestors(node, nodeMap.value).some(n => n.locked)
           ? [[-1,-1], [1,-1], [1,1], [-1,1]].map(([sx, sy]) => {
             const r = 5/view.value.k;
@@ -1921,7 +1985,11 @@ createApp({
         onPointerdown: event => pressEndpoint(event,edge,end),
         onContextmenu: event => context(event,"edge",edge.id),
         onClick: event => event.stopPropagation()});
-      if (head.visible) return h("path", {...attrs, d: "M0 0L-1 -.5V.5Z"});
+      if (head.visible) return h("path", {...attrs, d: "M0 0L-1 -.5V.5Z"},
+        interactive && edge.animated && edge.appearance === "thick" ? [
+          h("animateTransform", {attributeName: "transform", type: "scale", additive: "sum",
+            values: "1;1.45;1", dur: "3s", repeatCount: "indefinite"}),
+        ] : undefined);
       return interactive ? h("rect", {...attrs, "data-editor-only": "", x:-1, y:-0.5, width:1, height:1}) : null;
     }
 
@@ -1932,11 +2000,15 @@ createApp({
         edge = {...edge};
         setEndpoint(edge, drag.end, preview.value?.attachment ?? {point: drag.endPosition});
       }
-      const {d, labelPosition, angle, stroke, ends, paint} = wireDrawing(edge, drawnNode);
+      const {d, from, to, labelPosition, angle, stroke, ends, paint} = wireDrawing(edge, drawnNode);
       const mine = selected.value?.id === edge.id && ["edge","endpoint"].includes(selected.value.kind);
-      const colors = peers.value.filter(p => p.mine ? mine : p.edge === edge.id).map(p => p.color);
-      if (batch.value?.edges.has(edge.id)) colors.push("#16a085");
-      return h("g", {key: edge.id, "data-edge": edge.id, tabindex: 0, role: "button", "aria-label": edge.label || "Vonal",
+      const local = mine || batch.value?.edges.has(edge.id);
+      const selectionColor = local ? (peers.value.find(peer => peer.mine)?.color ?? "#16a085") :
+        peers.value.find(peer => !peer.mine && peer.edge === edge.id)?.color;
+      const color = selectionColor ?? paint.color;
+      const animation = animatedWire(edge, {...paint, color}, from, to);
+      return h("g", {key: "edge/" + edge.id, "data-edge": edge.id, fill: "none", "stroke-linecap": "round",
+        tabindex: 0, role: "button", "aria-label": edge.label || "Vonal",
         onPointerdown: event => {
           if (event.button !== 0) return;
           event.preventDefault();
@@ -1974,17 +2046,16 @@ createApp({
         },
         onContextmenu: event => context(event, "edge", edge.id),
       }, [
-        ...colors.map((color, i) => h("path", {"data-editor-only": "", class: "selection-glow", color, d: stroke.d, "stroke-linecap": paint.linecap, "stroke-dasharray": paint.dash, stroke: color,
-          "stroke-width": paint.width + 5 * (colors.length-i) / view.value.k, "pointer-events": "none"})),
-        ...colors.flatMap(color => Object.values(ends).filter(head => head.visible).map(head =>
-          h("path", {"data-editor-only": "", class: "selection-glow", color, transform: head.transform, d: "M0 0L-1 -.5V.5Z", fill: color, stroke: color, "stroke-width": .35, "pointer-events": "none"}))),
         candidates.value.has("edge/" + edge.id) ? h("path", {"data-editor-only": "", d: stroke.d, class: "search-candidate",
           "stroke-width": paint.width + 9 / view.value.k}) : null,
-        h("path", stroke),
+        animation.gradient ? h("defs", [animation.gradient]) : null,
         h("path", {"data-editor-only": "", d, stroke: "transparent", "stroke-width": Math.max(paint.width + 10, 14 / view.value.k),
           "pointer-events": "stroke", class: "edge-hit"}),
-        renderEndpoint(edge,"source",ends.source,paint.color),
-        renderEndpoint(edge,"target",ends.target,paint.color),
+        h("g", {class: {"wire-selected": !!selectionColor}, color: selectionColor}, [
+          h("path", {...stroke, stroke: animation.color ?? color, "pointer-events": "none"}, animation.shaft ? [animation.shaft] : undefined),
+          renderEndpoint(edge, "source", ends.source, color),
+          renderEndpoint(edge, "target", ends.target, color),
+        ]),
         edge.label?.trim() ? h("text", {transform: "translate(" + labelPosition.x + " " + labelPosition.y + ") rotate(" + angle + ")",
           y: -paint.width / 2 - 6, "font-family": "system-ui, sans-serif", "font-size": 14, "text-anchor": "middle",
           stroke: "none", fill: paint.color, class: "edge-label"}, edge.label) : null,
@@ -2037,8 +2108,8 @@ createApp({
             h("path", {"data-editor-only": "", "pointer-events": "none", stroke: "#aab9cf", "stroke-width": 1,
               d: "M -8 0 H 8 M 0 -8 V 8"}),
             h("g", {"data-scene": ""}, [
-              ...orderedNodes.value.map(renderNode),
-              h("g", {fill: "none", "stroke-linecap": "round"}, sceneEdges.value.map(renderEdge)),
+              ...orderedNodes.value.flatMap((node, index) => [...wireLayers.value[index].map(renderEdge), renderNode(node)]),
+              ...wireLayers.value.at(-1).map(renderEdge),
               renderJunctionHandles(),
             ]),
             preview.value?.junction ? h("circle", {"data-editor-only": "", cx: preview.value.junction.x, cy: preview.value.junction.y,
@@ -2332,8 +2403,12 @@ createApp({
           ]),
           group("Vonaltípus", [optionPicker("Vonaltípus", lineTypes, edge.type ?? "straight",
             value => updateItem(edge, "type", value), lineTypeSymbol)]),
-          group("Megjelenés", [optionPicker("Megjelenés", lineAppearances, edge.appearance ?? "plain",
-            value => updateItem(edge, "appearance", value), lineAppearanceSymbol)]),
+          group("Megjelenés", [h("div", {class: "property-options line-appearance-options"}, [
+            optionPicker("Megjelenés", lineAppearances, edge.appearance ?? "plain",
+              value => updateItem(edge, "appearance", value), lineAppearanceSymbol),
+            iconToggle("Animáció bekapcsolása", !!edge.animated,
+              () => updateItem(edge, "animated", !edge.animated), icon("play")),
+          ])]),
           group("Végpontok", [h("div", {class: "property-options"}, [
             iconToggle("Nyíl a vonal elején", paint.startArrow, () => updateItem(edge, "startArrow", !paint.startArrow), icon("left")),
             iconToggle("Nyíl a vonal végén", paint.endArrow, () => updateItem(edge, "endArrow", !paint.endArrow), icon("right")),
@@ -2437,6 +2512,8 @@ createApp({
         group("Cím", [title, ...typography("title")]),
         group("Doboz", [
           optionPicker("Forma", shapes, node.shape, value => change("shape", value), shapeSymbol),
+          optionPicker("Animáció", boxAnimations, node.animation ?? "none",
+            value => change("animation", value), value => icon("box-" + value)),
           checkbox("Háttér megjelenítése", node.backgroundEnabled !== false, v => change("backgroundEnabled", v)),
           color("Háttér", "fill", node.backgroundEnabled === false),
           button(node.kind === "container" ? "Konténer feloldása" : "Konténer", () => toggleContainer(node), {symbol: "folder", disabled: locked}),

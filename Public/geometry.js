@@ -123,6 +123,12 @@ export function edgePaint(edge) {
     startArrow: edge.startArrow ?? false, endArrow: edge.endArrow ?? true};
 }
 
+export function wireGradientValues(from, to, {startArrow, endArrow}) {
+  const first = startArrow && !endArrow ? 1 : -1;
+  const directions = startArrow && endArrow ? [first, -first, first] : [first, -first];
+  return directions.map(direction => (direction * (to.x - from.x)) + " " + (direction * (to.y - from.y))).join(";");
+}
+
 export function edgeEndpoint(edge, end) {
   return end === "source" ? {node: edge.source, point: edge.sourcePoint} : edge.target;
 }

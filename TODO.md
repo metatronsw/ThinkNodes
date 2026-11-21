@@ -23,20 +23,29 @@ konténer:
 
 
 
-HIBÁK:
-- doboz formák kijelölés kerete csúnyán jelenik meg elnyújtott képarányra átméretezéskor. A csúcsok (háromszög, ötszög) közelében hozzáér a belső formához. Legyen arányosan nagyobb a kijelölő keret a formánál.
-
-CANVAS PROPERTY PANEL:
-- jobb alsó sarokból rakd át a bal felső sarokba
-- file feltöltése gomb most legyen az alsó, feltöltés után a file a gomb alatt jelenjen meg a canvas-on
-- a bejelentkezett felhasználók a bal alsó sarokba kerüljenek át 
-
 FILE TÖRLÉS:
 - törlés a munkalapról (alap beállítás)
 - törlés a mappából is
 
 FILE BROWSER:
+- a project mappából és azok almappáiból tud válogatni, drag & drop módszerrel, vagy file hozzá adása gomb-al
 
 
+SPACE INSERT: 
+- kereső ablak nyílik, rendszer parancsokat lehet megadni, vagy a könyvtárból / közös könyvtárból dokumentumokat - szimbólumokat beilleszteni
+-
 
+HIBA: 
+Snap bekapcsolásakor a vonalakra nem hat a grid point snap
+
+
+HIBA: 
+sorkizárás gomb nak csak ikon kell, szöveg nem. Váltáskor változzon az ikon, a módnak megfelelő ikont mutassa.
+Sorkizárás a property editor text box -on belül nem kell
+Lehet ez okozza a problémát! Gomb megnyomáskor egy pillanatra sorkizárt lesz, majd vissza vált.
+
+PROPERTY PANEL:
+Szűntess meg minden panelen minden feliratos gombot vagy kapcsolót, CSAK felirat nélküli ikonok gombok / kapcsolók legyenek. CSAK a szekció tetején lévő cimkék maradkanak meg szöveges elemek. 
+Ahol lehet rendezd át úgy a szekció box-okat hogy a lehető legtömörebb legyen és jó helykihasználtság 
+ahol lehet tedd egymás mellé a gombokat.
 

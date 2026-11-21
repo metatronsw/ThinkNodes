@@ -22,7 +22,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false) -> Response {
     let assets = scripts ? """
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
-        <script type="module" src="/editor.js?v=6"></script>
+        <script type="module" src="/editor.js?v=10"></script>
         """ : ""
     return response("""
         <!doctype html>
@@ -400,6 +400,33 @@ func needsTextTooltip(_ node: Idea) -> Bool {
     !node.text.isEmpty && (node.file?.type == .image || node.hideText == true || ideaDrawing(node).overflow)
 }
 
+private func animatedBox(_ contents: String, mode: BoxAnimation?) -> String {
+    let duration: String
+    let times: String
+    let tracks: [(type: String, values: String)]
+    switch mode ?? .none {
+    case .none: return contents
+    case .pulse:
+        (duration, times, tracks) = ("2.8s", "0;.5;1", [("scale", "1;1.09;1")])
+    case .blink:
+        (duration, times, tracks) = ("2.4s", "0;.5;1", [("opacity", "1;.28;1")])
+    case .rock:
+        (duration, times, tracks) = ("4.8s", "0;.08;.19;.3;.4;.49;1", [("rotate", "0;8;-6;3;-1;0;0")])
+    case .hop:
+        (duration, times, tracks) = ("5.8s", "0;.06;.15;.24;.32;.4;1", [
+            ("translate", "0 0;0 1;0 -17;0 0;0 -4;0 0;0 0"),
+            ("scale", "1 1;1.03 .95;1.035 1.06;1.045 .96;.99 1.02;1 1;1 1"),
+        ])
+    }
+    let splines = Array(repeating: ".33 0 .67 1", count: times.split(separator: ";").count - 1).joined(separator: ";")
+    let timing = "dur=\"\(duration)\" repeatCount=\"indefinite\" calcMode=\"spline\" keyTimes=\"\(times)\" keySplines=\"\(splines)\""
+    let animations = tracks.map { type, values in
+        if type == "opacity" { return "<animate attributeName=\"opacity\" values=\"\(values)\" \(timing)/>" }
+        return "<animateTransform attributeName=\"transform\" type=\"\(type)\" additive=\"sum\" values=\"\(values)\" \(timing)/>"
+    }.joined()
+    return "<g data-box-animation=\"\(mode?.rawValue ?? "")\">\(animations)\(contents)</g>"
+}
+
 private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
     let node = drawing.node
     if node.kind == .connectionPoint {
@@ -484,13 +511,48 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
             <text class="box-link"\(fit) x="\(number(x * inset - 19))" y="\(number(y * inset - 5))" text-anchor="end" font-size="11" fill="\(node.textColor)">\(escaped(node.link ?? ""))</text><svg x="\(number(x * inset - 15))" y="\(number(y * inset - 16))" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="\(node.textColor)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="\(link.iconPath(siteHost: siteHost))"/></svg>
             """
     } ?? ""
+    let contents = """
+        \(geometry)
+        <text font-family="system-ui, sans-serif" pointer-events="none">\(spans)</text>
+        \(symbol)
+        """
     return """
         <g aria-label="\(escaped(node.title))" transform="translate(\(number(node.position.x)) \(number(node.position.y)))">
-          \(geometry)
-          <text font-family="system-ui, sans-serif" pointer-events="none">\(spans)</text>
-          \(symbol)
+          \(animatedBox(contents, mode: node.animation))
         </g>
         """
+}
+
+private func wireAnimation(_ edge: Connection, from: Point, to: Point) -> (stroke: String, shaft: String, gradient: String) {
+    let color = escaped(edge.strokeColor)
+    guard edge.animated == true else { return (color, "", "") }
+    let width = edge.strokeWidth
+    if edge.appearance == .thick {
+        let values = [width, width * 1.45, width].map(number).joined(separator: ";")
+        return (color, "<animate attributeName=\"stroke-width\" values=\"\(values)\" dur=\"3s\" repeatCount=\"indefinite\"/>", "")
+    }
+    let reverse = edge.hasStartArrow && !edge.hasEndArrow
+    let roundTrip = edge.hasStartArrow && edge.hasEndArrow
+    if edge.appearance == .dashed || edge.appearance == .dotted {
+        let shift = width * (edge.appearance == .dotted ? 8 : 6) * (reverse ? 1 : -1)
+        let values = "0;" + number(shift) + (roundTrip ? ";0" : "")
+        return (color, "<animate attributeName=\"stroke-dashoffset\" values=\"\(values)\" dur=\"\(roundTrip ? "3.2s" : "1.6s")\" repeatCount=\"indefinite\"/>", "")
+    }
+    let dx = to.x - from.x, dy = to.y - from.y
+    guard dx != 0 || dy != 0 else { return (color, "", "") }
+    let id = "wire-gradient-" + edge.id
+    let first: Double = reverse ? 1 : -1
+    let directions = roundTrip ? [first, -first, first] : [first, -first]
+    let values = directions.map { "\(number($0 * dx)) \(number($0 * dy))" }.joined(separator: ";")
+    let gradient = """
+        <linearGradient id="\(id)" color="\(color)" gradientUnits="userSpaceOnUse" x1="\(number(from.x))" y1="\(number(from.y))" x2="\(number(to.x))" y2="\(number(to.y))">
+          <stop offset="0" stop-color="currentColor"/><stop offset=".25" stop-color="currentColor"/>
+          <stop offset=".5" stop-color="currentColor" stop-opacity=".5"/>
+          <stop offset=".75" stop-color="currentColor"/><stop offset="1" stop-color="currentColor"/>
+          <animateTransform attributeName="gradientTransform" type="translate" values="\(values)" dur="\(roundTrip ? "12s" : "6s")" repeatCount="indefinite"/>
+        </linearGradient>
+        """
+    return ("url(#" + id + ")", "", gradient)
 }
 
 func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = nil, assetBase: String? = nil) -> String {
@@ -501,15 +563,30 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
     var halfHeight = 240.0
     for drawing in drawings {
         let node = drawing.node
-        halfWidth = max(halfWidth, abs(node.position.x) + max(node.width/2, drawing.extentX) + 40)
+        var extentX = max(node.width/2, drawing.extentX)
+        var extentY = max(node.height/2, drawing.extentY)
+        if node.file == nil && node.kind != .connectionPoint {
+            switch node.animation ?? .none {
+            case .pulse: (extentX, extentY) = (extentX * 1.09, extentY * 1.09)
+            case .rock: (extentX, extentY) = (extentX + extentY * 0.14, extentY + extentX * 0.14)
+            case .hop: (extentX, extentY) = (extentX * 1.045, extentY * 1.06 + 17)
+            case .none, .blink: break
+            }
+        }
+        halfWidth = max(halfWidth, abs(node.position.x) + extentX + 40)
         if node.kind == .connectionPoint && !node.title.isEmpty {
             let labelEnd = node.position.x + node.width / 2 + 4 + textWidth(node.title, size: 14)
             halfWidth = max(halfWidth, labelEnd + 40)
         }
-        halfHeight = max(halfHeight, abs(node.position.y) + max(node.height/2, drawing.extentY) + 40)
+        halfHeight = max(halfHeight, abs(node.position.y) + extentY + 40)
     }
+    let ordered = drawings.sorted { a, b in
+        if (a.node.kind == .container) != (b.node.kind == .container) { return a.node.kind == .container }
+        return a.node.width * a.node.height > b.node.width * b.node.height
+    }
+    let nodeLayers = Dictionary(uniqueKeysWithValues: ordered.enumerated().map { ($0.element.node.id, $0.offset) })
     var definitions: [String] = []
-    let edges = board.edges.compactMap { edge -> String? in
+    let edges = board.edges.compactMap { edge -> (layer: Int, markup: String)? in
         let sourceNode = edge.source.flatMap { nodes[$0] }
         let targetNode = edge.target.node.flatMap { nodes[$0] }
         guard let source = sourceNode?.position ?? edge.sourcePoint,
@@ -524,11 +601,13 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
             halfHeight = max(halfHeight, abs(point.y) + 40)
         }
         let color = escaped(edge.strokeColor)
+        let motion = wireAnimation(edge, from: beginning, to: ending)
+        if !motion.gradient.isEmpty { definitions.append(motion.gradient) }
         let marker = "arrow-" + edge.id
         var markers = ""
         if edge.hasStartArrow || edge.hasEndArrow {
             definitions.append("""
-                <marker id="\(marker)" markerWidth="6.75" markerHeight="6.75" viewBox="0 0 10 10" refX="9" refY="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="\(color)"/></marker>
+                <marker id="\(marker)" color="\(color)" markerWidth="6.75" markerHeight="6.75" viewBox="0 0 10 10" refX="9" refY="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/></marker>
                 """)
         }
         if edge.hasStartArrow && sourceNode != nil { markers += " marker-start=\"url(#\(marker))\"" }
@@ -549,16 +628,23 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
         var heads = ""
         func arrow(_ end: String, tip: Point, toward: Point) -> String {
             let angle = atan2(tip.y-toward.y, tip.x-toward.x)*180/Double.pi
+            let animation = edge.animated == true && edge.appearance == .thick
+                ? "><animateTransform attributeName=\"transform\" type=\"scale\" additive=\"sum\" values=\"1;1.45;1\" dur=\"3s\" repeatCount=\"indefinite\"/></path>"
+                : "/>"
             return """
-                <path data-arrow-end="\(end)" d="M0 0L-1 -.5V.5Z" transform="translate(\(number(tip.x)) \(number(tip.y))) rotate(\(number(angle))) scale(\(number(edge.strokeWidth*6.75)))" fill="\(color)" stroke="none" pointer-events="none"/>
+                <path data-arrow-end="\(end)" d="M0 0L-1 -.5V.5Z" transform="translate(\(number(tip.x)) \(number(tip.y))) rotate(\(number(angle))) scale(\(number(edge.strokeWidth*6.75)))" fill="\(color)" stroke="none" pointer-events="none"\(animation)
                 """
         }
         if edge.hasStartArrow && sourceNode == nil { heads += arrow("source", tip: beginning, toward: points.first ?? ending) }
         if edge.hasEndArrow && targetNode == nil { heads += arrow("target", tip: ending, toward: points.last ?? beginning) }
         let lineWidth = edge.strokeWidth * (edge.appearance == .dotted ? 2 : 1)
-        let stroke = "<path\(wire) d=\"\(drawing)\" stroke=\"\(color)\" stroke-width=\"\(number(lineWidth))\"\(markers)/>"
-        let path = heads.isEmpty ? stroke : "<g data-free-arrows=\"\">\(heads)\(stroke)</g>"
-        guard let label = edge.label, !label.trimmingCharacters(in: .whitespaces).isEmpty else { return path }
+        let shaft = motion.shaft.isEmpty ? "/>" : ">\(motion.shaft)</path>"
+        let stroke = "<path\(wire) d=\"\(drawing)\" stroke=\"\(motion.stroke)\" stroke-width=\"\(number(lineWidth))\"\(markers)\(shaft)"
+        let sourceLayer = edge.source.flatMap { nodeLayers[$0] } ?? ordered.count
+        let targetLayer = edge.target.node.flatMap { nodeLayers[$0] } ?? ordered.count
+        let layer = min(sourceLayer, targetLayer)
+        let path = "<g data-wire-group=\"\" fill=\"none\" stroke-linecap=\"round\">\(heads)\(stroke)</g>"
+        guard let label = edge.label, !label.trimmingCharacters(in: .whitespaces).isEmpty else { return (layer, path) }
         let vertices = [beginning] + points + [ending]
         let samples: [Point] = command == "L" ? vertices : (0...32).map { i in
             let t = Double(i) / 32, u = 1 - t
@@ -583,10 +669,10 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
         let radians = angle * Double.pi / 180
         halfWidth = max(halfWidth, abs(center.x) + abs(cos(radians)) * labelRadius + 28)
         halfHeight = max(halfHeight, abs(center.y) + abs(sin(radians)) * labelRadius + 28)
-        return path + """
+        return (layer, path + """
             <text transform="translate(\(number(center.x)) \(number(center.y))) rotate(\(number(angle)))" y="\(number(-edge.strokeWidth / 2 - 6))" font-family="system-ui, sans-serif" font-size="14" text-anchor="middle" stroke="none" fill="\(color)">\(escaped(label))</text>
-            """
-    }.joined(separator: "\n")
+            """)
+    }
     func render(_ drawing: IdeaDrawing) -> String {
         let node = drawing.node
         let graphic: String
@@ -640,11 +726,13 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
         let geometry = "data-x=\"\(node.position.x)\" data-y=\"\(node.position.y)\" data-width=\"\(node.width)\" data-height=\"\(node.height)\" data-shape=\"\(node.kind == .connectionPoint ? "ellipse" : node.shape.rawValue)\" data-parent=\"\(node.parent ?? "")\""
         return "<\(tag) id=\"object-\(node.id)\" data-node=\"\(node.id)\" \(geometry)\(linked) aria-label=\"\(escaped(node.title))\">\(graphic)</\(tag)>"
     }
-    let ordered = drawings.sorted { a, b in
-        if (a.node.kind == .container) != (b.node.kind == .container) { return a.node.kind == .container }
-        return a.node.width * a.node.height > b.node.width * b.node.height
+    let wiresByLayer = Dictionary(grouping: edges, by: \.layer)
+    var scene: [String] = []
+    for (index, drawing) in ordered.enumerated() {
+        scene.append(contentsOf: wiresByLayer[index, default: []].map(\.markup))
+        scene.append(render(drawing))
     }
-    let renderedNodes = ordered.map(render).joined(separator: "\n")
+    scene.append(contentsOf: wiresByLayer[ordered.count, default: []].map(\.markup))
     let width = number(halfWidth * 2)
     let height = number(halfHeight * 2)
     return """
@@ -652,10 +740,7 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
           \(noteBase == nil ? "<title>\(escaped(board.title))</title>" : "")
           <defs>\(definitions.joined())</defs>
           <rect x="\(number(-halfWidth))" y="\(number(-halfHeight))" width="\(width)" height="\(height)" fill="\(escaped(board.backgroundColor))"/>
-          \(renderedNodes)
-          <g fill="none" stroke-linecap="round">
-            \(edges)
-          </g>
+          \(scene.joined(separator: "\n"))
         </svg>
         """
 }
