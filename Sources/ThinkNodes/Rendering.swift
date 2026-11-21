@@ -22,7 +22,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false) -> Response {
     let assets = scripts ? """
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
-        <script type="module" src="/editor.js?v=11"></script>
+        <script type="module" src="/editor.js?v=12"></script>
         """ : ""
     return response("""
         <!doctype html>
@@ -443,11 +443,13 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
     let height = node.height
     let x = width / 2
     let y = height / 2
-    let strokeWidth = node.kind == .container && node.locked == true ? "3.2" : "1.6"
+    let locked = node.kind == .container && node.locked == true
+    let strokeWidth = locked ? "6.4" : "1.6"
+    let lockedOutline = locked ? " data-locked-outline=\"\"" : ""
     let dash = node.link.flatMap(WorksheetLink.init) == nil ? "" : " stroke-dasharray=\"7 4\""
     let appearance = node.backgroundEnabled == false
         ? "fill=\"none\" stroke=\"none\" pointer-events=\"fill\""
-        : "fill=\"\(escaped(node.fill))\" stroke=\"\(escaped(node.border))\" stroke-width=\"\(strokeWidth)\"\(dash)"
+        : "fill=\"\(escaped(node.fill))\" stroke=\"\(escaped(node.border))\" stroke-width=\"\(strokeWidth)\"\(lockedOutline)\(dash)"
     let geometry: String
     switch node.shape {
     case .rectangle, .rounded:
@@ -510,9 +512,9 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
     let symbol = node.link.flatMap(WorksheetLink.init).map { link in
         let inset = node.shape.labelRatios.link
         let linkWidth = max(12, node.width * inset - 22)
-        let fit = textWidth(node.link ?? "", size: 11) > linkWidth ? " textLength=\"\(number(linkWidth))\" lengthAdjust=\"spacingAndGlyphs\"" : ""
+        let fit = textWidth(node.link ?? "", size: 16) > linkWidth ? " textLength=\"\(number(linkWidth))\" lengthAdjust=\"spacingAndGlyphs\"" : ""
         return """
-            <text class="box-link"\(fit) x="\(number(x * inset - 19))" y="\(number(y * inset - 5))" text-anchor="end" font-size="11" fill="\(node.textColor)">\(escaped(node.link ?? ""))</text><svg x="\(number(x * inset - 15))" y="\(number(y * inset - 16))" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="\(node.textColor)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="\(link.iconPath(siteHost: siteHost))"/></svg>
+            <text class="box-link"\(fit) x="\(number(x * inset - 19))" y="\(number(y * inset - 5))" text-anchor="end" font-size="16" fill="\(node.textColor)">\(escaped(node.link ?? ""))</text><svg x="\(number(x * inset - 15))" y="\(number(y * inset - 16))" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="\(node.textColor)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="\(link.iconPath(siteHost: siteHost))"/></svg>
             """
     } ?? ""
     let contents = """

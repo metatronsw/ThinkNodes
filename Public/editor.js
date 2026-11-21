@@ -143,16 +143,9 @@ function propertyTools(...controls) {
   return h("div", {class: "property-options property-tools"}, controls);
 }
 
-function objectTextArea(value, change) {
-  return h("textarea", {"aria-label": "Text", value, maxlength: 30000, rows: 4, onInput: event => change(event.target.value)});
-}
-
-function textEditor(value, change, justified, toggleJustification) {
-  return [
-    h("textarea", {"aria-label": "Text", class: {"justified-text": justified}, value, maxlength: 30000, rows: 7,
-      onInput: event => change(event.target.value)}),
-    button("Sorkizárás", () => toggleJustification(!justified), {symbol: "justify", "aria-pressed": !!justified}),
-  ];
+function textArea(value, change, rows = 4, justified = false) {
+  return h("textarea", {"aria-label": "Text", class: justified ? "justified-text" : undefined,
+    value, maxlength: 30000, rows, onInput: event => change(event.target.value)});
 }
 
 const FormattedText = {
@@ -209,8 +202,9 @@ function shape(node, linked, dropTarget = false) {
     stroke: "#08796c", "stroke-width": 2.5, "stroke-dasharray": "0 8", "stroke-linecap": "round",
     "vector-effect": "non-scaling-stroke"});
   if (node.backgroundEnabled === false) return h(tag, {...geometry, fill: "none", stroke: "none", "pointer-events": "fill"});
-  const style = {fill: node.fill, stroke: automaticBorder(node.fill), "stroke-width": node.kind === "container" && node.locked ? 3.2 : 1.6,
-    "stroke-dasharray": linked ? "7 4" : undefined};
+  const locked = node.kind === "container" && node.locked;
+  const style = {fill: node.fill, stroke: automaticBorder(node.fill), "stroke-width": locked ? 6.4 : 1.6,
+    "data-locked-outline": locked ? "" : undefined, "stroke-dasharray": linked ? "7 4" : undefined};
   return h(tag, {...style, ...geometry});
 }
 
@@ -430,6 +424,7 @@ createApp({
     const canvasPointer = ref(null);
     const view = shallowRef(d3.zoomIdentity);
     const zoomScale = computed(() => view.value.k);
+    const panning = ref(false);
     const size = ref({width: 0, height: 0});
     const gesture = ref(null);
     const preview = ref(null);
@@ -730,7 +725,12 @@ createApp({
             && !event.target.closest("[data-node], [data-edge]");
         })
         .on("start", event => { menu.value = null; if (event.sourceEvent) lastClick = null; })
-        .on("zoom", event => { view.value = event.transform; });
+        .on("zoom", event => {
+          const type = event.sourceEvent?.type;
+          if (type === "mousemove" || type === "pointermove" || type === "touchmove") panning.value = true;
+          view.value = event.transform;
+        })
+        .on("end", () => { panning.value = false; });
       d3.select(canvas.value).call(zoom).on("dblclick.zoom", null);
       resizeObserver = new ResizeObserver(measure);
       resizeObserver.observe(canvas.value);
@@ -1056,9 +1056,10 @@ createApp({
       if (inspector.value?.kind === "node" && !nodeMap.value.has(inspector.value.id)) inspectNothing();
     }
 
-    function snap(point, exclude) {
+    function snap(point, exclude, releaseFrom) {
+      const padding = 8 / zoomScale.value;
       const node = orderedNodes.value.findLast(node => node.id !== exclude &&
-        shapeDistance(drawnNode(node.id), point, 8/view.value.k) <= 1);
+        shapeDistance(drawnNode(node.id), point, node.id === releaseFrom ? 0 : padding) <= 1);
       if (node) return {node: node.id};
     }
 
@@ -1205,21 +1206,23 @@ createApp({
 
     function pressEndpoint(event, edge, end, fromShaft = false) {
       finishField();
-      if ((event.button !== 0 && !(event.ctrlKey && event.button === 2)) || reconnect.value) return;
+      if ((event.button !== 0 && !(event.ctrlKey && event.button === 2)) || reconnect.value || !online.value) return;
       const original = edgeEndpoint(edge, end);
       const geometry = wireGeometry(edge);
-      const position = fromShaft ? world(event) : end === "source" ? geometry.from : geometry.to;
+      const initial = world(event);
+      const position = fromShaft ? initial : end === "source" ? geometry.from : geometry.to;
       event.preventDefault();
       event.stopPropagation();
       menu.value = null;
+      event.currentTarget.focus({preventScroll: true});
       selectNode(null, edge.id);
       selected.value = {kind: "endpoint", id: edge.id, end};
       gesture.value = {type: "endpoint", original: {...original}, pointer: event.pointerId, edgeID: edge.id, end,
-        position: {...position}, initial: world(event), screen: [event.clientX, event.clientY], moved: false};
-      event.currentTarget.setPointerCapture(event.pointerId);
+        position: {...position}, initial, screen: [event.clientX, event.clientY], moved: false};
+      canvas.value.setPointerCapture(event.pointerId);
     }
 
-    function endpointAt(point, edge, end, commit = false) {
+    function endpointAt(point, edge, end, commit = false, releaseFrom) {
       const opposite = edgeEndpoint(edge, otherEnd(end)).node;
       const free = nearbyEnd(point, edge);
       if (free) {
@@ -1234,7 +1237,7 @@ createApp({
         setEndpoint(free.edge, free.end, {node: node.id});
         return {node: node.id, createdJunction: true};
       }
-      const target = snap(point, opposite);
+      const target = snap(point, opposite, releaseFrom);
       if (target && opposite && board.value.edges.some(candidate => candidate.id !== edge.id &&
           edgeEndpoint(candidate, end).node === target.node && edgeEndpoint(candidate, otherEnd(end)).node === opposite)) {
         return {point, blocked: true};
@@ -1337,7 +1340,7 @@ createApp({
           } else {
             const edge = edgeMap.value.get(operation.edgeID);
             operation.endPosition = position;
-            const endpoint = endpointAt(position, edge, operation.end);
+            const endpoint = endpointAt(position, edge, operation.end, false, operation.original.node);
             preview.value = {target: endpoint.node, attachment: endpoint, junction: endpoint.junction};
           }
           return;
@@ -1425,7 +1428,7 @@ createApp({
       } else if (operation.type === "endpoint" && operation.moved) {
         const edge = edgeMap.value.get(operation.edgeID);
         const endpoint = cancel ? operation.original
-          : endpointAt(operation.endPosition, edge, operation.end, true);
+          : endpointAt(operation.endPosition, edge, operation.end, true, operation.original.node);
         if (endpoint.blocked) problem.value = "Ezen az útvonalon már van kábel.";
         else setEndpoint(edge, operation.end, endpoint);
         if (!cancel && !endpoint.blocked) {
@@ -1574,6 +1577,7 @@ createApp({
           selectMembers(group);
           return;
         }
+        if (hit?.dataset?.endpoint) return;
         if (!event.altKey && !event.ctrlKey && batch.value && (batch.value.nodes.has(hit?.dataset?.node) || batch.value.edges.has(hit?.dataset?.edge))) {
           const members = new Set([...batch.value.nodes].flatMap(id => moveGroup(nodeMap.value.get(id)).map(n => n.id)));
           const hitEdge = edgeMap.value.get(hit.dataset.edge);
@@ -1738,7 +1742,7 @@ createApp({
       alt.value = event.altKey;
       shift.value = event.shiftKey;
     }
-    function clearModifiers() { ctrl.value = false; alt.value = false; shift.value = false; }
+    function clearModifiers() { ctrl.value = false; alt.value = false; shift.value = false; panning.value = false; }
 
     function keyboard(event) {
       modifiers(event);
@@ -1950,7 +1954,7 @@ createApp({
           layout.lines.map(line => h("tspan", {
             class: destination && !line.runs ? "link-label" : undefined,
             "data-body-row": line.section === "textStyle" ? "" : undefined,
-            "pointer-events": "visiblePainted", cursor: alt.value && ctrl.value ? "grab" : undefined,
+            "pointer-events": "visiblePainted", cursor: alt.value && ctrl.value ? "text" : undefined,
             onPointerdown: e => {
               if (!e.ctrlKey || !e.altKey || ![0,2].includes(e.button) || occupied(node.id) || ancestors(node,nodeMap.value).some(n => n.locked)) return;
               let bounds;
@@ -2025,8 +2029,8 @@ createApp({
             onPointerdown: e => { if (!e.altKey) e.stopPropagation(); }, onClick: e => e.stopPropagation(),
             onDblclick: e => { if (e.altKey) return; e.preventDefault(); e.stopPropagation(); followBoxLink(destination); },
             onKeydown: e => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); followBoxLink(destination); } }},
-            [h("text", {class: "box-link", x: -5, y: 19, fill: node.textColor, stroke: "none", "text-anchor": "end", "font-size": 18,
-              textLength: node.link.length * 11 > (drawn.width*inset-22)*24/14 ? Math.max(12,drawn.width*inset-22)*24/14 : undefined, lengthAdjust: "spacingAndGlyphs"}, node.link), h("rect", {width: 24, height: 24, fill: "transparent", stroke: "none"}), h("path", {d: linkIcons[destination.kind]})]) : null,
+            [h("text", {class: "box-link", x: -5, y: 19, fill: node.textColor, stroke: "none", "text-anchor": "end", "font-size": 28,
+              textLength: node.link.length * 17 > (drawn.width*inset-22)*24/14 ? Math.max(12,drawn.width*inset-22)*24/14 : undefined, lengthAdjust: "spacingAndGlyphs"}, node.link), h("rect", {width: 24, height: 24, fill: "transparent", stroke: "none"}), h("path", {d: linkIcons[destination.kind]})]) : null,
         ]),
         ...(resizeTarget.value === node.id && !occupied(node.id) && !ancestors(node, nodeMap.value).some(n => n.locked)
           ? [[-1,-1], [1,-1], [1,1], [-1,1]].map(([sx, sy]) => {
@@ -2044,31 +2048,33 @@ createApp({
         const drawn = drawnNode(node.id);
         return h("circle", {key: node.id, "data-node": node.id,
           cx: drawn.position.x, cy: drawn.position.y, r: drawn.width/2, fill: "transparent",
-          onPointerdown: event => pressNode(event,node),
+          class: "junction-handle", onPointerdown: event => pressNode(event,node),
           onContextmenu: event => context(event,"node",node.id),
           onDblclick: event => { event.stopPropagation(); openProperties("node",node.id,true); }});
       });
       return h("g", {"data-editor-only": ""}, handles);
     }
 
-    function renderEndpoint(edge, end, head, color, interactive = true) {
-      const attached = Boolean(edgeEndpoint(edge,end).node);
-      const attrs = {key: edge.id + end, transform: head.transform, stroke: "none",
-        fill: head.visible ? color : "transparent", "pointer-events": interactive ? "all" : "none"};
-      if (interactive) Object.assign(attrs, {"data-edge": edge.id, "data-endpoint": end,
-        class: attached ? "detach-endpoint" : "edge-endpoint",
-        onPointerdown: event => pressEndpoint(event,edge,end),
-        onContextmenu: event => context(event,"edge",edge.id),
-        onClick: event => event.stopPropagation()});
-      if (head.visible) return h("path", {...attrs, d: "M0 0L-1 -.5V.5Z"},
-        interactive && edge.animated && edge.appearance === "thick" ? [
-          h("animateTransform", {attributeName: "transform", type: "scale", additive: "sum",
-            values: "1;1.45;1", dur: "3s", repeatCount: "indefinite"}),
-        ] : undefined);
-      return interactive ? h("rect", {...attrs, "data-editor-only": "", x:-1, y:-0.5, width:1, height:1}) : null;
+    function renderArrow(head, color, animated = false) {
+      if (!head.visible) return null;
+      return h("path", {transform: head.transform, stroke: "none", fill: color, "pointer-events": "none", d: "M0 0L-1 -.5V.5Z"},
+        animated ? [h("animateTransform", {attributeName: "transform", type: "scale", additive: "sum",
+          values: "1;1.45;1", dur: "3s", repeatCount: "indefinite"})] : undefined);
     }
 
-    function renderEdge(edge) {
+    function endpointHandle(edge, end, point) {
+      return h("circle", {key: end + "/" + edge.id, transform: "translate(" + point.x + " " + point.y + ")",
+        r: 10 / zoomScale.value, fill: "transparent", tabindex: -1, "pointer-events": alt.value ? "none" : "all",
+        "data-edge": edge.id, "data-endpoint": end, class: edgeEndpoint(edge, end).node ? "detach-endpoint" : "edge-endpoint",
+        onPointerdown: event => pressEndpoint(event, edge, end),
+        onContextmenu: event => context(event, "edge", edge.id),
+        onClick: event => event.stopPropagation(),
+        onDblclick: event => { event.stopPropagation(); openProperties("edge", edge.id, true); },
+      });
+    }
+
+    function renderEdge(original, handles, activeHandles) {
+      let edge = original;
       const drag = gesture.value;
       if (drag?.type === "batch" && batch.value?.edges.has(edge.id)) edge = moveBatchEdge(edge,drag);
       if (drag?.edgeID === edge.id && drag.endPosition) {
@@ -2080,6 +2086,9 @@ createApp({
       const {stroke, ends, paint} = cachedWireDrawing(edge, geometry);
       const label = edge.label?.trim() ? geometry.labelPosition : null;
       const mine = selected.value?.id === edge.id && ["edge","endpoint"].includes(selected.value.kind);
+      const targets = mine ? activeHandles : handles;
+      targets.push(endpointHandle(original, "source", from), endpointHandle(original, "target", to));
+      const animatedArrows = edge.animated && edge.appearance === "thick";
       const local = mine || batch.value?.edges.has(edge.id);
       const selectionColor = local ? (peers.value.find(peer => peer.mine)?.color ?? "#16a085") :
         peers.value.find(peer => !peer.mine && peer.edge === edge.id)?.color;
@@ -2099,10 +2108,19 @@ createApp({
             const p = pathElement.getPointAtLength(t);
             return Math.hypot(p.x-point.x, p.y-point.y);
           };
-          let nearest = 0;
-          for (let i = 1; i <= 16; i++) if (distance(length*i/16) < distance(nearest)) nearest = length*i/16;
-          for (let step = length/32; step > .1/view.value.k; step /= 2) {
-            for (const t of [Math.max(0,nearest-step), Math.min(length,nearest+step)]) if (distance(t) < distance(nearest)) nearest = t;
+          let nearest = 0, best = distance(0);
+          function probe(t) {
+            const candidate = distance(t);
+            if (candidate < best) {
+              nearest = t;
+              best = candidate;
+            }
+          }
+          for (let i = 1; i <= 16; i++) probe(length * i / 16);
+          for (let step = length/32; step > .1/zoomScale.value; step /= 2) {
+            const left = Math.max(0, nearest-step), right = Math.min(length, nearest+step);
+            probe(left);
+            probe(right);
           }
           if (!event.ctrlKey) {
             if (nearest <= length/3 || nearest >= 2*length/3) pressEndpoint(event,edge,nearest <= length/3 ? "source" : "target", true);
@@ -2131,8 +2149,8 @@ createApp({
           "pointer-events": "stroke", class: "edge-hit"}),
         h("g", {class: {"wire-selected": !!selectionColor}, color: selectionColor}, [
           h("path", {...stroke, stroke: animation.color ?? color, "pointer-events": "none"}, animation.shaft ? [animation.shaft] : undefined),
-          renderEndpoint(edge, "source", ends.source, color),
-          renderEndpoint(edge, "target", ends.target, color),
+          renderArrow(ends.source, color, animatedArrows),
+          renderArrow(ends.target, color, animatedArrows),
         ]),
         label ? h("text", {transform: "translate(" + label.x + " " + label.y + ") rotate(" + geometry.angle + ")",
           y: -paint.width / 2 - 6, "font-family": "system-ui, sans-serif", "font-size": 14, "text-anchor": "middle",
@@ -2143,16 +2161,29 @@ createApp({
     const CanvasScene = {
       setup: () => () => {
         const layers = wireLayers.value;
-        const children = [];
+        const children = [], handles = [], activeHandles = [];
+        const addEdge = edge => children.push(renderEdge(edge, handles, activeHandles));
         orderedNodes.value.forEach((node, index) => {
-          for (const edge of layers[index]) children.push(renderEdge(edge));
+          layers[index].forEach(addEdge);
           children.push(renderNode(node));
         });
-        for (const edge of layers.at(-1)) children.push(renderEdge(edge));
+        layers.at(-1).forEach(addEdge);
+        // Keep the clickable endpoints above the boxes without changing the wire's paint order.
+        children.push(h("g", {"data-editor-only": "", "data-endpoint-handles": ""}, [...handles, ...activeHandles]));
         children.push(renderJunctionHandles());
         return h("g", {"data-scene": ""}, children);
       },
     };
+
+    function dragCursor() {
+      const active = gesture.value;
+      if (active?.type === "resize") return active.sx === active.sy ? "nwse-resize" : "nesw-resize";
+      if (active?.type === "rectangle") return "crosshair";
+      if (active?.moved && !active.locked && !active.waiting) {
+        return ["move", "batch", "clone", "text", "split"].includes(active.type) ? "move" : "grabbing";
+      }
+      return panning.value ? "grabbing" : undefined;
+    }
 
     function renderCanvas() {
       const [centerX, centerY] = center();
@@ -2161,7 +2192,8 @@ createApp({
       const cable = preview.value?.edge;
       const shown = cable ? wireDrawing({...cable, color: "#4168e9"}, wireGeometry(cable)) : null;
       return h("div", {class: "canvas-area"}, [
-        h("svg", {ref: canvas, class: ctrl.value ? "editor-canvas ctrl-held" : "editor-canvas", "aria-label": "Ötletvászon",
+        h("svg", {ref: canvas, class: ["editor-canvas", {"ctrl-held": ctrl.value, "alt-held": alt.value}],
+          "data-drag-cursor": dragCursor(), "aria-label": "Ötletvászon",
           onContextmenu: event => context(event),
           onClick: event => {
             // D3 suppresses the click after a pan.
@@ -2203,7 +2235,7 @@ createApp({
             preview.value?.junction ? h("circle", {"data-editor-only": "", cx: preview.value.junction.x, cy: preview.value.junction.y,
               r: 9 / view.value.k, stroke: "#078469", fill: "#b9f3e1", "stroke-width": 2 / view.value.k, "pointer-events": "none"}) : null,
             shown ? h("g", {"pointer-events": "none"}, [h("path", shown.stroke),
-              ...["source","target"].map(end => renderEndpoint(cable,end,shown.ends[end],shown.paint.color,false))]) : null,
+              renderArrow(shown.ends.source, shown.paint.color), renderArrow(shown.ends.target, shown.paint.color)]) : null,
             gesture.value?.type === "rectangle" ? h("rect", {...rectangle(gesture.value.initial,gesture.value.point),
               fill: "#4168e922", stroke: "#4168e9", "vector-effect": "non-scaling-stroke", "pointer-events": "none"}) : null,
             mouse ? h("g", {"data-mouse-layer": ""}) : null,
@@ -2457,8 +2489,7 @@ createApp({
         h("input", {ref: attachmentInput, type: "file", multiple: true, hidden: true,
           onChange: uploadAttachments}),
         group("Cím", [input(sheet.title, value => updateItem(sheet, "title", value), {"aria-label": "Cím", maxlength: 120})]),
-        group("Szöveg", textEditor(sheet.text ?? "", value => updateItem(sheet, "text", value), sheet.textJustified,
-          value => updateItem(sheet, "textJustified", value))),
+        group("Szöveg", [textArea(sheet.text ?? "", value => updateItem(sheet, "text", value), 7, sheet.textJustified)]),
         group("Háttér", [colorPicker("Munkalap háttérszíne", sheet.background ?? paper,
           value => updateItem(sheet, "background", value), "worksheet/background")]),
         button(uploading.value ? "Feltöltés…" : "Fájl feltöltése", event => {
@@ -2510,7 +2541,7 @@ createApp({
       if (!node || held.value !== node.id || occupied(node.id)) return null;
       const change = (key, value) => updateItem(node, key, value);
       const title = input(node.title, value => change("title", value), {"aria-label": "Címke", "data-object-label": "", maxlength: 120});
-      const bodyEditor = () => objectTextArea(node.text, value => change("text", value));
+      const bodyEditor = () => textArea(node.text, value => change("text", value));
       const justify = () => {
         const active = !!node.textStyle?.justified;
         const alignment = node.file ? "left" : node.textStyle?.alignment ?? node.alignment;

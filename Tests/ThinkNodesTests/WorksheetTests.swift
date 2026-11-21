@@ -399,7 +399,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
 
 @Test func containerStylesAndJunctionsSurviveRoundTrip() throws {
     let origin = Point(x: 0, y: 0)
-    var container = Idea(id: "group", title: "Konténer", position: origin, kind: .container, locked: true)
+    var container = Idea(id: "group", title: "Konténer", position: origin, link: "aloldal", kind: .container, locked: true)
     let child = Idea(id: "child", title: "Ötlet", text: "**törzs**", hideText: false,
                      position: origin, parent: "group", italic: true, underline: true,
                      textStyle: TextStyle(color: "#663300", size: 17, italic: true, alignment: .left))
@@ -431,6 +431,8 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     #expect(svg.contains("font-style=\"italic\" text-decoration=\"underline\""))
     #expect(svg.contains("r=\"17.000\" fill=\"#dce9ff\" aria-label=\"Kapocs\""))
     #expect(svg.contains(">Kapocs</text>"))
+    #expect(svg.contains("stroke-width=\"6.4\" data-locked-outline=\"\""))
+    #expect(svg.contains("font-size=\"16\" fill=\"#182335\">aloldal</text>"))
     board.nodes[1].title = ""
     try board.validate()
     let groupStart = try #require(svg.range(of: "aria-label=\"Konténer\" transform="))
