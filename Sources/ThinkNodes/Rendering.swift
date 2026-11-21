@@ -97,15 +97,20 @@ func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: 
             """
     }
     let tag = path == nil ? "header" : "div"
-    let siteDisplay = path == nil ? "<select data-site-mode-picker aria-label='Oldal megjelenése'><option value='auto'>Automatikus</option><option value='light'>Világos</option><option value='dark'>Sötét</option></select>" : ""
+    let siteDisplay = siteModeButton()
+    let admin = user?.role == .admin ? headerLink("/admin", "Admin", symbol: "settings") : ""
+    let appearanceActions = "<div class=\"header-appearance\">\(siteDisplay)\(admin)</div>"
     let navigationClass = path == nil ? "site-header" : "worksheet-nav"
     return """
         <\(tag) class="\(navigationClass)"><div class="header-left"><nav aria-label="Fő navigáció" class="breadcrumbs">
-          \(path == nil && user?.role == .admin ? headerLink("/admin", "Admin", symbol: "settings") : "")
           <a class="brand" href="/"><span class="brand-icon" aria-hidden="true"><span></span><span></span><span></span></span>ThinkNodes</a>
           \(crumb)
-        </nav></div><div class="header-parent">\(parent)\(centerAction)</div><div class="header-actions">\(actions)<div class="header-user">\(siteDisplay)\(session)</div>\(path != nil && !editing && user?.role == .admin ? headerLink("/admin", "Admin", symbol: "settings") : "")</div>\(editing && user?.role == .admin ? headerLink("/admin", "Admin", symbol: "settings") : "")</\(tag)>
+        </nav></div><div class="header-parent">\(parent)\(centerAction)</div><div class="header-actions">\(actions)<div class="header-user">\(session)</div>\(editing ? "" : appearanceActions)</div>\(editing ? appearanceActions : "")</\(tag)>
         """
+}
+
+private func siteModeButton() -> String {
+    "<button type=\"button\" class=\"button small site-mode-button\" data-site-mode-picker data-mode=\"auto\" aria-label=\"Megjelenés: automatikus\">" + uiIcon("display-auto") + "</button>"
 }
 
 private func number(_ value: Double) -> String {

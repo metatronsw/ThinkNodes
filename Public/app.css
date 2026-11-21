@@ -513,11 +513,15 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 .folded-note { overflow:auto; overscroll-behavior:contain; }
 .folded-note pre { overflow:visible; }
 .editor-canvas :is(.canvas-file pre, .inline-edit textarea) { overscroll-behavior: contain; }
-.editor-root .worksheet-nav > a[href="/admin"] { order:2; }
 .editor-root .sidebar-open:not(.sidebar-open-canvas) { order:3; }
 .file-actions > button { flex:1; }
 
-/* Site chrome follows the reader. Worksheet controls use the document palette. */
+/* Panels share the site's colors and dimensions in every worksheet. */
+.header-appearance { display: flex; gap: 4px; align-items: center; flex: none; }
+.editor-root .worksheet-nav > .header-appearance { order: 2; }
+.site-mode-button { flex: none; }
+.site-header .header-appearance .site-mode-button { padding-inline: 9px; }
+
 :root[data-display="dark"] {
   color-scheme: dark;
   background: #151c25;
@@ -528,45 +532,22 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
   --accent: #a7b8ff;
   --accent-ink: #c6d1ff;
   --paper: #19232f;
+  --panel-surface: #253140;
+  --control-hover: #303e50;
 }
-:root[data-display="dark"] :where(.panel, .button, input, textarea, select, .viewer-downloads .card-meta, .passive-note) {
-  background-color: #253140;
+:root[data-display="dark"] :is(.panel, .viewer-downloads .card-meta, .passive-note, .inspector-content > fieldset, .inspector-content > fieldset > legend, .context-menu, .canvas-status, .canvas-tooltip, .canvas-empty, .canvas-area > .participants, .passive-frame > .participants, .guide-nav a, .guide kbd) {
+  background-color: var(--panel-surface);
+  color: var(--ink);
+}
+:root[data-display="dark"] :is(.button, input, textarea, select, .color-sample, .color-presets button, .alignment-picker button, .option-icon, .object-inspector input[type="number"]:disabled) {
+  background-color: var(--panel-surface);
   color: var(--ink);
   border-color: var(--line);
 }
-[data-site-mode-picker] { width: auto; max-width: 9rem; }
-.editor-workspace[data-sheet-mode] {
-  color: var(--sheet-ink);
-  --ink: var(--sheet-ink);
-  --muted: var(--sheet-line);
-  --accent: var(--sheet-accent);
-  --accent-ink: var(--sheet-accent);
-  --line: color-mix(in srgb, var(--sheet-line) 55%, var(--sheet-surface));
-  --paper: var(--sheet-paper);
-}
-.editor-workspace[data-sheet-mode="dark"] { color-scheme: dark; }
-.editor-workspace[data-sheet-mode="light"] { color-scheme: light; }
-.editor-workspace[data-sheet-mode] :is(.inspector-content > fieldset, legend, .button, input, textarea, select, .option-icon, .context-menu, .canvas-empty, .canvas-status, .quick-search, .participants) {
-  background-color: var(--sheet-surface);
-  border-color: var(--line);
-  color: var(--ink);
-}
-.editor-workspace[data-sheet-mode] :is(.inspector-content > fieldset, .context-menu, .quick-search) { border-radius: var(--sheet-radius); }
-:is(.editor-workspace[data-sheet-mode], .passive-canvas) :is(.selection-glow, .wire-selected) { filter: drop-shadow(0 0 var(--sheet-glow, 4px) currentColor); }
-.editor-workspace[data-sheet-mode] button[aria-pressed=true] { outline: 2px solid var(--sheet-accent); outline-offset: -2px; }
+:root[data-display="dark"] :is(.button, .guide-nav a):hover { background-color: var(--control-hover); }
+:root[data-display="dark"] .inspector button[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: -2px; }
+:is(.editor-workspace, .passive-canvas) :is(.selection-glow, .wire-selected) { filter: drop-shadow(0 0 var(--sheet-glow, 4px) currentColor); }
 .color-sample, .color-presets button { width: 32px; height: 32px; padding: 3px; border-radius: 7px; }
 .palette-tile { display: block; width: 100%; height: 100%; border-radius: 4px; }
 .color-tools.color-presets { grid-template-columns: repeat(auto-fill, 32px); gap: 4px; }
 .color-presets button[aria-pressed=true] .palette-tile::after { content: "✓"; color: white; text-shadow: 0 0 3px black; }
-
-.editor-workspace[data-sheet-mode="light"] :is(.inspector-content > fieldset, legend, .button, select, textarea, input) {
-  background-color: color-mix(in srgb, var(--sheet-surface) 12%, white);
-}
-.editor-workspace[data-sheet-mode] .inspector { font-family: var(--panel-font); }
-.editor-workspace[data-sheet-mode] .inspector-content > fieldset {
-  background: var(--panel-fill);
-  border-width: var(--panel-border);
-  padding: var(--panel-padding);
-  box-shadow: 0 2px var(--panel-shadow) color-mix(in srgb, var(--sheet-line) 22%, transparent);
-}
-.editor-workspace[data-sheet-mode] .inspector-content legend { background: var(--panel-fill); }

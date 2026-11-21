@@ -30,13 +30,13 @@ function button(label, onClick, props = {}) {
 
 const themes = JSON.parse(mount.dataset.themes || "[]");
 const currentBoard = ref(null);
-const appearance = computed(() => currentBoard.value?.appearance ?? {theme: 1, palette: 1, mode: "auto"});
+const appearance = computed(() => currentBoard.value?.appearance ?? {theme: 1, palette: 1});
 const activeTheme = computed(() => themes.find(t => t.id === appearance.value.theme) ?? themes[0]);
 const activePalette = computed(() => activeTheme.value?.palettes.find(p => p.id === appearance.value.palette) ?? activeTheme.value?.palettes[0]);
 const siteDisplay = ref(document.documentElement?.dataset?.display || "light");
 window.addEventListener("thinknodes-display", () => { siteDisplay.value = document.documentElement.dataset.display; });
 const mode = computed(() => {
-  const wanted = appearance.value.mode === "auto" ? siteDisplay.value : appearance.value.mode;
+  const wanted = siteDisplay.value;
   return activeTheme.value?.modes.includes(wanted) ? wanted : activeTheme.value?.modes[0] ?? "light";
 });
 const graphics = computed(() => activeTheme.value?.graphics ?? {});
@@ -63,7 +63,7 @@ const ColorPicker = {
       expanded.value && !props.disabled ? h("div", {class: "color-tools color-presets"},
         activePalette.value?.colors.map(c => h("button", {type: "button", key: c.id, title: c.name,
           "aria-label": c.name, "aria-pressed": c.id === props.color,
-          onClick: () => { emit("update", c.id); expanded.value = false; }}, [tile(c.id)]))) : null,
+          onClick: () => { emit("update", c.id); }}, [tile(c.id)]))) : null,
     ]);
   },
 };
@@ -2636,17 +2636,13 @@ createApp({
           onChange: event => updateItem(sheet, "appearance", change(event.target.value))},
           entries.map(([id, name]) => h("option", {value: id}, name))));
       }
-      const modeNames = {auto: "Automatikus", light: "Világos", dark: "Sötét"};
       return group("Megjelenés", [
         select("Téma", theme.id, themes.map(t => [t.id,t.name]), value => {
           const next = themes.find(t => t.id === Number(value));
-          return {theme: next.id, palette: next.palettes[0].id,
-            mode: next.modes.includes(current.mode) ? current.mode : "auto"};
+          return {theme: next.id, palette: next.palettes[0].id};
         }),
         select("Paletta", activePalette.value.id, theme.palettes.map(p => [p.id,p.name]),
           value => ({...current, palette: Number(value)})),
-        select("Mód", current.mode, ["auto", ...theme.modes].map(m => [m,modeNames[m]]),
-          value => ({...current, mode: value})),
       ]);
     }
 
@@ -2924,16 +2920,9 @@ createApp({
       const currentStatus = reconnect.value ? "Kattints az új célra vagy a vászonra. Esc a megszakításhoz."
         : "";
       return [
-        h("div", {class: "editor-workspace", "data-sheet-mode": mode.value, style: {
-            "--sheet-paper": paint(0,0), "--sheet-ink": paint(1,1), "--sheet-surface": paint(2,2),
-            "--sheet-line": paint(3,3), "--sheet-accent": paint(graphics.value.selection ?? 4,4),
-            "--panel-fill": paint(activeTheme.value?.css?.surface, 2),
-            "--panel-border": (activeTheme.value?.css?.borderWidth ?? 1) + "px",
-            "--panel-padding": (activeTheme.value?.css?.padding ?? 8) + "px",
-            "--panel-shadow": (activeTheme.value?.css?.shadow ?? 6) + "px",
-            "--panel-font": {mono: "ui-monospace, monospace", serif: "Georgia, serif", system: "inherit"}[activeTheme.value?.css?.font ?? "system"],
-            "--sheet-radius": (graphics.value.panelRadius ?? 9) + "px", "--sheet-glow": (graphics.value.glow ?? 3) + "px"
-          }}, [
+        h("div", {class: "editor-workspace", style: {
+          "--sheet-glow": (graphics.value.glow ?? 3) + "px"
+        }}, [
           renderCanvas(),
           problem.value || currentStatus ? h("p", {class: ["canvas-status", {error: problem.value}], role: "status"}, problem.value || currentStatus) : null,
           h("div", {class: "inspector-column"}, [renderInspector()]),

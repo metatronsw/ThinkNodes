@@ -45,13 +45,11 @@ extension KeyedEncodingContainer {
 struct Appearance: Codable, Equatable, Sendable {
     var theme = 1
     var palette = 1
-    var mode = "auto"
 }
 struct VisualTheme: Content, Equatable {
     struct Color: Codable, Equatable, Sendable { var id: Int; var name: String; var light: String?; var dark: String? }
     struct Palette: Codable, Equatable, Sendable { var id: Int; var name: String; var colors: [Color] }
     struct Graphics: Codable, Equatable, Sendable {
-        var panelRadius: Double?
         var glow: Double?
         var selection: Int?
         // Clockwise convex contour in units of half the box dimensions.
@@ -83,32 +81,19 @@ struct VisualTheme: Content, Equatable {
     var name: String
     var modes: [String]
     var palettes: [Palette]
-    struct PanelStyle: Codable, Equatable, Sendable {
-        var surface: Int?
-        var borderWidth: Double?
-        var padding: Double?
-        var shadow: Double?
-        var font: String?
-        var valid: Bool {
-            (0..<64).contains(surface ?? 2) && (0...4).contains(borderWidth ?? 1)
-                && (2...20).contains(padding ?? 8) && (0...24).contains(shadow ?? 6)
-                && ["system", "serif", "mono"].contains(font ?? "system")
-        }
-    }
-    var css: PanelStyle?
     var graphics: Graphics?
     var valid: Bool {
-        (css?.valid ?? true) && (graphics?.validGeometry ?? true) && version == 1 && !name.isEmpty && !modes.isEmpty && Set(modes).isSubset(of: ["light","dark"])
+        (graphics?.validGeometry ?? true) && version == 1 && !name.isEmpty && !modes.isEmpty && Set(modes).isSubset(of: ["light","dark"])
         && Set(modes).count == modes.count && !palettes.isEmpty && Set(palettes.map(\.id)).count == palettes.count
         && palettes.allSatisfy { palette in
             let ids = Set(palette.colors.map(\.id))
-            return (8...64).contains(palette.colors.count) && ids.count == palette.colors.count
-                && Set(0..<8).isSubset(of: ids) && ids.isSubset(of: Set(0..<64))
+            return (16...64).contains(palette.colors.count) && ids.count == palette.colors.count
+                && Set(0..<16).isSubset(of: ids) && ids.isSubset(of: Set(0..<64))
                 && palette.colors.allSatisfy { color in
                     let variants = [color.light, color.dark].compactMap { $0 }
                     return !color.name.isEmpty && !variants.isEmpty && variants.allSatisfy { $0.range(of: "^#[0-9A-Fa-f]{6}$", options: .regularExpression) != nil }
                 }
-        } && (0...32).contains(graphics?.panelRadius ?? 7) && (0...24).contains(graphics?.glow ?? 3)
+        } && (0...24).contains(graphics?.glow ?? 3)
         && (0..<8).contains(graphics?.selection ?? 4) && (4...128).contains(graphics?.junctionSize ?? 12)
         && ["dots","lines"].contains(graphics?.grid ?? "dots")
         && [.rectangle, .ellipse, .diamond].contains(graphics?.junction ?? .ellipse)
@@ -138,8 +123,7 @@ extension Worksheet {
         let appearance = self.appearance ?? Appearance()
         guard let theme = catalog.first(where: { $0.id == appearance.theme }),
               let palette = theme.palettes.first(where: { $0.id == appearance.palette }) else { return self }
-        let wanted = appearance.mode == "auto" ? mode : appearance.mode
-        let dark = (wanted.flatMap { theme.modes.contains($0) ? $0 : nil } ?? theme.modes[0]) == "dark"
+        let dark = (mode.flatMap { theme.modes.contains($0) ? $0 : nil } ?? theme.modes[0]) == "dark"
         let colors = Dictionary(uniqueKeysWithValues: palette.colors.map { ($0.id, $0) })
         func resolve(_ value: String?, _ role: Int) -> String {
             if let value, value.hasPrefix("#") { return value }

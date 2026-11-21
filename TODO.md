@@ -31,17 +31,6 @@ SPACE INSERT:
 
 
 
-FILE KEZELÉS: 
-- engedni hogy kívülről is elérhető legyen link alapján ? 
-
-FILE BROWSER:
-- a project mappából és azok almappáiból tud válogatni, drag & drop módszerrel, vagy file hozzá adása gomb-al
-
-
-FILE TÖRLÉS: 
-(kép, hang, zip, dokumentum esetén kérdezze meg)
-- törlés a munkalapról (alap beállítás)
-- törlés a mappából is
 
 
 ÉRVÉNYTELEN URL:
@@ -53,32 +42,20 @@ linket a fő oldalra, és hogy jelentkezzen be  vagy regisztráljon, hozzon lét
 
 
 
-
-igazítsd úgy a grid-et, hogy az első pont a 0,0 origóba legyen
-
-mikor be van csukva a property panel, dupla kattintásra akkor is tudni kell editálni a címet (ne nyiljon ki a property - csak jelenjen meg a szöveg kiemelés az objektum címén (vagy azon amit editálok) 
-
-editáláskor a szöveg háttérszíne az objektum színe legyen sötétebb/világosabb verzióban attól függően melyik látszik jobban, a rectangle legyen lekerekített.
-
-saját avatar választót töröld a canvas property -ból
-az avatar választó helye az admin menüben van, az admin választja ki az usereknek
-
-a canvas property menübe került a hand ikon, ami a pan lock, ezt tedd át a toolbar menübe
-
-adj hozzá egy gombot, file beillesztése (a már meglévő projectben lévő file -ok közül tallózzon ) 
-a file feltöltés és beillesztés gomb egy sorba egymás mellett legyen a canvas property alján
-
-a canvas property becsukó/kinyitó gomb -nak adj új ikont, egy menü rendszer legyen
-
-a jobboldali property ki/be csukónak is adj új ikont
-
-jobb felül a mentés ikon legyen olyan mint a többi, ha disabled és ha lehet nyomni ( ne legyen kék ) 
-
-admin gomb kerüljön át a jobboldal legszélére, utolsó előtti gomb legyen (a property bezáró legyen a legszélén jobboldalon ) 
-
-nézd meg a .txt boxot, megjelenik rajta a görgető sáv, de nem lehet használni. 
-
-
 ---
 
 nyilak húzása belül - konténerből befelé (hibás)
+
+
+FILE KEZELÉS: 
+- töröld a file beillesztés gombot, csak file feltöltése legyen
+- file törlése minden esetben a file mappából való törlése is, ezért kérdezzen meg. 
+- a törölt file átkerül a project fő mappa .trash/ könyvtárába úgy, hogy ha a projecten belül másik subdirectory -ban volt, akkor másolja annak elérsi útját, hogy vissza állításkor a megfelelő mappába kerüljön majd vissza
+- Minden file ami a munkalapon megjelenik, egységesen kapjon megjeleníthető filename -t a property panelen. A panelen NE lehessen átírni az extensiont, de a dobozon alul jelenítse meg teljes filename.extension formába
+- HIBA: Nézd át az átnevezést, első átnevezéskor van hogy nem történik meg, és vissza ugrik az eredeti névre
+- Ha külsőleg valaki berak valamit a project mappába, akkor azt induláskor/project betöltéskor ellenőrizni kell, és ha lehetséges be kell emelni a canvasra. Ha több van, egymás alá sorba. 
+
++ KONCEPCIÓ: Mindig, minden file jelenjen meg a canvas-on, csatolt file vagy munkalap. Ha nem támogatott típus - megjeleníthető, akkor egy alap doboz legyen, mint a .txt -nek, aminek csak a címét és a file nevet lehet változtatni. a csomag ikon + filename.extension jelenjen meg. Duplán rákattintva letölthető
+
++ KÉRDÉS: meg engedni hogy kívülről is elérhető legyen link alapján ? ez milyen kockázattal jár ? hogy valósítható meg, hogy működik a Vapor szerver ?
+

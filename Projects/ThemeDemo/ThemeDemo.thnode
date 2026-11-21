@@ -1,6 +1,5 @@
 {
   "appearance" : {
-    "mode" : "dark",
     "palette" : 1,
     "theme" : 1
   },
@@ -43,8 +42,12 @@
       "endArrow" : true,
       "id" : "28fcae424881f99300cf31e3f93eeccd",
       "source" : "box0",
+      "startArrow" : true,
       "target" : {
-        "node" : "box1"
+        "point" : {
+          "x" : 83.043701171875,
+          "y" : -292.43473985593789
+        }
       },
       "type" : "straight"
     }
@@ -53,17 +56,17 @@
     {
       "align" : "center",
       "bold" : true,
-      "fill" : 7,
+      "fill" : 6,
       "fontSz" : 16,
       "h" : 80,
       "id" : "box0",
       "pos" : {
-        "x" : -297.988037109375,
-        "y" : -327.29470825195312
+        "x" : -637.9617919921875,
+        "y" : -340.39273071289062
       },
       "shape" : "rounded",
       "text" : "",
-      "textCol" : 4,
+      "textCol" : 0,
       "textStyle" : {
         "color" : 6
       },
@@ -78,8 +81,8 @@
       "h" : 80,
       "id" : "box1",
       "pos" : {
-        "x" : 189.250244140625,
-        "y" : -317.73822021484375
+        "x" : 79.92333984375,
+        "y" : -396.15008544921875
       },
       "shape" : "rounded",
       "text" : "",
@@ -91,21 +94,23 @@
       "align" : "center",
       "bold" : true,
       "file" : {
+        "filename" : "box3.txt",
+        "hideTitle" : false,
         "showFilename" : true,
         "type" : "txt"
       },
-      "fill" : 2,
+      "fill" : 4,
       "fontSz" : 16,
       "h" : 100,
       "id" : "box3",
       "pos" : {
-        "x" : -369.990966796875,
-        "y" : 41.47454833984375
+        "x" : -637.40349266722365,
+        "y" : 44.826607958930026
       },
       "shape" : "rounded",
       "text" : "Papír\nGrafit\nSzínes tinta",
       "textCol" : 1,
-      "title" : "Anyagjegyzék",
+      "title" : "Fal",
       "w" : 240
     },
     {
@@ -118,17 +123,41 @@
       "id" : "1cb0ef838f2d4a37f9a9c54b5843e0ed",
       "kind" : "connectionPoint",
       "pos" : {
-        "x" : -79.3765869140625,
-        "y" : -45.43951416015625
+        "x" : -198.56844635131142,
+        "y" : -198.60875212757446
       },
       "shape" : "ellipse",
       "text" : "",
       "textCol" : 1,
       "title" : "",
       "w" : 12
+    },
+    {
+      "align" : "center",
+      "bold" : true,
+      "file" : {
+        "asset" : "7ba24c6c-66f5-4ae5-8348-2af8c204859f.png",
+        "filename" : "ds",
+        "showFilename" : true,
+        "type" : "image"
+      },
+      "fill" : 2,
+      "fontSz" : 16,
+      "h" : 210,
+      "hideText" : false,
+      "id" : "88065a21069cdbd53048bafabb9d29ee",
+      "pos" : {
+        "x" : 96.96881103515625,
+        "y" : 89.81512451171875
+      },
+      "shape" : "rounded",
+      "text" : "",
+      "textCol" : 1,
+      "title" : "",
+      "w" : 320
     }
   ],
-  "revision" : 102,
+  "revision" : 186,
   "schemaVersion" : 2,
   "title" : "ThinkDefault"
 }

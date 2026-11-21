@@ -5,8 +5,7 @@
   "creator": "admin",
   "appearance": {
     "theme": 2,
-    "palette": 1,
-    "mode": "auto"
+    "palette": 1
   },
   "background": 0,
   "nodes": [

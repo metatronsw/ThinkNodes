@@ -43,7 +43,7 @@ function zoom() {
   behavior.transform = (_, transform) => { requestedZoom = transform; };
   return behavior;
 }
-globalThis.document = {querySelector: () => root};
+globalThis.document = {documentElement: {dataset: {display: "light"}}, querySelector: () => root};
 const storage = new Map();
 globalThis.window = {localStorage: {getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value)},
   Vue: {...Vue, createApp: renderer.createApp}, addEventListener(key, fn) { listeners[key] = fn; },
@@ -57,7 +57,7 @@ function node(id, x, y, width, height) {
     fill: "#bbbbbb", border: "#555555", textColor: "#111111", alignment: "center", fontSize: 16, bold: true};
 }
 const {decodeWorksheet, encodeWorksheet} = await import("../../Public/worksheet-json.js");
-let sheet = {appearance: {theme:1,palette:1,mode:"auto"}, creator: "admin", title: "Próba", revision: 1, nodes: [
+let sheet = {appearance: {theme:1,palette:1}, creator: "admin", title: "Próba", revision: 1, nodes: [
   {...node("outer", 0, 0, 300, 240), text: "child"}, node("inner", 10, 10, 160, 120), node("child", 10, 10, 64, 40),
   node("outside", 340, 0, 100, 80), {...node("auto", -420, 0, 120, 60), autoSize: true},
 ], edges: [{id: "one", source: "outside", target: {point: {x: 400, y: 230}}, type: "straight", appearance: "plain"}]};
@@ -608,9 +608,12 @@ await properties("outside");
 assert.equal(prop("aria-label", "Háttér HEX"), undefined);
 prop("aria-label","Háttér színválasztó").props.onClick(); await tick();
 prop("aria-label","Moha").props.onClick(); await tick();
-assert.ok(prop("fill","#478666", graphic("outside")));
+assert.ok(prop("fill","#29a383", graphic("outside")));
 assert.equal(find(n => n.props.type === "range", panel()), undefined);
-assert.ok(prop("fill","#478666", graphic("outside")));
+assert.ok(prop("aria-label", "Korall"), "the palette stays open after choosing a color");
+prop("aria-label", "Korall").props.onClick(); await tick();
+prop("aria-label", "Moha").props.onClick(); await tick();
+assert.ok(prop("fill","#29a383", graphic("outside")));
 const section = label => find(n => n.tag === "fieldset" && n.children[0]?.text === label);
 const control = (scope, label) => prop("aria-label", label, scope);
 const edit = (control, value) => control.props.onInput({target: {value}});
@@ -641,7 +644,7 @@ assert.equal(prop("pointer-events", "fill", graphic("outside")).props.fill, "non
 assert.equal(find(n => n.tag === "clipPath", graphic("outside")), undefined);
 backgroundSwitch.props.onClick(); await tick();
 assert.equal(prop("aria-label", "Háttér színválasztó").props.disabled, false);
-assert.ok(prop("fill", "#478666", graphic("outside")));
+assert.ok(prop("fill", "#29a383", graphic("outside")));
 assert.equal(find(n => n.tag === "clipPath", graphic("outside")), undefined);
 const titleSize = control(section("Cím"), "Betűméret");
 assert.equal(titleSize.props.min, 1);
@@ -708,7 +711,7 @@ assert.equal(automaticGridColor("#ffffff"), "#808080");
 assert.equal(automaticGridColor("#000000"), "#808080");
 assert.equal(automaticGridColor("#112233"), "#889199");
 assert.equal(automaticGridColor("#ddeeff"), "#6f7780");
-assert.equal(prop("id", "worksheet-grid").children[0].props.fill, automaticGridColor("#f5f8fc"));
+assert.equal(prop("id", "worksheet-grid").children[0].props.fill, automaticGridColor("#f9f9fb"));
 const snapSwitch = () => prop("aria-label", "Rácsra igazítás");
 assert.equal(snapSwitch().props["aria-pressed"], false);
 snapSwitch().props.onClick(); await tick();
@@ -914,7 +917,7 @@ assert.equal(alphaColor().props.disabled, false);
 alphaColor().props.onClick(); await tick();
 prop("aria-label","Jelzőfény",panel()).props.onClick();
 await tick();
-assert.equal(graphicImage().props.style.backgroundColor, "#304ccc");
+assert.equal(graphicImage().props.style.backgroundColor, "#0090ff");
 await press("Alpha csatorna");
 assert.equal(alphaColor().props.disabled, true);
 assert.equal(graphicImage().props.style.backgroundColor, "#ffffff");
@@ -922,7 +925,7 @@ await save();
 assert.equal(model(animatedNode.id).file.alphaEnabled, false);
 await press("Alpha csatorna");
 await save();
-assert.equal(graphicImage().props.style.backgroundColor, "#304ccc");
+assert.equal(graphicImage().props.style.backgroundColor, "#0090ff");
 delete globalThis.Image;
 toggle("Escape", true); await tick();
 assert.ok(!text(canvasPanel()).includes("fájl feltöltve"));
@@ -1081,7 +1084,7 @@ const gradient = find(n => n.tag === "linearGradient", oneWire());
 const stops = gradient.children.filter(n => n.tag === "stop");
 assert.deepEqual(stops.map(n => n.props.offset), [0, .25, .5, .75, 1]);
 assert.deepEqual(stops.map(n => n.props["stop-opacity"]), [1, 1, .5, 1, 1]);
-assert.ok(stops.every(n => n.props["stop-color"] === "#304ccc"));
+assert.ok(stops.every(n => n.props["stop-color"] === "#0090ff"));
 await press("Nyíl a vonal elején");
 assert.equal(prop("attributeName", "gradientTransform", oneWire()).props.dur, "12s");
 await press("Nyíl a vonal végén");
@@ -1109,8 +1112,8 @@ assert.equal(prop("attributeName", "transform", arrow).props.type, "scale");
 const selectionGlow = prop("class", "wire-selected", oneWire());
 assert.ok(selectionGlow);
 assert.equal(selectionGlow.children.filter(n => n.props["stroke-width"] !== undefined).length, 1);
-assert.equal(prop("attributeName", "stroke-width", selectionGlow).parent.props.stroke, "#304ccc");
-assert.equal(arrow.props.fill, "#304ccc");
+assert.equal(prop("attributeName", "stroke-width", selectionGlow).parent.props.stroke, "#0090ff");
+assert.equal(arrow.props.fill, "#0090ff");
 assert.equal(prop("class", "selection-glow", oneWire()), undefined);
 await press("Animáció bekapcsolása");
 assert.equal(prop("attributeName", "stroke-width", oneWire()), undefined);
@@ -1120,7 +1123,7 @@ await save();
 
 await properties("outside");
 assert.equal(prop("class", "wire-selected", oneWire()), undefined);
-assert.ok(prop("stroke", "#526982", oneWire()));
+assert.ok(prop("stroke", "#60646c", oneWire()));
 for (const [label, shape, vertices] of [["Háromszög", "triangle", 3], ["Ötszög", "pentagon", 5],
   ["Hatszög", "hexagon", 6], ["Paralelogramma", "parallelogram", 4]]) {
   const option = button(label);
@@ -1129,7 +1132,7 @@ for (const [label, shape, vertices] of [["Háromszög", "triangle", 3], ["Ötsz�
   assert.equal(button(label).props["aria-pressed"], true);
   await save();
   assert.equal(model("outside").shape, shape);
-  const polygon = find(n => n.tag === "polygon" && n.props.fill === "#478666", graphic("outside"));
+  const polygon = find(n => n.tag === "polygon" && n.props.fill === "#29a383", graphic("outside"));
   assert.equal(polygon.props.points.split(" ").length, vertices);
 }
 await press("Téglalap"); await save();
@@ -1184,14 +1187,17 @@ const chooseAppearance = async (label, value) => {
   await tick();
 };
 await chooseAppearance("Téma", "3");
-await chooseAppearance("Mód", "dark");
-assert.ok(prop("fill", "#102a40", canvas()));
+assert.equal(prop("aria-label", "Mód", canvasPanel()), undefined);
+document.documentElement.dataset.display = "dark";
+listeners["thinknodes-display"](); await tick();
+assert.ok(prop("fill", "#111a27", canvas()));
 await chooseAppearance("Téma", "1");
 await chooseAppearance("Paletta", "2");
-assert.ok(prop("fill", "#18251e", canvas()));
+assert.ok(prop("fill", "#171918", canvas()));
 await chooseAppearance("Paletta", "1");
-await chooseAppearance("Mód", "auto");
-assert.ok(prop("fill", "#f5f8fc", canvas()));
+document.documentElement.dataset.display = "light";
+listeners["thinknodes-display"](); await tick();
+assert.ok(prop("fill", "#f9f9fb", canvas()));
 await save();
-assert.deepEqual(sheet.appearance, {theme:1, palette:1, mode:"auto"});
+assert.deepEqual(sheet.appearance, {theme:1, palette:1});
 console.log("Passed theme, palette and display mode changes.");

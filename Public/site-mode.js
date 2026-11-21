@@ -1,14 +1,25 @@
 (() => {
   const media = window.matchMedia("(prefers-color-scheme: dark)");
   const picker = document.querySelector("[data-site-mode-picker]");
+  const modes = ["auto", "light", "dark"];
+  const names = {auto: "Automatikus", light: "Világos", dark: "Sötét"};
+  const settingKey = "thinknodes.siteMode";
+  let setting = "auto";
   function apply() {
-    const setting = localStorage.getItem("thinknodes.siteMode") || "auto";
+    const saved = localStorage.getItem(settingKey);
+    setting = modes.includes(saved) ? saved : "auto";
     const mode = setting === "auto" ? (media.matches ? "dark" : "light") : setting;
     document.documentElement.dataset.display = mode;
     document.cookie = "tn_display=" + mode + "; Path=/; SameSite=Lax";
-    if (picker) picker.value = setting;
+    if (picker) {
+      const label = "Megjelenés: " + names[setting];
+      picker.dataset.mode = setting;
+      picker.setAttribute("aria-label", label);
+      picker.title = label;
+      picker.querySelector("use")?.setAttribute("href", "/icons.svg#display-" + setting);
+    }
     const viewer = document.querySelector("#worksheet-view");
-    if (viewer?.dataset.auto === "true" && viewer.dataset.siteMode !== mode) {
+    if (viewer && viewer.dataset.siteMode !== mode) {
       const url = new URL(location.href);
       url.searchParams.set("mode", mode);
       location.replace(url);
@@ -26,8 +37,8 @@
     }
     window.dispatchEvent(new Event("thinknodes-display"));
   }
-  picker?.addEventListener("change", () => {
-    localStorage.setItem("thinknodes.siteMode", picker.value);
+  picker?.addEventListener("click", () => {
+    localStorage.setItem(settingKey, modes[(modes.indexOf(setting) + 1) % modes.length]);
     apply();
   });
   media.addEventListener("change", apply);

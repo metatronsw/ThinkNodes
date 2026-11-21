@@ -352,8 +352,7 @@ struct Worksheet: Content, Equatable {
         }
         if let appearance {
             guard let theme = Themes.catalog.first(where: { $0.id == appearance.theme }),
-                  theme.palettes.contains(where: { $0.id == appearance.palette }),
-                  appearance.mode == "auto" || theme.modes.contains(appearance.mode) else {
+                  theme.palettes.contains(where: { $0.id == appearance.palette }) else {
                 throw Abort(.unprocessableEntity, reason: "Érvénytelen munkalaptéma, paletta vagy mód.")
             }
         }

@@ -1,4 +1,7 @@
 {
-  "owner": "admin",
-  "guestReadable": true
+  "guestReadable" : true,
+  "mediaFiles" : {
+    "7ba24c6c-66f5-4ae5-8348-2af8c204859f.png" : "ds.png"
+  },
+  "owner" : "admin"
 }

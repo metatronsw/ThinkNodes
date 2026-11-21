@@ -90,7 +90,7 @@
                 }
               ]
             },
-            "minItems": 8,
+            "minItems": 16,
             "maxItems": 64
           }
         },
@@ -186,11 +186,6 @@
             "dots"
           ]
         },
-        "panelRadius": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 32
-        },
         "glow": {
           "type": "number",
           "minimum": 0,
@@ -213,39 +208,6 @@
         }
       },
       "additionalProperties": false
-    },
-    "css": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "surface": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 63
-        },
-        "borderWidth": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 4
-        },
-        "padding": {
-          "type": "number",
-          "minimum": 2,
-          "maximum": 20
-        },
-        "shadow": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 24
-        },
-        "font": {
-          "enum": [
-            "system",
-            "mono",
-            "serif"
-          ]
-        }
-      }
     }
   },
   "additionalProperties": false
