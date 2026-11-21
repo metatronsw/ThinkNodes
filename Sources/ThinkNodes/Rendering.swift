@@ -107,6 +107,32 @@ private func number(_ value: Double) -> String {
     String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), value)
 }
 
+private extension Shape {
+    // Clockwise vertices relative to the center, in units of half-width and half-height.
+    var vertices: [(x: Double, y: Double)] {
+        switch self {
+        case .diamond: [(0, -1), (1, 0), (0, 1), (-1, 0)]
+        case .triangle: [(0, -1), (1, 1), (-1, 1)]
+        case .pentagon: [(0, -1), (1, -0.24), (0.62, 1), (-0.62, 1), (-1, -0.24)]
+        case .hexagon: [(-0.5, -1), (0.5, -1), (1, 0), (0.5, 1), (-0.5, 1), (-1, 0)]
+        case .parallelogram: [(-0.55, -1), (1, -1), (0.55, 1), (-1, 1)]
+        case .rounded, .rectangle, .ellipse: []
+        }
+    }
+
+    var labelRatios: (width: Double, height: Double, link: Double) {
+        switch self {
+        case .diamond: (0.50, 0.47, 0.45)
+        case .ellipse: (0.72, 0.72, 0.70)
+        case .triangle: (0.42, 0.42, 0.38)
+        case .pentagon: (0.58, 0.58, 0.60)
+        case .hexagon: (0.68, 0.76, 0.65)
+        case .parallelogram: (0.60, 0.75, 0.58)
+        case .rounded, .rectangle: (0.94, 0.94, 0.94)
+        }
+    }
+}
+
 private func borderPoint(_ idea: Idea, toward point: Point) -> Point {
     let dx = point.x - idea.position.x
     let dy = point.y - idea.position.y
@@ -116,8 +142,18 @@ private func borderPoint(_ idea: Idea, toward point: Point) -> Point {
     let scale: Double
     switch idea.shape {
     case .ellipse: scale = 1 / hypot(x, y)
-    case .diamond: scale = 1 / (abs(x) + abs(y))
     case .rectangle, .rounded: scale = 1 / max(abs(x), abs(y))
+    case .diamond, .triangle, .pentagon, .hexagon, .parallelogram:
+        let vertices = idea.shape.vertices
+        // Normalize each edge's linear distance to one at its boundary.
+        var distance = 0.0
+        for (i, a) in vertices.enumerated() {
+            let b = vertices[(i + 1) % vertices.count]
+            let cross = x * (b.y - a.y) - y * (b.x - a.x)
+            let boundary = a.x * b.y - a.y * b.x
+            distance = max(distance, cross / boundary)
+        }
+        scale = 1 / distance
     }
     return Point(x: idea.position.x + dx * scale, y: idea.position.y + dy * scale)
 }
@@ -211,8 +247,7 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
         node.shape = .ellipse
         return IdeaDrawing(node: node, labelWidth: 0, lines: [])
     }
-    let widthRatio = node.shape == .diamond ? 0.50 : node.shape == .ellipse ? 0.72 : 0.94
-    let heightRatio = node.shape == .diamond ? 0.47 : node.shape == .ellipse ? 0.72 : 0.94
+    let (widthRatio, heightRatio, _) = node.shape.labelRatios
     let bodySize = node.textStyle?.size ?? 13
     let text = node.hideText != true ? canvasMarkdown(node.text) :
         (node.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? [] : [MarkdownBlock(kind: .body, runs: [MarkdownRun(text: "•••")])])
@@ -315,8 +350,9 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
             """
     case .ellipse:
         geometry = "<ellipse rx=\"\(number(x))\" ry=\"\(number(y))\" \(appearance)/>"
-    case .diamond:
-        geometry = "<polygon points=\"0,\(number(-y)) \(number(x)),0 0,\(number(y)) \(number(-x)),0\" \(appearance)/>"
+    case .diamond, .triangle, .pentagon, .hexagon, .parallelogram:
+        let points = node.shape.vertices.map { "\(number($0.x * x)),\(number($0.y * y))" }.joined(separator: " ")
+        geometry = "<polygon points=\"\(points)\" \(appearance)/>"
     }
     let labelWidth = drawing.labelWidth
     func rank(_ line: IdeaLabelLine) -> Double {
@@ -361,7 +397,7 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
             """
     }.joined()
     let symbol = node.link.flatMap(WorksheetLink.init).map { link in
-        let inset = node.shape == .diamond ? 0.45 : node.shape == .ellipse ? 0.7 : 0.94
+        let inset = node.shape.labelRatios.link
         let linkWidth = max(12, node.width * inset - 22)
         let fit = textWidth(node.link ?? "", size: 11) > linkWidth ? " textLength=\"\(number(linkWidth))\" lengthAdjust=\"spacingAndGlyphs\"" : ""
         return """
@@ -494,6 +530,9 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
                     """
             case .md: content = "<div class=\"formatted-text\">\(markdownHTML(node.text))</div>"
             case .txt, .json: content = "<pre>\(escaped(node.text))</pre>"
+            case .attachment:
+                let download = escaped("/api/attachment" + (assetBase ?? noteBase ?? "") + "?name=" + encodeQuery(file.asset ?? ""))
+                content = "<a class=\"button small\" href=\"\(download)\">Letöltés</a><small>\(escaped(node.text))</small>"
             }
             let image = file.type == .image
             let above: Double = image && !title.isEmpty ? 22 : 0

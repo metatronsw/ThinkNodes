@@ -138,10 +138,6 @@ final class Collaboration: @unchecked Sendable {
                     }
                     if action == "resign" {
                         checkpoint.revision = board.revision
-                        checkpoint.owner = board.owner
-                        checkpoint.editors = board.editors
-                        checkpoint.isPublic = board.isPublic
-                        checkpoint.hidden = board.hidden
                         board = try store.update(path, worksheet: checkpoint, user: user, restoring: true, unlocks: unlocks)
                         room.revision = board.revision
                         for id in Array(room.peers.keys) {
@@ -226,7 +222,6 @@ final class Collaboration: @unchecked Sendable {
     func update(_ path: WorksheetPath, sheet: Worksheet, user: User, client: String?, unlocks: Set<String> = []) throws -> Worksheet {
         try lock.withLock {
             rooms[path.url]?.expire()
-            let current = try store.load(path, user: user, unlocks: unlocks)
             let saved = try store.update(path, worksheet: sheet, user: user, unlocks: unlocks) { current in
                 if let client, rooms[path.url]?.peers[client]?.name != user.name {
                     throw Abort(.conflict, reason: "Kapcsolódj újra a munkalaphoz.")
@@ -240,11 +235,6 @@ final class Collaboration: @unchecked Sendable {
                     if node.kind == .connectionPoint && submitted[node.id] == nil { continue }
                     throw Abort(.locked, reason: "A dobozt egy másik felhasználó jelölte ki.")
                 }
-            }
-            if saved.owner != current.owner || saved.editors != current.editors ||
-                saved.isPublic != current.isPublic || saved.hidden != current.hidden {
-                invalidate(path)
-                return saved
             }
             if var room = rooms[path.url] {
                 room.revision = saved.revision

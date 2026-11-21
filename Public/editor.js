@@ -1,5 +1,5 @@
 import {bindAudioPlayers} from "./audio-player.js";
-import {assetURL, checkText, imageStem, importFile, objectURL, pngForClipboard, validImageStem, writeText} from "./canvas-files.js";
+import {assetURL, attachmentURL, checkText, imageStem, importFile, objectURL, pngForClipboard, validImageStem, writeText} from "./canvas-files.js";
 import {decodeWorksheet, encodeWorksheet} from "./worksheet-json.js";
 import {sharedMouse} from "./mouse.js";
 import {worksheetChanges, replayChanges} from "./editor-history.js";
@@ -7,16 +7,15 @@ import {flashNode, flashPoint} from "./ping.js";
 import {showTooltip, hideTooltip} from "./tooltip.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {automaticBorder, arrowTransform, canvasBounds, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, lineAppearances, lineTypes, paper, selectionOutline, shapeDistance, shapes} from "./geometry.js?v=2";
+import {automaticBorder, automaticGridColor, arrowTransform, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, lineAppearances, lineTypes, paper, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes} from "./geometry.js?v=2";
 
 import {ancestors, containerOrder, overlapFraction} from "./containers.js";
 
 const mount = document.querySelector("#editor");
-const {path, csrf, role, user, motionRate} = mount.dataset;
+const {path, csrf, user, motionRate} = mount.dataset;
 const d3 = window.d3;
 const {createApp, computed, h, nextTick, onMounted, onUnmounted, ref, shallowRef, watch} = window.Vue;
 const endpoint = "/api/worksheet/" + path;
-const svgNamespace = "http://www.w3.org/2000/svg";
 
 function icon(name) {
   return h("svg", {class: "ui-icon", "aria-hidden": "true", viewBox: "0 0 24 24"}, [
@@ -27,10 +26,6 @@ function icon(name) {
 function button(label, onClick, props = {}) {
   const {symbol = "file", ...attributes} = props;
   return h("button", {type: "button", class: "button", onClick, ...attributes}, [icon(symbol), label]);
-}
-
-function link(label, href, symbol) {
-  return h("a", {class: "button", href}, [icon(symbol), label]);
 }
 
 const palette = ["#ffffff", "#000000", "#e95c59", "#f3ae49", "#f3df65", "#60b77a", "#5aaed2", "#657ace", "#a375be", "#e198ad"];
@@ -70,11 +65,41 @@ function colorPicker(label, value, change, key) {
   return h(ColorPicker, {key, label, color: value, onUpdate: change});
 }
 
-function select(value, choices, onChange, props = {}) {
-  return h("select", {
-    value,
-    onChange: event => onChange(event.target.value), ...props,
-  }, Object.entries(choices).map(([key, label]) => h("option", {key, value: key}, label)));
+function iconToggle(title, pressed, onClick, symbol) {
+  return h("button", {type: "button", class: "button option-icon", title, "aria-label": title,
+    "aria-pressed": pressed, onClick}, [symbol]);
+}
+
+function optionPicker(label, choices, current, change, preview) {
+  return h("div", {class: "property-options", role: "group", "aria-label": label},
+    Object.entries(choices).map(([value, title]) =>
+      iconToggle(title, current === value, () => change(value), preview(value))));
+}
+
+function optionSymbol(tag, attributes, viewBox = "0 0 24 24") {
+  return h("svg", {class: "ui-icon", viewBox, "aria-hidden": "true"}, [
+    h(tag, {fill: "none", stroke: "currentColor", "stroke-width": 1.65, "stroke-linejoin": "round", ...attributes}),
+  ]);
+}
+
+function shapeSymbol(value) {
+  const [tag, geometry] = shapeGeometry(value, 18, 16);
+  if (value === "rounded") geometry.rx = 4;
+  return optionSymbol(tag, geometry, "-12 -12 24 24");
+}
+
+function lineTypeSymbol(type) {
+  if (type === "zigzag") return optionSymbol("path", {d: "M3 12H10L14 8L10 16L14 12H21", "stroke-linecap": "round"});
+  const target = {point: {x: 21, y: type === "sCurve" ? 18 : 12}};
+  const sourcePoint = {x: 3, y: type === "sCurve" ? 6 : 12};
+  const {d} = edgeGeometry({type, sourcePoint, target}, () => undefined);
+  return optionSymbol("path", {d, "stroke-linecap": "round"});
+}
+
+function lineAppearanceSymbol(appearance) {
+  const paint = edgePaint({appearance, width: 1.5});
+  return optionSymbol("path", {d: "M3 12H21", "stroke-width": paint.lineWidth,
+    "stroke-linecap": paint.linecap, "stroke-dasharray": appearance === "dotted" ? "0 4.5" : paint.dash});
 }
 
 function field(label, control) {
@@ -130,14 +155,11 @@ const FormattedText = {
 };
 
 function shape(node, linked) {
-  const x = node.width / 2;
-  const y = node.height / 2;
   if (node.kind === "connectionPoint") return h("circle", {r: node.width / 2, fill: node.fill});
   const style = {fill: node.fill, stroke: automaticBorder(node.fill), "stroke-width": node.kind === "container" && node.locked ? 3.2 : 1.6,
     "stroke-dasharray": linked ? "7 4" : undefined};
-  if (node.shape === "ellipse") return h("ellipse", {...style, rx: x, ry: y});
-  if (node.shape === "diamond") return h("polygon", {...style, points: ["0," + -y, x + ",0", "0," + y, -x + ",0"].join(" ")});
-  return h("rect", {...style, x: -x, y: -y, width: node.width, height: node.height, rx: node.shape === "rounded" ? 12 : 0});
+  const [tag, geometry] = shapeGeometry(node.shape, node.width, node.height);
+  return h(tag, {...style, ...geometry});
 }
 
 // The stored endpoints are the tips. Stop the shaft at each triangle's base.
@@ -167,7 +189,7 @@ function setEndpoint(edge, end, endpoint) {
     edge.source = endpoint.node;
     edge.sourcePoint = endpoint.point;
   } else {
-    edge.target = endpoint;
+    edge.target = endpoint.node ? {node: endpoint.node} : {point: endpoint.point};
   }
 }
 
@@ -207,8 +229,6 @@ createApp({
     const containers = computed(() => containerOrder(board.value?.nodes ?? [], nodeMap.value));
     const ctrl = ref(false);
     const alt = ref(false);
-    const accounts = ref(null);
-    const canManage = computed(() => role === "admin" || Boolean(user && (board.value?.owner === user || board.value?.creator === user)));
     const canvasText = shallowRef(new Map());
     const textSources = computed(() => [...new Set(
       board.value?.nodes.filter(node => !node.file && !node.hideText && node.text).map(node => node.text)
@@ -250,20 +270,31 @@ createApp({
     const drawnBounds = () => canvasBounds({
       nodes: [...drawings.value.values()].map(({node, layout}) => ({...node, extentX: layout.extentX, extentY: layout.extentY})), edges: board.value.edges,
     });
-    const gridKey = "thinknodes/grid/" + path;
-    const storedGrid = window.sessionStorage?.getItem(gridKey);
-    const gridOverride = ref(storedGrid == null ? null : storedGrid === "true");
-    const gridVisible = computed(() => gridOverride.value ?? (board.value?.gridVisible !== false));
+    const gridKey = "thinknodes/user-grid/" + user;
+    const gridVisible = ref(true);
+    try { gridVisible.value = window.localStorage?.getItem(gridKey) !== "false"; }
+    catch { /* The current tab can still hold the setting when storage is unavailable. */ }
+    function toggleGrid() {
+      gridVisible.value = !gridVisible.value;
+      try { window.localStorage?.setItem(gridKey, String(gridVisible.value)); }
+      catch { /* Keep the new value in the current tab. */ }
+    }
+    const gridSpacing = computed(() => board.value?.gridSpacing ?? defaultGridSpacing);
+    const gridColor = computed(() => automaticGridColor(board.value?.background ?? paper));
     const snapToGrid = ref(false);
     const selected = ref(null);
     const batch = ref(null);
     const searchQuery = ref(null);
     const searchInput = ref(null);
-    const manuallyClosed = ref(false);
+    const objectPanelOpen = ref(true);
+    const canvasPanelOpen = ref(false);
     const reconnect = ref(null);
     const menu = ref(null);
     const inspector = ref(null);
+    const attachmentInput = ref(null);
+    const uploading = ref(false);
     const canvas = ref(null);
+    let canvasPointer;
     const view = shallowRef(d3.zoomIdentity);
     const size = ref({width: 0, height: 0});
     const gesture = ref(null);
@@ -277,6 +308,7 @@ createApp({
     let zoom;
     let resizeObserver;
     let lastClick;
+    let canDeselectOnClick = false;
     let rightPress = false;
 
     const peers = ref([]);
@@ -413,10 +445,7 @@ createApp({
     }
 
     watch(selected, item => {
-      if (item && !manuallyClosed.value) inspector.value = {kind: item.kind === "node" ? "node" : "edge", id: item.id};
-    });
-    watch(() => Boolean(board.value && !manuallyClosed.value && !inspector.value && !batch.value && canManage.value), visible => {
-      if (visible && !accounts.value) loadAccounts();
+      if (item) inspector.value = {kind: item.kind === "node" ? "node" : "edge", id: item.id};
     });
     function clearSelection() {
       finishField();
@@ -522,6 +551,18 @@ createApp({
       return {x: x - centerX, y: y - centerY};
     }
 
+    function rememberCanvasPointer({clientX, clientY}) {
+      canvasPointer = {clientX, clientY};
+    }
+
+    function pastePosition() {
+      if (canvasPointer) {
+        const hit = document.elementFromPoint?.(canvasPointer.clientX, canvasPointer.clientY);
+        if (!document.elementFromPoint || hit && canvas.value?.contains(hit)) return world(canvasPointer);
+      }
+      return worldAtCenter();
+    }
+
     function clampPoint(point) {
       return {x: limit(point.x, -100000, 100000), y: limit(point.y, -100000, 100000)};
     }
@@ -578,10 +619,11 @@ createApp({
 
     function addNode(position = worldAtCenter(), properties = {}) {
       if (!board.value || !online.value) return;
+      finishField();
       const node = {...makeNode(position), ...properties};
       board.value.nodes.push(node);
       modified();
-      selectNode(node.id);
+      openProperties("node", node.id, true);
     }
 
     function selectedBox() {
@@ -592,7 +634,7 @@ createApp({
       Promise.resolve().then(action).catch(error => { problem.value = error.message; });
     }
 
-    async function pasteText(text, position = worldAtCenter()) {
+    async function pasteText(text, position) {
       if (!text || !online.value) return;
       const source = text.startsWith(location.origin + "/") ? new URL(text) : null;
       if (source && /^#object-[a-z0-9-]+$/.test(source.hash)) {
@@ -602,8 +644,11 @@ createApp({
         if (item?.file) {
           const file = {...item.file};
           if (file.asset && sourcePath !== path) {
-            const blob = await (await checked(await fetch(assetURL(sourcePath,file.asset)))).blob();
-            file.asset = (await importFile(new File([blob], file.type === "image" ? imageStem(file) + "." + file.asset.split(".").at(-1) : item.title, {type: blob.type}), path, csrf)).file.asset;
+            const generic = file.type === "attachment";
+            const url = generic ? attachmentURL(sourcePath, file.asset) : assetURL(sourcePath, file.asset);
+            const blob = await (await checked(await fetch(url))).blob();
+            const filename = generic ? file.asset : file.type === "image" ? imageStem(file) + "." + file.asset.split(".").at(-1) : item.title;
+            file.asset = (await importFile(new File([blob], filename, {type: blob.type}), path, csrf)).file.asset;
           }
           addNode(position, {file, text: item.text, title: item.title, width: item.width, height: item.height});
           return;
@@ -628,6 +673,18 @@ createApp({
       if (failures.length) throw Error(failures.join("\n"));
     }
 
+    async function uploadAttachments(event) {
+      const files = Array.from(event.target.files);
+      event.target.value = "";
+      if (!files.length || uploading.value) return;
+      uploading.value = true;
+      try {
+        await importFiles(files, worldAtCenter());
+      } catch (error) {
+        problem.value = error.message;
+      } finally { uploading.value = false; }
+    }
+
     const editingText = target => target?.closest?.("input, textarea, select, [contenteditable=true]");
     function onPaste(event) {
       if (editingText(event.target) || !online.value) return;
@@ -635,20 +692,22 @@ createApp({
       const text = event.clipboardData.getData("text/plain") || event.clipboardData.getData("text/markdown");
       if (!files.length && !text) return;
       event.preventDefault();
-      transfer(() => files.length ? importFiles(files, worldAtCenter()) : pasteText(text));
+      const position = pastePosition();
+      transfer(() => files.length ? importFiles(files, position) : pasteText(text, position));
     }
     async function pasteClipboard() {
+      const position = pastePosition();
       if (!navigator.clipboard?.read) {
-        if (navigator.clipboard?.readText) return pasteText(await navigator.clipboard.readText());
+        if (navigator.clipboard?.readText) return pasteText(await navigator.clipboard.readText(), position);
         throw Error("A beillesztéshez nyomj Ctrl+V-t vagy ⌘V-t a vásznon.");
       }
       const items = await navigator.clipboard.read();
       for (const item of items) {
         const image = item.types.find(t => t.startsWith("image/"));
-        if (image) await importFiles([await item.getType(image)], worldAtCenter());
+        if (image) await importFiles([await item.getType(image)], position);
         else {
           const type = item.types.includes("text/plain") ? "text/plain" : "text/markdown";
-          if (item.types.includes(type)) await pasteText(await (await item.getType(type)).text());
+          if (item.types.includes(type)) await pasteText(await (await item.getType(type)).text(), position);
         }
       }
     }
@@ -657,7 +716,7 @@ createApp({
       if (node.file?.type === "image" && navigator.clipboard?.write && window.ClipboardItem) {
         return navigator.clipboard.write([new ClipboardItem({"image/png": pngForClipboard(assetURL(path,node.file.asset))})]);
       }
-      return writeText(node.file?.type === "mp3" ? objectURL(path,node.id) : node.text || node.title);
+      return writeText(["mp3", "attachment"].includes(node.file?.type) ? objectURL(path,node.id) : node.text || node.title);
     }
     function onCopy(event) {
       const node = selectedBox();
@@ -677,34 +736,24 @@ createApp({
       }
       try {
         await enqueue(commit);
-        const response = await checked(await fetch("/api/subworksheet/" + path + "/" + encodeURIComponent(name), {
+        const response = await checked(await fetch("/api/subworksheet/" + (mount.dataset.folder ?? path) + "/" + encodeURIComponent(name), {
           method: "POST", headers: {"X-CSRF-Token": csrf},
         }));
         const sheet = await response.json();
-        addNode(position, {title: sheet.title, link: name});
-        await followBoxLink(worksheetLink(name, path));
+        addNode(position, {title: sheet.title, link: mount.dataset.folder && mount.dataset.folder !== path ? "../" + name : name});
       } catch (error) { problem.value = error.message; }
-    }
-
-    async function loadAccounts() {
-      try {
-        const result = await checked(await fetch("/api/worksheet-users/" + path));
-        accounts.value = await result.json();
-      } catch (error) {
-        problem.value = error.message;
-      }
     }
 
     async function openProperties(kind, itemID, focusLabel = false) {
       if (kind === "node" && !(await selectNode(itemID))) return;
-      manuallyClosed.value = false;
       if (kind !== "node") selectNode(null, kind === "edge" ? itemID : null);
-      selected.value = kind === "worksheet" ? null : {kind, id: itemID};
+      selected.value = {kind, id: itemID};
       inspector.value = {kind, id: itemID};
       menu.value = null;
       if (focusLabel) {
+        objectPanelOpen.value = true;
         await nextTick();
-        const field = mount.querySelector?.(focusLabel === "text" ? ".inspector textarea" : ".inspector [data-object-label]");
+        const field = mount.querySelector?.(focusLabel === "text" ? ".object-inspector textarea" : ".object-inspector [data-object-label]");
         if (selected.value?.id === itemID && field) {
           field.focus();
           field.select();
@@ -757,8 +806,6 @@ createApp({
     async function deleteNode(node, preserve = false, includeChildren = false) {
       if (!(await selectNode(node.id)) || groupBlocked(node)) return;
       const ids = new Set(includeChildren && node.kind === "container" ? moveGroup(node).map(n => n.id) : [node.id]);
-      const connected = board.value.edges.some(edge => ids.has(edge.source) || ids.has(edge.target.node));
-      if (!connected && node.kind !== "connectionPoint" && !confirm("Törlöd a kijelölt objektumot?")) return;
       removeObjects(ids, preserve);
     }
 
@@ -775,13 +822,6 @@ createApp({
       setEndpoint(edge, end, {point: clampPoint(end === "source" ? from : to)});
       pruneJunctions();
       modified();
-    }
-
-    function openSidebar() {
-      manuallyClosed.value = false;
-      const item = selected.value;
-      if (!item) return;
-      inspector.value = {kind: item.kind === "endpoint" ? "edge" : item.kind, id: item.id};
     }
 
     function inspectNothing() {
@@ -938,7 +978,7 @@ createApp({
       const root = draft.nodes[0];
       dropParent(root);
       modified();
-      selectNode(root.id);
+      openProperties("node", root.id, true);
     }
 
     function pressNode(event, node) {
@@ -1021,7 +1061,7 @@ createApp({
         board.value.nodes.push(node);
         dropParent(node);
         setEndpoint(free.edge, free.end, {node: node.id});
-        return {node: node.id};
+        return {node: node.id, createdJunction: true};
       }
       const target = snap(point, opposite);
       if (target && opposite && board.value.edges.some(candidate => candidate.id !== edge.id &&
@@ -1084,7 +1124,7 @@ createApp({
           const delta = {x: point.x-operation.initial.x, y: point.y-operation.initial.y};
           if (operation.type === "batch") {
             if (snapToGrid.value) {
-              const spacing = board.value.gridSpacing ?? 20;
+              const spacing = gridSpacing.value;
               for (const k of ["x","y"]) delta[k] = Math.round(delta[k]/spacing)*spacing;
             }
             const points = [...operation.members].map(id => nodeMap.value.get(id)?.position).filter(Boolean);
@@ -1114,7 +1154,7 @@ createApp({
           if (operation.type === "move") {
             if (!operation.locked && !operation.group.some(member => occupied(member.id))) {
               if (snapToGrid.value) {
-                const spacing = board.value.gridSpacing ?? 20;
+                const spacing = gridSpacing.value;
                 for (const axis of ["x", "y"]) position[axis] = (Math.round(position[axis] / spacing - .5) + .5) * spacing;
               }
               translateGroup(operation.group, position.x-operation.position.x, position.y-operation.position.y);
@@ -1203,13 +1243,13 @@ createApp({
         }
       } else if (operation.type === "cable" && operation.moved && !cancel) {
         const edge = {id: id(), ...preview.value.edge};
-        edge.target = endpointAt(world(event), edge, "target", true);
-        if (edge.target.blocked) problem.value = "Ezen az útvonalon már van kábel.";
+        const endpoint = endpointAt(world(event), edge, "target", true);
+        if (endpoint.blocked) problem.value = "Ezen az útvonalon már van kábel.";
         else {
+          setEndpoint(edge, "target", endpoint);
           board.value.edges.push(edge);
           modified();
-          selectNode(null, edge.id);
-          selected.value = {kind: "edge", id: edge.id};
+          openProperties("edge", edge.id, true);
         }
       } else if (operation.type === "endpoint" && operation.moved) {
         const edge = edgeMap.value.get(operation.edgeID);
@@ -1219,8 +1259,9 @@ createApp({
         else setEndpoint(edge, operation.end, endpoint);
         if (!cancel && !endpoint.blocked) {
           pruneJunctions();
-          if (endpoint.node) selected.value = {kind: "edge", id: edge.id};
+          if (endpoint.node && !endpoint.createdJunction) selected.value = {kind: "edge", id: edge.id};
           modified();
+          if (endpoint.createdJunction) openProperties("node", endpoint.node, true);
         }
       }
       gesture.value = null;
@@ -1253,7 +1294,6 @@ createApp({
       clearSelection();
       if (group.nodes.size || group.edges.size) {
         batch.value = group;
-        manuallyClosed.value = false;
       }
     }
 
@@ -1265,6 +1305,13 @@ createApp({
       for (const {node} of drawings.value.values()) {
         const closest = {x: limit(node.position.x, box.x, right), y: limit(node.position.y, box.y, bottom)};
         let touches = shapeDistance(node, closest) <= 1;
+        if (drag.touching && !touches) {
+          const vertices = polygonVertices(node.shape, node.width/2, node.height/2);
+          if (vertices) {
+            const points = vertices.map(([x,y]) => ({x: node.position.x+x, y: node.position.y+y}));
+            touches = edgeInRectangle({boundsPoints: [...points, points[0]], command: "L"}, box, true);
+          }
+        }
         if (touches && node.shape === "rounded") {
           const dx = Math.max(0, Math.abs(closest.x-node.position.x)-node.width/2+12);
           const dy = Math.max(0, Math.abs(closest.y-node.position.y)-node.height/2+12);
@@ -1321,7 +1368,7 @@ createApp({
 
     function deleteBatch(preserve = false) {
       const group = batch.value;
-      if (!group || batchBlocked(group.nodes) || !confirm("Törlöd a kijelölt objektumokat?")) return;
+      if (!group || batchBlocked(group.nodes)) return;
       removeObjects(group.nodes, preserve, group.edges);
     }
 
@@ -1337,6 +1384,7 @@ createApp({
 
     function pressCanvas(event) {
       finishField();
+      canDeselectOnClick = false;
       if (event.target.closest?.("[data-audio-player]")) return;
       if (event.target.closest("[role=link]")?.getAttribute?.("role") === "link") return;
       const hit = event.target.closest("[data-node], [data-edge]");
@@ -1362,7 +1410,7 @@ createApp({
         }
       }
       rightPress = event.button === 2 && !event.ctrlKey;
-      if (!reconnect.value && !event.target.closest("[data-node], [data-edge]")) {
+      if (!reconnect.value && !hit) {
         if (event.ctrlKey && !event.altKey && [0, 2].includes(event.button) && online.value) {
           event.preventDefault();
           event.stopPropagation();
@@ -1374,7 +1422,7 @@ createApp({
           canvas.value.setPointerCapture(event.pointerId);
           return;
         }
-        if (event.button === 0) clearSelection();
+        canDeselectOnClick = event.button === 0 && !event.ctrlKey;
       }
       if (event.button !== 0 || event.ctrlKey || !reconnect.value) return;
       event.preventDefault();
@@ -1388,6 +1436,7 @@ createApp({
       reconnect.value = null;
       preview.value = null;
       modified();
+      if (endpoint.createdJunction) openProperties("node", endpoint.node, true);
     }
 
     function context(event, kind = "canvas", itemID) {
@@ -1406,6 +1455,27 @@ createApp({
       if (item[key] === value) return;
       item[key] = value;
       modified();
+    }
+
+    async function renameImage(id, filename) {
+      await enqueue(async () => {
+        const node = nodeMap.value.get(id);
+        if (node?.file?.type !== "image" || occupied(id) || filename === imageStem(node.file)) return;
+        const previous = node.file;
+        node.file = {...previous, filename};
+        markDirty();
+        try {
+          await commit();
+          recordChanges();
+        } catch (error) {
+          const current = nodeMap.value.get(id);
+          if (current?.file?.asset === previous.asset && current.file.filename === filename) {
+            current.file = {...current.file, filename: previous.filename};
+          }
+          if (!worksheetChanges(baseline, copy(board.value)).length) savedGeneration.value = generation.value;
+          throw error;
+        }
+      });
     }
 
     async function commit() {
@@ -1489,35 +1559,6 @@ createApp({
       if (!dirty.value) location.assign((target.pathname === "/" ? "/" : "/edit" + target.pathname) + target.search + target.hash);
     }
 
-    async function exportSVG() {
-      if (!board.value || !canvas.value) return;
-      await loadCanvasText(textSources.value).catch(() => {});
-      await nextTick();
-      const bounds = drawnBounds();
-      const output = document.createElementNS(svgNamespace, "svg");
-      output.setAttribute("viewBox", [bounds.x, bounds.y, bounds.width, bounds.height].join(" "));
-      output.setAttribute("width", bounds.width);
-      output.setAttribute("height", bounds.height);
-      const title = document.createElementNS(svgNamespace, "title");
-      title.textContent = board.value.title;
-      const background = document.createElementNS(svgNamespace, "rect");
-      for (const [key, value] of Object.entries({...bounds, fill: board.value.background ?? paper})) background.setAttribute(key, value);
-      const scene = canvas.value.querySelector("[data-scene]").cloneNode(true);
-      scene.removeAttribute("data-scene");
-      scene.querySelectorAll("[data-editor-only]").forEach(element => element.remove());
-      scene.querySelectorAll("[tabindex], [data-node], [data-edge]").forEach(element => {
-        for (const attribute of ["tabindex", "data-node", "data-edge", "class"]) element.removeAttribute(attribute);
-      });
-      output.append(title, background, scene);
-      const file = new Blob([new XMLSerializer().serializeToString(output)], {type: "image/svg+xml"});
-      const url = URL.createObjectURL(file);
-      const link = Object.assign(document.createElement("a"), {href: url, download: decodeURIComponent(path.split("/").at(-1)) + ".svg"});
-      document.body.append(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 30000);
-    }
-
     function modifiers(event) {
       ctrl.value = event.ctrlKey;
       alt.value = event.altKey;
@@ -1568,7 +1609,6 @@ createApp({
           finishPointer({pointerId: active.pointer}, true);
           if (canvas.value.hasPointerCapture?.(active.pointer)) canvas.value.releasePointerCapture(active.pointer);
         }
-        if (!selected.value && !active && !reconnect.value) manuallyClosed.value = true;
         if (active?.waiting) gesture.value = null;
         document.activeElement?.closest?.("[data-node], [data-edge]")?.blur();
         lastClick = null;
@@ -1587,6 +1627,7 @@ createApp({
     }
     function cancelGesture() {
       if (gesture.value) finishPointer({pointerId: gesture.value.pointer}, true);
+      canvasPointer = undefined;
       clearModifiers();
     }
 
@@ -1674,7 +1715,7 @@ createApp({
       const destination = node.kind === "connectionPoint" ? null : worksheetLink(node.link, path);
 
       const textDrag = gesture.value?.type === "text" && gesture.value.nodeID === node.id ? gesture.value : null;
-      const inset = node.shape === "diamond" ? .45 : node.shape === "ellipse" ? .7 : .94;
+      const [, , inset] = shapeLabelRatios(node.shape);
       const [outline, dimensions] = selectionOutline(node.kind === "connectionPoint" ? "ellipse" : drawn.shape, drawn.width, drawn.height);
       const snapTarget = preview.value?.target === node.id;
       return h("g", {key: node.id, "data-node": node.id, "data-width": drawn.width, "data-height": drawn.height, tabindex: 0, role: node.file?.type === "mp3" ? "group" : "button",
@@ -1709,6 +1750,8 @@ createApp({
                 h("input", {type: "range", min: 0, max: 0, step: "any", disabled: true, "data-audio-seek": "", "aria-label": "Lejátszási pozíció"}),
                 h("small", {"data-audio-status": "", role: "status"}),
               ]) :
+              node.file.type === "attachment" ? h("a", {class: "button small", href: attachmentURL(path, node.file.asset),
+                onPointerdown: event => event.stopPropagation(), onDblclick: event => event.stopPropagation()}, "Letöltés") :
               node.file.type === "md" ? h(FormattedText, {source: node.text}) : h("pre",node.text),
             node.file.asset && node.text ? h("small",node.text) : null,
           ]),
@@ -1802,7 +1845,10 @@ createApp({
       if (batch.value?.edges.has(edge.id)) colors.push("#16a085");
       return h("g", {key: edge.id, "data-edge": edge.id, tabindex: 0, role: "button", "aria-label": edge.label || "Vonal",
         onPointerdown: event => {
-          if (event.shiftKey || event.button !== 0 || reconnect.value || !online.value) return;
+          if (event.button !== 0) return;
+          event.preventDefault();
+          if (event.shiftKey || reconnect.value || !online.value) return;
+          event.currentTarget.focus({preventScroll: true});
           const pathElement = event.currentTarget.querySelector(".edge-hit");
           const length = pathElement.getTotalLength();
           const point = world(event);
@@ -1820,8 +1866,6 @@ createApp({
             return;
           }
           if (Math.min(nearest, length-nearest) < 8/view.value.k) return;
-          event.preventDefault();
-          event.stopPropagation();
           const p = pathElement.getPointAtLength(nearest);
           const joint = {...makeNode(clampPoint(p)), title: "", kind: "connectionPoint", shape: "ellipse",
             width: 12, height: 12, fill: paint.color};
@@ -1854,13 +1898,23 @@ createApp({
 
     function renderCanvas() {
       const [centerX, centerY] = center();
-      const spacing = board.value.gridSpacing ?? 20;
+      const spacing = gridSpacing.value;
       const [left, top] = view.value.invert([0, 0]);
       const cable = preview.value?.edge;
       const shown = cable ? wireDrawing({...cable, color: "#4168e9"}, drawnNode) : null;
       return h("div", {class: "canvas-area"}, [
         h("svg", {ref: canvas, class: ctrl.value ? "editor-canvas ctrl-held" : "editor-canvas", "aria-label": "Ötletvászon",
           onContextmenu: event => context(event),
+          onClick: event => {
+            // D3 suppresses the click after a pan.
+            if (canDeselectOnClick && !event.target.closest("[data-node], [data-edge]")) clearSelection();
+            canDeselectOnClick = false;
+          },
+          onDblclick: event => {
+            if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
+                gesture.value || reconnect.value || event.target.closest("[data-node], [data-edge]")) return;
+            addNode(world(event));
+          },
           onDragover: event => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); },
           onDrop: event => {
             event.preventDefault();
@@ -1868,7 +1922,9 @@ createApp({
             transfer(() => importFiles(files, point));
           },
           onPointerdownCapture: pressCanvas,
-          onPointermove: updatePointer,
+          onPointerenter: rememberCanvasPointer,
+          onPointermove: event => { rememberCanvasPointer(event); updatePointer(event); },
+          onPointerleave: () => { canvasPointer = undefined; },
           onPointerup: event => finishPointer(event),
           onPointercancel: event => finishPointer(event, true),
 
@@ -1876,7 +1932,7 @@ createApp({
         }, [
           h("defs", [
             h("pattern", {id: "worksheet-grid", patternUnits: "userSpaceOnUse", width: spacing, height: spacing}, [
-              h("circle", {cx: spacing/2, cy: spacing/2, r: 1.1, fill: board.value.gridColor ?? "#ccd7eb"}),
+              h("circle", {cx: spacing/2, cy: spacing/2, r: 1.1, fill: gridColor.value}),
             ]),
           ]),
           h("rect", {width: "100%", height: "100%", fill: board.value.background ?? paper, "pointer-events": "none"}),
@@ -1910,12 +1966,12 @@ createApp({
           button("", () => zoomBy(1.25), {"aria-label": "Nagyítás", title: "Nagyítás", symbol: "plus"}),
           button("Közép", centerOrigin, {title: "Középre állítás, (0, 0)", symbol: "center"}),
           button("Mind", fit, {title: "A teljes vászon megjelenítése", symbol: "fit"}),
-          button("", () => { gridOverride.value = !gridVisible.value; window.sessionStorage?.setItem(gridKey, String(gridOverride.value)); }, {
-            title: "Pontrács ezen a kliensen", "aria-label": "Pontrács", "aria-pressed": gridVisible.value, symbol: "grid"}),
+          button("", toggleGrid, {
+            title: "Saját pontrács megjelenítése", "aria-label": "Pontrács", "aria-pressed": gridVisible.value, symbol: "grid"}),
           button("", () => { snapToGrid.value = !snapToGrid.value; }, {title: "Rácsra igazítás", "aria-label": "Rácsra igazítás", "aria-pressed": snapToGrid.value, symbol: "snap"}),
 
         ]),
-        board.value && !board.value.nodes.length ? h("p", {class: "canvas-empty"}, "Új doboz hozzáadásához kattints jobb gombbal a vászonra.") : null,
+        board.value && !board.value.nodes.length ? h("p", {class: "canvas-empty"}, "Új dobozhoz kattints duplán az üres vászonra.") : null,
       ]);
     }
 
@@ -1955,7 +2011,10 @@ createApp({
         button("Kapcsolat törlése", () => removeEdge(edge), {class: "button danger", symbol: "trash"}),
       ] : [
         button("Ping", () => ping({point: clampPoint(open.position)}), {symbol: "center", disabled: !online.value}),
-        button("Objektum létrehozása", () => { menu.value = null; addNode(open.position); }, {disabled: !board.value, symbol: "plus"}),
+        button("Objektum létrehozása", () => {
+          menu.value = null;
+          addNode(open.position);
+        }, {disabled: !board.value, symbol: "plus"}),
         button("Új munkalap", () => addSubworksheet(open.position), {symbol: "plus", disabled: !online.value}),
         button("Középre állítás", () => { menu.value = null; centerOrigin(); }, {symbol: "center"}),
       ];
@@ -1963,14 +2022,13 @@ createApp({
         style: {left: open.x + "px", top: open.y + "px"}}, entries);
     }
 
-    function sidebar(label, contents, deletion) {
-      return h("aside", {class: "inspector", "aria-label": label,
+    function sidebar(label, contents, canvasSettings = false) {
+      return h("aside", {class: ["inspector", canvasSettings ? "canvas-inspector" : "object-inspector"], "aria-label": label,
         onFocusin: event => { editingField = event.target.matches("textarea,input,select"); },
         onFocusout: finishField,
         onChange: event => { if (event.target.matches("select,input[type=checkbox],input[type=range],input[type=color]")) finishField(); },
         onInputCapture: () => { editingField = true; }}, [
         h("div", {class: "inspector-content stack"}, contents),
-        deletion ? h("footer", {class: "inspector-footer"}, [deletion]) : null,
       ]);
     }
 
@@ -1983,40 +2041,8 @@ createApp({
       });
     }
 
-    function lineOptions(edge, label, key, choices, fallback) {
-      return h("fieldset", {class: "property-group"}, [
-        h("legend", label),
-        h("div", {class: "line-options"}, Object.entries(choices).map(([value, title]) =>
-          h("button", {type: "button", class: "button small", key: value,
-            "aria-pressed": (edge[key] ?? fallback) === value,
-            onClick: () => updateItem(edge, key, value)}, title))),
-      ]);
-    }
-
-    function worksheetAccess(sheet) {
-      const available = accounts.value || [];
-      const ownerChoices = Object.fromEntries([...new Set([sheet.owner, ...available].filter(Boolean))]
-        .map(name => [name, name]));
-      const editorChoices = [...new Set([...(sheet.editors || []), ...available])].filter(name => name !== sheet.owner);
-      return [
-        role === "admin" ? field("Tulajdonos", select(sheet.owner ?? "", {"": "Nincs kijelölve", ...ownerChoices},
-          name => { if (name) updateItem(sheet, "owner", name); })) : h("p", "Tulajdonos · " + sheet.owner),
-        checkbox("Rejtett a főoldalon", !!sheet.hidden, value => updateItem(sheet, "hidden", value)),
-        checkbox("Nyilvános munkalap", sheet.isPublic !== false, value => updateItem(sheet, "isPublic", value)),
-        h("fieldset", {class: "access-editors"}, [
-          h("legend", "Szerkesztők"),
-          ...editorChoices.map(name => checkbox(name, (sheet.editors || []).includes(name), checked => {
-            const editors = (sheet.editors || []).filter(editor => editor !== name);
-            if (checked) editors.push(name);
-            updateItem(sheet, "editors", editors);
-          })),
-          !editorChoices.length && accounts.value ? h("p", {class: "muted"}, "Nincs másik fiók.") : null,
-        ]),
-      ];
-    }
-
-    function deleteButton(node) {
-      return button("Törlés", () => deleteNode(node), {class: "button danger", symbol: "trash", disabled: !!occupied(node.id)});
+    function group(label, children) {
+      return h("fieldset", {class: "property-group stack"}, [h("legend", label), ...children]);
     }
 
     function renderSearch() {
@@ -2043,50 +2069,52 @@ createApp({
       ]);
     }
 
+    function renderCanvasInspector() {
+      if (!canvasPanelOpen.value) return null;
+      const sheet = board.value;
+      return sidebar("Munkalap", [
+        h("input", {ref: attachmentInput, type: "file", multiple: true, hidden: true,
+          onChange: uploadAttachments}),
+        button(uploading.value ? "Feltöltés…" : "Fájl feltöltése", () => attachmentInput.value?.click(),
+          {symbol: "plus", disabled: uploading.value || !online.value, title: "Hang, dokumentum, kép vagy ZIP"}),
+        group("Cím", [input(sheet.title, value => updateItem(sheet, "title", value), {"aria-label": "Cím", maxlength: 120})]),
+        group("Szöveg", [textarea(sheet.text ?? "", value => updateItem(sheet, "text", value))]),
+        group("Háttér", [colorPicker("Munkalap háttérszíne", sheet.background ?? paper,
+          value => updateItem(sheet, "background", value), "worksheet/background")]),
+      ], true);
+    }
+
     function renderInspector() {
-      if (manuallyClosed.value) return null;
+      if (!objectPanelOpen.value || !selected.value && !batch.value) return null;
       if (batch.value) {
         const nodes = board.value.nodes.filter(n => batch.value.nodes.has(n.id));
         const joints = nodes.filter(n => n.kind === "connectionPoint").length;
         const edges = board.value.edges.filter(e => batch.value.edges.has(e.id)).length;
-        return sidebar("Objektumok", [h("h2","Objektumok:"), h("p", (nodes.length-joints)+" doboz, "+edges+" vonal, "+joints+" csomópont")],
-          button("Törlés",() => deleteBatch(),{class: "button danger",symbol: "trash"}));
+        return sidebar("Objektumok", [group("Objektumok", [
+          h("p", (nodes.length-joints)+" doboz, "+edges+" vonal, "+joints+" csomópont"),
+        ])]);
       }
-      if (!inspector.value || inspector.value.kind === "worksheet") {
-        const sheet = board.value;
-        return sidebar("Munkalap", [
-          field("Cím", input(sheet.title, value => updateItem(sheet, "title", value), {maxlength: 120})),
-          field("Text", textarea(sheet.text ?? "", value => updateItem(sheet, "text", value))),
-          colorPicker("Munkalap háttérszíne", sheet.background ?? paper, value => updateItem(sheet, "background", value), "worksheet/background"),
-          colorPicker("Rácspontok színe", sheet.gridColor ?? "#ccd7eb", value => updateItem(sheet, "gridColor", value), "worksheet/grid"),
-          checkbox("Pontrács megjelenítése", sheet.gridVisible !== false, v => {
-            gridOverride.value = null;
-            window.sessionStorage?.removeItem(gridKey);
-            updateItem(sheet, "gridVisible", v);
-          }),
-          field("Rácsköz", numeric(sheet.gridSpacing ?? 20, value => updateItem(sheet, "gridSpacing", value), 6, 160)),
-          ...(canManage.value ? worksheetAccess(sheet) : []),
-          h("div", {class: "inspector-links"}, [
-            button("SVG letöltése", exportSVG, {symbol: "download"}),
-            link("Mentett JSON letöltése", "/export/json/" + path, "download"),
-            link("Mentett Text letöltése", "/export/text/" + path, "download"),
-          ]),
-        ]);
-      }
+      if (!inspector.value) return null;
       if (inspector.value.kind === "edge") {
         const edge = board.value.edges.find(item => item.id === inspector.value.id);
         if (!edge) return null;
         const paint = edgePaint(edge);
         return sidebar("Vonal szerkesztése", [
-          field("Címke", input(edge.label || "", value => updateItem(edge, "label", value), {"data-object-label": "", maxlength: 120})),
-          colorPicker("Vonal színe", paint.color, value => updateItem(edge, "color", value), edge.id + "/line"),
-          field("Alapvastagság", numeric(edge.width ?? 2, value => updateItem(edge, "width", value), 0.5, 24)),
-          lineOptions(edge, "Vonaltípus", "type", lineTypes, "straight"),
-          lineOptions(edge, "Megjelenés", "appearance", lineAppearances, "plain"),
-          checkbox("Nyíl a vonal elején", paint.startArrow, value => updateItem(edge, "startArrow", value)),
-          checkbox("Nyíl a vonal végén", paint.endArrow, value => updateItem(edge, "endArrow", value)),
-          ...endpointActions(edge),
-        ], button("Kapcsolat törlése", () => removeEdge(edge), {class: "button danger", symbol: "trash"}));
+          group("Vonal", [
+            field("Címke", input(edge.label || "", value => updateItem(edge, "label", value), {"data-object-label": "", maxlength: 120})),
+            colorPicker("Vonal színe", paint.color, value => updateItem(edge, "color", value), edge.id + "/line"),
+            field("Alapvastagság", numeric(edge.width ?? 2, value => updateItem(edge, "width", value), 0.5, 24)),
+          ]),
+          group("Vonaltípus", [optionPicker("Vonaltípus", lineTypes, edge.type ?? "straight",
+            value => updateItem(edge, "type", value), lineTypeSymbol)]),
+          group("Megjelenés", [optionPicker("Megjelenés", lineAppearances, edge.appearance ?? "plain",
+            value => updateItem(edge, "appearance", value), lineAppearanceSymbol)]),
+          group("Végpontok", [h("div", {class: "property-options"}, [
+            iconToggle("Nyíl a vonal elején", paint.startArrow, () => updateItem(edge, "startArrow", !paint.startArrow), icon("left")),
+            iconToggle("Nyíl a vonal végén", paint.endArrow, () => updateItem(edge, "endArrow", !paint.endArrow), icon("right")),
+          ])]),
+          group("Csatlakozás", endpointActions(edge)),
+        ]);
       }
       const node = nodeMap.value.get(inspector.value.id);
       if (!node || held.value !== node.id || occupied(node.id)) return null;
@@ -2094,8 +2122,8 @@ createApp({
       const title = input(node.title, value => change("title", value), {"aria-label": "Címke", "data-object-label": "", maxlength: 120});
       const color = (label, key, fallback) => colorPicker(label, node[key] ?? fallback, v => change(key, v), node.id + "/" + key);
       if (node.file?.type === "image") return sidebar("Kép szerkesztése", [
-        field("Cím", title),
-        field("Fájlnév", h("input", {type: "text", "aria-label": "Fájlnév", value: imageStem(node.file),
+        group("Cím", [title]),
+        group("Fájlnév", [h("input", {type: "text", "aria-label": "Fájlnév", value: imageStem(node.file),
           onBlur: event => { event.target.value = imageStem(node.file); },
           onKeydown: event => {
             if (event.key !== "Enter" || event.isComposing) return;
@@ -2103,23 +2131,26 @@ createApp({
             event.stopPropagation();
             const filename = event.target.value.trim();
             if (!validImageStem(filename)) { problem.value = "Érvénytelen képfájlnév."; return; }
-            if (filename !== imageStem(node.file)) change("file", {...node.file, filename});
             event.target.blur();
             finishField();
-            save();
-          }})),
-        checkbox("Fájlnév megjelenítése", !!node.file.showFilename, value => change("file", {...node.file, showFilename: value})),
-        field("Megjegyzés", textarea(node.text, value => change("text", value))),
-      ], deleteButton(node));
+            if (filename !== imageStem(node.file)) transfer(() => renameImage(node.id, filename));
+          }}),
+          checkbox("Fájlnév megjelenítése", !!node.file.showFilename, value => change("file", {...node.file, showFilename: value})),
+        ]),
+        group("Megjegyzés", [textarea(node.text, value => change("text", value))]),
+      ]);
       if (node.file) return sidebar("Fájl szerkesztése", [
-        field("Cím", title),
-        checkbox("Cím megjelenítése", !node.file.hideTitle, value => change("file", {...node.file, hideTitle: !value})),
-        field(node.file.asset ? "Megjegyzés" : "Szöveg", textarea(node.text, value => change("text", value))),
-      ], deleteButton(node));
+        group("Cím", [title, checkbox("Cím megjelenítése", !node.file.hideTitle,
+          value => change("file", {...node.file, hideTitle: !value}))]),
+        group(node.file.asset ? "Megjegyzés" : "Szöveg", [textarea(node.text, value => change("text", value))]),
+      ]);
       if (node.kind === "connectionPoint") return sidebar("Csomópont", [
-        field("Átmérő", numeric(node.width, size => { node.height = size; change("width", size); }, 4, 128)),
-        field("Címke", title), color("Szín", "fill"),
-      ], deleteButton(node));
+        group("Címke", [title]),
+        group("Megjelenés", [field("Átmérő", numeric(node.width, size => {
+          node.height = size;
+          change("width", size);
+        }, 4, 128)), color("Szín", "fill")]),
+      ]);
       const positions = [
         ["top","left","Bal felső","↖"], ["top","center","Felső közép","↑"], ["top","right","Jobb felső","↗"],
         ["middle","left","Bal oldal","←"], ["middle","center","Közép","•"], ["middle","right","Jobb oldal","→"],
@@ -2158,12 +2189,11 @@ createApp({
             .map(([key, label]) => checkbox(label, !!style[key], v => update(key, v)))),
         ];
       }
-      const group = (label, children) => h("fieldset", {class: "property-group stack"}, [h("legend", label), ...children]);
       const locked = groupBlocked(node) || ancestors(node, nodeMap.value).some(n => n.locked);
       return sidebar("Ötlet szerkesztése", [
         group("Cím", [title, ...typography("title")]),
         group("Doboz", [
-          select(node.shape, shapes, value => change("shape", value), {"aria-label": "Forma"}),
+          optionPicker("Forma", shapes, node.shape, value => change("shape", value), shapeSymbol),
           color("Háttér", "fill"),
           button(node.kind === "container" ? "Konténer feloldása" : "Konténer", () => toggleContainer(node), {symbol: "folder", disabled: locked}),
           node.kind === "container" ? checkbox("Lock · tartalom rögzítése", !!node.locked, v => change("locked", v)) : null,
@@ -2187,7 +2217,7 @@ createApp({
             },
           }),
         ]),
-      ], deleteButton(node));
+      ]);
     }
 
     const toolbar = document.getElementById?.("editor-tools");
@@ -2224,15 +2254,20 @@ createApp({
         h("div", {class: "editor-workspace"}, [
           renderCanvas(),
           problem.value || currentStatus ? h("p", {class: ["canvas-status", {error: problem.value}], role: "status"}, problem.value || currentStatus) : null,
-          renderInspector(),
+          h("div", {class: "inspector-column"}, [renderInspector(), renderCanvasInspector()]),
           renderSearch(),
-          button("", () => {
-            if (!manuallyClosed.value) { manuallyClosed.value = true; inspectNothing(); }
-            else openSidebar();
-          }, {class: ["button", "sidebar-open", {active: selected.value && manuallyClosed.value}],
-            "aria-expanded": !manuallyClosed.value,
-            "aria-label": !manuallyClosed.value ? "Oldalsáv bezárása" : "Oldalsáv megnyitása",
-            symbol: !manuallyClosed.value ? "right" : "left"}),
+          button("", () => { finishField(); objectPanelOpen.value = !objectPanelOpen.value; }, {
+            class: ["button", "sidebar-open", {active: (selected.value || batch.value) && !objectPanelOpen.value}],
+            "aria-expanded": objectPanelOpen.value,
+            "aria-label": objectPanelOpen.value ? "Oldalsáv bezárása" : "Oldalsáv megnyitása",
+            symbol: objectPanelOpen.value ? "right" : "left",
+          }),
+          button("", () => { finishField(); canvasPanelOpen.value = !canvasPanelOpen.value; }, {
+            class: "button sidebar-open sidebar-open-bottom",
+            "aria-expanded": canvasPanelOpen.value,
+            "aria-label": canvasPanelOpen.value ? "Vászonbeállítások bezárása" : "Vászonbeállítások megnyitása",
+            symbol: "up",
+          }),
         ]),
         renderMenu(),
       ];

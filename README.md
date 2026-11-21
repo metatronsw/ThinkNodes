@@ -83,22 +83,18 @@ A `./run.sh --test` indításkor minden új böngésző-munkamenet automatikusan
 
 ## Munkalapok és fájlok
 
-A főoldalon a felső szintű projektek szerepelnek. A paklit a projektmappában közvetlenül található JSON-fájlok száma határozza meg. Az új projekt nyilvános módban indul. Minden bejelentkezett szerkesztő módosíthatja, belső módban pedig külön hozzáférés adható.
+A főoldalon minden kártya egy projektmappát nyit meg. A mappával azonos nevű **.thnode** a fő munkalap. A többi **.thnode** melléklap, a további fájlok a **Mappa tartalma** alatt tölthetők le. A JSON-adatfájlok is mellékletek. Minden almappának saját főlapja és beállításfájlja van.
 
-A jobb kattintásos projektmenüben beállítható a láthatóság, a jelszár, a szerkesztési zár és a hozzáférés. A mappára adott jog és a mappaszintű zár az alatta lévő munkalapokra is érvényes. A jelszó csak hashként kerül az adatkönyvtár közös `.document-policies.json` fájljába. A munkalaphoz tartozó képek és dokumentumok a megtekintő **Mappa tartalma** szekciójában jelennek meg. Egy csatolt fájlhoz külön hozzáférés is adható.
-
-
-A helyi **/demo** bemutató többszintű projekt külön kutatási, tervezési, megvalósítási és mérési munkalapokkal. A főoldali kártyák a munkalap háttérszínét használják, az elcsúsztatott lapok az allapokat jelzik. Jobb kattintással megnyitható a kártyamenü. Egy rejtett projekt kártyáját az adminisztrátor látja a főoldalon. A közvetlen hivatkozásra a munkalap meglévő olvasási és szerkesztési jogosultságai érvényesek.
-
-| URL | Adatfájl |
+| Útvonal | Adatfájl |
 |---|---|
-| **/munkalap1** | **Projects/munkalap1.json** |
-| **/mégnincsilyen** | **Projects/mégnincsilyen.json** |
-| **/gondolatok/otletek1** | **Projects/gondolatok/otletek1.json** |
+| /VisualDemo | Projects/VisualDemo/VisualDemo.thnode |
+| /VisualDemo/Jelmagyarazat | Projects/VisualDemo/Jelmagyarazat.thnode |
+| /Thinking | Projects/Thinking/Thinking.thnode |
+| /Thinking/Proba | Projects/Thinking/Proba.thnode |
 
-Egy munkalap egy JSON-fájl. A tárolt és letöltött JSON rövid kulcsokat használ, például `pos`, `align`, `textCol`, `w`, `h` és `vAlign`. A munkalap API ugyanezeket a rövid kulcsokat használja. Ebben van a munkalap címe és formázott Text mezője, valamint a revízió, a dobozok és a kapcsolatok. A **Projects/.settings.json** és **Projects/.users.json** a szerver beállításait és a fiókokat tárolja. Utóbbiban a jelszavak helyett bcrypt-hashek vannak.
+A munkalap JSON-formátumban tárolja a vásznat, a címét, a létrehozóját és a mentési revíziót. A projekt **.settings.json** fájljában vannak a tagság és a lapok láthatóságának beállításai. A rejtett lap közvetlen hivatkozással elérhető a jogosultaknak. Az új almappa átveszi a szülő aktuális jogosultságait. A hozzáféréshez minden szülőmappán is át kell jutni. A nyilvános mód olvasást enged, szerkeszteni a jogosult tagok tudnak. A rendszergazda kezeli az összes projektet.
 
-Önálló munkalapnál a közvetlen URL első megnyitása bejelentkezés után automatikusan létrehozza a privát lapot a bejelentkezett felhasználó nevére. A munkalapot a tulajdonos, a kijelölt szerkesztők és az adminisztrátorok szerkeszthetik. A tulajdonos és az admin állíthatja a nyilvánosságot és a szerkesztőket a Munkalap panelen. A nyilvános lap vendégként megtekinthető és letölthető, ha az adminoldalon a teljes oldal olvasásához nincs előírva a belépés. Régebbi, tulajdonos nélküli laphoz az admin rendelhet tulajdonost. A munkalap törléséhez adminisztrátori szerepkör kell. A törölt munkalap a **Projects/.trash/** mappába kerül. Az útvonal ismételt megnyitása üres munkalapot hozhat létre.
+A **Projects/.settings.json** tartalmazza az alkalmazás beállításait, a fiókokat és a bcrypt-jelszóhasheket. A beállításfájlokat és a munkalapokat a mellékletlista kihagyja. A munkalap saját letöltési gombja **.thnode** fájlt ad.
 
 A mentés atomi fájlcserét és revízióellenőrzést használ. Egy adatkönyvtárhoz egy futó szerverpéldány tartozik.
 
@@ -122,22 +118,19 @@ A doboz **Link** mezőjében a relatív út kiindulópontja maga a munkalap. A b
 | `/archiv/otletek` | `/archiv/otletek` |
 | `https://example.com/` | A megadott weboldal |
 
-A vászon jobb kattintásos menüjében az **Új munkalap** létrehozza az allapot és a rá mutató dobozt. Az allap a szülő háttérszínét, rácsbeállításait, tulajdonosát, szerkesztőit és nyilvánosságát örökli. Ezek később a saját **Munkalap** paneljén módosíthatók. A munkalapkártyán a létrehozó és a látható közvetlen allapok száma szerepel. Megtekintéskor az allapok mentett SVG-előnézete a vászon alatt található. A fejléc útvonala kattintható, a felfelé mutató nyíl a szülőlapra visz.
+A vászon jobb kattintásos menüjében az **Új munkalap** létrehozza az allapot és a rá mutató dobozt. Az allap örökli a szülő háttérszínét, egyedi rácsközét, mappájának hozzáférési szabályait. Létrehozás után a szülőlapon rögtön szerkeszthető az új doboz címe, és a doboz hivatkozása megnyitja az allapot. A munkalapkártyán a létrehozó és a látható közvetlen allapok száma szerepel. Megtekintéskor az allapok mentett SVG-előnézete a vászon alatt található. A fejléc útvonala kattintható, a felfelé mutató nyíl a szülőlapra visz.
 
-## Vászon
+## Vászon és útmutató
 
-- Bal gombbal húzd a dobozt a mozgatáshoz. Üres területen a bal gomb a nézetet mozgatja. A görgő nagyít, a **Közép** gomb a **(0, 0)** pontot középre állítja. Az X jobbra, az Y lefelé nő.
-- Jobb kattintással nyílik meg a doboz vagy a kábel műveleti menüje. A kijelölés megnyitja az oldalsávot, a kijelölés megszüntetése a munkalap tulajdonságait mutatja. A jobb felső nyíllal kézzel bezárt panel a következő kijelöléskor is zárva marad. Szerkesztésben az objektumra duplán kattintva a tulajdonságpanelen a teljes címke kijelölődik, és gépeléssel átírható. A link szerkesztésben az ikonra, megtekintésben a dobozra duplán kattintva követhető. A külső hivatkozások külön böngészőablakban vagy lapon nyílnak meg. Az objektum menüjében a **Link** és a **Link feloldása** kezeli a hivatkozást. A **Ping** a résztvevők vásznán egy rövid, táguló kerettel emeli ki a dobozt. A cím, a Text mező, a forma, a méret és a szín szerkesztés közben frissül. A **Hide text** alapból ki van kapcsolva. Bekapcsolásakor a szöveg helyén ••• jelenik meg. A doboz fölé vitt egérrel olvasható a formázott szöveg.
-- Az **Enter** megnyitja a munkalap gyorskeresőjét. Enterrel vagy Esc-kel bezárható. Az **Esc** a vásznon először megszünteti a kijelölést, kijelölés nélkül bezárja a panelt. A **Delete** és a **Backspace** törli a kijelölt objektumot. Ctrl-lal együtt a csomópont kábelei, konténernél a tartalmazott objektumok és a hozzájuk vagy a konténerhez kötött kábelek is törlődnek.
-- Egy adott kezdőobjektumtól egy adott célobjektumig egy kábel csatlakozhat. Két szabad vég összeillesztésekor zöld kör jelzi a leendő csomópont helyét.
-- A **Ctrl + bal gombos húzás** kábelt indít egy dobozból vagy a vászon üres pontjáról. A kábel a kiemelt célhoz illeszkedik, üres helyre engedve vászonkoordinátára kerül.
-- Ctrl + kattintás a vonal belsejére csomópontot szúr be, és két kábelszakaszra osztja a vonalat. Az új pont ugyanazzal a húzással a helyére vihető. A kijelölt vonal alatt a felhasználó színével folytonos vonal jelenik meg. Dupla kattintással nyílnak meg a vonal beállításai. Külön gombsoron választható a geometria (Egyenes, S-forma, Villám, Íves, Kötél) és a megjelenés (Sima, Vastag, Szaggatott, Pontozott). A nyilak, az alapszélesség és a szín külön állíthatók. Mindkét végpont leválasztható és húzható, majd dobozhoz kapcsolható. A doboz törlésekor a hozzá tartozó kábelek végpontjai a helyükön maradnak.
-- A végpontot a teljes nyílhegy megfogásával lehet húzni. Nyílhegy nélküli végponton azonos méretű láthatatlan téglalap szolgál fogófelületként. Két kábel szabad végének összeillesztése címke nélküli csomópontot hoz létre. A címke, az átmérő és a szín a csomópont paneljén módosítható. Ha már csak egy kábel maradna a csomóponton, a csomópont eltűnik, és a kábel vége ugyanazon a helyen szabaddá válik.
-- Az **Alt** megjeleníti a méretező sarkokat. A sarkot húzva a doboz mérete változik. A cím és a Text betűmérete külön állítható. Alt+húzás a dobozon a kapcsolataival együtt másolja a dobozt. Alt+dupla kattintás a teljes Text mezőt kijelöli.
-- A **Konténer** gomb az átfedő, azonos szinten lévő dobozokat a konténerhez rendeli. Behúzáskor a mozgatott elem területének több mint fele kell, hogy a célkonténerben legyen. Egymásba ágyazott céloknál a legbelső alkalmas konténer fogadja az elemet. A **Lock** a tartalom önálló mozgatását rögzíti. A **Konténer feloldása** egy szinttel kijjebb helyezi a közvetlen tagokat a vásznon elfoglalt helyük megőrzésével.
-- A pontrács melletti **Rácsra igazítás** a mozgatott objektum közepét a legközelebbi rácspontra illeszti. Alapértelmezésben ki van kapcsolva. A **Munkalap** panelen állítható a pontrács láthatósága, színe és térköze. A vászon alján lévő Pontrács gomb az adott böngészőfülön felülbírálja a munkalap alapbeállítását. Az exportált SVG rács nélkül készül.
-- A **Dobozon kívül** kapcsoló a címet a doboz mellé helyezi. A Text a dobozon belül marad. Ilyenkor nyolc külső igazítás választható. A cím és a Text egymástól függetlenül a doboz kilenc pozíciójához igazítható. A cím és a szöveg helyét Ctrl+Alt+húzással is beállíthatod. A színmintára kattintva megnyílik a helyi paletta, az RGB-csúszkák és a rendszer színválasztója.
+A főoldali **Útmutató** az eszközöket, a gyorsbillentyűket és az egérgesztusokat példákkal mutatja be. A megtekintő a mentett munkalapot rács nélküli SVG-ként, .thnode fájlként vagy szövegként tudja exportálni.
 
-A Munkalap panel **SVG letöltése** gombja a teljes vásznat exportálja egy SVG-fájlba, a képernyőn éppen látható nagyítástól és a mentéstől függetlenül. A megtekintő oldalon az SVG, a JSON és a Text export a mentett munkalapból készül. A Text export tartalmazza a dobozok szövegét és a kapcsolatokat.
+Gyorsbillentyű vagy gesztus változásakor frissítsd a [központi táblázatot](docs/hotkeys.json). A [HTML-sablonban](docs/guide.template.html) találhatók a példaábrák, az oldal elrendezése pedig a [stíluslapon](Public/guide.css).
+
+```sh
+python3 tools/generate-guide.py
+python3 tools/generate-guide.py --check
+```
+
+Az első parancs elkészíti a kiszolgált `Public/utmutato.html` fájlt. A második ellenőrzi, hogy a verziózott HTML egyezik-e a forrásokkal.
 
 A munkalapok a rövid kulcsú, 2-es verziójú JSON-formátumban készülnek. A **Projects/** mappa tartalma helyi adatként a Git-követésen kívül marad.

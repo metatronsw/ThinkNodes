@@ -13,12 +13,28 @@
 
 konténer:
 - jelezni kell vizuálisan mikor befoglal magába egy másik dobozt. Legyeni ilyenkor a konténer kerete pontozott és kapjon glow effektet.
-- Konténert rátolva a kisebb dobozra, akkor is foglalja magába (ha teljesül a befoglalási méret szabály )
+? Konténert rátolva a kisebb dobozra, akkor is foglalja magába (ha teljesül a befoglalási méret szabály )
 
 
 
-alakítsd át a property panelt úgy, hogy a teljes sáv eltűnik, csak a 
+?? shift nyomvatartása közben: 
+- vonal húzáskor, vagy kijelölt vonal vastagítás legyen
 
 
 
+Doboz átméretezés: 
+- legyen egy gomb AutoSize (csak ikon kell) , ha ez aktív akkor próbálja meg mindig úgy méretezni a belső szöveget hogy kitöltse a dobozt
+- autoSize esetén a cím mindig nagyobb mint a text 
+- autoSize esetén a betűméret választó inaktív
+- tedd az autoSize gombot a betűméret választó mellé, bal oldalra
 
+HIBÁK:
+- doboz formák kijelölés kerete csúnyán jelenik meg elnyújtott képarányra átméretezéskor. A csúcsok (háromszög, ötszög) közelében hozzáér a belső formához. Legyen arányosan nagyobb a kijelölő keret a formánál.
+
+CANVAS PROPERTY PANEL:
+- jobb alsó sarokból rakd át a bal felső sarokba
+- file feltöltése gomb most legyen az alsó, feltöltés után a file a gomb alatt jelenjen meg a canvas-on
+- a bejelentkezett felhasználók a bal alsó sarokba kerüljenek át 
+
+KÉPKEZELÉS: 
+- használd az alpha csatornát, átlátszó képeknél (svg) 

@@ -6,7 +6,6 @@ const shortKeys = new Map(Object.entries({
   height: "h",
   verticalAlignment: "vAlign",
   fontSize: "fontSz",
-  gridColor: "gridCol",
   gridSpacing: "gridStep",
   sourcePoint: "srcPt",
 }));

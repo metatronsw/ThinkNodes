@@ -1,3 +1,5 @@
+import {polygonVertices} from "./geometry.js?v=2";
+
 // Positions stay in worksheet coordinates when a node changes parent.
 export function ancestors(node, byID) {
   const parents = [];
@@ -18,7 +20,8 @@ export function containerOrder(nodes, byID) {
 function outline(node) {
   const {x, y} = node.position;
   const w = node.width / 2, h = node.height / 2;
-  if (node.shape === "diamond") return [[x,y-h],[x+w,y],[x,y+h],[x-w,y]];
+  const vertices = polygonVertices(node.shape, w, h);
+  if (vertices) return vertices.map(([dx, dy]) => [x + dx, y + dy]);
   if (node.shape === "ellipse") return Array.from({length: 48}, (_, i) => {
     const angle = i * Math.PI / 24;
     return [x+w*Math.cos(angle), y+h*Math.sin(angle)];

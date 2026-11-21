@@ -3,7 +3,34 @@ export const shapes = {
   rectangle: "Téglalap",
   ellipse: "Ellipszis",
   diamond: "Rombusz",
+  triangle: "Háromszög",
+  pentagon: "Ötszög",
+  hexagon: "Hatszög",
+  parallelogram: "Paralelogramma",
 };
+
+// Clockwise vertices in a box with half-width and half-height of one.
+const polygons = {
+  diamond: [[0,-1], [1,0], [0,1], [-1,0]],
+  triangle: [[0,-1], [1,1], [-1,1]],
+  pentagon: [[0,-1], [1,-.24], [.62,1], [-.62,1], [-1,-.24]],
+  hexagon: [[-.5,-1], [.5,-1], [1,0], [.5,1], [-.5,1], [-1,0]],
+  parallelogram: [[-.55,-1], [1,-1], [.55,1], [-1,1]],
+};
+
+export function polygonVertices(shape, halfWidth, halfHeight) {
+  if (Object.hasOwn(polygons, shape)) return polygons[shape].map(([x, y]) => [x * halfWidth, y * halfHeight]);
+}
+
+const labelRatios = {
+  diamond: [.50, .47, .45],
+  ellipse: [.72, .72, .70],
+  triangle: [.42, .42, .38],
+  pentagon: [.58, .58, .60],
+  hexagon: [.68, .76, .65],
+  parallelogram: [.60, .75, .58],
+};
+export const shapeLabelRatios = shape => Object.hasOwn(labelRatios, shape) ? labelRatios[shape] : [.94, .94, .94];
 
 export const edgeStyles = {
   arrow: "Egyirányú nyíl",
@@ -17,22 +44,50 @@ export function automaticBorder(fill) {
 }
 
 export const paper = "#f5f8fc";
+export const defaultGridSpacing = 32;
+
+export function automaticGridColor(background) {
+  const rgb = [1, 3, 5].map(i => parseInt(background.slice(i, i + 2), 16));
+  const darker = rgb.map(channel => Math.round(channel / 2));
+  const lighter = rgb.map(channel => Math.round((channel + 255) / 2));
+  const luminance = color => color.reduce((sum, channel, index) => {
+    const srgb = channel / 255;
+    const linear = srgb <= .04045 ? srgb / 12.92 : ((srgb + .055) / 1.055) ** 2.4;
+    return sum + linear * [.2126, .7152, .0722][index];
+  }, 0);
+  const base = luminance(rgb) + .05;
+  const best = base / (luminance(darker) + .05) >= (luminance(lighter) + .05) / base ? darker : lighter;
+  return "#" + best.map(channel => channel.toString(16).padStart(2, "0")).join("");
+}
+
 export const cableColor = "#526982";
 export const limit = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export function selectionOutline(shape, width, height) {
-  const x = width / 2 + 10, y = height / 2 + 10;
+export function shapeGeometry(shape, width, height, padding = 0) {
+  const x = width / 2 + padding, y = height / 2 + padding;
   if (shape === "ellipse") return ["ellipse", {rx: x, ry: y}];
-  if (shape === "diamond") return ["polygon", {points: `0,${-y} ${x},0 0,${y} ${-x},0`}];
-  return ["rect", {x: -x, y: -y, width: 2*x, height: 2*y, rx: shape === "rounded" ? 22 : 0}];
+  const vertices = polygonVertices(shape, x, y);
+  if (vertices) return ["polygon", {points: vertices.map(vertex => vertex.join(",")).join(" ")}];
+  return ["rect", {x: -x, y: -y, width: 2*x, height: 2*y, rx: shape === "rounded" ? 12 + padding : 0}];
+}
+
+export function selectionOutline(shape, width, height) {
+  return shapeGeometry(shape, width, height, 10);
 }
 
 export function shapeDistance(node, point, padding = 0) {
-  const x = Math.abs(point.x - node.position.x) / (node.width / 2 + padding);
-  const y = Math.abs(point.y - node.position.y) / (node.height / 2 + padding);
+  const x = (point.x - node.position.x) / (node.width / 2 + padding);
+  const y = (point.y - node.position.y) / (node.height / 2 + padding);
   if (node.kind === "connectionPoint" || node.shape === "ellipse") return Math.hypot(x, y);
-  if (node.shape === "diamond") return x + y;
-  return Math.max(x, y);
+  if (Object.hasOwn(polygons, node.shape)) {
+    const vertices = polygons[node.shape];
+    // Each edge gives a linear distance from the center, normalized to one at the edge.
+    return Math.max(...vertices.map(([ax, ay], i) => {
+      const [bx, by] = vertices[(i + 1) % vertices.length];
+      return (x * (by - ay) - y * (bx - ax)) / (ax * by - ay * bx);
+    }));
+  }
+  return Math.max(Math.abs(x), Math.abs(y));
 }
 
 export function borderPoint(node, toward) {
@@ -307,8 +362,7 @@ function wrapRuns(runs, columns, preformatted) {
 
 export function labelLayout(node, blocks = []) {
   if (node.kind === "connectionPoint") return {width: node.width, height: node.height, lines: []};
-  const widthRatio = node.shape === "diamond" ? 0.50 : node.shape === "ellipse" ? 0.72 : 0.94;
-  const heightRatio = node.shape === "diamond" ? 0.47 : node.shape === "ellipse" ? 0.72 : 0.94;
+  const [widthRatio, heightRatio] = shapeLabelRatios(node.shape);
   const textStyle = node.textStyle ?? {};
   const bodySize = textStyle.size ?? 13;
   const hiddenText = node.hideText && !!node.text?.trim();

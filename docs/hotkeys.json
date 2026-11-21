@@ -1,0 +1,65 @@
+[
+  {
+    "id": "vaszon",
+    "title": "Vászon és kijelölés",
+    "rows": [
+      {"action": "Vászon mozgatása", "keys": [["Húzás"]], "where": "Üres vászon", "detail": "A kijelölés megmarad."},
+      {"action": "Nagyítás és kicsinyítés", "icon": "plus", "keys": [["Görgetés"]], "where": "Vászon", "detail": "A + és − gombokkal is állítható."},
+      {"action": "Nézet középre állítása", "icon": "center", "keys": [["Közép"]], "where": "Bal alsó eszköztár", "detail": "A vászon origójára ugrik."},
+      {"action": "Teljes vászon befoglalása", "icon": "fit", "keys": [["Mind"]], "where": "Bal alsó eszköztár", "detail": "A nézetet a munkalap tartalmához igazítja."},
+      {"action": "Kijelölés", "keys": [["Kattintás"]], "where": "Objektum vagy vonal", "detail": "Üres helyre kattintva megszűnik a kijelölés."},
+      {"action": "Kijelölés bővítése vagy szűkítése", "keys": [["Shift", "Kattintás"]], "where": "Objektum vagy vonal", "detail": "A kattintott elem bekerül a kijelölésbe, vagy kikerül belőle."},
+      {"id": "marquee", "action": "Téglalapos kijelölés", "keys": [["Alt", "Húzás"]], "where": "Üres vászon", "detail": "A téglalapba teljesen beleférő elemeket választja ki."},
+      {"action": "Hozzáadás téglalappal", "keys": [["Alt", "Shift", "Húzás"]], "where": "Üres vászon", "detail": "Hozzáadja az elemeket a meglévő kijelöléshez."},
+      {"id": "touching", "action": "Érintés alapján kijelölés", "keys": [["Ctrl", "Alt", "Húzás"]], "where": "Üres vászon", "detail": "A részben átfedő objektumokat és az áthaladó vonalakat is kijelöli. Shift nyomva tartásával hozzáad a meglévő kijelöléshez."},
+      {"action": "Pontrács", "icon": "grid", "keys": [["Pontrács"]], "where": "Bal alsó eszköztár", "detail": "A láthatóságot a saját böngésződ menti."},
+      {"action": "Rácsra igazítás", "icon": "snap", "keys": [["Rácsra igazítás"]], "where": "Bal alsó eszköztár", "detail": "Mozgatáskor a rácshoz igazít. Az alapértelmezett rácsköz 32."},
+      {"action": "Kurzor megosztása", "icon": "hand", "keys": [["Saját egérmutató megosztása"]], "where": "Vászon", "detail": "Bekapcsolva a többi résztvevő is látja a kurzorodat."}
+    ]
+  },
+  {
+    "id": "objektumok",
+    "title": "Dobozok és fájlok",
+    "rows": [
+      {"action": "Új doboz", "icon": "plus", "keys": [["Dupla kattintás"], ["Jobb kattintás", "Objektum létrehozása"]], "where": "Üres vászon", "detail": "Kijelöli az alapértelmezett címet, így azonnal átírhatod."},
+      {"action": "Tulajdonságok megnyitása", "icon": "edit", "keys": [["Dupla kattintás"]], "where": "Doboz vagy vonal", "detail": "A jobb felső panel csukott állapotból is megnyílik."},
+      {"action": "Szöveg szerkesztése", "keys": [["Alt", "Dupla kattintás"]], "where": "Doboz", "detail": "A doboz szövegmezőjére áll."},
+      {"action": "Doboz mozgatása", "keys": [["Húzás"]], "where": "Doboz vagy kijelölés", "detail": "A közösen kijelölt elemek együtt mozgathatók."},
+      {"action": "Doboz átméretezése", "keys": [["Alt", "Sarok húzása"]], "where": "Doboz", "detail": "Az Alt lenyomásakor láthatóvá válnak a méretezőfogók."},
+      {"action": "Cím vagy szöveg igazítása", "keys": [["Ctrl", "Alt", "Szöveg húzása"]], "where": "A dobozon belüli szöveg", "detail": "A feliratot a kilenc igazítási hely egyikére mozgatja."},
+      {"action": "Klónozás", "icon": "copy", "keys": [["Alt", "Húzás"]], "where": "Doboz", "detail": "Másolatot hoz létre a kapcsolódó vonalakkal."},
+      {"id": "clone-link", "action": "Klónozás összekötéssel", "icon": "link", "keys": [["Alt", "Shift", "Húzás"]], "where": "Doboz", "detail": "Ha elengedéskor nyomva van a Shift, az eredetiből nyíl mutat a klónra."},
+      {"action": "Másolás", "icon": "copy", "keys": [["Ctrl", "C"], ["⌘", "C"]], "where": "Kijelölt doboz", "detail": "Szöveget, képet vagy a fájlobjektum hivatkozását másolja a vágólapra. A bal alsó gomb ugyanezt végzi."},
+      {"action": "Beillesztés", "icon": "paste", "keys": [["Ctrl", "V"], ["⌘", "V"]], "where": "Szerkesztő", "detail": "Az új objektum a kurzornál, a vásznon kívül lévő kurzor esetén középen jön létre. Kijelölt szövegdobozhoz a beillesztett szöveg hozzáfűződik."},
+      {"action": "Fájl hozzáadása", "icon": "file", "keys": [["Behúzás"], ["Fájl feltöltése"]], "where": "Vászon vagy jobb alsó panel", "detail": "A támogatott képek, szöveges dokumentumok és MP3-as hangok saját objektumként jelennek meg. A ZIP és a többi melléklet letölthető."},
+      {"action": "Dobozhivatkozás megnyitása", "icon": "link", "keys": [["Dupla kattintás"], ["Enter"]], "where": "A doboz hivatkozásikonja", "detail": "Megnyitja a munkalapot vagy a webcímet."},
+      {"action": "Cím- vagy fájlnévszerkesztés", "keys": [["Shift", "Enter"], ["Enter"]], "where": "Fókuszban lévő doboz, illetve a képfájlnév mezője", "detail": "A Shift+Enter a fókuszban lévő doboz tulajdonságait választja ki. A képfájlnév mezőjében az Enter véglegesíti az átnevezést."}
+    ]
+  },
+  {
+    "id": "kapcsolatok",
+    "title": "Vonalak és törlés",
+    "rows": [
+      {"id": "connect", "action": "Vonal bekötése", "icon": "link", "keys": [["Ctrl", "Húzás"]], "where": "Doboz vagy üres vászon", "detail": "Másik dobozra húzva a végpont a dobozhoz kötődik. Üres helyre engedve szabad végpont lesz."},
+      {"action": "Végpont áthelyezése", "icon": "unlink", "keys": [["Húzás"]], "where": "A vonal külső harmada", "detail": "A közelebbi végpontot húzza. A középső szakasz kattintással kijelölhető."},
+      {"action": "Csomópont beszúrása", "keys": [["Ctrl", "Húzás"]], "where": "A vonal belseje", "detail": "A vonal két szakaszra válik, és a csomópont ugyanazzal a húzással áthelyezhető."},
+      {"action": "Végpont leválasztása vagy újrakötése", "icon": "unlink", "keys": [["Jobb kattintás"]], "where": "Vonal vagy vonalpanel", "detail": "A kezdő- és végpont műveletei külön érhetők el."},
+      {"action": "Kijelölt elem törlése", "icon": "trash", "keys": [["Delete"], ["Backspace"]], "where": "Vászon", "detail": "A törölt dobozhoz kötött vonalak is törlődnek. Kétágú csomópont törlésekor a rendszer megpróbálja egyesíteni a két ágat."},
+      {"action": "Törlés a bekötések megtartásával", "icon": "trash", "keys": [["Ctrl", "Delete"], ["Ctrl", "Backspace"]], "where": "Kijelölt doboz vagy csomópont", "detail": "A bekötött vonalak szabad véggel maradnak. A doboz helyi menüjéből is elérhető."}
+    ]
+  },
+  {
+    "id": "munkamenet",
+    "title": "Panelek és munkamenet",
+    "rows": [
+      {"action": "Objektumpanel", "icon": "left", "keys": [["Jobb felső nyíl"]], "where": "Szerkesztő", "detail": "A kijelölt objektum, vonal vagy csoport tulajdonságait nyitja és zárja."},
+      {"action": "Munkalapbeállítások", "icon": "up", "keys": [["Jobb alsó nyíl"]], "where": "Szerkesztő", "detail": "A fájlfeltöltés, a munkalap címe, szövege és háttérszíne itt érhető el."},
+      {"action": "Gyorskereső", "keys": [["Enter"]], "where": "Vászon", "detail": "Dobozcím, szöveg és vonalcímke alapján keres. Az Enter és az Esc bezárja a keresőt."},
+      {"action": "Kijelölés vagy művelet megszakítása", "keys": [["Esc"]], "where": "Szerkesztő", "detail": "Megszünteti a kijelölést, és megszakítja a folyamatban lévő vászonműveletet."},
+      {"action": "Visszavonás", "icon": "undo", "keys": [["Ctrl", "Z"], ["⌘", "Z"]], "where": "Szerkesztő", "detail": "Visszavonja az utolsó saját módosítást."},
+      {"action": "Újra", "icon": "redo", "keys": [["Ctrl", "Y"], ["Ctrl", "Shift", "Z"], ["⌘", "Shift", "Z"]], "where": "Szerkesztő", "detail": "Újra alkalmazza az előzőleg visszavont módosítást."},
+      {"action": "Közös visszaállítási pont mentése", "icon": "save", "keys": [["Ctrl", "S"], ["⌘", "S"]], "where": "Szerkesztő", "detail": "A Mentés gomb is rögzíti a közös állapotot. A vászon változásai munka közben automatikusan szinkronizálódnak."},
+      {"action": "Visszaállítás a közös mentéshez", "icon": "undo", "keys": [["Resign"]], "where": "Fejléc", "detail": "Megerősítés után a vásznat minden résztvevőnél visszaállítja a közös pontra."}
+    ]
+  }
+]

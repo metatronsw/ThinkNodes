@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Útmutató · ThinkNodes</title>
+  <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/guide.css">
+</head>
+<body class="guide">
+  <header class="site-header">
+    <a class="brand" href="/"><span class="brand-icon" aria-hidden="true"><span></span><span></span><span></span></span>ThinkNodes</a>
+    <a class="button" href="/"><svg class="ui-icon" aria-hidden="true"><use href="/icons.svg#left"/></svg>Munkalapok</a>
+  </header>
+  <main class="shell guide-main">
+    <h1>Útmutató</h1>
+    <p>A vászon eszközei, egérgesztusai és gyorsbillentyűi.</p>
+    <nav class="guide-nav" aria-label="Az útmutató fejezetei">
+      <a href="#peldak">Példák</a>
+      <!-- GUIDE_NAV -->
+    </nav>
+
+    <section id="peldak" aria-labelledby="peldak-title">
+      <h2 id="peldak-title">Példák a vásznon</h2>
+      <div class="guide-examples">
+        <figure class="panel">
+          <svg class="guide-diagram" viewBox="0 0 300 130" role="img" aria-label="Egy nyíl az Ötlet doboztól a Következő lépés dobozig mutat">
+            <rect x="14" y="45" width="87" height="42" rx="9" fill="#dce9ff" stroke="#8da8ce"/>
+            <rect x="170" y="45" width="116" height="42" rx="9" fill="#d9f1e7" stroke="#76a591"/>
+            <path d="M101 66h59" stroke="#304ccc" stroke-width="3"/>
+            <path d="m169 66-11-6v12z" fill="#304ccc"/>
+            <text x="57" y="71">Ötlet</text><text x="228" y="71">Következő lépés</text>
+          </svg>
+          <figcaption><strong>Dobozok összekötése</strong><span><!-- KEYS:connect --> az egyik doboztól a másikig.</span></figcaption>
+        </figure>
+        <figure class="panel">
+          <svg class="guide-diagram" viewBox="0 0 300 130" role="img" aria-label="Egy kijelölő téglalap befoglalja az A és a B dobozt, a C dobozt csak érinti">
+            <rect x="17" y="24" width="172" height="88" rx="4" fill="#e7ecff" stroke="#304ccc" stroke-dasharray="5 4"/>
+            <rect x="28" y="43" width="66" height="42" rx="8" fill="#cddcff" stroke="#5975c4"/>
+            <rect x="106" y="43" width="66" height="42" rx="8" fill="#cddcff" stroke="#5975c4"/>
+            <rect x="180" y="54" width="79" height="42" rx="8" fill="#f7e8d2" stroke="#b69663"/>
+            <text x="61" y="69">A</text><text x="139" y="69">B</text><text x="219" y="80">C</text>
+          </svg>
+          <figcaption><strong>Csoport kijelölése</strong><span><!-- KEYS:marquee --> kijelöli A-t és B-t. <!-- KEYS:touching --> esetén C is bekerül.</span></figcaption>
+        </figure>
+        <figure class="panel">
+          <svg class="guide-diagram" viewBox="0 0 300 130" role="img" aria-label="Másolat az eredeti doboztól jobbra, a két doboz között nyíllal">
+            <rect x="20" y="23" width="87" height="39" rx="9" fill="#dce9ff" stroke="#8da8ce"/>
+            <path d="m107 46 69 43" stroke="#304ccc" stroke-width="3"/>
+            <path d="m184 94-7-11-6 10z" fill="#304ccc"/>
+            <rect x="184" y="76" width="96" height="39" rx="9" fill="#dce9ff" stroke="#8da8ce"/>
+            <text x="63" y="48">Eredeti</text><text x="232" y="101">Klón</text>
+          </svg>
+          <figcaption><strong>Klónozás nyíllal</strong><span><!-- KEYS:clone-link -->. A Shift állapota elengedéskor számít.</span></figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- GUIDE_TABLES -->
+  </main>
+</body>
+</html>

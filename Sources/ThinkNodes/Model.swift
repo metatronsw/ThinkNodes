@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationXML)
+import FoundationXML
+#endif
 import Vapor
 
 struct Point: Codable, Equatable, Sendable {
@@ -25,6 +28,7 @@ private func automaticBorder(_ fill: String) -> String {
 
 enum Shape: String, Codable, Sendable {
     case rounded, rectangle, ellipse, diamond
+    case triangle, pentagon, hexagon, parallelogram
 }
 
 enum LabelAlignment: String, Codable, Sendable {
@@ -56,7 +60,7 @@ struct TextStyle: Codable, Equatable, Sendable {
     }
 }
 
-enum CanvasFileType: String, Codable, Sendable { case image, mp3, txt, md, json }
+enum CanvasFileType: String, Codable, Sendable { case image, mp3, txt, md, json, attachment }
 
 struct CanvasFile: Codable, Equatable, Sendable {
     var type: CanvasFileType
@@ -76,17 +80,39 @@ private func validImageStem(_ value: String) -> Bool {
         && !value.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) || "/\\:".unicodeScalars.contains($0) }
 }
 
-func attachmentName(_ file: URL) -> String {
-    let parent = file.deletingLastPathComponent()
-    return parent.deletingLastPathComponent().lastPathComponent == ".canvas-images"
-        ? parent.lastPathComponent : file.lastPathComponent
-}
-
 func canvasAssetType(_ name: String) -> String? {
     let parts = name.split(separator: ".", omittingEmptySubsequences: false)
     guard parts.count == 2, let id = UUID(uuidString: String(parts[0])),
           id.uuidString.lowercased() == parts[0] else { return nil }
     return canvasMediaTypes[String(parts[1])]
+}
+
+private final class SVGDocument: NSObject, XMLParserDelegate {
+    private var hasSVGRoot = false
+
+    static func matches(_ bytes: Data) -> Bool {
+        let document = SVGDocument()
+        let parser = XMLParser(data: bytes)
+        parser.shouldProcessNamespaces = true
+        parser.externalEntityResolvingPolicy = .never
+        parser.delegate = document
+        return parser.parse() && document.hasSVGRoot
+    }
+
+    func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?,
+                qualifiedName: String?, attributes: [String: String]) {
+        guard !hasSVGRoot else { return }
+        hasSVGRoot = elementName == "svg" && namespaceURI == "http://www.w3.org/2000/svg"
+        if !hasSVGRoot { parser.abortParsing() }
+    }
+
+    func parser(_ parser: XMLParser, foundInternalEntityDeclarationWithName name: String, value: String?) {
+        parser.abortParsing()
+    }
+
+    func parser(_ parser: XMLParser, foundExternalEntityDeclarationWithName name: String, publicID: String?, systemID: String?) {
+        parser.abortParsing()
+    }
 }
 
 private func matchesMediaHeader(_ bytes: Data, type: String) -> Bool {
@@ -95,13 +121,32 @@ private func matchesMediaHeader(_ bytes: Data, type: String) -> Bool {
     case "image/jpeg": return bytes.starts(with: [255,216,255])
     case "image/gif": return bytes.starts(with: "GIF87a".utf8) || bytes.starts(with: "GIF89a".utf8)
     case "image/webp": return bytes.starts(with: "RIFF".utf8) && bytes.dropFirst(8).starts(with: "WEBP".utf8)
+    case "image/svg+xml": return SVGDocument.matches(bytes)
     case "audio/mpeg":
         return bytes.starts(with: "ID3".utf8) || (bytes.count >= 4 && bytes[0] == 255 && bytes[1] & 0xe6 == 0xe2)
     default: return false
     }
 }
 
-let canvasMediaTypes = ["png": "image/png", "jpg": "image/jpeg", "gif": "image/gif", "webp": "image/webp", "mp3": "audio/mpeg"]
+let canvasMediaTypes = ["png": "image/png", "jpg": "image/jpeg", "gif": "image/gif", "webp": "image/webp",
+                        "svg": "image/svg+xml", "mp3": "audio/mpeg"]
+
+private func matchesAttachmentType(_ bytes: Data, extension ext: String) -> Bool {
+    if let mime = canvasMediaTypes[ext == "jpeg" ? "jpg" : ext] {
+        return matchesMediaHeader(bytes, type: mime)
+    }
+    switch ext {
+    case "wav": return bytes.starts(with: "RIFF".utf8) && bytes.dropFirst(8).starts(with: "WAVE".utf8)
+    case "ogg": return bytes.starts(with: "OggS".utf8)
+    case "flac": return bytes.starts(with: "fLaC".utf8)
+    case "pdf": return bytes.starts(with: "%PDF-".utf8)
+    case "txt", "md": return String(data: bytes, encoding: .utf8)?.contains("\0") == false
+    case "json": return (try? JSONSerialization.jsonObject(with: bytes, options: [.fragmentsAllowed])) != nil
+    case "zip", "docx", "xlsx", "pptx":
+        return bytes.starts(with: [0x50, 0x4b, 0x03, 0x04]) || bytes.starts(with: [0x50, 0x4b, 0x05, 0x06])
+    default: return ext != "thnode"
+    }
+}
 
 struct Idea: Codable, Equatable, Sendable {
     var id: String
@@ -149,6 +194,9 @@ struct Idea: Codable, Equatable, Sendable {
                       file.filename.map(validImageStem) ?? true else { return false }
             case .mp3: guard file.asset.flatMap(canvasAssetType) == "audio/mpeg" else { return false }
             case .txt, .json, .md: guard file.asset == nil else { return false }
+            case .attachment:
+                guard let name = file.asset, validImageStem(name),
+                      (name as NSString).pathExtension.lowercased() != "thnode" else { return false }
             }
         }
         let validContent = position.isValid
@@ -253,45 +301,18 @@ struct Worksheet: Content, Equatable {
     var title: String
     var text: String?
     var background: String?
-    var gridColor: String?
     var gridSpacing: Double?
-    var gridVisible: Bool?
     var creator: String?
-    var owner: String?
-    var editors: [String]?
-    var hidden: Bool?
-    var isPublic: Bool?
     var nodes: [Idea] = []
     var edges: [Connection] = []
 
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, revision, resetRevision, title, text, background, gridVisible
-        case creator, owner, editors, hidden, isPublic, nodes, edges
-        case gridColor = "gridCol", gridSpacing = "gridStep"
+        case schemaVersion, revision, resetRevision, title, text, background
+        case creator, nodes, edges
+        case gridSpacing = "gridStep"
     }
 
     var backgroundColor: String { background ?? "#f5f8fc" }
-
-    func canManage(_ user: User?) -> Bool {
-        guard let user else { return false }
-        return user.role == .admin || user.name == owner || user.name == creator
-    }
-
-    func canEdit(_ user: User?) -> Bool {
-        guard let user else { return false }
-        return canManage(user) || editors?.contains(user.name) == true
-    }
-
-    func canRead(_ user: User?) -> Bool {
-        (isPublic ?? true) || canEdit(user)
-    }
-
-    func withoutAccessDetails() -> Worksheet {
-        var copy = self
-        copy.owner = nil
-        copy.editors = nil
-        return copy
-    }
 
     private var junctionDegrees: [String: Int] {
         var counts: [String: Int] = [:]
@@ -317,9 +338,7 @@ struct Worksheet: Content, Equatable {
         let nodeIDs = Set(nodes.map(\.id))
         guard schemaVersion == 2, revision > 0, revision < Int.max, validTitle(title),
               (text?.utf8.count ?? 0) <= 100_000, validColor(backgroundColor),
-              validColor(gridColor ?? "#ccd7eb"), (6...160).contains(gridSpacing ?? 20),
-              owner.map({ validSlug($0) || isTesterName($0) }) ?? true,
-              (editors?.count ?? 0) <= 2_000, editors?.allSatisfy(validSlug) ?? true,
+              (6...160).contains(gridSpacing ?? 32),
               nodes.count <= 2_000, edges.count <= 4_000,
               nodeIDs.count == nodes.count, Set(edges.map(\.id)).count == edges.count,
               nodes.allSatisfy(\.isValid), edges.allSatisfy({
@@ -353,6 +372,7 @@ struct Worksheet: Content, Equatable {
 
 struct SiteSettings: Codable, Sendable {
     var requireLogin = false
+    var users: [User]?
 }
 
 enum Role: String, Codable, Sendable {
@@ -425,18 +445,25 @@ struct WorksheetPath: Sendable {
     }
 }
 
-struct DocumentPolicy: Codable, Sendable {
+struct DocumentPolicy: Codable, Sendable, Equatable {
     var hidden: Bool?
     var frozen: Bool?
-    var publicEditing: Bool?
-    var users: [String]?
     var owner: String?
     var editors: [String]?
     var guestReadable: Bool?
     var passwordHash: String?
+    var mediaFiles: [String: String]?
+    var worksheets: [String: PageSettings]?
+}
+
+struct PageSettings: Codable, Sendable, Equatable {
+    var hidden = false
+    var frozen: Bool?
+    var passwordHash: String?
 }
 
 struct DocumentAccess: Sendable {
+    var folderPath = ""
     var readable = false
     var editable = false
     var manageable = false
@@ -468,7 +495,6 @@ final class WorksheetStore: @unchecked Sendable {
         lock.withLock { testerCount += 1; return "Tester" + String(testerCount) }
     }
 
-    private var policyURL: URL { root.appendingPathComponent(".document-policies.json") }
     private let files = FileManager.default
     private let lock = NSLock()
     private let encoder: JSONEncoder = {
@@ -483,109 +509,124 @@ final class WorksheetStore: @unchecked Sendable {
         try files.createDirectory(at: self.root, withIntermediateDirectories: true)
     }
 
-    private func policies() throws -> [String: DocumentPolicy] {
-        try rejectLink(policyURL)
-        guard files.fileExists(atPath: policyURL.path) else { return [:] }
-        return try JSONDecoder().decode([String: DocumentPolicy].self, from: Data(contentsOf: policyURL))
+    private func folder(_ path: WorksheetPath) throws -> URL {
+        var url = root
+        for part in path.parts {
+            url.appendPathComponent(part)
+            try checkName(url)
+        }
+        return url
     }
 
-    private func readDocument(_ path: WorksheetPath, rules: [String: DocumentPolicy]) throws -> Worksheet {
-        let url = try worksheetURL(path)
-        var sheet: Worksheet
-        if files.fileExists(atPath: url.path) {
-            sheet = try read(url)
-        } else {
-            let directory = url.deletingPathExtension()
-            try rejectLink(directory)
-            guard let entries = try? files.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isSymbolicLinkKey], options: [.skipsHiddenFiles]),
-                  let member = entries.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }).first(where: {
-                      $0.pathExtension == "json" && (try? rejectLink($0)) != nil && (try? read($0)) != nil
-                  }) else { throw Abort(.notFound, reason: "A munkalap nem található.") }
-            let example = try read(member)
-            let memberPath = try WorksheetPath(path.parts + [member.deletingPathExtension().lastPathComponent])
-            let owner = rules["sheet/" + memberPath.url]?.owner ?? example.owner
-            sheet = Worksheet(title: path.name, background: example.background, creator: example.creator, owner: owner, isPublic: example.isPublic)
+    private func checkName(_ url: URL) throws {
+        try rejectLink(url)
+        if files.fileExists(atPath: url.path),
+           !(try files.contentsOfDirectory(atPath: url.deletingLastPathComponent().path)).contains(url.lastPathComponent) {
+            throw Abort(.notFound)
         }
-        if let rule = rules["sheet/" + path.url] {
-            sheet.owner = rule.owner ?? sheet.owner
-            sheet.editors = rule.editors ?? sheet.editors
-            if let users = rule.users, !users.isEmpty {
-                sheet.editors = Set((sheet.editors ?? []) + users).sorted()
+    }
+
+    private func worksheetURL(_ path: WorksheetPath) throws -> URL {
+        let entry = try folder(path)
+        var isDir: ObjCBool = false
+        let directory = files.fileExists(atPath: entry.path, isDirectory: &isDir) && isDir.boolValue
+        if !directory && path.parts.count == 1 { throw Abort(.notFound) }
+        if !directory && path.name == path.parts.dropLast().last { throw Abort(.notFound) }
+        let url = (directory ? entry.appendingPathComponent(path.name) : entry).appendingPathExtension("thnode")
+        try checkName(url)
+        return url
+    }
+
+    private func settingsURL(_ directory: URL) throws -> URL {
+        let url = directory.appendingPathComponent(".settings.json")
+        try rejectLink(url)
+        return url
+    }
+
+    private struct Context {
+        var chain: [URL]
+        var rules: [URL: DocumentPolicy]
+        let key: String
+        let folderPath: String
+        var project: URL { chain[0] }
+        var directory: URL { chain[chain.count-1] }
+        var local: DocumentPolicy { rules[directory]! }
+        var page: PageSettings { rules[project]?.worksheets?[key] ?? PageSettings() }
+        mutating func setPage(_ page: PageSettings?) {
+            var pages = rules[project]?.worksheets ?? [:]
+            pages[key] = page
+            rules[project]?.worksheets = pages
+        }
+    }
+
+    private func context(_ path: WorksheetPath) throws -> Context {
+        let file = try worksheetURL(path)
+        let main = file.deletingLastPathComponent().lastPathComponent == file.deletingPathExtension().lastPathComponent
+        let parts = main ? path.parts : Array(path.parts.dropLast())
+        var chain: [URL] = [], rules: [URL: DocumentPolicy] = [:]
+        var directory = root
+        for part in parts {
+            directory.appendPathComponent(part)
+            let url = try settingsURL(directory)
+            guard files.fileExists(atPath: url.path) else { throw Abort(.notFound) }
+            rules[directory] = try JSONDecoder().decode(DocumentPolicy.self, from: Data(contentsOf: url))
+            chain.append(directory)
+        }
+        let key = (Array(parts.dropFirst()) + [file.lastPathComponent]).joined(separator: "/")
+        return try Context(chain: chain, rules: rules, key: key, folderPath: WorksheetPath(parts).url)
+    }
+
+    private func persist(_ next: Context, previous: Context) throws {
+        var written: [URL] = []
+        do {
+            for directory in next.chain where next.rules[directory] != previous.rules[directory] {
+                try write(next.rules[directory]!, to: settingsURL(directory))
+                written.append(directory)
             }
-            sheet.isPublic = rule.guestReadable ?? sheet.isPublic
-            sheet.hidden = rule.hidden ?? sheet.hidden
+        } catch {
+            for directory in written.reversed() { try write(previous.rules[directory]!, to: settingsURL(directory)) }
+            throw error
         }
-        return sheet
     }
 
-    private func writeDocument(_ sheet: Worksheet, at path: WorksheetPath, rules: [String: DocumentPolicy]) throws {
-        let url = try worksheetURL(path)
-        let key = "sheet/" + path.url
-        var next = rules
-        var rule = rules[key] ?? DocumentPolicy()
-        rule.owner = sheet.owner
-        rule.users = nil
-        rule.editors = sheet.editors
-        rule.guestReadable = sheet.isPublic
-        rule.hidden = sheet.hidden
-        next[key] = rule
-        var content = sheet
-        content.owner = nil
-        content.editors = nil
-        content.isPublic = nil
-        content.hidden = nil
-        try write(next, to: policyURL)
-        do { try write(content, to: url) }
-        catch { try? write(rules, to: policyURL); throw error }
-    }
-
-    private func accessLocked(_ path: WorksheetPath, sheet: Worksheet, user: User?, unlocks: Set<String>,
-                              rules: [String: DocumentPolicy]) throws -> DocumentAccess {
+    private func accessLocked(_ ctx: Context, user: User?, unlocks: Set<String>) -> DocumentAccess {
+        var readable = true, editable = true, locked = false, frozen = false, protected = false
+        var names: Set<String>?
         let admin = user?.role == .admin
-        let manager = sheet.canManage(user)
-        var editors = Set<String>()
-        var protectedByPassword = false
-        var granted = sheet.canEdit(user)
-        var publicEditing: Bool?
-        var frozen = false, editingFrozen = false, hidden = false, locked = false
-        for depth in 1...path.parts.count {
-            let parent = try WorksheetPath(Array(path.parts.prefix(depth)))
-            let ancestor = depth == path.parts.count ? sheet : (try? readDocument(parent, rules: rules))
-            editors.formUnion(ancestor?.editors ?? [])
-            if let user, ancestor?.canEdit(user) == true { granted = true }
-            let exempt = admin || (user != nil && (ancestor?.creator ?? ancestor?.owner) == user?.name)
-            let project = depth == 1 ? rules["project/" + parent.url] : nil
-            if ancestor?.hidden == true {
-                hidden = true
-            }
-            for rule in [project, rules["sheet/" + parent.url]].compactMap({ $0 }) {
-                editors.formUnion(rule.users ?? [])
-                protectedByPassword = protectedByPassword || rule.passwordHash != nil
-                if let mode = rule.publicEditing { publicEditing = mode }
-                if let user, rule.users?.contains(user.name) == true { granted = true }
-                frozen = frozen || rule.frozen == true
-                editingFrozen = editingFrozen || (rule.frozen == true && !exempt)
-                hidden = hidden || rule.hidden == true
-                if let hash = rule.passwordHash, !exempt, !unlocks.contains(hash) {
-                    locked = true
-                }
+        for directory in ctx.chain {
+            let rule = ctx.rules[directory]!
+            let members = Set((rule.editors ?? []) + [rule.owner].compactMap { $0 })
+            names = names?.intersection(members) ?? members
+            let member = user.map { members.contains($0.name) } == true
+            readable = readable && (admin || member || rule.guestReadable == true)
+            editable = editable && (admin || member)
+            frozen = frozen || rule.frozen == true
+            if let hash = rule.passwordHash {
+                protected = true
+                locked = locked || (!admin && user?.name != rule.owner && !unlocks.contains(hash))
             }
         }
-        let allowed = granted || (user != nil && publicEditing == true && sheet.isPublic != false)
-        let readable = admin || allowed || (publicEditing != false && sheet.isPublic != false)
-        return DocumentAccess(readable: readable && !locked,
-                              editable: allowed && !locked && !editingFrozen,
-                              manageable: manager && !locked,
-                              listed: readable && (!hidden || granted),
-                              locked: readable && locked, hidden: hidden,
-                              projectRule: rules["project/" + path.url] ?? DocumentPolicy(),
-                              sheetRule: rules["sheet/" + path.url] ?? DocumentPolicy(),
-                              editorNames: editors.sorted(), protectedByPassword: protectedByPassword,
-                              frozen: frozen, passwordRequired: locked)
+        let page = ctx.page
+        if let hash = page.passwordHash {
+            protected = true
+            locked = locked || (!admin && user?.name != ctx.local.owner && !unlocks.contains(hash))
+        }
+        frozen = frozen || page.frozen == true
+        let manager = editable && (admin || user?.name == ctx.local.owner)
+        var menu = ctx.local
+        menu.hidden = page.hidden
+        if ctx.key.split(separator: "/").last != Substring(ctx.directory.lastPathComponent + ".thnode") {
+            menu.frozen = page.frozen
+            menu.passwordHash = page.passwordHash
+        }
+        return DocumentAccess(folderPath: ctx.folderPath, readable: readable && !locked, editable: editable && !locked && (!frozen || manager),
+            manageable: manager && !locked, listed: readable && !page.hidden,
+            locked: readable && locked, hidden: page.hidden, projectRule: menu, sheetRule: menu,
+            editorNames: (names ?? []).sorted(), protectedByPassword: protected, frozen: frozen, passwordRequired: locked)
     }
 
     func access(_ path: WorksheetPath, sheet: Worksheet, user: User?, unlocks: Set<String> = []) throws -> DocumentAccess {
-        try lock.withLock { try accessLocked(path, sheet: sheet, user: user, unlocks: unlocks, rules: policies()) }
+        try lock.withLock { try accessLocked(context(path), user: user, unlocks: unlocks) }
     }
 
     private func authorize(_ access: DocumentAccess, user: User?) throws {
@@ -593,69 +634,40 @@ final class WorksheetStore: @unchecked Sendable {
         if !access.readable { throw Abort(user == nil ? .unauthorized : .forbidden) }
     }
 
-    private func attachmentPolicyKey(_ path: WorksheetPath, _ name: String) -> String {
-        let segment = Data(name.utf8).base64EncodedString().replacingOccurrences(of: "/", with: "_")
-        return "attachment/" + path.url + "/" + segment
-    }
-
-    private func attachmentGranted(_ path: WorksheetPath, file: String?, user: User?, rules: [String: DocumentPolicy]) -> Bool {
-        guard let file, let user else { return false }
-        return rules[attachmentPolicyKey(path, file)]?.users?.contains(user.name) == true
-    }
-
     func unlock(_ path: WorksheetPath, password: String, user: User?, attachment: String? = nil) throws -> [String] {
         try lock.withLock {
-            let rules = try policies()
-            let sheet = try readDocument(path, rules: rules)
-            let access = try accessLocked(path, sheet: sheet, user: user, unlocks: [], rules: rules)
-            guard access.locked || (access.passwordRequired && attachmentGranted(path, file: attachment, user: user, rules: rules)) else {
-                throw Abort(.forbidden)
-            }
-            var hashes: [String] = []
-            for depth in 1...path.parts.count {
-                let parent = try WorksheetPath(Array(path.parts.prefix(depth)))
-                let keys = depth == 1 ? ["project/" + parent.url, "sheet/" + parent.url] : ["sheet/" + parent.url]
-                for key in keys {
-                    if let hash = rules[key]?.passwordHash, try Bcrypt.verify(password, created: hash) { hashes.append(hash) }
-                }
-            }
-            guard !hashes.isEmpty else { throw Abort(.forbidden, reason: "Hibás jelszó.") }
+            let ctx = try context(path)
+            guard accessLocked(ctx, user: user, unlocks: []).locked else { throw Abort(.forbidden) }
+            let hashes = try (ctx.chain.compactMap { ctx.rules[$0]?.passwordHash } + [ctx.page.passwordHash].compactMap { $0 })
+                .filter { try Bcrypt.verify(password, created: $0) }
+            guard !hashes.isEmpty else { throw Abort(.forbidden) }
             return hashes
         }
     }
 
     func list(user: User?, childrenOf parent: WorksheetPath? = nil, rootsOnly: Bool = false, recursive: Bool = false, unlocks: Set<String> = []) throws -> [(path: WorksheetPath, worksheet: Worksheet)] {
         try lock.withLock {
-            let rules = try policies()
-            let start = try parent.map { try worksheetURL($0).deletingPathExtension() } ?? root
-            try rejectLink(start)
-            guard files.fileExists(atPath: start.path) else { return [] }
-            let keys: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey]
-            var pending = [(start, parent?.parts ?? [])]
             var result: [(path: WorksheetPath, worksheet: Worksheet)] = []
-            while let (directory, parts) = pending.popLast() {
-                let entries = try files.contentsOfDirectory(at: directory, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles])
-                for url in entries {
-                    let properties = try url.resourceValues(forKeys: keys)
-                    if properties.isSymbolicLink == true { continue }
-                    if properties.isDirectory == true {
-                        let nested = parts + [url.lastPathComponent]
-                        if parent == nil, rootsOnly, let path = try? WorksheetPath(nested),
-                           (try? worksheetURL(path)).map({ !files.fileExists(atPath: $0.path) }) == true,
-                           let sheet = try? readDocument(path, rules: rules),
-                           try accessLocked(path, sheet: sheet, user: user, unlocks: unlocks, rules: rules).listed {
-                            result.append((path, sheet))
-                        }
-                        if (parent == nil || recursive), !rootsOnly, nested.count < 12, (try? WorksheetPath(nested)) != nil { pending.append((url, nested)) }
-                        continue
-                    }
-                    guard properties.isRegularFile == true, url.pathExtension == "json",
-                          let path = try? WorksheetPath(parts + [url.deletingPathExtension().lastPathComponent]),
-                          let worksheet = try? readDocument(path, rules: rules),
-                          try accessLocked(path, sheet: worksheet, user: user, unlocks: unlocks, rules: rules).listed else { continue }
-                    result.append((path, worksheet))
+            func visit(_ directory: URL, _ parts: [String]) throws {
+                let keys: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey]
+                for entry in try files.contentsOfDirectory(at: directory, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles]) {
+                    let info = try entry.resourceValues(forKeys: keys)
+                    guard info.isSymbolicLink != true else { continue }
+                    let isFolder = info.isDirectory == true
+                    let name = isFolder ? entry.lastPathComponent : entry.deletingPathExtension().lastPathComponent
+                    guard isFolder || (!parts.isEmpty && info.isRegularFile == true && entry.pathExtension == "thnode" && name != parts.last),
+                          let path = try? WorksheetPath(parts + [name]), let ctx = try? context(path) else { continue }
+                    let rights = accessLocked(ctx, user: user, unlocks: unlocks)
+                    guard rights.listed, let sheet = try? read(worksheetURL(path)) else { continue }
+                    result.append((path, sheet))
+                    if isFolder && rights.readable && !rootsOnly && (recursive || parent == nil) { try visit(entry, path.parts) }
                 }
             }
+            if let parent {
+                let ctx = try context(parent)
+                try authorize(accessLocked(ctx, user: user, unlocks: unlocks), user: user)
+                if parent.url == ctx.folderPath { try visit(ctx.directory, parent.parts) }
+            } else { try visit(root, []) }
             return result.sorted { $0.path.parts.lexicographicallyPrecedes($1.path.parts) }
         }
     }
@@ -667,64 +679,76 @@ final class WorksheetStore: @unchecked Sendable {
     func setSettings(_ settings: SiteSettings) throws {
         try lock.withLock {
             try rejectLink(settingsFile)
-            try write(settings, to: settingsFile)
+            var next = settings
+            next.users = try readUsers()
+            try saveSiteSettings(next)
         }
     }
 
-    func open(_ path: WorksheetPath, user: User?, createOnly: Bool = false, unlocks: Set<String> = []) throws -> Worksheet {
-        try openWithStatus(path, user: user, createOnly: createOnly, unlocks: unlocks).worksheet
+    func open(_ path: WorksheetPath, user: User?, createOnly: Bool = false, unlocks: Set<String> = [], directory: Bool = false) throws -> Worksheet {
+        try lock.withLock { try openLocked(path, user: user, createOnly: createOnly, unlocks: unlocks, directory: directory).worksheet }
     }
 
     func openWithStatus(_ path: WorksheetPath, user: User?, createOnly: Bool = false, unlocks: Set<String>) throws -> (worksheet: Worksheet, created: Bool) {
-        try lock.withLock { try openLocked(path, user: user, createOnly: createOnly, unlocks: unlocks) }
+        try lock.withLock { try openLocked(path, user: user, createOnly: createOnly, unlocks: unlocks, directory: false) }
     }
 
-    private func openLocked(_ path: WorksheetPath, user: User?, createOnly: Bool, unlocks: Set<String>) throws -> (worksheet: Worksheet, created: Bool) {
+    private func openLocked(_ path: WorksheetPath, user: User?, createOnly: Bool, unlocks: Set<String>, directory: Bool) throws -> (worksheet: Worksheet, created: Bool) {
         if try readSettings().requireLogin && user == nil { throw Abort(.unauthorized) }
-        let url = try worksheetURL(path)
-        let rules = try policies()
-        let existing: Worksheet?
-        do { existing = try readDocument(path, rules: rules) }
-        catch let error as Abort where error.status == .notFound { existing = nil }
-        if let worksheet = existing {
-            try authorize(accessLocked(path, sheet: worksheet, user: user, unlocks: unlocks, rules: rules), user: user)
-            if createOnly { throw Abort(.conflict, reason: "Ilyen nevű munkalap már létezik.") }
-            return (worksheet, false)
+        let entry = try folder(path)
+        if let url = try? worksheetURL(path), files.fileExists(atPath: url.path) {
+            let ctx = try context(path)
+            try authorize(accessLocked(ctx, user: user, unlocks: unlocks), user: user)
+            if createOnly { throw Abort(.conflict) }
+            return (try read(worksheetURL(path)), false)
         }
-        guard let user else {
-            throw Abort(.unauthorized, reason: "A munkalap létrehozásához be kell jelentkezni.")
-        }
-        let rawTitle = path.name.replacingOccurrences(of: "-", with: " ").replacingOccurrences(of: "_", with: " ")
-            .trimmingCharacters(in: .whitespaces)
-        var worksheet = Worksheet(title: rawTitle.isEmpty ? path.name : String(rawTitle.prefix(120)),
-                                  creator: user.name, owner: user.name, isPublic: true)
+        guard let user else { throw Abort(.unauthorized) }
+        var inherited = DocumentPolicy(owner: user.name, guestReadable: false)
+        var sheet = Worksheet(title: String(path.name.prefix(120)), creator: user.name)
         if path.parts.count > 1 {
-            let parentPath = try WorksheetPath(Array(path.parts.dropLast()))
-            let parent = try openLocked(parentPath, user: user, createOnly: false, unlocks: unlocks).worksheet
-            guard try accessLocked(parentPath, sheet: parent, user: user, unlocks: unlocks, rules: policies()).editable else { throw Abort(.forbidden) }
-            worksheet.background = parent.background
-            worksheet.gridColor = parent.gridColor
-            worksheet.gridSpacing = parent.gridSpacing
-            worksheet.gridVisible = parent.gridVisible
-            worksheet.owner = parent.owner
-            worksheet.isPublic = parent.isPublic
+            let parent = try WorksheetPath(Array(path.parts.dropLast()))
+            guard parent.name != path.name else { throw Abort(.conflict) }
+            let parentSheet = try openLocked(parent, user: user, createOnly: false, unlocks: unlocks, directory: true).worksheet
+            let ctx = try context(parent)
+            guard ctx.folderPath == parent.url else { throw Abort(.conflict, reason: "Mappát válassz szülőnek.") }
+            guard accessLocked(ctx, user: user, unlocks: unlocks).editable else { throw Abort(.forbidden) }
+            inherited = ctx.local
+            inherited.mediaFiles = nil
+            inherited.worksheets = nil
+            sheet.background = parentSheet.background
+            sheet.gridSpacing = parentSheet.gridSpacing
         }
-        try worksheet.validate()
-        try files.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        var next = try policies()
-        if path.parts.count == 1 { next["project/" + path.url] = DocumentPolicy(publicEditing: true) }
-        try writeDocument(worksheet, at: path, rules: next)
-        return (worksheet, true)
+        guard !files.fileExists(atPath: entry.path) else { throw Abort(.conflict) }
+        let makeFolder = directory || path.parts.count == 1
+        if makeFolder {
+            try files.createDirectory(at: entry, withIntermediateDirectories: false)
+        }
+        var createdFile: URL?
+        do {
+            if makeFolder { try write(inherited, to: settingsURL(entry)) }
+            let url = try worksheetURL(path)
+            guard !files.fileExists(atPath: url.path) else { throw Abort(.conflict) }
+            try write(sheet, to: url)
+            createdFile = url
+            let ctx = try context(path)
+            var next = ctx
+            next.setPage(PageSettings())
+            try persist(next, previous: ctx)
+            return (try read(worksheetURL(path)), true)
+        } catch {
+            if makeFolder { try files.removeItem(at: entry) }
+            else if let createdFile { try files.removeItem(at: createdFile) }
+            throw error
+        }
     }
 
     func previewSVG(_ path: WorksheetPath, user: User?, unlocks: Set<String> = []) throws -> String {
         try lock.withLock {
             if try readSettings().requireLogin && user == nil { throw Abort(.unauthorized) }
             let url = try worksheetURL(path)
-            let rules = try policies()
-            let sheet = try readDocument(path, rules: rules)
-            try authorize(accessLocked(path, sheet: sheet, user: user, unlocks: unlocks, rules: rules), user: user)
-            guard files.fileExists(atPath: url.path) else { return boardSVG(sheet, assetBase: "/" + path.url) }
+            let ctx = try context(path)
+            try authorize(accessLocked(ctx, user: user, unlocks: unlocks), user: user)
+            let sheet = try read(url)
             let cache = url.deletingLastPathComponent().appendingPathComponent("." + path.name + ".preview-v8.svg")
             try rejectLink(cache)
             let modified = try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
@@ -739,19 +763,19 @@ final class WorksheetStore: @unchecked Sendable {
     func load(_ path: WorksheetPath, user: User?, unlocks: Set<String> = []) throws -> Worksheet {
         try lock.withLock {
             if try readSettings().requireLogin && user == nil { throw Abort(.unauthorized) }
-            let rules = try policies()
-            let worksheet = try readDocument(path, rules: rules)
-            try authorize(accessLocked(path, sheet: worksheet, user: user, unlocks: unlocks, rules: rules), user: user)
-            return worksheet
+            let ctx = try context(path)
+            try authorize(accessLocked(ctx, user: user, unlocks: unlocks), user: user)
+            return try read(worksheetURL(path))
         }
     }
 
     func update(_ path: WorksheetPath, worksheet: Worksheet, user: User, restoring: Bool = false, unlocks: Set<String> = [],
                 checkSelection: (Worksheet) throws -> Void = { _ in }) throws -> Worksheet {
         try lock.withLock {
-            let rules = try policies()
-            let current = try readDocument(path, rules: rules)
-            guard try accessLocked(path, sheet: current, user: user, unlocks: unlocks, rules: rules).editable else { throw Abort(.forbidden) }
+            let ctx = try context(path)
+            var next = ctx
+            let current = try read(worksheetURL(path))
+            guard accessLocked(ctx, user: user, unlocks: unlocks).editable else { throw Abort(.forbidden) }
             guard worksheet.revision == current.revision else {
                 throw Abort(.preconditionFailed, reason: "A munkalapot közben más módosította. A helyi változtatásaid megmaradtak.")
             }
@@ -763,56 +787,49 @@ final class WorksheetStore: @unchecked Sendable {
             }
             var updated = worksheet
             updated.creator = current.creator
-            if current.owner != updated.owner {
-                guard user.role == .admin else { throw Abort(.forbidden) }
-                guard let owner = updated.owner, try readUsers().contains(where: { $0.name == owner }) else {
-                    throw Abort(.unprocessableEntity, reason: "Válassz létező tulajdonost.")
-                }
-            }
-            if current.editors != updated.editors || current.isPublic != updated.isPublic || current.hidden != updated.hidden {
-                guard current.canManage(user) else { throw Abort(.forbidden) }
-                if current.editors != updated.editors {
-                    let accounts = Set(try readUsers().map(\.name))
-                    let added = Set(updated.editors ?? []).subtracting(current.editors ?? [])
-                    guard added.isSubset(of: accounts) else {
-                        throw Abort(.unprocessableEntity, reason: "Csak létező fiók kaphat szerkesztési jogot.")
-                    }
-                    if let editors = updated.editors { updated.editors = Array(Set(editors)).sorted() }
-                }
-            }
             updated.revision = current.revision + 1
             updated.resetRevision = restoring ? updated.revision : current.resetRevision
             try updated.validate()
             updated.schemaVersion = 2
-            let directory = try worksheetURL(path).deletingPathExtension()
+            let url = try worksheetURL(path)
+            let directory = ctx.directory
+            var metadata = ctx.local
+            var media = metadata.mediaFiles ?? [:]
             let previousImages = Dictionary(uniqueKeysWithValues: current.nodes.map { ($0.id, $0.file) })
             var renames: [String: String] = [:]
             for node in updated.nodes {
                 guard let file = node.file, file.type == .image, let asset = file.asset else { continue }
                 let previous = previousImages[node.id] ?? nil
                 if previous?.asset == asset && previous?.filename == file.filename { continue }
-                guard let previousStem = renames.updateValue(file.imageStem, forKey: asset) else { continue }
-                guard previousStem == file.imageStem else { throw Abort(.conflict, reason: "Egy képfájlhoz csak egy név tartozhat.") }
+                if let prior = renames.updateValue(file.imageStem, forKey: asset), prior != file.imageStem {
+                    throw Abort(.unprocessableEntity, reason: "Egy képfájlhoz csak egy név tartozhat.")
+                }
             }
             var moved: [(from: URL, to: URL)] = []
             do {
-                for (asset, stem) in renames {
-                    let folder = try imageFolder(in: directory, asset: asset)
-                    let source = try storedImage(in: folder) ?? directory.appendingPathComponent(asset)
-                    try rejectLink(source)
-                    guard files.fileExists(atPath: source.path) else { throw Abort(.notFound, reason: "A képfájl nem található.") }
+                for (asset, stem) in renames.sorted(by: { $0.key < $1.key }) {
+                    guard let source = try attachments(at: url, named: asset, metadata: metadata).first else {
+                        throw Abort(.notFound, reason: "A képfájl nem található.")
+                    }
                     if source.deletingPathExtension().lastPathComponent == stem { continue }
-                    try files.createDirectory(at: folder, withIntermediateDirectories: true)
-                    let destination = folder.appendingPathComponent(stem).appendingPathExtension(source.pathExtension)
+                    let name = stem + "." + source.pathExtension
+                    let destination = try unusedAttachment(name, in: directory, metadata: metadata, status: .unprocessableEntity)
                     try files.moveItem(at: source, to: destination)
                     moved.append((source, destination))
+                    media[asset] = name
                 }
                 for index in updated.nodes.indices {
                     guard let file = updated.nodes[index].file, file.type == .image, let asset = file.asset,
                           let stem = renames[asset] else { continue }
                     updated.nodes[index].file?.filename = stem
                 }
-                try writeDocument(updated, at: path, rules: rules)
+                if !moved.isEmpty {
+                    metadata.mediaFiles = media
+                    next.rules[directory] = metadata
+                }
+                try persist(next, previous: ctx)
+                do { try write(updated, to: url) }
+                catch { try persist(ctx, previous: next); throw error }
             } catch {
                 for move in moved.reversed() { try files.moveItem(at: move.to, to: move.from) }
                 throw error
@@ -823,215 +840,214 @@ final class WorksheetStore: @unchecked Sendable {
 
     func manage(_ path: WorksheetPath, operation: DocumentAction, user: User, unlocks: Set<String>) throws -> WorksheetPath? {
         try lock.withLock {
-            let url = try worksheetURL(path)
-            var rules = try policies()
-            let sheet = try readDocument(path, rules: rules)
-            guard try accessLocked(path, sheet: sheet, user: user, unlocks: unlocks, rules: rules).manageable else { throw Abort(.forbidden) }
-            let project = operation.scope == "project"
-            let key: String
-            if operation.scope == "attachment", let filename = operation.filename,
-               ["grant", "revoke"].contains(operation.action) {
-                guard try attachments(at: url, named: filename).first != nil else { throw Abort(.notFound) }
-                key = attachmentPolicyKey(path, filename)
-            } else {
-                guard (project && path.parts.count == 1) || operation.scope == "sheet" else { throw Abort(.badRequest) }
-                key = operation.scope + "/" + path.url
-            }
-            var rule = rules[key] ?? DocumentPolicy()
+            let ctx = try context(path)
+            let rights = accessLocked(ctx, user: user, unlocks: unlocks)
+            guard rights.manageable else { throw Abort(.forbidden) }
+            guard ["sheet", "project"].contains(operation.scope) else { throw Abort(.badRequest) }
+            let main = ctx.folderPath == path.url
+            var next = ctx
+            var page = ctx.page
             switch operation.action {
-            case "hide":
-                rule.hidden = !(rule.hidden ?? false)
+            case "hide": page.hidden.toggle()
             case "freeze":
-                rule.frozen = !(rule.frozen ?? false)
-            case "mode" where project:
-                guard let value = operation.value, ["public", "internal"].contains(value) else { throw Abort(.badRequest) }
-                rule.publicEditing = value == "public"
+                if main { next.rules[ctx.directory]?.frozen = !(ctx.local.frozen ?? false) }
+                else { page.frozen = !(page.frozen ?? false) }
             case "password":
                 let password = operation.value ?? ""
                 guard password.utf8.count <= 72 else { throw Abort(.badRequest) }
-                rule.passwordHash = password.isEmpty ? nil : try Bcrypt.hash(password)
+                let hash = password.isEmpty ? nil : try Bcrypt.hash(password)
+                if main { next.rules[ctx.directory]?.passwordHash = hash } else { page.passwordHash = hash }
+            case "mode" where main:
+                guard let mode = operation.value, ["public", "internal"].contains(mode) else { throw Abort(.badRequest) }
+                next.rules[ctx.directory]?.guestReadable = mode == "public"
             case "grant", "revoke":
-                guard let name = operation.value, try readUsers().contains(where: { $0.name == name }) else {
-                    throw Abort(.badRequest, reason: "A felhasználó nem létezik.")
-                }
-                let sheetScope = operation.scope == "sheet"
-                var users = Set((sheetScope ? sheet.editors : rule.users) ?? [])
-                if operation.action == "grant" { users.insert(name) } else { users.remove(name) }
-                if sheetScope {
-                    rule.editors = users.sorted()
-                    rule.users = nil
-                } else {
-                    rule.users = users.sorted()
-                }
+                guard main, let name = operation.value, try readUsers().contains(where: { $0.name == name }) else { throw Abort(.badRequest) }
+                var editors = Set(ctx.local.editors ?? [])
+                if operation.action == "grant" {
+                    guard ctx.chain.dropLast().allSatisfy({ ctx.rules[$0]?.owner == name || ctx.rules[$0]?.editors?.contains(name) == true }) else {
+                        throw Abort(.forbidden, reason: "Előbb a szülőmappában adj hozzáférést.")
+                    }
+                    editors.insert(name)
+                } else { editors.remove(name) }
+                next.rules[ctx.directory]?.editors = editors.sorted()
             case "rename", "delete":
-                let renamed: WorksheetPath?
-                let destination: URL
-                if operation.action == "rename" {
-                    guard let name = operation.value else { throw Abort(.badRequest) }
-                    let next = try WorksheetPath(Array(path.parts.dropLast()) + [name])
-                    if next.url == path.url { return next }
-                    destination = try worksheetURL(next)
-                    renamed = next
-                } else {
-                    let trash = root.appendingPathComponent(".trash/" + UUID().uuidString, isDirectory: true)
-                    try rejectLink(root.appendingPathComponent(".trash"))
-                    try files.createDirectory(at: trash, withIntermediateDirectories: true)
-                    destination = trash.appendingPathComponent(url.lastPathComponent)
-                    renamed = nil
-                }
-                let directory = url.deletingPathExtension()
-                let destinationDirectory = destination.deletingPathExtension()
-                try rejectLink(directory)
-                try rejectLink(destinationDirectory)
-                guard !files.fileExists(atPath: destination.path), !files.fileExists(atPath: destinationDirectory.path) else { throw Abort(.conflict) }
-                let moveDirectory = (project || renamed != nil) && files.fileExists(atPath: directory.path)
-                let oldScope = key
-                let oldPolicyPaths = rules.keys.filter { key in
-                    let document = key.split(separator: "/", maxSplits: 1).last.map(String.init) ?? ""
-                    return (document == path.url && (project || renamed != nil || key == oldScope)) || ((project || renamed != nil) && document.hasPrefix(path.url + "/"))
-                }
-                for old in oldPolicyPaths {
-                    let value = rules.removeValue(forKey: old)
-                    if let renamed, let slash = old.firstIndex(of: "/") {
-                        let suffix = old[old.index(after: slash)...].dropFirst(path.url.count)
-                        rules[String(old[...slash]) + renamed.url + suffix] = value
-                    }
-                }
-                let moveFile = files.fileExists(atPath: url.path)
-                if moveFile { try files.moveItem(at: url, to: destination) }
-                do {
-                    if moveDirectory { try files.moveItem(at: directory, to: destinationDirectory) }
-                    try write(rules, to: policyURL)
-                } catch {
-                    if moveDirectory && files.fileExists(atPath: destinationDirectory.path) {
-                        try? files.moveItem(at: destinationDirectory, to: directory)
-                    }
-                    if moveFile { try? files.moveItem(at: destination, to: url) }
-                    throw error
-                }
-                return renamed
-            default:
-                throw Abort(.badRequest)
+                return try moveDocument(path, ctx, name: operation.action == "rename" ? (operation.value ?? "") : nil)
+            default: throw Abort(.badRequest)
             }
-            rules[key] = rule
-            try write(rules, to: policyURL)
+            next.setPage(page)
+            try persist(next, previous: ctx)
             return path
         }
     }
 
-    func storeMedia(_ bytes: Data, type: String, imageName: String? = nil, at path: WorksheetPath, user: User, unlocks: Set<String>) throws -> String {
+    private func moveDocument(_ path: WorksheetPath, _ ctx: Context, name: String?) throws -> WorksheetPath? {
+        let main = ctx.folderPath == path.url
+        let file = try worksheetURL(path)
+        let source = main ? ctx.directory : file
+        let renamed = try name.map { try WorksheetPath(Array(path.parts.dropLast()) + [$0]) }
+        if renamed?.url == path.url { return renamed }
+        let destination: URL
+        if let renamed {
+            let entry = try folder(renamed)
+            let sibling = entry.appendingPathExtension("thnode")
+            guard renamed.name != renamed.parts.dropLast().last, !files.fileExists(atPath: entry.path), !files.fileExists(atPath: sibling.path) else { throw Abort(.conflict) }
+            destination = main ? entry : sibling
+        } else {
+            let trash = root.appendingPathComponent(".trash")
+            try rejectLink(trash)
+            try files.createDirectory(at: trash, withIntermediateDirectories: true)
+            destination = trash.appendingPathComponent(UUID().uuidString + "-" + source.lastPathComponent)
+        }
+        var settings = ctx.rules[ctx.project]!
+        let prefix = ctx.key.split(separator: "/").dropLast().joined(separator: "/")
+        var pages = settings.worksheets ?? [:]
+        for (key, value) in settings.worksheets ?? [:] where key == ctx.key || (main && (prefix.isEmpty || key.hasPrefix(prefix + "/"))) {
+            pages.removeValue(forKey: key)
+            if let name {
+                var parts = key.split(separator: "/").map(String.init)
+                if main && !prefix.isEmpty { parts[prefix.split(separator: "/").count-1] = name }
+                if key == ctx.key { parts[parts.count-1] = name + ".thnode" }
+                pages[parts.joined(separator: "/")] = value
+            }
+        }
+        settings.worksheets = pages
+        try files.moveItem(at: source, to: destination)
+        let oldMain = destination.appendingPathComponent(file.lastPathComponent)
+        var movedMain: URL?
+        do {
+            if main, let name {
+                let newMain = destination.appendingPathComponent(name + ".thnode")
+                guard !files.fileExists(atPath: newMain.path) else { throw Abort(.conflict) }
+                try files.moveItem(at: oldMain, to: newMain)
+                movedMain = newMain
+            }
+            if ctx.directory != ctx.project || !main || name != nil {
+                let project = main && ctx.directory == ctx.project ? destination : ctx.project
+                try write(settings, to: settingsURL(project))
+            }
+        } catch {
+            if let movedMain { try files.moveItem(at: movedMain, to: oldMain) }
+            try files.moveItem(at: destination, to: source)
+            throw error
+        }
+        return renamed
+    }
+
+    private func unusedAttachment(_ name: String, in directory: URL, metadata: DocumentPolicy?,
+                                  status: HTTPStatus = .conflict) throws -> URL {
+        guard validImageStem(name) else { throw Abort(.badRequest, reason: "Érvénytelen fájlnév.") }
+        try rejectLink(directory)
+        let destination = directory.appendingPathComponent(name)
+        try rejectLink(destination)
+        let collides = files.fileExists(atPath: destination.path) || metadata?.mediaFiles?[name] != nil
+        let reservesWorksheet = destination.pathExtension.lowercased() == "thnode"
+        guard !collides, !reservesWorksheet else {
+            throw Abort(status, reason: "Ilyen nevű fájl vagy munkalap már létezik.")
+        }
+        return destination
+    }
+
+    func storeMedia(_ bytes: Data, type: String, imageName: String? = nil, filename: String? = nil,
+                    at path: WorksheetPath, user: User, unlocks: Set<String>) throws -> String {
         try lock.withLock {
             guard let ext = canvasMediaTypes.first(where: { $0.value == type })?.key,
                   !bytes.isEmpty, bytes.count <= 12 * 1024 * 1024 else { throw Abort(.badRequest) }
-            let rules = try policies()
-            let access = try accessLocked(path, sheet: readDocument(path, rules: rules), user: user, unlocks: unlocks, rules: rules)
+            let ctx = try context(path)
+            _ = try read(worksheetURL(path))
+            let access = accessLocked(ctx, user: user, unlocks: unlocks)
             guard access.editable else { throw Abort(.forbidden) }
             guard matchesMediaHeader(bytes, type: type) else {
                 throw Abort(.unsupportedMediaType, reason: "A fájl tartalma eltér a megadott típustól.")
             }
-            let directory = try worksheetURL(path).deletingPathExtension()
-            try rejectLink(directory)
-            try files.createDirectory(at: directory, withIntermediateDirectories: true)
-            let name = UUID().uuidString.lowercased() + "." + ext
-            if type.hasPrefix("image/"), let imageName {
-                guard validImageStem(imageName) else { throw Abort(.badRequest, reason: "Érvénytelen képfájlnév.") }
-                let folder = try imageFolder(in: directory, asset: name)
-                try files.createDirectory(at: folder, withIntermediateDirectories: true)
-                try bytes.write(to: folder.appendingPathComponent(imageName).appendingPathExtension(ext), options: .atomic)
-            } else {
-                try bytes.write(to: directory.appendingPathComponent(name), options: .atomic)
+            let asset = UUID().uuidString.lowercased() + "." + ext
+            let name = filename ?? imageName.map { $0 + "." + ext } ?? asset
+            let suffix = (name as NSString).pathExtension.lowercased()
+            guard canvasMediaTypes[suffix == "jpeg" ? "jpg" : suffix] == type else {
+                throw Abort(.badRequest, reason: "Érvénytelen médiafájlnév.")
             }
-            return name
+            let worksheet = try worksheetURL(path)
+            let directory = ctx.directory
+            var metadata = ctx.local
+            let destination = try unusedAttachment(name, in: directory, metadata: metadata)
+            guard try attachments(at: worksheet, named: name, metadata: metadata).isEmpty else {
+                throw Abort(.conflict, reason: "Ilyen nevű fájl már létezik.")
+            }
+            try files.createDirectory(at: directory, withIntermediateDirectories: true)
+            try bytes.write(to: destination, options: .atomic)
+            if name != asset {
+                var media = metadata.mediaFiles ?? [:]
+                media[asset] = name
+                metadata.mediaFiles = media
+                do { try write(metadata, to: settingsURL(directory)) }
+                catch { try? files.removeItem(at: destination); throw error }
+            }
+            return asset
+        }
+    }
+
+    func storeAttachment(_ bytes: Data, named name: String, at path: WorksheetPath, user: User, unlocks: Set<String>) throws {
+        try lock.withLock {
+            let ctx = try context(path)
+            _ = try read(worksheetURL(path))
+            let access = accessLocked(ctx, user: user, unlocks: unlocks)
+            guard access.editable else { throw Abort(.forbidden) }
+            guard validImageStem(name), canvasAssetType(name) == nil else {
+                throw Abort(.badRequest, reason: "Érvénytelen fájlnév.")
+            }
+            guard bytes.count <= 12 * 1024 * 1024 else {
+                throw Abort(.payloadTooLarge, reason: "A fájl legfeljebb 12 MiB lehet.")
+            }
+            let ext = (name as NSString).pathExtension.lowercased()
+            guard matchesAttachmentType(bytes, extension: ext) else {
+                throw Abort(.unsupportedMediaType, reason: "A fájltípus nem támogatott, vagy a tartalom eltér a kiterjesztéstől.")
+            }
+            let worksheet = try worksheetURL(path)
+            let directory = ctx.directory
+            let metadata = ctx.local
+            let destination = try unusedAttachment(name, in: directory, metadata: metadata)
+            guard try attachments(at: worksheet, named: name, metadata: metadata).isEmpty else {
+                throw Abort(.conflict, reason: "Ilyen nevű melléklet már létezik.")
+            }
+            try files.createDirectory(at: directory, withIntermediateDirectories: true)
+            try bytes.write(to: destination, options: .atomic)
         }
     }
 
     func contents(_ path: WorksheetPath, user: User?, unlocks: Set<String>, named name: String? = nil) throws -> [URL] {
         try lock.withLock {
             let url = try worksheetURL(path)
-            let rules = try policies()
-            let sheet = try readDocument(path, rules: rules)
-            let access = try accessLocked(path, sheet: sheet, user: user, unlocks: unlocks, rules: rules)
-            if attachmentGranted(path, file: name, user: user, rules: rules) {
-                if access.passwordRequired { throw Abort(.locked, reason: "Ehhez a fájlhoz jelszó szükséges.") }
-            } else {
-                try authorize(access, user: user)
-            }
-            return try attachments(at: url, named: name)
+            let ctx = try context(path)
+            _ = try read(worksheetURL(path))
+            let access = accessLocked(ctx, user: user, unlocks: unlocks)
+            try authorize(access, user: user)
+            return try attachments(at: url, named: name, metadata: ctx.local)
         }
     }
 
-    private func imageFolder(in directory: URL, asset: String) throws -> URL {
-        try rejectLink(directory)
-        let images = directory.appendingPathComponent(".canvas-images", isDirectory: true)
-        try rejectLink(images)
-        let folder = images.appendingPathComponent(asset, isDirectory: true)
-        try rejectLink(folder)
-        return folder
-    }
-
-    private func storedImage(in folder: URL) throws -> URL? {
-        guard files.fileExists(atPath: folder.path) else { return nil }
+    private func attachments(at url: URL, named name: String?, metadata: DocumentPolicy?) throws -> [URL] {
+        let directory = url.deletingLastPathComponent()
         let keys: Set<URLResourceKey> = [.isRegularFileKey, .isSymbolicLinkKey]
-        return try files.contentsOfDirectory(at: folder, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles])
-            .first { file in
-                let info = try file.resourceValues(forKeys: keys)
-                return info.isRegularFile == true && info.isSymbolicLink != true
-                    && file.pathExtension == folder.pathExtension
-            }
-    }
-
-    private func attachments(at url: URL, named name: String?) throws -> [URL] {
-        let directory = url.deletingPathExtension()
-        try rejectLink(directory)
-        guard files.fileExists(atPath: directory.path) else { return [] }
-        let keys: Set<URLResourceKey> = [.isRegularFileKey, .isSymbolicLinkKey]
-        let entries = try files.contentsOfDirectory(at: directory, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles])
-        let managed: [URL]
+        let entries: [URL]
         if let name {
-            if canvasAssetType(name)?.hasPrefix("image/") == true,
-               let image = try storedImage(in: imageFolder(in: directory, asset: name)) { return [image] }
-            managed = []
+            let filename = metadata?.mediaFiles?[name] ?? name
+            guard validImageStem(filename), URL(fileURLWithPath: filename).pathExtension.lowercased() != "thnode" else { return [] }
+            entries = [directory.appendingPathComponent(filename)]
         } else {
-            let images = directory.appendingPathComponent(".canvas-images", isDirectory: true)
-            try rejectLink(images)
-            if files.fileExists(atPath: images.path) {
-                let folders = try files.contentsOfDirectory(at: images, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
-                managed = try folders.compactMap {
-                    let asset = $0.lastPathComponent
-                    guard canvasAssetType(asset)?.hasPrefix("image/") == true else { return nil }
-                    return try storedImage(in: imageFolder(in: directory, asset: asset))
-                }
-            } else { managed = [] }
+            entries = try files.contentsOfDirectory(at: directory, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles])
         }
-        let regular = try entries.filter { file in
-            guard name == nil || file.lastPathComponent == name else { return false }
+        return try entries.filter { file in
+            guard !file.lastPathComponent.hasPrefix("."), file.pathExtension.lowercased() != "thnode",
+                  files.fileExists(atPath: file.path) else { return false }
             let info = try file.resourceValues(forKeys: keys)
-            if info.isSymbolicLink == true || info.isRegularFile != true { return false }
-            // Worksheets use the normal authenticated document routes.
-            return file.pathExtension.lowercased() != "json" || (try? read(file)) == nil
-        }
-        return (regular + managed).sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+            return info.isRegularFile == true && info.isSymbolicLink != true
+        }.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
     }
 
     func archive(_ path: WorksheetPath, expected: Int) throws {
         try lock.withLock {
-            let url = try worksheetURL(path)
-            guard try read(url).revision == expected else {
-                throw Abort(.preconditionFailed, reason: "A munkalapot közben más módosította.")
-            }
-            let trash = root.appendingPathComponent(".trash", isDirectory: true)
-            try rejectLink(trash)
-            try files.createDirectory(at: trash, withIntermediateDirectories: true)
-            let destination = trash.appendingPathComponent("\(UUID().uuidString)-\(path.name).json")
-            var rules = try policies()
-            // A surviving directory can still contain protected children or attachments.
-            let removePolicy = !files.fileExists(atPath: url.deletingPathExtension().path)
-                && rules.removeValue(forKey: "sheet/" + path.url) != nil
-            try files.moveItem(at: url, to: destination)
-            if removePolicy {
-                do { try write(rules, to: policyURL) }
-                catch { try files.moveItem(at: destination, to: url); throw error }
-            }
+            let ctx = try context(path)
+            guard try read(worksheetURL(path)).revision == expected else { throw Abort(.preconditionFailed) }
+            _ = try moveDocument(path, ctx, name: nil)
         }
     }
 
@@ -1064,11 +1080,38 @@ final class WorksheetStore: @unchecked Sendable {
         try lock.withLock {
             let users = try readUsers()
             guard users.contains(where: { $0.name == name }) else { throw Abort(.notFound) }
-            try writeUsers(users.filter { $0.name != name })
+            let remaining = users.filter { $0.name != name }
+            guard remaining.contains(where: { $0.role == .admin }) else { throw Abort(.unprocessableEntity) }
+            var changed: [(URL, DocumentPolicy)] = []
+            func removeMemberships(in directory: URL) throws {
+                let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey]
+                let entries = try files.contentsOfDirectory(at: directory, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles])
+                for folder in entries {
+                    let info = try folder.resourceValues(forKeys: keys)
+                    guard info.isDirectory == true, info.isSymbolicLink != true else { continue }
+                    let file = try settingsURL(folder)
+                    guard files.fileExists(atPath: file.path) else { continue }
+                    let previous = try JSONDecoder().decode(DocumentPolicy.self, from: Data(contentsOf: file))
+                    var next = previous
+                    if next.owner == name { next.owner = nil }
+                    next.editors?.removeAll { $0 == name }
+                    if next != previous {
+                        try write(next, to: file)
+                        changed.append((file, previous))
+                    }
+                    try removeMemberships(in: folder)
+                }
+            }
+            do {
+                try removeMemberships(in: root)
+                try writeUsers(remaining)
+            } catch {
+                for (file, previous) in changed.reversed() { try write(previous, to: file) }
+                throw error
+            }
         }
     }
 
-    private var userFile: URL { root.appendingPathComponent(".users.json") }
     private var settingsFile: URL { root.appendingPathComponent(".settings.json") }
 
     private func readSettings() throws -> SiteSettings {
@@ -1078,17 +1121,21 @@ final class WorksheetStore: @unchecked Sendable {
     }
 
     private func readUsers() throws -> [User] {
-        try rejectLink(userFile)
-        guard files.fileExists(atPath: userFile.path) else { return [] }
-        return try JSONDecoder().decode([User].self, from: Data(contentsOf: userFile))
+        try readSettings().users ?? []
     }
 
     private func writeUsers(_ users: [User]) throws {
         guard users.contains(where: { $0.role == .admin }) else {
             throw Abort(.unprocessableEntity, reason: "Legalább egy adminisztrátori fióknak meg kell maradnia.")
         }
-        try write(users, to: userFile)
-        try files.setAttributes([.posixPermissions: 0o600], ofItemAtPath: userFile.path)
+        var settings = try readSettings()
+        settings.users = users
+        try saveSiteSettings(settings)
+    }
+
+    private func saveSiteSettings(_ settings: SiteSettings) throws {
+        try encoder.encode(settings).write(to: settingsFile, options: .atomic)
+        try files.setAttributes([.posixPermissions: 0o600], ofItemAtPath: settingsFile.path)
     }
 
     private func read(_ url: URL) throws -> Worksheet {
@@ -1100,17 +1147,6 @@ final class WorksheetStore: @unchecked Sendable {
 
     private func write(_ value: some Encodable, to url: URL) throws {
         try (encoder.encode(value) + Data([10])).write(to: url, options: .atomic)
-    }
-
-    private func worksheetURL(_ path: WorksheetPath) throws -> URL {
-        var directory = root
-        for component in path.parts.dropLast() {
-            directory.appendPathComponent(component, isDirectory: true)
-            try rejectLink(directory)
-        }
-        let url = directory.appendingPathComponent(path.name + ".json")
-        try rejectLink(url)
-        return url
     }
 
     private func rejectLink(_ url: URL) throws {
@@ -1158,14 +1194,8 @@ extension Worksheet {
         title = (try? fields.decode(String.self, forKey: .title)) ?? "Munkalap"
         text = try? fields.decode(String.self, forKey: .text)
         background = try? fields.decode(String.self, forKey: .background)
-        gridColor = try? fields.decode(String.self, forKey: .gridColor)
         gridSpacing = try? fields.decode(Double.self, forKey: .gridSpacing)
-        gridVisible = try? fields.decode(Bool.self, forKey: .gridVisible)
         creator = try? fields.decode(String.self, forKey: .creator)
-        owner = try? fields.decode(String.self, forKey: .owner)
-        editors = try? fields.decode([String].self, forKey: .editors)
-        hidden = try? fields.decode(Bool.self, forKey: .hidden)
-        isPublic = try? fields.decode(Bool.self, forKey: .isPublic)
         nodes = (try? fields.decode([WorksheetElement<Idea>].self, forKey: .nodes))?.compactMap(\.value) ?? []
         edges = (try? fields.decode([WorksheetElement<Connection>].self, forKey: .edges))?.compactMap(\.value) ?? []
     }

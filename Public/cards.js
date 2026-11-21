@@ -78,14 +78,14 @@ export function documentEntries(card) {
     input("Felhasználó hozzáadása", "grant", "Felhasználónév", "plus"),
     input("Felhasználó eltávolítása", "revoke", "Felhasználónév", "minus"),
   ];
-  if (card.dataset.scope === "attachment") return [...entries, ...people];
+  if (card.dataset.scope === "attachment") return entries;
   entries.push(
     ["Törlés", () => { if (confirm("Lomtárba helyezed?")) change(card, "delete"); }, "trash"],
     [card.dataset.hidden === "true" ? "Megjelenítés" : "Elrejtés", () => change(card, "hide"), "eye"],
     card.dataset.password === "true" ? ["Jelszár feloldása", () => change(card, "password", ""), "unlock"] : ["Jelszár beállítása", () => passwordDialog(card), "lock"],
     [card.dataset.frozen === "true" ? "Szerkesztés feloldása" : "Szerkesztés zárolása", () => change(card, "freeze"), "hand"],
     input("Átnevezés", "rename", "Új útvonalnév", "edit"),
-    ...people,
+    ...(card.dataset.scope === "project" ? people : []),
   );
   if (card.dataset.scope === "project") entries.push(
     card.dataset.public === "true" ? ["Belső mód", () => change(card, "mode", "internal"), "folder"] : ["Nyilvános mód", () => change(card, "mode", "public"), "butterfly"],
@@ -104,7 +104,7 @@ document.addEventListener("click", async event => {
   const button = event.target.closest(".new-worksheet");
   if (!button) return;
   const parent = button.closest("[data-current-sheet]")?.dataset.currentSheet;
-  const name = window.prompt(parent ? "Új munkalap útvonalneve" : "Új projekt útvonalneve")?.trim();
+  const name = window.prompt(button.dataset.folder ? "Új almappa neve" : parent ? "Új munkalap útvonalneve" : "Új projekt útvonalneve")?.trim();
   if (!name) return;
   if (!/^[\p{L}\p{M}\p{Nd}_-]+$/u.test(name)) {
     alert("Az útvonalnév betűket, számokat, kötőjelet és aláhúzást tartalmazhat.");
@@ -112,7 +112,7 @@ document.addEventListener("click", async event => {
   }
   const path = (parent ? parent + "/" : "") + encodeURIComponent(name);
   try {
-    const response = await fetch("/api/subworksheet/" + path, {method: "POST", headers: {
+    const response = await fetch("/api/subworksheet/" + path + (button.dataset.folder ? "?folder=1" : ""), {method: "POST", headers: {
       "X-CSRF-Token": button.closest("[data-csrf]").dataset.csrf,
     }});
     if (!response.ok) throw Error((await response.json()).reason || "A létrehozás sikertelen.");

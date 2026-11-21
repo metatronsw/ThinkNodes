@@ -41,7 +41,9 @@ function zoom() {
   return behavior;
 }
 globalThis.document = {querySelector: () => root};
-globalThis.window = {Vue: {...Vue, createApp: renderer.createApp}, addEventListener(key, fn) { listeners[key] = fn; },
+const storage = new Map();
+globalThis.window = {localStorage: {getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value)},
+  Vue: {...Vue, createApp: renderer.createApp}, addEventListener(key, fn) { listeners[key] = fn; },
   d3: {...d3, zoom, pointer: e => [e.clientX, e.clientY],
     select: () => ({call(fn, ...args) { fn(this, ...args); return this; }, on() { return this; }})}};
 globalThis.ResizeObserver = class { observe() {} };
@@ -63,8 +65,24 @@ globalThis.WebSocket = window.WebSocket = class {
 };
 let selectedNode;
 let writes = 0;
+const attachmentUploads = [];
+let svgUpload;
 let checkpoint = structuredClone(sheet);
 globalThis.fetch = async (url, options) => {
+  if (url === "/api/subworksheet/test/jegyzet" && options?.method === "POST") {
+    return Response.json({title: "Jegyzet"});
+  }
+  if (url === "/api/media/test?filename=pelda.png" && options?.method === "POST") {
+    return Response.json({asset: "pelda.png"});
+  }
+  if (url === "/api/media/test?filename=mozgas.SVG" && options?.method === "POST") {
+    svgUpload = options;
+    return Response.json({asset: "mozgas.svg"});
+  }
+  if (url.startsWith("/api/attachment/") && options?.method === "POST") {
+    attachmentUploads.push({url, file: options.body});
+    return new Response(null, {status: 201});
+  }
   if (url.includes("/presence/")) {
     const {action, node, since} = JSON.parse(options.body);
     if (since) return new Promise(resolve => { finishPoll = resolve; });
@@ -79,7 +97,6 @@ globalThis.fetch = async (url, options) => {
       checkpointChanged: sheet.revision !== checkpoint.revision,
       participants: [{mine: true, name: "admin", color: "#365bd6", node: selectedNode}]});
   }
-  if (url.includes("worksheet-users")) return Response.json(["admin"]);
   if (url.includes("text/canvas")) return Response.json({
     blocks: JSON.parse(options.body).sources.map(source => [{kind: "body", runs: [{text: source}]}]),
   });
@@ -107,7 +124,7 @@ const prop = (key, value, scope) => find(n => n.props[key] === value, scope);
 const graphic = id => prop("data-node", id);
 const canvas = () => prop("aria-label", "Ötletvászon");
 const text = n => n.text ?? n.children.map(text).join("");
-const button = label => find(n => n.tag === "button" && text(n) === label);
+const button = label => find(n => n.tag === "button" && (text(n) === label || n.props["aria-label"] === label));
 const endpoint = (id, end) => find(n => n.props["data-edge"] === id && n.props["data-endpoint"] === end);
 const event = (target, x, y, extra = {}) => ({currentTarget: target, target, button: 0, pointerId: 1,
   clientX: x+600, clientY: y+400, preventDefault() {}, stopPropagation() {}, ctrlKey: false, altKey: false, ...extra});
@@ -159,25 +176,57 @@ await tick();
 checkpoint = structuredClone(sheet);
 
 const oneWire = () => find(n => n.tag === "g" && n.props["data-edge"] === "one");
-const panel = () => find(n => n.tag === "aside");
+const panel = () => find(n => n.tag === "aside" && n.props["aria-label"] !== "Munkalap");
+const titleActions = [];
+const labelInput = () => prop("data-object-label", "", panel());
+root.querySelector = selector => {
+  if (selector !== ".object-inspector [data-object-label]") return null;
+  const title = labelInput();
+  if (!title) return null;
+  title.focus = () => titleActions.push("focus");
+  title.select = () => titleActions.push(title.props.value);
+  return title;
+};
+const canvasPanel = () => find(n => n.tag === "aside" && n.props["aria-label"] === "Munkalap");
 const sidebarToggle = () => find(n => n.tag === "button" && n.props["aria-label"]?.startsWith("Oldalsáv "));
+const canvasToggle = () => find(n => n.tag === "button" && n.props["aria-label"]?.startsWith("Vászonbeállítások "));
+assert.ok(!panel() && !canvasPanel(), "no selection shows neither inspector initially");
 oneWire().props.onClick();
 await tick();
 assert.equal(panel()?.props["aria-label"], "Vonal szerkesztése");
 assert.ok(button("Egyenes"), "selecting a wire opens its editable properties directly");
-toggle("Escape", true); await tick();
-assert.equal(panel()?.props["aria-label"], "Munkalap");
-assert.ok(find(n => n.tag === "input" && n.props.value === sheet.title, panel()));
-toggle("Escape", true); await tick();
-assert.ok(!panel(), "Escape without a selection collapses the panel");
+canvasToggle().props.onClick(); await tick();
+assert.ok(panel() && canvasPanel());
+assert.ok(find(n => n.tag === "input" && n.props.value === sheet.title, canvasPanel()));
+assert.equal(text(canvasPanel().children[0].children.find(n => n.tag === "button")), "Fájl feltöltése");
+const emptyCanvasEvent = (x, y) => event(canvas(), x, y, {target: {closest: () => null}});
+canvas().props.onPointerdownCapture(emptyCanvasEvent(280, 180));
+zoomEvents.zoom({transform: d3.zoomIdentity.translate(25, 15)});
+canvas().props.onPointerup(emptyCanvasEvent(305, 195));
+await tick();
+assert.ok(panel() && canvasPanel(), "panning keeps the selection and both inspectors");
+zoomEvents.zoom({transform: d3.zoomIdentity});
+const backgroundClick = emptyCanvasEvent(280, 180);
+canvas().props.onPointerdownCapture(backgroundClick);
+canvas().props.onClick(backgroundClick);
+await tick();
+assert.ok(!panel() && canvasPanel(), "clicking empty canvas hides only the object inspector");
+assert.equal(sidebarToggle().props["aria-expanded"], true);
+oneWire().props.onClick(); await tick();
+assert.ok(panel() && canvasPanel(), "reselecting shows the object panel again");
 sidebarToggle().props.onClick(); await tick();
 oneWire().props.onClick(); await tick();
-assert.ok(panel(), "reselecting a wire reopens the panel");
-sidebarToggle().props.onClick(); await tick();
-oneWire().props.onClick(); await tick();
-assert.ok(!panel(), "an explicit collapse survives selection");
+assert.ok(!panel() && canvasPanel(), "single-click respects a manual close");
 oneWire().props.onDblclick({stopPropagation() {}}); await tick();
-assert.ok(panel(), "double-click reopens a manually collapsed panel");
+assert.ok(panel() && canvasPanel(), "double-click reopens the object panel");
+sidebarToggle().props.onClick(); await tick();
+toggle("Escape", true); await tick();
+oneWire().props.onClick(); await tick();
+assert.ok(!panel() && canvasPanel(), "manual close survives deselection and reselecting");
+sidebarToggle().props.onClick(); await tick();
+assert.ok(panel() && canvasPanel(), "the object toggle reopens the panel for the current selection");
+canvasToggle().props.onClick(); await tick();
+assert.ok(panel() && !canvasPanel(), "the canvas toggle closes only the canvas panel");
 toggle("Escape", true); await tick();
 
 for (const ctrlKey of [false, true]) {
@@ -243,8 +292,10 @@ assert.equal(wireCount(), 3, "pressing Shift without moving shows the proposed l
 listeners.keyup({key: "Shift", altKey: true, shiftKey: false});
 await tick();
 assert.equal(wireCount(), 2, "releasing Shift without moving hides the proposed link");
+titleActions.length = 0;
 canvas().props.onPointerup(event(canvas(), 390, 45, {altKey: true, shiftKey: true}));
 await save();
+assert.deepEqual(titleActions, ["focus", "outside"]);
 const duplicate = sheet.nodes.find(n => n.title === "outside" && n.id !== "outside");
 assert.deepEqual(duplicate.position,{x:390,y:45});
 assert.equal(duplicate.fill,sourceBeforeClone.fill);
@@ -353,10 +404,16 @@ assert.equal(model("child").parent, "inner");
 canvas().props.onPointermove(event(canvas(), 180, 30, {ctrlKey: true}));
 await tick();
 assert.equal(find(n => n.props["data-anchor"]), undefined);
+sidebarToggle().props.onClick();
+titleActions.length = 0;
 await drag(graphic("outside"), 180, 30, -420, 0, {ctrlKey: true});
+assert.deepEqual(titleActions, ["focus", ""], "creating an arrow reopens the inspector and focuses its label");
+labelInput().props.onInput({target: {value: "Új kapcsolat"}});
 await save();
 assert.equal(sheet.edges.at(-1).source, "outside");
 assert.deepEqual(sheet.edges.at(-1).target, {node: "auto"});
+assert.equal(sheet.edges.at(-1).label, "Új kapcsolat");
+await press("Visszavonás"); await save();
 await press("Visszavonás"); await save();
 
 const free = endpoint("one", "target");
@@ -424,6 +481,21 @@ const freeHandle = endpoint(sheet.edges.at(-1).id, "source");
 assert.equal(freeHandle.tag, "rect");
 assert.equal(freeHandle.props.fill, "transparent");
 
+const freeLength = Math.hypot(90, 5);
+freeWire.querySelector = () => ({
+  getTotalLength: () => freeLength,
+  getPointAtLength: distance => ({x: -600 + 90 * distance / freeLength, y: -320 + 5 * distance / freeLength}),
+});
+let selectionPrevented = false;
+freeWire.props.onPointerdown(event(freeWire, -555, -317.5, {
+  preventDefault() { selectionPrevented = true; },
+}));
+assert.ok(selectionPrevented, "pressing the middle of a wire suppresses native text selection");
+titleActions.length = 0;
+await drag(freeWire, -555, -317.5, -550, -300, {ctrlKey: true});
+assert.equal(panel().props["aria-label"], "Csomópont");
+assert.deepEqual(titleActions, ["focus", ""]);
+await press("Visszavonás"); await save();
 
 for (const [id, x, y, automatic] of [["outside",180,30,false], ["auto",-420,0,true]]) {
   toggle("Alt", true); await tick();
@@ -467,16 +539,25 @@ assert.equal(details.props["font-style"], "italic");
 assert.equal(details.props["text-anchor"], "end");
 assert.equal(find(n => n.tag === "tspan" && text(n) === "Törzs", graphic("outside")).props["text-decoration"], "underline");
 toggle("Escape", true); await tick();
-const spacing = find(n => n.tag === "label" && n.children[0]?.text === "Rácsköz").children[1];
-spacing.props.onInput({target: {value: "36"}}); await tick();
-assert.equal(prop("id", "worksheet-grid").props.width, 36);
+canvasToggle().props.onClick(); await tick();
+for (const label of ["Rácsköz", "Rácspontok színe", "Pontrács megjelenítése", "Tulajdonos", "Rejtett a főoldalon", "Nyilvános munkalap", "Szerkesztők"]) {
+  assert.ok(!text(canvasPanel()).includes(label));
+}
+canvasToggle().props.onClick(); await tick();
+assert.equal(prop("id", "worksheet-grid").props.width, 32);
+const {automaticGridColor} = await import("../../Public/geometry.js");
+assert.equal(automaticGridColor("#ffffff"), "#808080");
+assert.equal(automaticGridColor("#000000"), "#808080");
+assert.equal(automaticGridColor("#112233"), "#889199");
+assert.equal(automaticGridColor("#ddeeff"), "#6f7780");
+assert.equal(prop("id", "worksheet-grid").children[0].props.fill, automaticGridColor("#f5f8fc"));
 const snapSwitch = () => prop("aria-label", "Rácsra igazítás");
 assert.equal(snapSwitch().props["aria-pressed"], false);
 snapSwitch().props.onClick(); await tick();
 const start = model("auto").position;
 await drag(graphic("auto"), start.x, start.y, 121, -83);
 await save();
-assert.deepEqual(model("auto").position, {x:126, y:-90});
+assert.deepEqual(model("auto").position, {x:112, y:-80});
 snapSwitch().props.onClick(); await tick();
 const transform = d3.zoomIdentity.translate(35, 75).scale(2);
 zoomEvents.zoom({transform}); await tick();
@@ -486,7 +567,8 @@ const gridWrites = writes;
 prop("aria-label", "Pontrács").props.onClick(); await tick();
 await new Promise(resolve => setTimeout(resolve, 100));
 assert.equal(writes, gridWrites);
-assert.notEqual(sheet.gridVisible, false);
+assert.equal(sheet.gridVisible, undefined);
+assert.equal(storage.get("thinknodes/user-grid/admin"), "false");
 assert.equal(prop("fill", "url(#worksheet-grid)"), undefined);
 toggle("Enter", true); await tick();
 const search = prop("aria-label", "Keresés a munkalapon");
@@ -505,7 +587,7 @@ assert.ok(!model("inner") && !model("child"));
 assert.ok(!sheet.edges.some(e => [e.source,e.target.node].includes("child")));
 await properties("outside");
 assert.equal(button("Előnézet"), undefined);
-assert.equal(text(panel().children.at(-1)), "Törlés");
+assert.equal(find(n => n.tag === "footer", panel()), undefined);
 globalThis.confirm = () => { throw Error("Connected nodes must delete without a prompt"); };
 listeners.keydown({key: "Backspace"}); await tick(); await save();
 assert.ok(!model("outside") && !edge("one"));
@@ -515,6 +597,101 @@ assert.equal(edge("one").source, "outside");
 await press("Újra"); await save();
 assert.ok(!model("outside") && !edge("one"));
 await press("Visszavonás"); await save();
+toggle("Escape", true); await tick();
+canvasToggle().props.onClick(); await tick();
+const picker = find(n => n.tag === "input" && n.props.type === "file", canvasPanel());
+assert.ok(picker.props.multiple && !picker.props.accept);
+const documentFile = new File(["# Leírás"], "Tervezési vázlat.md");
+const archive = new File([new Uint8Array([0x50,0x4b,0x05,0x06])], "anyag.zip");
+titleActions.length = 0;
+await picker.props.onChange({target: {files: [documentFile, archive], value: archive.name}});
+await save();
+assert.deepEqual(titleActions.slice(-2), ["focus", "anyag.zip"]);
+assert.deepEqual(attachmentUploads, [
+  {url: "/api/attachment/test?name=" + encodeURIComponent(documentFile.name), file: documentFile},
+  {url: "/api/attachment/test?name=anyag.zip", file: archive},
+]);
+assert.ok(sheet.nodes.some(n => n.file?.type === "md" && n.text === "# Leírás"));
+const archiveNode = sheet.nodes.find(n => n.file?.asset === archive.name);
+assert.equal(archiveNode.file.type, "attachment");
+assert.ok(prop("href", "/api/attachment/test?name=anyag.zip", graphic(archiveNode.id)));
+globalThis.Image = class {
+  naturalWidth = 160;
+  naturalHeight = 80;
+  async decode() {}
+};
+const image = new File(["image"], "pelda.png", {type: "image/png"});
+titleActions.length = 0;
+await picker.props.onChange({target: {files: [image], value: image.name}});
+await tick();
+assert.equal(panel().props["aria-label"], "Kép szerkesztése");
+assert.deepEqual(titleActions, ["focus", ""]);
+labelInput().props.onInput({target: {value: "Képcím"}});
+await save();
+assert.equal(sheet.nodes.at(-1).title, "Képcím");
+assert.equal(sheet.nodes.at(-1).file.filename, "pelda");
+const animation = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 10"><rect width="10" height="10"><animate attributeName="x" from="0" to="10" dur="1s" repeatCount="indefinite"/></rect></svg>';
+const animatedImage = new File([animation], "mozgas.SVG");
+assert.ok(!picker.props.accept);
+await picker.props.onChange({target: {files: [animatedImage], value: animatedImage.name}});
+await save();
+const animatedNode = sheet.nodes.at(-1);
+assert.equal(animatedNode.file.type, "image");
+assert.equal(svgUpload.headers["Content-Type"], "image/svg+xml");
+assert.equal(await svgUpload.body.text(), animation, "the original animation is uploaded intact");
+assert.ok(prop("src", "/api/attachment/test?inline=1&name=mozgas.svg", graphic(animatedNode.id)));
+delete globalThis.Image;
+toggle("Escape", true); await tick();
+assert.ok(!text(canvasPanel()).includes("fájl feltöltve"));
+canvasToggle().props.onClick(); await tick();
+
+zoomEvents.zoom({transform: d3.zoomIdentity}); await tick();
+const paste = text => listeners.paste({preventDefault() {}, clipboardData: {files: [], getData: () => text}});
+canvas().props.onPointermove(event(canvas(), 200, 72));
+paste("A kurzorhoz");
+await tick(); await save();
+assert.deepEqual(sheet.nodes.at(-1).position, {x: 200, y: 72});
+toggle("Escape", true); await tick();
+canvas().props.onPointerleave();
+paste("A középre");
+await tick(); await save();
+assert.deepEqual(sheet.nodes.at(-1).position, {x: 0, y: 0});
+const pasted = sheet.nodes.at(-1).id;
+await properties(pasted);
+listeners.keydown({key: "Delete"}); await tick(); await save();
+assert.ok(!model(pasted), "an unconnected box is deleted without confirmation");
+const doubleClick = (x, y, hit) => canvas().props.onDblclick(event(canvas(), x, y, {target: {closest: () => hit}}));
+titleActions.length = 0;
+sidebarToggle().props.onClick(); await tick();
+const beforeDoubleClick = sheet.nodes.length;
+doubleClick(340, 0, graphic("outside"));
+doubleClick(400, 230, oneWire());
+doubleClick(240, -180, null);
+await tick(); await save();
+assert.equal(sheet.nodes.length, beforeDoubleClick + 1);
+assert.deepEqual(sheet.nodes.at(-1).position, {x: 240, y: -180});
+assert.deepEqual(titleActions, ["focus", "Új ötlet"]);
+
+sidebarToggle().props.onClick(); await tick();
+globalThis.innerWidth = 1200;
+globalThis.innerHeight = 800;
+const contextClick = event(canvas(), 310, -130, {button: 2, target: {closest: () => null}});
+canvas().props.onPointerdownCapture(contextClick);
+canvas().props.onContextmenu(contextClick);
+await tick();
+await press("Objektum létrehozása"); await save();
+assert.deepEqual(sheet.nodes.at(-1).position, {x: 310, y: -130});
+assert.deepEqual(titleActions, ["focus", "Új ötlet", "focus", "Új ötlet"]);
+window.prompt = () => "jegyzet";
+canvas().props.onPointerdownCapture(contextClick);
+canvas().props.onContextmenu(contextClick);
+await tick();
+titleActions.length = 0;
+await press("Új munkalap"); await save();
+assert.equal(sheet.nodes.at(-1).link, "jegyzet");
+assert.deepEqual(titleActions, ["focus", "Jegyzet"]);
+delete window.prompt;
+delete root.querySelector;
 console.log("Passed editor gestures, junction cleanup, container nesting and lock, text scaling, palette and local world grid.");
 
 const {worksheetLink} = await import("../../Public/links.js");
@@ -587,6 +764,13 @@ oneWire().props.onDblclick({stopPropagation() {}});
 await tick();
 assert.equal(button("Egyenes").props["aria-pressed"], true);
 assert.equal(button("Sima").props["aria-pressed"], true);
+for (const label of ["Egyenes", "Sima", "Nyíl a vonal elején", "Nyíl a vonal végén"]) {
+  assert.equal(text(button(label)), "", label + " uses an icon and an accessible name");
+}
+assert.equal(button("Nyíl a vonal elején").props["aria-pressed"], false);
+assert.equal(button("Nyíl a vonal végén").props["aria-pressed"], true);
+await press("Nyíl a vonal elején");
+await press("Nyíl a vonal végén");
 await press("S-forma");
 await press("Pontozott");
 assert.equal(button("S-forma").props["aria-pressed"], true);
@@ -595,11 +779,33 @@ assert.ok(find(n => n.props.d?.includes(" C ") && n.props["stroke-dasharray"] ==
 await save();
 assert.equal(edge("one").type, "sCurve");
 assert.equal(edge("one").appearance, "dotted");
+assert.equal(edge("one").startArrow, true);
+assert.equal(edge("one").endArrow, false);
+await press("Nyíl a vonal elején");
+await press("Nyíl a vonal végén");
 await press("Egyenes");
 await press("Sima");
 await save();
 
-const {edgeGeometry, edgePaint, edgeInRectangle} = await import("../../Public/geometry.js");
+await properties("outside");
+for (const [label, shape, vertices] of [["Háromszög", "triangle", 3], ["Ötszög", "pentagon", 5],
+  ["Hatszög", "hexagon", 6], ["Paralelogramma", "parallelogram", 4]]) {
+  const option = button(label);
+  assert.equal(text(option), "");
+  await press(label);
+  assert.equal(button(label).props["aria-pressed"], true);
+  await save();
+  assert.equal(model("outside").shape, shape);
+  const polygon = find(n => n.tag === "polygon" && n.props.fill === model("outside").fill, graphic("outside"));
+  assert.equal(polygon.props.points.split(" ").length, vertices);
+}
+await press("Téglalap"); await save();
+
+const {edgeGeometry, edgePaint, edgeInRectangle, borderPoint} = await import("../../Public/geometry.js");
+for (const [shape, x] of [["triangle", 30], ["pentagon", 55.587096774], ["hexagon", 60], ["parallelogram", 46.5]]) {
+  const box = {...node("polygon", 0, 0, 120, 80), shape};
+  assert.ok(Math.abs(borderPoint(box, {x: 200, y: 0}).x - x) < 1e-8);
+}
 const route = (type, y = 0) => edgeGeometry({
   type, sourcePoint: {x: -100, y: 0}, target: {point: {x: 100, y}},
 }, () => undefined);
@@ -620,5 +826,5 @@ assert.equal(doc.file.type, "json");
 assert.ok(doc.text.includes('"large": 90071992547409931'));
 assert.deepEqual(JSON.parse(doc.text).nested, [{},{literal:"a,b"}]);
 await assert.rejects(importFile(new File(["szöveg"], "hibás.json")), /JSON/);
-await assert.rejects(importFile(new File(["data"], "idegen.bin")), /Támogatott/);
+await assert.rejects(importFile(new File(["data"], "lap.thnode")), /munkalapok/);
 console.log("Passed document import, JSON precision and unsupported format checks.");

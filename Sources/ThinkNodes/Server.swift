@@ -267,14 +267,15 @@ func configure(_ application: Application, store: WorksheetStore) {
         } catch let error as Abort where error.status == .locked {
             return unlockPage(req, path: path, identity: identity, editing: true)
         }
-        guard try store.access(path, sheet: worksheet, user: user, unlocks: identity.unlocks).editable else { throw Abort(.forbidden) }
+        let access = try store.access(path, sheet: worksheet, user: user, unlocks: identity.unlocks)
+        guard access.editable else { throw Abort(.forbidden) }
         let local = [assets + "vendor/vue.js", assets + "vendor/d3.js"].allSatisfy { FileManager.default.fileExists(atPath: $0) }
         let loading = local ? "Szerkesztő betöltése…" : "A szerkesztőhöz futtasd a teljes ./build.sh parancsot."
         let actions = "<div id='editor-tools'></div>" + headerLink("/" + path.url, "Bezárás", symbol: "left")
         return htmlPage(title: worksheet.title, body: """
             <div class="editor-root">
             \(siteHeader(path: path.url, project: worksheet.title, user: user, csrf: csrf, actions: actions, editing: true))
-            <main id="editor" data-path="\(path.url)" data-csrf="\(csrf)" data-motion-rate="\(motionRate)" data-role="\(user.role.rawValue)" data-user="\(escaped(user.name))">
+            <main id="editor" data-folder="\(access.folderPath)" data-path="\(path.url)" data-csrf="\(csrf)" data-motion-rate="\(motionRate)" data-role="\(user.role.rawValue)" data-user="\(escaped(user.name))">
               <p class="editor-loading">\(loading)</p>
               <noscript><p>A szerkesztőhöz JavaScript szükséges.</p><a href="/\(path.url)">Megtekintés</a></noscript>
             </main></div>
@@ -287,7 +288,7 @@ func configure(_ application: Application, store: WorksheetStore) {
         let worksheet = try await req.application.threadPool.runIfActive {
             try store.load(path, user: identity.user, unlocks: identity.unlocks)
         }
-        return try worksheetResponse(store.access(path, sheet: worksheet, user: identity.user, unlocks: identity.unlocks).editable ? worksheet : worksheet.withoutAccessDetails())
+        return try worksheetResponse(worksheet)
     }
 
     app.get("api", "worksheet-users", "**") { req async throws -> [String] in
@@ -296,7 +297,7 @@ func configure(_ application: Application, store: WorksheetStore) {
         let path = try WorksheetPath(req.parameters.getCatchall())
         return try await req.application.threadPool.runIfActive {
             let worksheet = try store.load(path, user: user, unlocks: identity.unlocks)
-            guard worksheet.canManage(user) else { throw Abort(.forbidden) }
+            guard try store.access(path, sheet: worksheet, user: user, unlocks: identity.unlocks).manageable else { throw Abort(.forbidden) }
             return try store.allUsers().map(\.name)
         }
     }
@@ -355,7 +356,7 @@ func configure(_ application: Application, store: WorksheetStore) {
         try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
         let path = try WorksheetPath(req.parameters.getCatchall())
         let sheet = try await req.application.threadPool.runIfActive {
-            try store.open(path, user: user, createOnly: true, unlocks: identity.unlocks)
+            try store.open(path, user: user, createOnly: true, unlocks: identity.unlocks, directory: req.query[String.self, at: "folder"] == "1")
         }
         return try worksheetResponse(sheet)
     }
@@ -407,9 +408,8 @@ func configure(_ application: Application, store: WorksheetStore) {
         case "svg":
             return response("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + boardSVG(worksheet, siteHost: req.headers.first(name: .host), assetBase: "/" + path.url),
                             type: "image/svg+xml; charset=utf-8", filename: "\(path.name).svg")
-        case "json":
-            return try worksheetResponse(store.access(path, sheet: worksheet, user: identity.user, unlocks: identity.unlocks).editable ? worksheet : worksheet.withoutAccessDetails(),
-                                         filename: "\(path.name).json")
+        case "thnode", "json":
+            return try worksheetResponse(worksheet, filename: "\(path.name).thnode")
         case "text", "markdown":
             return response(worksheetMarkdown(worksheet), type: "text/markdown; charset=utf-8", filename: "\(path.name).md")
         default:
@@ -457,10 +457,24 @@ func configure(_ application: Application, store: WorksheetStore) {
         guard let body = req.body.data, let type = req.headers.first(name: .contentType) else { throw Abort(.badRequest) }
         let bytes = Data(body.readableBytesView)
         let imageName = req.query[String.self, at: "name"]
+        let filename = req.query[String.self, at: "filename"]
         let name = try await req.application.threadPool.runIfActive {
-            try store.storeMedia(bytes, type: type, imageName: imageName, at: path, user: user, unlocks: identity.unlocks)
+            try store.storeMedia(bytes, type: type, imageName: imageName, filename: filename, at: path, user: user, unlocks: identity.unlocks)
         }
         return ["asset": name]
+    }
+
+    app.post("api", "attachment", "**") { req async throws -> HTTPStatus in
+        let identity = try session(req, store: store)
+        let user = try identity.editor()
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        guard let name = req.query[String.self, at: "name"] else { throw Abort(.badRequest) }
+        let bytes = req.body.data.map { Data($0.readableBytesView) } ?? Data()
+        try await req.application.threadPool.runIfActive {
+            try store.storeAttachment(bytes, named: name, at: path, user: user, unlocks: identity.unlocks)
+        }
+        return .created
     }
 
     app.get("api", "attachment", "**") { req async throws -> Response in
@@ -480,10 +494,12 @@ func configure(_ application: Application, store: WorksheetStore) {
         let result = try await req.fileio.asyncStreamFile(at: file.path)
         result.headers.replaceOrAdd(name: .contentDisposition, value: "attachment; filename*=UTF-8''" + encodeQuery(file.lastPathComponent))
         result.headers.replaceOrAdd(name: .contentType, value: "application/octet-stream")
-        if req.query[String.self, at: "inline"] == "1", let mime = canvasAssetType(attachmentName(file)) {
+        if req.query[String.self, at: "inline"] == "1", let mime = canvasAssetType(name) {
             result.headers.replaceOrAdd(name: .contentType, value: mime)
             result.headers.replaceOrAdd(name: .contentDisposition, value: "inline")
-            result.headers.replaceOrAdd(name: "Content-Security-Policy", value: "sandbox; default-src 'none'")
+            let policy = "sandbox; default-src 'none'"
+            let svgSources = "; style-src 'unsafe-inline'; img-src data:; font-src data:"
+            result.headers.replaceOrAdd(name: "Content-Security-Policy", value: mime == "image/svg+xml" ? policy + svgSources : policy)
         }
         result.headers.replaceOrAdd(name: "X-Content-Type-Options", value: "nosniff")
         result.headers.replaceOrAdd(name: .cacheControl, value: "no-store")
@@ -553,17 +569,17 @@ private struct ProjectCard: Sendable {
 }
 
 private func menuState(_ rule: DocumentPolicy) -> String {
-    "data-hidden=\"\(rule.hidden == true)\" data-frozen=\"\(rule.frozen == true)\" data-password=\"\(rule.passwordHash != nil)\" data-public=\"\(rule.publicEditing == true)\""
+    "data-hidden=\"\(rule.hidden == true)\" data-frozen=\"\(rule.frozen == true)\" data-password=\"\(rule.passwordHash != nil)\" data-public=\"\(rule.guestReadable == true)\""
 }
 
 private func credits(_ sheet: Worksheet, _ access: DocumentAccess) -> String {
-    let names = access.editorNames.filter { $0 != sheet.owner }.map(escaped).joined(separator: ", ")
+    let names = access.editorNames.filter { $0 != access.sheetRule.owner }.map(escaped).joined(separator: ", ")
     return "<div class=\"card-meta\">Létrehozó: \(escaped(sheet.creator ?? "ismeretlen"))</div><div class=\"card-meta\">Szerkesztők: \(names.isEmpty ? "—" : names)</div>"
 }
 
 private func projectBadges(_ access: DocumentAccess) -> String {
     let states = [(access.protectedByPassword, "lock", "Jelszóval védett"), (access.hidden, "eye", "Rejtett"),
-                  (access.frozen, "hand", "Zárolt szerkesztés"), (access.projectRule.publicEditing == true, "butterfly", "Nyilvános")]
+                  (access.frozen, "hand", "Zárolt szerkesztés"), (access.projectRule.guestReadable == true, "butterfly", "Nyilvános")]
     return states.filter { $0.0 }.map { _, icon, label in
         "<span role=\"img\" aria-label=\"\(label)\" title=\"\(label)\">\(uiIcon(icon))</span>"
     }.joined()
@@ -586,10 +602,13 @@ private func indexPage(_ items: [ProjectCard], session: SessionInfo) -> Response
         <main class="shell">
           <script type="module" src="/cards.js"></script>
           <div class="page-heading"><h1>Munkalapok</h1></div>
-          <form class="open-path panel" method="get" action="/open">
-            <label>Munkalap útvonala<input name="path" placeholder="gondolatok/otletek1" required></label>
-            <button class="button primary" type="submit">\(uiIcon("folder"))Megnyitás</button>
-          </form>
+          <div class="home-tools">
+            <form class="open-path panel" method="get" action="/open">
+              <label>Munkalap útvonala<input name="path" placeholder="gondolatok/otletek1" required></label>
+              <button class="button primary" type="submit">\(uiIcon("folder"))Megnyitás</button>
+            </form>
+            <a class="guide-link panel" href="/utmutato.html">\(uiIcon("file"))Útmutató</a>
+          </div>
           <div class="project-list" id="worksheet-cards" data-delete="\(session.user?.role == .admin)" data-csrf="\(session.csrf ?? "")">\(cards.isEmpty && create.isEmpty ? "<p class=\"muted\">Még nincs munkalap.</p>" : cards)\(create)</div>
         </main>
         """)
@@ -598,7 +617,7 @@ private func indexPage(_ items: [ProjectCard], session: SessionInfo) -> Response
 private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Worksheet, session: SessionInfo, access: DocumentAccess, children: [(path: WorksheetPath, worksheet: Worksheet, access: DocumentAccess)], files: [URL]) throws -> Response {
     let previews = children.map { child in
         """
-        <a class="sub-preview preview-link" data-scope="sheet" \(menuState(child.access.sheetRule)) data-manage="\(child.access.manageable)" href="/\(child.path.url)">
+        <a class="sub-preview preview-link" data-scope="\(child.path.url == child.access.folderPath ? "project" : "sheet")" \(menuState(child.access.sheetRule)) data-manage="\(child.access.manageable)" href="/\(child.path.url)">
           \(child.access.locked ? "<div class=\"locked-preview\">Jelszó szükséges</div>" : "<img loading=\"lazy\" alt=\"\" src=\"/api/preview/\(child.path.url)?v=\(child.worksheet.revision)\">")
           <strong>\(escaped(child.worksheet.title))</strong>
           <small>Létrehozó: \(escaped(child.worksheet.creator ?? "ismeretlen"))</small>
@@ -609,7 +628,7 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
     let edit = access.editable
         ? "<a class=\"button small viewer-edit\" href=\"/edit/\(path.url)\" aria-label=\"Szerkesztés\" title=\"Szerkesztés\">\(uiIcon("edit"))</a>" : ""
     let downloads = [
-        ("svg", "SVG"), ("json", "JSON"), ("text", "Text"),
+        ("svg", "SVG"), ("thnode", "ThinkNodes"), ("text", "Text"),
     ].map { format, title in
         headerLink("/export/" + format + "/" + path.url, title, symbol: "download")
     }.joined()
@@ -638,15 +657,15 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
         return "<li><a href=\"\(escaped(href))\" target=\"_blank\" rel=\"noopener noreferrer\">\(escaped(node.title))</a></li>"
     }.joined()
     let attachments = files.map { file in
-        let name = attachmentName(file)
+        let name = file.lastPathComponent
         return "<li><a data-scope=\"attachment\" data-manage=\"\(access.manageable)\" data-document=\"\(path.url)\" data-filename=\"\(escaped(name))\" href=\"/api/attachment/\(path.url)?name=\(encodeQuery(name))\">\(escaped(file.lastPathComponent))</a></li>"
     }.joined()
-    let newPage = access.editable ? "<button type=\"button\" class=\"button new-worksheet\">\(uiIcon("plus"))Új munkalap</button>" : ""
+    let newPage = access.editable ? "<button type=\"button\" class=\"button new-worksheet\">\(uiIcon("plus"))Új munkalap</button><button type=\"button\" class=\"button new-worksheet\" data-folder=\"1\">Új almappa</button>" : ""
     return htmlPage(title: worksheet.title, body: """
         \(siteHeader(path: path.url, project: worksheet.title, user: session.user, csrf: session.csrf, canEdit: access.editable))
         <script type="module" src="/viewer.js?v=2"></script>
         <main class="shell" id="worksheet-view" data-path="\(path.url)" data-csrf="\(token(req))" data-revision="\(worksheet.revision)" data-editable="\(access.editable)" data-member="\(session.user != nil)">
-          <a hidden data-current-document data-scope="sheet" \(menuState(access.sheetRule)) data-manage="\(access.manageable)" href="\(base)">Munkalap</a>
+          <a hidden data-current-document data-scope="\(access.folderPath == path.url ? "project" : "sheet")" \(menuState(access.sheetRule)) data-manage="\(access.manageable)" href="\(base)">Munkalap</a>
           <div class="passive-frame panel">
             <svg class="passive-backdrop" aria-hidden="true"><rect width="100%" height="100%" fill="\(worksheet.backgroundColor)"/></svg>
             \(boardSVG(worksheet, noteBase: base, siteHost: host))
@@ -656,7 +675,7 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
           <div data-viewer-notes>\(tooltips)\(notes)\(note)</div>
           <nav class="viewer-downloads" aria-label="Letöltések és szerzők">\(downloads)\(credits(worksheet, access))</nav>
           <div data-viewer-sections>
-          <section class="worksheet-section"><h2>További oldalak:</h2><div class="project-list" data-current-sheet="\(path.url)">\(previews)\(newPage)</div></section>
+          <section class="worksheet-section"><h2>További oldalak:</h2><div class="project-list" data-current-sheet="\(access.folderPath)">\(previews)\(newPage)</div></section>
           <section class="worksheet-section"><h2>Külső hivatkozások</h2>\(external.isEmpty ? "<p>Nincs külső hivatkozás.</p>" : "<ul>\(external)</ul>")</section>
           <section class="worksheet-section"><h2>Mappa tartalma</h2>\(attachments.isEmpty ? "<p>Nincs csatolt fájl.</p>" : "<ul>\(attachments)</ul>")</section>
           </div>
