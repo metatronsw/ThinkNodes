@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "id": 3,
+  "name": "Blueprint",
+  "modes": [
+    "light",
+    "dark"
+  ],
+  "palettes": [
+    {
+      "id": 1,
+      "name": "Pausz",
+      "colors": [
+        {
+          "id": 0,
+          "name": "Papír",
+          "light": "#eff4f5",
+          "dark": "#102a40"
+        },
+        {
+          "id": 1,
+          "name": "Tinta",
+          "light": "#16384d",
+          "dark": "#e5f1f5"
+        },
+        {
+          "id": 2,
+          "name": "Felület",
+          "light": "#d6e5ed",
+          "dark": "#1c405b"
+        },
+        {
+          "id": 3,
+          "name": "Grafit",
+          "light": "#43647d",
+          "dark": "#a4c2d4"
+        },
+        {
+          "id": 4,
+          "name": "Jelzőfény",
+          "light": "#186487",
+          "dark": "#88d5ee"
+        },
+        {
+          "id": 5,
+          "name": "Moha",
+          "light": "#638779",
+          "dark": "#8abda6"
+        },
+        {
+          "id": 6,
+          "name": "Borostyán",
+          "light": "#c99554",
+          "dark": "#e7c186"
+        },
+        {
+          "id": 7,
+          "name": "Korall",
+          "light": "#b76452",
+          "dark": "#e4a398"
+        },
+        {
+          "id": 8,
+          "name": "Panel",
+          "light": "#e9f1f4",
+          "dark": "#19364b"
+        }
+      ]
+    }
+  ],
+  "graphics": {
+    "panelRadius": 2,
+    "glow": 1,
+    "selection": 4,
+    "box": "rectangle",
+    "line": "zigzag",
+    "junctionSize": 8,
+    "motionSpeed": 0.65,
+    "junction": "rectangle",
+    "grid": "lines"
+  },
+  "css": {
+    "surface": 8,
+    "borderWidth": 1,
+    "padding": 6,
+    "shadow": 0,
+    "font": "mono"
+  }
+}

@@ -8,7 +8,7 @@ import {flashNode, flashPoint} from "./ping.js";
 import {hideTooltip, showTooltip} from "./tooltip.js";
 import {liveConnection} from "./collaboration.js";
 
-import {arrowTransform, edgeGeometry, edgePaint, selectionOutline, wireGradientValues} from "./geometry.js?v=9";
+import {useWorksheetGeometry, arrowTransform, edgeGeometry, edgePaint, selectionOutline, wireGradientValues} from "./geometry.js?v=9";
 import {ancestors} from "./containers.js";
 
 let selection;
@@ -16,6 +16,8 @@ let peers = [];
 let selectionRequest = Promise.resolve();
 const main = document.querySelector("#worksheet-view");
 const {path, csrf} = main.dataset;
+let graphics = JSON.parse(main.dataset.graphics || "null") ?? {};
+useWorksheetGeometry(() => graphics);
 const ns = "http://www.w3.org/2000/svg";
 const roster = document.createElement("div");
 roster.className = "participants";
@@ -23,8 +25,14 @@ roster.setAttribute("aria-label", "Jelenlévők");
 const mouse = sharedMouse(point => live.cursor(point));
 function bindCanvas() {
   const svg = main.querySelector(".passive-canvas");
+  svg.style.setProperty("--sheet-glow", (graphics.glow ?? 3) + "px");
   main.querySelector(".passive-frame > .mouse-share")?.remove();
   mouse?.bind(svg, svg, main.dataset.member === "true" ? main.querySelector(".passive-frame") : null);
+  for (const element of svg.querySelectorAll("[data-file-ink]")) {
+    element.style.color = element.dataset.fileInk;
+    const body = element.querySelector(".folded-note") ?? (element.matches(".canvas-file") ? element : null);
+    if (body) body.style.backgroundColor = element.dataset.filePaper;
+  }
   hideTooltip();
   main.querySelector(".passive-frame").append(roster);
   for (const template of main.querySelectorAll("template[data-tooltip]")) {
@@ -204,7 +212,7 @@ function selectBox(box, broadcast = false) {
     selectionRequest = selectionRequest.then(() => live.viewSelect(node)).catch(() => {});
   }
   if (!box) return;
-  outline(box, "data-view-selection", peers.find(peer => peer.mine)?.color || "#526982");
+  outline(box, "data-view-selection", main.dataset.selection || "#526982");
 }
 
 document.addEventListener("click", async event => {
@@ -311,6 +319,7 @@ const live = liveConnection(path, csrf, async state => {
     });
     updateSection(main, next, ".viewer-edit-row");
     Object.assign(main.dataset, next.dataset);
+    graphics = JSON.parse(main.dataset.graphics || "null") ?? {};
     motions.clear();
     changedMovers.clear();
     scene = previewScene();

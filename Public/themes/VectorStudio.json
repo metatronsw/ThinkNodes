@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "id": 2,
+  "name": "VectorStudio",
+  "modes": [
+    "light",
+    "dark"
+  ],
+  "palettes": [
+    {
+      "id": 1,
+      "name": "Porcelán",
+      "colors": [
+        {
+          "id": 0,
+          "name": "Papír",
+          "light": "#faf9f6",
+          "dark": "#191821"
+        },
+        {
+          "id": 1,
+          "name": "Tinta",
+          "light": "#242233",
+          "dark": "#eae7f5"
+        },
+        {
+          "id": 2,
+          "name": "Felület",
+          "light": "#efebfa",
+          "dark": "#322e43"
+        },
+        {
+          "id": 3,
+          "name": "Grafit",
+          "light": "#655d77",
+          "dark": "#a59ab9"
+        },
+        {
+          "id": 4,
+          "name": "Jelzőfény",
+          "light": "#6543c8",
+          "dark": "#b9a3ff"
+        },
+        {
+          "id": 5,
+          "name": "Moha",
+          "light": "#489c89",
+          "dark": "#83d2bb"
+        },
+        {
+          "id": 6,
+          "name": "Borostyán",
+          "light": "#e8b05b",
+          "dark": "#f0c488"
+        },
+        {
+          "id": 7,
+          "name": "Korall",
+          "light": "#e27b85",
+          "dark": "#f4a6b0"
+        },
+        {
+          "id": 8,
+          "name": "Panel",
+          "light": "#ffffff",
+          "dark": "#292634"
+        }
+      ]
+    }
+  ],
+  "graphics": {
+    "panelRadius": 14,
+    "glow": 5,
+    "selection": 4,
+    "box": "hexagon",
+    "line": "sCurve",
+    "junctionSize": 14,
+    "motionSpeed": 0.8,
+    "junction": "diamond",
+    "grid": "dots",
+    "contour": [
+      {
+        "x": -0.84,
+        "y": -1
+      },
+      {
+        "x": 0.84,
+        "y": -1
+      },
+      {
+        "x": 1,
+        "y": -0.56
+      },
+      {
+        "x": 1,
+        "y": 0.56
+      },
+      {
+        "x": 0.84,
+        "y": 1
+      },
+      {
+        "x": -0.84,
+        "y": 1
+      },
+      {
+        "x": -1,
+        "y": 0.56
+      },
+      {
+        "x": -1,
+        "y": -0.56
+      }
+    ]
+  },
+  "css": {
+    "surface": 8,
+    "borderWidth": 1,
+    "padding": 10,
+    "shadow": 14,
+    "font": "system"
+  }
+}

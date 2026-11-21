@@ -1,0 +1,134 @@
+{
+  "appearance" : {
+    "mode" : "dark",
+    "palette" : 1,
+    "theme" : 1
+  },
+  "background" : 0,
+  "creator" : "admin",
+  "edges" : [
+    {
+      "appearance" : "plain",
+      "color" : 3,
+      "id" : "wire0",
+      "source" : "box0",
+      "target" : {
+        "node" : "1cb0ef838f2d4a37f9a9c54b5843e0ed"
+      },
+      "type" : "straight"
+    },
+    {
+      "appearance" : "plain",
+      "color" : 3,
+      "id" : "wire1",
+      "source" : "1cb0ef838f2d4a37f9a9c54b5843e0ed",
+      "target" : {
+        "node" : "box1"
+      },
+      "type" : "straight"
+    },
+    {
+      "appearance" : "plain",
+      "color" : 3,
+      "id" : "wire2",
+      "source" : "1cb0ef838f2d4a37f9a9c54b5843e0ed",
+      "target" : {
+        "node" : "box3"
+      },
+      "type" : "straight"
+    },
+    {
+      "animated" : true,
+      "appearance" : "plain",
+      "endArrow" : true,
+      "id" : "28fcae424881f99300cf31e3f93eeccd",
+      "source" : "box0",
+      "target" : {
+        "node" : "box1"
+      },
+      "type" : "straight"
+    }
+  ],
+  "nodes" : [
+    {
+      "align" : "center",
+      "bold" : true,
+      "fill" : 7,
+      "fontSz" : 16,
+      "h" : 80,
+      "id" : "box0",
+      "pos" : {
+        "x" : -297.988037109375,
+        "y" : -327.29470825195312
+      },
+      "shape" : "rounded",
+      "text" : "",
+      "textCol" : 4,
+      "textStyle" : {
+        "color" : 6
+      },
+      "title" : "Vázlat",
+      "w" : 176
+    },
+    {
+      "align" : "center",
+      "bold" : true,
+      "fill" : 2,
+      "fontSz" : 16,
+      "h" : 80,
+      "id" : "box1",
+      "pos" : {
+        "x" : 189.250244140625,
+        "y" : -317.73822021484375
+      },
+      "shape" : "rounded",
+      "text" : "",
+      "textCol" : 3,
+      "title" : "Kivitelezés",
+      "w" : 176
+    },
+    {
+      "align" : "center",
+      "bold" : true,
+      "file" : {
+        "showFilename" : true,
+        "type" : "txt"
+      },
+      "fill" : 2,
+      "fontSz" : 16,
+      "h" : 100,
+      "id" : "box3",
+      "pos" : {
+        "x" : -369.990966796875,
+        "y" : 41.47454833984375
+      },
+      "shape" : "rounded",
+      "text" : "Papír\nGrafit\nSzínes tinta",
+      "textCol" : 1,
+      "title" : "Anyagjegyzék",
+      "w" : 240
+    },
+    {
+      "align" : "center",
+      "bold" : true,
+      "fill" : 3,
+      "fontSz" : 16,
+      "h" : 12,
+      "hideText" : false,
+      "id" : "1cb0ef838f2d4a37f9a9c54b5843e0ed",
+      "kind" : "connectionPoint",
+      "pos" : {
+        "x" : -79.3765869140625,
+        "y" : -45.43951416015625
+      },
+      "shape" : "ellipse",
+      "text" : "",
+      "textCol" : 1,
+      "title" : "",
+      "w" : 12
+    }
+  ],
+  "revision" : 102,
+  "schemaVersion" : 2,
+  "title" : "ThinkDefault"
+}

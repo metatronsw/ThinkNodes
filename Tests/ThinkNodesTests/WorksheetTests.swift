@@ -52,7 +52,7 @@ import VaporTesting
         var worksheet = try store.load(route, user: owner)
         #expect(worksheet.title == "mégnincsilyen")
         #expect(worksheet.revision == 1)
-        worksheet.background = "#e7eef3"
+        worksheet.background = "@0"
         worksheet.text = "**A munkalap bevezetője**"
         worksheet.nodes = [
             Idea(id: "elso", title: "Első <ötlet>", text: "## Próba\n\n**Szöveg**",
@@ -64,7 +64,7 @@ import VaporTesting
             Connection(id: "szabad", source: "masodik", target: ConnectionTarget(point: Point(x: 810, y: 12)), appearance: .dashed),
             Connection(id: "szabad-kezdet", sourcePoint: Point(x: -410, y: -170),
                        target: ConnectionTarget(point: Point(x: -250, y: -70)), type: .rope,
-                       color: "#6b3273", width: 5, startArrow: true, endArrow: false, label: "Szabad vonal")
+                       color: "@4", width: 5, startArrow: true, endArrow: false, label: "Szabad vonal")
         ]
         let noLogin = try await browser.sendRequest(.PUT, "/api/worksheet/\(path)")
         #expect(noLogin.status == .unauthorized)
@@ -204,8 +204,8 @@ import VaporTesting
         #expect(svg.body.string.contains("marker-start="))
         #expect(svg.body.string.contains("stroke-dasharray="))
         #expect(svg.body.string.contains("font-weight=\"700\">Szöveg</tspan>"))
-        #expect(svg.body.string.contains("fill=\"#e7eef3\""))
-        #expect(svg.body.string.contains("stroke=\"#6b3273\" stroke-width=\"5.000\""))
+        #expect(svg.body.string.contains("fill=\"#f5f8fc\""))
+        #expect(svg.body.string.contains("stroke=\"#304ccc\" stroke-width=\"5.000\""))
         #expect(svg.body.string.contains("rotate(49.931)"))
         #expect(svg.body.string.contains(">Szabad vonal</text>"))
         #expect(!svg.body.string.contains("<a href="))

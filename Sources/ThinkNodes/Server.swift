@@ -183,6 +183,7 @@ private func loginPage(_ req: Request, next: String, message: String? = nil) -> 
 func configure(_ application: Application, store: WorksheetStore) {
     let live = Collaboration(store: store)
     let assets = application.directory.publicDirectory
+    let themeJSON = String(decoding: (try? JSONEncoder().encode(Themes.catalog)) ?? Data(), as: UTF8.self)
     let defaultMotionRate = 33
     let rate = Int(Environment.get("THINKNODES_MOTION_RATE") ?? "") ?? defaultMotionRate
     let motionRate = (1...999_999_999).contains(rate) ? rate : defaultMotionRate
@@ -276,7 +277,7 @@ func configure(_ application: Application, store: WorksheetStore) {
         return htmlPage(title: worksheet.title, body: """
             <div class="editor-root">
             \(siteHeader(path: path.url, project: worksheet.title, user: user, csrf: csrf, editing: true, folder: access.folderPath))
-            <main id="editor" data-preferences="\(escaped(preferences))" data-folder="\(access.folderPath)" data-path="\(path.url)" data-csrf="\(csrf)" data-motion-rate="\(motionRate)" data-role="\(user.role.rawValue)" data-user="\(escaped(user.name))">
+            <main id="editor" data-themes="\(escaped(themeJSON))" data-preferences="\(escaped(preferences))" data-folder="\(access.folderPath)" data-path="\(path.url)" data-csrf="\(csrf)" data-motion-rate="\(motionRate)" data-role="\(user.role.rawValue)" data-user="\(escaped(user.name))">
               <p class="editor-loading">\(loading)</p>
               <noscript><p>A szerkesztőhöz JavaScript szükséges.</p><a href="/\(path.url)">Megtekintés</a></noscript>
             </main></div>
@@ -407,7 +408,7 @@ func configure(_ application: Application, store: WorksheetStore) {
         }
         switch req.parameters.get("format") {
         case "svg":
-            return response("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + boardSVG(worksheet, siteHost: req.headers.first(name: .host), assetBase: "/" + path.url),
+            return response("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + boardSVG(worksheet, siteHost: req.headers.first(name: .host), assetBase: "/" + path.url, mode: siteMode(req)),
                             type: "image/svg+xml; charset=utf-8", filename: "\(path.name).svg")
         case "thnode", "json":
             return try worksheetResponse(worksheet, filename: "\(path.name).thnode")
@@ -454,7 +455,7 @@ func configure(_ application: Application, store: WorksheetStore) {
     app.get("api", "preview", "**") { req async throws -> Response in
         let identity = try session(req, store: store)
         let path = try WorksheetPath(req.parameters.getCatchall())
-        switch try await req.application.threadPool.runIfActive({ try store.preview(path, user: identity.user, unlocks: identity.unlocks) }) {
+        switch try await req.application.threadPool.runIfActive({ try store.preview(path, user: identity.user, unlocks: identity.unlocks, mode: siteMode(req)) }) {
         case .drawing(let svg): return response(svg, type: "image/svg+xml; charset=utf-8")
         case .image(let file, let mime):
             let result = try await req.fileio.asyncStreamFile(at: file.path)
@@ -665,6 +666,11 @@ private func indexPage(_ items: [ProjectCard], session: SessionInfo) -> Response
         """)
 }
 
+private func siteMode(_ req: Request) -> String? {
+    let value = req.query[String.self, at: "mode"] ?? req.cookies["tn_display"]?.string
+    return value == "light" || value == "dark" ? value : nil
+}
+
 private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Worksheet, session: SessionInfo, access: DocumentAccess, children: [(path: WorksheetPath, worksheet: Worksheet, access: DocumentAccess)], files: [URL]) throws -> Response {
     let previews = children.map { child in
         """
@@ -697,7 +703,12 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
         note = ""
     }
     let host = req.headers.first(name: .host)
-    let canvas = renderWorksheetCanvas(worksheet, noteBase: base, siteHost: host)
+    let display = worksheet.painted(mode: siteMode(req))
+    let theme = Themes.catalog.first { $0.id == worksheet.appearance?.theme }
+    let graphicsJSON = String(decoding: try JSONEncoder().encode(theme?.graphics), as: UTF8.self)
+    let selectionSample = Worksheet(appearance: worksheet.appearance, title: "", background: "@\(theme?.graphics?.selection ?? 4)")
+    let selectionColor = selectionSample.painted(mode: siteMode(req)).backgroundColor
+    let canvas = renderWorksheetCanvas(display, noteBase: base, siteHost: host)
     let tooltips = canvas.tooltipNodes.map {
         let justification = $0.textStyle?.justified == true ? " data-justified" : ""
         return "<template data-tooltip=\"\($0.id)\"\(justification)>\(markdownHTML($0.text))</template>"
@@ -718,10 +729,10 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
     return htmlPage(title: worksheet.title, body: """
         \(siteHeader(path: path.url, project: worksheet.title, user: session.user, csrf: session.csrf, canEdit: access.editable, folder: access.folderPath))
         <script type="module" src="/viewer.js?v=5"></script>
-        <main class="shell" id="worksheet-view" data-path="\(path.url)" data-csrf="\(token(req))" data-revision="\(worksheet.revision)" data-editable="\(access.editable)" data-member="\(session.user != nil)">
+        <main class="shell" id="worksheet-view" data-graphics="\(escaped(graphicsJSON))" data-selection="\(selectionColor)" data-site-mode="\(siteMode(req) ?? "light")" data-auto="\(worksheet.appearance?.mode == "auto")" data-path="\(path.url)" data-csrf="\(token(req))" data-revision="\(worksheet.revision)" data-editable="\(access.editable)" data-member="\(session.user != nil)">
           <a hidden data-current-document data-scope="\(access.folderPath == path.url ? "project" : "sheet")" \(menuState(access.sheetRule)) data-manage="\(access.manageable)" href="\(base)">Munkalap</a>
           <div class="passive-frame panel">
-            <svg class="passive-backdrop" aria-hidden="true"><rect width="100%" height="100%" fill="\(worksheet.backgroundColor)"/></svg>
+            <svg class="passive-backdrop" aria-hidden="true"><rect width="100%" height="100%" fill="\(display.backgroundColor)"/></svg>
             \(canvas.svg)
             <button class="button fullscreen" type="button" aria-label="Teljes képernyő">\(uiIcon("fit"))</button>
           </div>

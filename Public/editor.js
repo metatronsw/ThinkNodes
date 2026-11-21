@@ -7,7 +7,7 @@ import {flashNode, flashPoint} from "./ping.js";
 import {showTooltip, hideTooltip} from "./tooltip.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {automaticBorder, automaticGridColor, arrowTransform, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, lineAppearances, lineTypes, paper, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, wireGradientValues} from "./geometry.js?v=9";
+import {useWorksheetGeometry, automaticBorder, automaticGridColor, arrowTransform, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, lineAppearances, lineTypes, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, wireGradientValues} from "./geometry.js?v=9";
 
 import {ancestors, overlapFraction} from "./containers.js?v=2";
 
@@ -28,49 +28,48 @@ function button(label, onClick, props = {}) {
   return h("button", {type: "button", class: "button", onClick, ...attributes}, [icon(symbol), label]);
 }
 
-const palette = ["#ffffff", "#000000", "#e95c59", "#f3ae49", "#f3df65", "#60b77a", "#5aaed2", "#657ace", "#a375be", "#e198ad"];
+const themes = JSON.parse(mount.dataset.themes || "[]");
+const currentBoard = ref(null);
+const appearance = computed(() => currentBoard.value?.appearance ?? {theme: 1, palette: 1, mode: "auto"});
+const activeTheme = computed(() => themes.find(t => t.id === appearance.value.theme) ?? themes[0]);
+const activePalette = computed(() => activeTheme.value?.palettes.find(p => p.id === appearance.value.palette) ?? activeTheme.value?.palettes[0]);
+const siteDisplay = ref(document.documentElement?.dataset?.display || "light");
+window.addEventListener("thinknodes-display", () => { siteDisplay.value = document.documentElement.dataset.display; });
+const mode = computed(() => {
+  const wanted = appearance.value.mode === "auto" ? siteDisplay.value : appearance.value.mode;
+  return activeTheme.value?.modes.includes(wanted) ? wanted : activeTheme.value?.modes[0] ?? "light";
+});
+const graphics = computed(() => activeTheme.value?.graphics ?? {});
+useWorksheetGeometry(() => graphics.value);
+const fallbackColors = ["#f5f8fc","#182335","#dce9ff","#526982","#304ccc","#478666","#f3ae49","#e95c59"];
+function paint(value, role) {
+  if (typeof value === "string") return value;
+  const colors = activePalette.value?.colors ?? [];
+  const color = colors.find(c => c.id === value) ?? colors.find(c => c.id === role);
+  return color?.[mode.value] ?? color?.light ?? color?.dark ?? fallbackColors[role];
+}
 
 const ColorPicker = {
-  props: {label: String, color: String, disabled: Boolean, compact: Boolean},
+  props: {label: String, color: [String, Number], role: Number, disabled: Boolean, compact: Boolean},
   emits: ["update"],
   setup(props, {emit}) {
     const expanded = ref(false);
-    watch(() => props.disabled, disabled => { if (disabled) expanded.value = false; });
-    function swatch(color) {
-      return h("svg", {viewBox: "0 0 4 3", preserveAspectRatio: "none", "aria-hidden": "true"},
-        [h("rect", {width: 4, height: 3, fill: color})]);
-    }
-
-    function colorInput(label, attributes) {
-      const control = h("input", {...attributes, ...(props.compact ? controlName(label) : {})});
-      return props.compact ? control : field(label, control);
-    }
-
+    const tile = value => h("span", {class: "palette-tile", style: {backgroundColor: paint(value, props.role)}});
     return () => h("div", {class: ["color-field", {"compact-color": props.compact}]}, [
       props.compact ? null : h("span", props.label),
       h("button", {type: "button", class: "color-sample", "aria-label": props.label + " színválasztó",
-        title: props.compact ? props.label + " színválasztó" : undefined,
-        disabled: props.disabled, "aria-expanded": expanded.value && !props.disabled,
-        onClick: () => { expanded.value = !expanded.value; }}, [swatch(props.color)]),
-      expanded.value && !props.disabled ? h("div", {class: "color-tools"}, [
-        h("div", {class: "color-presets"}, palette.map(color => h("button", {type: "button", key: color,
-          "aria-label": props.label + " " + color, title: color, onClick: () => emit("update", color)}, [swatch(color)]))),
-        ...["Piros", "Zöld", "Kék"].map((label, i) => {
-          const offset = 1 + i * 2;
-          const change = event => emit("update", props.color.slice(0, offset) +
-            Number(event.target.value).toString(16).padStart(2, "0") + props.color.slice(offset + 2));
-          return colorInput(label, {type: "range", min: 0, max: 255, step: 1,
-            value: parseInt(props.color.slice(offset, offset+2), 16), onInput: change, onChange: change});
-        }),
-        colorInput("Rendszerpaletta", {type: "color", value: props.color,
-          onInput: e => emit("update", e.target.value), onChange: e => emit("update", e.target.value)}),
-      ]) : null,
+        disabled: props.disabled, "aria-expanded": expanded.value,
+        onClick: () => { expanded.value = !expanded.value; }}, [tile(props.color)]),
+      expanded.value && !props.disabled ? h("div", {class: "color-tools color-presets"},
+        activePalette.value?.colors.map(c => h("button", {type: "button", key: c.id, title: c.name,
+          "aria-label": c.name, "aria-pressed": c.id === props.color,
+          onClick: () => { emit("update", c.id); expanded.value = false; }}, [tile(c.id)]))) : null,
     ]);
   },
 };
 
-function colorPicker(label, value, change, key, disabled = false, compact = false) {
-  return h(ColorPicker, {key, label, color: value, disabled, compact, onUpdate: change});
+function colorPicker(label, value, change, key, disabled = false, compact = false, role = 2) {
+  return h(ColorPicker, {key, label, role, color: value, disabled, compact, onUpdate: change});
 }
 
 function controlName(label) {
@@ -186,7 +185,7 @@ function animateBox(mode, contents) {
   const motion = Object.hasOwn(boxMotion, mode) ? boxMotion[mode] : null;
   if (!motion) return contents;
   const {dur, times, ...tracks} = motion;
-  const timing = {dur, repeatCount: "indefinite", calcMode: "spline", keyTimes: times,
+  const timing = {dur: parseFloat(dur) / (graphics.value.motionSpeed ?? 1) + "s", repeatCount: "indefinite", calcMode: "spline", keyTimes: times,
     keySplines: times.split(";").slice(1).map(() => ".33 0 .67 1").join(";")};
   const animations = Object.entries(tracks).map(([type, values]) => type === "opacity"
     ? h("animate", {...timing, attributeName: "opacity", values})
@@ -195,23 +194,28 @@ function animateBox(mode, contents) {
 }
 
 function shape(node, linked, dropTarget = false) {
-  if (node.kind === "connectionPoint") return h("circle", {r: node.width / 2, fill: node.fill});
+  if (node.kind === "connectionPoint") {
+    const [tag, attrs] = shapeGeometry(graphics.value.junction ?? "ellipse", node.width, node.height);
+    return h(tag, {...attrs, fill: paint(node.fill, 2)});
+  }
   const [tag, geometry] = shapeGeometry(node.shape, node.width, node.height);
   if (dropTarget) return h(tag, {...geometry, class: "container-drop-target", "data-container-candidate": "",
-    fill: node.backgroundEnabled === false ? "none" : node.fill, "pointer-events": "fill",
+    fill: node.backgroundEnabled === false ? "none" : paint(node.fill, 2), "pointer-events": "fill",
     stroke: "#08796c", "stroke-width": 5, "stroke-dasharray": "0 8", "stroke-linecap": "round",
     "vector-effect": "non-scaling-stroke"});
   if (node.backgroundEnabled === false) return h(tag, {...geometry, fill: "none", stroke: "none", "pointer-events": "fill"});
   const locked = node.kind === "container" && node.locked;
-  const style = {fill: node.fill, stroke: automaticBorder(node.fill), "stroke-width": locked ? 6.4 : 1.6,
+  const style = {fill: paint(node.fill, 2), stroke: automaticBorder(paint(node.fill, 2)), "stroke-width": locked ? 6.4 : 1.6,
     "data-locked-outline": locked ? "" : undefined, "stroke-dasharray": linked ? "7 4" : undefined};
   return h(tag, {...style, ...geometry});
 }
 
 // The stored endpoints are the tips. Stop the shaft at each triangle's base.
+function resolveWireColor(edge) { return paint(edge.color, 3); }
+
 function wireDrawing(edge, geometry) {
   const {from, to, sourceToward, targetToward, bent, path} = geometry;
-  const paint = edgePaint(edge);
+  const paint = edgePaint({...edge, color: resolveWireColor(edge)});
   const ends = {};
   for (const [end, tip, toward, visible] of [
     ["source", from, sourceToward, paint.startArrow], ["target", to, targetToward, paint.endArrow],
@@ -278,7 +282,7 @@ async function checked(response) {
 
 createApp({
   setup() {
-    const board = ref(null);
+    const board = currentBoard;
     const insertion = ref(null);
     const shift = ref(false);
     const insertionEdges = computed(() => {
@@ -363,7 +367,7 @@ createApp({
     function wireGeometry(edge) {
       const source = drawnNode(edge.source), target = drawnNode(edge.target.node);
       const start = source?.position ?? edge.sourcePoint, end = target?.position ?? edge.target.point;
-      const inputs = [edge.type,
+      const inputs = [graphics.value, edge.type,
         start.x, start.y, source?.width, source?.height, source?.shape, source?.kind,
         end.x, end.y, target?.width, target?.height, target?.shape, target?.kind];
       const cached = edgeGeometries.get(edge);
@@ -374,7 +378,7 @@ createApp({
     }
 
     function cachedWireDrawing(edge, geometry) {
-      const inputs = [edge.appearance, edge.color, edge.width, edge.startArrow, edge.endArrow];
+      const inputs = [edge.appearance, resolveWireColor(edge), edge.width, edge.startArrow, edge.endArrow];
       const cached = wireDrawings.get(edge);
       if (cached?.geometry === geometry && inputs.every((value, i) => value === cached.inputs[i])) return cached.drawing;
       const drawing = wireDrawing(edge, geometry);
@@ -410,7 +414,7 @@ createApp({
     }
     function toggleGrid() { gridVisible.value = !gridVisible.value; savePreferences(); }
     const gridSpacing = computed(() => board.value?.gridSpacing ?? defaultGridSpacing);
-    const gridColor = computed(() => automaticGridColor(board.value?.background ?? paper));
+    const gridColor = computed(() => automaticGridColor(paint(board.value?.background, 0)));
 
     const selected = ref(null);
     const batch = ref(null);
@@ -814,9 +818,9 @@ createApp({
     }
 
     function makeNode(position) {
-      const fill = palette[Math.floor(Math.random() * palette.length)];
+      const fill = 2;
       return {id: id(), title: "Új ötlet", text: "", hideText: false, position: clampPoint(position), width: 176, height: 80,
-        shape: "rounded", fill, textColor: fill === "#000000" ? "#ffffff" : "#182335", fontSize: 16, bold: true, alignment: "center"};
+        shape: "rounded", fill, textColor: 1, fontSize: 16, bold: true, alignment: "center"};
     }
 
     function addNode(position = worldAtCenter(), properties = {}) {
@@ -1288,7 +1292,7 @@ createApp({
         }
         if (!commit) return {point: free.point, junction: free.point};
         const node = {...makeNode(free.point), title: "", kind: "connectionPoint",
-          shape: "ellipse", fill: edgePaint(free.edge).color, width: 12, height: 12};
+          shape: "ellipse", fill: free.edge.color ?? 3, width: graphics.value.junctionSize ?? 12, height: graphics.value.junctionSize ?? 12};
         board.value.nodes.push(node);
         dropParent(node);
         setEndpoint(free.edge, free.end, {node: node.id});
@@ -2017,7 +2021,7 @@ createApp({
     function editOverlay(item, x, y, width, height) {
       if (editingObject.value !== item.id) return null;
       const key = editKey.value, inline = !objectPanelOpen.value;
-      const background = automaticGridColor(item.fill || "#ffffff");
+      const background = automaticGridColor(paint(item.fill, 2));
       const light = parseInt(background.slice(1,3),16)*.299 + parseInt(background.slice(3,5),16)*.587 + parseInt(background.slice(5),16)*.114 > 150;
       return h("foreignObject", {class: "inline-edit", x, y, width, height, "pointer-events": inline ? "all" : "none",
         onPointerdown: e => e.stopPropagation(), onClick: e => e.stopPropagation(), onDblclick: e => e.stopPropagation()}, [
@@ -2042,16 +2046,16 @@ createApp({
       const filename = file.showFilename ? (isNote(file) ? file.filename || node.title : imageStem(file)) : "";
       return h("foreignObject", {x: -node.width/2, y: -node.height/2 - (title ? 22 : 0),
         width: node.width, height: node.height + (title ? 22 : 0) + (filename ? 22 : 0)}, [
-        h("div", {class: "canvas-image"}, [
+        h("div", {class: "canvas-image", style: {color: paint(node.textColor, 1)}}, [
           title ? h("strong", title) : null,
           isNote(file) ? h("div", {class: "folded-note", onPointerdown: e => {
             const el = e.currentTarget;
             if (el.scrollHeight > el.clientHeight && e.clientX >= el.getBoundingClientRect().right - Math.max(16, el.offsetWidth - el.clientWidth) * view.value.k) e.stopPropagation();
-          }, style: {backgroundColor: node.fill}},
+          }, style: {backgroundColor: paint(node.fill, 2)}},
             file.type === "md" ? [h(FormattedText, {source: node.text, justified: node.textStyle?.justified})] :
             [h("pre", {class: {"justified-text": node.textStyle?.justified}}, node.text)]) :
           h("img", {src: assetURL(path, file.asset), alt: title || imageStem(file), draggable: false,
-            style: {backgroundColor: file.alphaEnabled === false ? "#ffffff" : file.alphaBackground},
+            style: {backgroundColor: file.alphaEnabled === false ? "#ffffff" : file.alphaBackground == null ? undefined : paint(file.alphaBackground, 2)},
             onLoad: event => detectImageAlpha(event, file.asset)}),
           filename ? h("span", filename) : null,
         ]),
@@ -2068,7 +2072,7 @@ createApp({
 
       const textDrag = gesture.value?.type === "text" && gesture.value.nodeID === node.id ? gesture.value : null;
       const [, , inset] = shapeLabelRatios(node.shape);
-      const [outline, dimensions] = selectionOutline(node.kind === "connectionPoint" ? "ellipse" : drawn.shape, drawn.width, drawn.height);
+      const [outline, dimensions] = selectionOutline(node.kind === "connectionPoint" ? graphics.value.junction ?? "ellipse" : drawn.shape, drawn.width, drawn.height);
       const snapTarget = preview.value?.target === node.id;
       const labels = layout.lines.length ? h("text", {"font-family": "system-ui, sans-serif", "pointer-events": "none"},
           layout.lines.map(line => h("tspan", {
@@ -2090,7 +2094,7 @@ createApp({
             },
             x: line.x + (textDrag?.section === line.section ? textDrag.delta.x : 0),
             y: line.y + (textDrag?.section === line.section ? textDrag.delta.y : 0), "text-anchor": line.anchor, "font-style": line.italic ? "italic" : undefined,
-            "text-decoration": line.underline ? "underline" : undefined, "word-spacing": line.wordSpacing ? line.wordSpacing + "px" : undefined, fill: line.color, "font-size": line.size, "font-weight": line.weight,
+            "text-decoration": line.underline ? "underline" : undefined, "word-spacing": line.wordSpacing ? line.wordSpacing + "px" : undefined, fill: paint(line.color, 1), "font-size": line.size, "font-weight": line.weight,
           }, line.runs ? line.runs.map(run => {
             const format = run.format || {};
             if (!format.bold && !format.italic && !format.code && !format.link) return run.text;
@@ -2117,14 +2121,14 @@ createApp({
           if (event.key === "Enter" && event.shiftKey) openProperties("node", node.id);
         },
       }, [
-        owner || snapTarget || batch.value?.nodes.has(node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-glow", color: owner?.color ?? "#16a085", fill: "none",
-          stroke: owner?.color ?? "#16a085", "stroke-width": 3, "pointer-events": "none"}) : null,
+        owner || snapTarget || batch.value?.nodes.has(node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-glow", color: owner && !owner.mine ? owner.color : paint(graphics.value.selection ?? 4, 4), fill: "none",
+          stroke: owner && !owner.mine ? owner.color : paint(graphics.value.selection ?? 4, 4), "stroke-width": 3, "pointer-events": "none"}) : null,
         candidates.value.has("node/" + node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "search-candidate", "stroke-width": 3}) : null,
         ...animateBox(!node.file && node.kind !== "connectionPoint" ? node.animation : undefined, [
           node.file?.type === "image" || isNote(node.file) ? null : shape(drawn, !!destination, containerDropTargets.value.has(node.id)),
           node.file?.type === "image" || isNote(node.file) ? renderCaptionedFile(node) : null,
           node.file && !isNote(node.file) && node.file.type !== "image" ? h("foreignObject", {x: -drawn.width/2, y: -drawn.height/2, width: drawn.width, height: drawn.height}, [
-            h("div", {class: "canvas-file"}, [
+            h("div", {class: "canvas-file", style: {color: paint(node.textColor, 1), backgroundColor: paint(node.fill, 2)}}, [
               !node.file.hideTitle ? h("strong",node.title) : null,
               node.file.type === "mp3" ? h("div", {"data-audio-player": "", class: "canvas-audio",
                   onPointerdown: e => e.stopPropagation(), onDblclick: e => e.stopPropagation()}, [
@@ -2139,20 +2143,20 @@ createApp({
               node.file.asset && node.text ? h("small", {class: {"justified-text": node.textStyle?.justified}}, node.text) : null,
             ]),
           ]) : null,
-          node.kind === "connectionPoint" && node.title ? h("text", {x: drawn.width/2 + 4, y: 4, fill: node.textColor, "font-size": 14}, node.title) : null,
+          node.kind === "connectionPoint" && node.title ? h("text", {x: drawn.width/2 + 4, y: 4, fill: paint(node.textColor, 1), "font-size": 14}, node.title) : null,
           labels,
           editingObject.value === node.id ? editOverlay(node, -drawn.width/2,
             (layout.lines.find(line => (line.section === "textStyle") === (editKey.value === "text"))?.y ??
              (node.file && editKey.value === "title" ? -drawn.height/2 - 6 : 0)) - 18,
             drawn.width, editKey.value === "text" ? Math.max(34, drawn.height/2) : 28) : null,
           destination ? h("svg", {overflow: "visible", x: drawn.width/2*inset-15, y: drawn.height/2*inset-16, width: 14, height: 14,
-            viewBox: "0 0 24 24", fill: "none", stroke: node.textColor, "stroke-width": 1.8,
+            viewBox: "0 0 24 24", fill: "none", stroke: paint(node.textColor, 1), "stroke-width": 1.8,
             "stroke-linecap": "round", "stroke-linejoin": "round", "pointer-events": "all",
             role: "link", tabindex: 0, "aria-label": "Hivatkozás megnyitása", cursor: "pointer",
             onPointerdown: e => { if (!e.altKey) e.stopPropagation(); }, onClick: e => e.stopPropagation(),
             onDblclick: e => { if (e.altKey) return; e.preventDefault(); e.stopPropagation(); followBoxLink(destination); },
             onKeydown: e => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); followBoxLink(destination); } }},
-            [h("text", {class: "box-link", x: -5, y: 19, fill: node.textColor, stroke: "none", "text-anchor": "end", "font-size": 28,
+            [h("text", {class: "box-link", x: -5, y: 19, fill: paint(node.textColor, 1), stroke: "none", "text-anchor": "end", "font-size": 28,
               textLength: node.link.length * 17 > (drawn.width*inset-22)*24/14 ? Math.max(12,drawn.width*inset-22)*24/14 : undefined, lengthAdjust: "spacingAndGlyphs"}, node.link), h("rect", {width: 24, height: 24, fill: "transparent", stroke: "none"}), h("path", {d: linkIcons[destination.kind]})]) : null,
         ]),
         ...(resizeTarget.value === node.id && !occupied(node.id) && !ancestors(node, nodeMap.value).some(n => n.locked)
@@ -2213,7 +2217,7 @@ createApp({
       targets.push(endpointHandle(original, "source", from), endpointHandle(original, "target", to));
       const animatedArrows = edge.animated && edge.appearance === "thick";
       const local = mine || batch.value?.edges.has(edge.id);
-      const selectionColor = local ? (peers.value.find(peer => peer.mine)?.color ?? "#16a085") :
+      const selectionColor = local ? resolveWireColor({color: graphics.value.selection ?? 4}) :
         peers.value.find(peer => !peer.mine && peer.edge === edge.id)?.color;
       const color = selectionColor ?? paint.color;
       const animation = animatedWire(edge, {...paint, color}, from, to);
@@ -2252,7 +2256,7 @@ createApp({
           if (Math.min(nearest, length-nearest) < 8/view.value.k) return;
           const p = pathElement.getPointAtLength(nearest);
           const joint = {...makeNode(clampPoint(p)), title: "", kind: "connectionPoint", shape: "ellipse",
-            width: 12, height: 12, fill: paint.color};
+            width: graphics.value.junctionSize ?? 12, height: graphics.value.junctionSize ?? 12, fill: edge.color ?? 3};
           const tail = {...edge, id: id(), source: joint.id, sourcePoint: undefined, startArrow: false, label: ""};
           const head = {...copy(edge), target: {node: joint.id}, endArrow: false};
           beginDrag(event,"split",{edgeID: edge.id});
@@ -2354,10 +2358,11 @@ createApp({
         }, [
           h("defs", [
             h("pattern", {id: "worksheet-grid", patternUnits: "userSpaceOnUse", x: -spacing/2, y: -spacing/2, width: spacing, height: spacing}, [
-              h("circle", {cx: spacing/2, cy: spacing/2, r: 1.1, fill: gridColor.value}),
+              graphics.value.grid === "lines" ? h("path", {d: "M0 "+spacing/2+" H"+spacing+" M"+spacing/2+" 0 V"+spacing,
+                stroke: "#789bb0", "stroke-opacity": .35, fill: "none"}) : h("circle", {cx: spacing/2, cy: spacing/2, r: 1.1, fill: gridColor.value}),
             ]),
           ]),
-          h("rect", {width: "100%", height: "100%", fill: board.value.background ?? paper, "pointer-events": "none"}),
+          h("rect", {width: "100%", height: "100%", fill: paint(board.value.background, 0), "pointer-events": "none"}),
           h("g", {transform: view.value + " translate(" + centerX + " " + centerY + ")"}, [
             gridVisible.value ? h("rect", {"data-editor-only": "", x: left-centerX, y: top-centerY, width: size.value.width/view.value.k,
               height: size.value.height/view.value.k, fill: "url(#worksheet-grid)", "pointer-events": "none"}) : null,
@@ -2622,20 +2627,44 @@ createApp({
       ]);
     }
 
+    function themeSettings(sheet) {
+      const current = appearance.value;
+      const theme = activeTheme.value;
+      if (!theme) return null;
+      function select(label, value, entries, change) {
+        return field(label, h("select", {value, "aria-label": label, disabled: sheet.creator !== user || !online.value,
+          onChange: event => updateItem(sheet, "appearance", change(event.target.value))},
+          entries.map(([id, name]) => h("option", {value: id}, name))));
+      }
+      const modeNames = {auto: "Automatikus", light: "Világos", dark: "Sötét"};
+      return group("Megjelenés", [
+        select("Téma", theme.id, themes.map(t => [t.id,t.name]), value => {
+          const next = themes.find(t => t.id === Number(value));
+          return {theme: next.id, palette: next.palettes[0].id,
+            mode: next.modes.includes(current.mode) ? current.mode : "auto"};
+        }),
+        select("Paletta", activePalette.value.id, theme.palettes.map(p => [p.id,p.name]),
+          value => ({...current, palette: Number(value)})),
+        select("Mód", current.mode, ["auto", ...theme.modes].map(m => [m,modeNames[m]]),
+          value => ({...current, mode: value})),
+      ]);
+    }
+
     function renderCanvasInspector() {
       if (!canvasPanelOpen.value) return null;
       const sheet = board.value;
       return sidebar("Munkalap", [
         h("input", {ref: attachmentInput, type: "file", multiple: true, hidden: true,
           onChange: uploadAttachments}),
+        themeSettings(sheet),
         group("Cím", [input(sheet.title, value => updateItem(sheet, "title", value), {"aria-label": "Cím", maxlength: 120})]),
         group("Szöveg", [textArea(sheet.text ?? "", value => updateItem(sheet, "text", value), 7, sheet.textJustified)]),
         group("Előnézeti kép", [h("select", {"aria-label": "Előnézeti kép", value: previewImages.value.includes(sheet.previewImage) ? sheet.previewImage : "",
           onFocus: loadPreviewImages, onChange: e => updateItem(sheet, "previewImage", e.target.value || undefined)}, [
           h("option", {value: ""}, "Default · Munkalap SVG"), ...previewImages.value.map(name => h("option", {value: name}, name))
         ])]),
-        group("Háttér", [colorPicker("Munkalap háttérszíne", sheet.background ?? paper,
-          value => updateItem(sheet, "background", value), "worksheet/background")]),
+        group("Háttér", [colorPicker("Munkalap háttérszíne", sheet.background ?? 0,
+          value => updateItem(sheet, "background", value), "worksheet/background", false, false, 0)]),
         h("div", {class: "property-inline file-actions"}, [button(uploading.value ? "Feltöltés…" : "Fájl feltöltése", event => {
           const bounds = event.currentTarget.getBoundingClientRect();
           uploadAnchor = {clientX: bounds.left + bounds.width / 2, clientY: bounds.bottom + 12};
@@ -2682,7 +2711,7 @@ createApp({
           group("Vonal", [
             input(edge.label || "", value => updateItem(edge, "label", value), {...controlName("Címke"), "data-object-label": "", maxlength: 120}),
             propertyTools(
-              colorPicker("Vonal színe", paint.color, value => updateItem(edge, "color", value), edge.id + "/line", false, true),
+              colorPicker("Vonal színe", edge.color ?? 3, value => updateItem(edge, "color", value), edge.id + "/line", false, true, 3),
               numeric(edge.width ?? 2, value => updateItem(edge, "width", value), 0.5, 24, controlName("Alapvastagság")),
             ),
           ]),
@@ -2723,10 +2752,9 @@ createApp({
           iconToggle("Alpha csatorna", node.file.alphaEnabled !== false,
             () => change("file", {...node.file, alphaEnabled: node.file.alphaEnabled === false}),
             optionSymbol("path", {d: "M4 4h16v16H4z M4 12h16 M12 4v16 M4 4h8v8H4z M12 12h8v8h-8z", "fill-rule": "evenodd"})),
-          h("input", {type: "color", title: "Kép háttérszíne", "aria-label": "Kép háttérszíne",
-            value: node.file.alphaBackground ?? "#ffffff",
-            disabled: node.file.alphaEnabled === false || imageAlpha.value.get(node.file.asset) !== true,
-            onChange: event => change("file", {...node.file, alphaBackground: event.target.value})}),
+          colorPicker("Kép háttérszíne", node.file.alphaBackground ?? 2,
+            value => change("file", {...node.file, alphaBackground: value}), node.id + "/alpha",
+            node.file.alphaEnabled === false || imageAlpha.value.get(node.file.asset) !== true, true),
         ])]),
         group("Cím", [title]),
         group("Fájlnév", [h("div", {class: "property-inline"}, [h("input", {type: "text", "aria-label": "Fájlnév", value: imageStem(node.file),
@@ -2813,7 +2841,7 @@ createApp({
           propertyTools(
             autoSize, fontSize,
             colorPicker("Szövegszín", style[colorKey] ?? node.textColor,
-              v => update(colorKey, v), node.id + "/" + section + "/text", false, true),
+              v => update(colorKey, v), node.id + "/" + section + "/text", false, true, 1),
             ...[["bold","Félkövér"],["italic","Dőlt"],["underline","Aláhúzott"]].map(([key, label]) =>
               iconToggle(label, !!style[key], () => update(key, !style[key]), icon(key))),
             outsideToggle, hideText, isTitle ? null : justify(),
@@ -2896,7 +2924,16 @@ createApp({
       const currentStatus = reconnect.value ? "Kattints az új célra vagy a vászonra. Esc a megszakításhoz."
         : "";
       return [
-        h("div", {class: "editor-workspace"}, [
+        h("div", {class: "editor-workspace", "data-sheet-mode": mode.value, style: {
+            "--sheet-paper": paint(0,0), "--sheet-ink": paint(1,1), "--sheet-surface": paint(2,2),
+            "--sheet-line": paint(3,3), "--sheet-accent": paint(graphics.value.selection ?? 4,4),
+            "--panel-fill": paint(activeTheme.value?.css?.surface, 2),
+            "--panel-border": (activeTheme.value?.css?.borderWidth ?? 1) + "px",
+            "--panel-padding": (activeTheme.value?.css?.padding ?? 8) + "px",
+            "--panel-shadow": (activeTheme.value?.css?.shadow ?? 6) + "px",
+            "--panel-font": {mono: "ui-monospace, monospace", serif: "Georgia, serif", system: "inherit"}[activeTheme.value?.css?.font ?? "system"],
+            "--sheet-radius": (graphics.value.panelRadius ?? 9) + "px", "--sheet-glow": (graphics.value.glow ?? 3) + "px"
+          }}, [
           renderCanvas(),
           problem.value || currentStatus ? h("p", {class: ["canvas-status", {error: problem.value}], role: "status"}, problem.value || currentStatus) : null,
           h("div", {class: "inspector-column"}, [renderInspector()]),

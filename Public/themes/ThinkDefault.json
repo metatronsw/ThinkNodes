@@ -1,0 +1,149 @@
+{
+  "version": 1,
+  "id": 1,
+  "name": "ThinkDefault",
+  "modes": [
+    "light",
+    "dark"
+  ],
+  "palettes": [
+    {
+      "id": 1,
+      "name": "Műhely",
+      "colors": [
+        {
+          "id": 0,
+          "name": "Papír",
+          "light": "#f5f8fc",
+          "dark": "#171e28"
+        },
+        {
+          "id": 1,
+          "name": "Tinta",
+          "light": "#182335",
+          "dark": "#e4ecf7"
+        },
+        {
+          "id": 2,
+          "name": "Felület",
+          "light": "#dce9ff",
+          "dark": "#29394f"
+        },
+        {
+          "id": 3,
+          "name": "Grafit",
+          "light": "#526982",
+          "dark": "#9aacbf"
+        },
+        {
+          "id": 4,
+          "name": "Jelzőfény",
+          "light": "#304ccc",
+          "dark": "#92abff"
+        },
+        {
+          "id": 5,
+          "name": "Moha",
+          "light": "#478666",
+          "dark": "#74bc93"
+        },
+        {
+          "id": 6,
+          "name": "Borostyán",
+          "light": "#f3ae49",
+          "dark": "#e8af60"
+        },
+        {
+          "id": 7,
+          "name": "Korall",
+          "light": "#e95c59",
+          "dark": "#ed9592"
+        },
+        {
+          "id": 8,
+          "name": "Panel",
+          "light": "#ffffff",
+          "dark": "#24303e"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Botanika",
+      "colors": [
+        {
+          "id": 0,
+          "name": "Papír",
+          "light": "#f3f6ef",
+          "dark": "#18251e"
+        },
+        {
+          "id": 1,
+          "name": "Tinta",
+          "light": "#203028",
+          "dark": "#e9f0e3"
+        },
+        {
+          "id": 2,
+          "name": "Felület",
+          "light": "#e2ead8",
+          "dark": "#324237"
+        },
+        {
+          "id": 3,
+          "name": "Grafit",
+          "light": "#536e58",
+          "dark": "#a4b7a5"
+        },
+        {
+          "id": 4,
+          "name": "Jelzőfény",
+          "light": "#39674b",
+          "dark": "#98ce9f"
+        },
+        {
+          "id": 5,
+          "name": "Moha",
+          "light": "#659885",
+          "dark": "#91c6b5"
+        },
+        {
+          "id": 6,
+          "name": "Borostyán",
+          "light": "#cda05d",
+          "dark": "#e4bd84"
+        },
+        {
+          "id": 7,
+          "name": "Korall",
+          "light": "#c87568",
+          "dark": "#efa499"
+        },
+        {
+          "id": 8,
+          "name": "Panel",
+          "light": "#ffffff",
+          "dark": "#24303e"
+        }
+      ]
+    }
+  ],
+  "graphics": {
+    "panelRadius": 9,
+    "glow": 3,
+    "selection": 4,
+    "box": "rounded",
+    "line": "straight",
+    "junctionSize": 12,
+    "motionSpeed": 1,
+    "junction": "ellipse",
+    "grid": "dots"
+  },
+  "css": {
+    "surface": 8,
+    "borderWidth": 1,
+    "padding": 8,
+    "shadow": 12,
+    "font": "system"
+  }
+}

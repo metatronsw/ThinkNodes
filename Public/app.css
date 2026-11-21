@@ -431,7 +431,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
   50% { box-shadow: 0 0 16px #cf8200; }
 }
 @keyframes selection-pulse {
-  50% { opacity: .45; filter: drop-shadow(0 0 12px currentColor); }
+  50% { opacity: .45; filter: drop-shadow(0 0 calc(var(--sheet-glow, 6px) * 2) currentColor); }
 }
 @media (prefers-reduced-motion: no-preference) {
   .container-drop-target {
@@ -516,3 +516,57 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 .editor-root .worksheet-nav > a[href="/admin"] { order:2; }
 .editor-root .sidebar-open:not(.sidebar-open-canvas) { order:3; }
 .file-actions > button { flex:1; }
+
+/* Site chrome follows the reader. Worksheet controls use the document palette. */
+:root[data-display="dark"] {
+  color-scheme: dark;
+  background: #151c25;
+  color: #e4ecf7;
+  --ink: #e4ecf7;
+  --muted: #aebed1;
+  --line: #49596d;
+  --accent: #a7b8ff;
+  --accent-ink: #c6d1ff;
+  --paper: #19232f;
+}
+:root[data-display="dark"] :where(.panel, .button, input, textarea, select, .viewer-downloads .card-meta, .passive-note) {
+  background-color: #253140;
+  color: var(--ink);
+  border-color: var(--line);
+}
+[data-site-mode-picker] { width: auto; max-width: 9rem; }
+.editor-workspace[data-sheet-mode] {
+  color: var(--sheet-ink);
+  --ink: var(--sheet-ink);
+  --muted: var(--sheet-line);
+  --accent: var(--sheet-accent);
+  --accent-ink: var(--sheet-accent);
+  --line: color-mix(in srgb, var(--sheet-line) 55%, var(--sheet-surface));
+  --paper: var(--sheet-paper);
+}
+.editor-workspace[data-sheet-mode="dark"] { color-scheme: dark; }
+.editor-workspace[data-sheet-mode="light"] { color-scheme: light; }
+.editor-workspace[data-sheet-mode] :is(.inspector-content > fieldset, legend, .button, input, textarea, select, .option-icon, .context-menu, .canvas-empty, .canvas-status, .quick-search, .participants) {
+  background-color: var(--sheet-surface);
+  border-color: var(--line);
+  color: var(--ink);
+}
+.editor-workspace[data-sheet-mode] :is(.inspector-content > fieldset, .context-menu, .quick-search) { border-radius: var(--sheet-radius); }
+:is(.editor-workspace[data-sheet-mode], .passive-canvas) :is(.selection-glow, .wire-selected) { filter: drop-shadow(0 0 var(--sheet-glow, 4px) currentColor); }
+.editor-workspace[data-sheet-mode] button[aria-pressed=true] { outline: 2px solid var(--sheet-accent); outline-offset: -2px; }
+.color-sample, .color-presets button { width: 32px; height: 32px; padding: 3px; border-radius: 7px; }
+.palette-tile { display: block; width: 100%; height: 100%; border-radius: 4px; }
+.color-tools.color-presets { grid-template-columns: repeat(auto-fill, 32px); gap: 4px; }
+.color-presets button[aria-pressed=true] .palette-tile::after { content: "✓"; color: white; text-shadow: 0 0 3px black; }
+
+.editor-workspace[data-sheet-mode="light"] :is(.inspector-content > fieldset, legend, .button, select, textarea, input) {
+  background-color: color-mix(in srgb, var(--sheet-surface) 12%, white);
+}
+.editor-workspace[data-sheet-mode] .inspector { font-family: var(--panel-font); }
+.editor-workspace[data-sheet-mode] .inspector-content > fieldset {
+  background: var(--panel-fill);
+  border-width: var(--panel-border);
+  padding: var(--panel-padding);
+  box-shadow: 0 2px var(--panel-shadow) color-mix(in srgb, var(--sheet-line) 22%, transparent);
+}
+.editor-workspace[data-sheet-mode] .inspector-content legend { background: var(--panel-fill); }

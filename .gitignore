@@ -4,4 +4,6 @@ Public/vendor/
 .DS_Store
 /.thinknodes-tls/
 /Data/
-/Projects/
+/Projects/*
+!/Projects/ThemeDemo/
+/Projects/ThemeDemo/.*.svg

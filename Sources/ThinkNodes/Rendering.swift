@@ -32,6 +32,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false) -> Response {
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           <link rel="stylesheet" href="/app.css">
+          <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
         <body>\(body)</body>
@@ -96,13 +97,14 @@ func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: 
             """
     }
     let tag = path == nil ? "header" : "div"
+    let siteDisplay = path == nil ? "<select data-site-mode-picker aria-label='Oldal megjelenése'><option value='auto'>Automatikus</option><option value='light'>Világos</option><option value='dark'>Sötét</option></select>" : ""
     let navigationClass = path == nil ? "site-header" : "worksheet-nav"
     return """
         <\(tag) class="\(navigationClass)"><div class="header-left"><nav aria-label="Fő navigáció" class="breadcrumbs">
           \(path == nil && user?.role == .admin ? headerLink("/admin", "Admin", symbol: "settings") : "")
           <a class="brand" href="/"><span class="brand-icon" aria-hidden="true"><span></span><span></span><span></span></span>ThinkNodes</a>
           \(crumb)
-        </nav></div><div class="header-parent">\(parent)\(centerAction)</div><div class="header-actions">\(actions)<div class="header-user">\(session)</div>\(path != nil && !editing && user?.role == .admin ? headerLink("/admin", "Admin", symbol: "settings") : "")</div>\(editing && user?.role == .admin ? headerLink("/admin", "Admin", symbol: "settings") : "")</\(tag)>
+        </nav></div><div class="header-parent">\(parent)\(centerAction)</div><div class="header-actions">\(actions)<div class="header-user">\(siteDisplay)\(session)</div>\(path != nil && !editing && user?.role == .admin ? headerLink("/admin", "Admin", symbol: "settings") : "")</div>\(editing && user?.role == .admin ? headerLink("/admin", "Admin", symbol: "settings") : "")</\(tag)>
         """
 }
 
@@ -136,7 +138,12 @@ private extension Shape {
     }
 }
 
-private func borderPoint(_ idea: Idea, toward point: Point) -> Point {
+private func vertices(_ shape: Shape, _ graphics: VisualTheme.Graphics?) -> [(x: Double, y: Double)] {
+    if graphics?.box == shape, let contour = graphics?.contour { return contour.map { ($0.x, $0.y) } }
+    return shape.vertices
+}
+
+private func borderPoint(_ idea: Idea, toward point: Point, graphics: VisualTheme.Graphics?) -> Point {
     let dx = point.x - idea.position.x
     let dy = point.y - idea.position.y
     guard dx != 0 || dy != 0 else { return idea.position }
@@ -147,7 +154,7 @@ private func borderPoint(_ idea: Idea, toward point: Point) -> Point {
     case .ellipse: scale = 1 / hypot(x, y)
     case .rectangle, .rounded: scale = 1 / max(abs(x), abs(y))
     case .diamond, .triangle, .pentagon, .hexagon, .parallelogram:
-        let vertices = idea.shape.vertices
+        let vertices = vertices(idea.shape, graphics)
         // Normalize each edge's linear distance to one at its boundary.
         var distance = 0.0
         for (i, a) in vertices.enumerated() {
@@ -270,7 +277,7 @@ private func shortenLine(_ line: IdeaLabelLine, width: Double) -> IdeaLabelLine 
 private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
     var node = idea
     if node.kind == .connectionPoint {
-        node.shape = .ellipse
+        if ![.ellipse,.rectangle,.diamond].contains(node.shape) { node.shape = .ellipse }
         return IdeaDrawing(node: node, labelWidth: 0, lines: [])
     }
     let (widthRatio, heightRatio, _) = node.shape.labelRatios
@@ -407,7 +414,7 @@ func needsTextTooltip(_ node: Idea) -> Bool {
     needsTextTooltip(node, overflow: ideaDrawing(node).overflow)
 }
 
-private func animatedBox(_ contents: String, mode: BoxAnimation?) -> String {
+private func animatedBox(_ contents: String, mode: BoxAnimation?, speed: Double) -> String {
     let duration: String
     let times: String
     let tracks: [(type: String, values: String)]
@@ -426,7 +433,8 @@ private func animatedBox(_ contents: String, mode: BoxAnimation?) -> String {
         ])
     }
     let splines = Array(repeating: ".33 0 .67 1", count: times.split(separator: ";").count - 1).joined(separator: ";")
-    let timing = "dur=\"\(duration)\" repeatCount=\"indefinite\" calcMode=\"spline\" keyTimes=\"\(times)\" keySplines=\"\(splines)\""
+    let seconds = Double(duration.dropLast()) ?? 1
+    let timing = "dur=\"\(speed == 1 ? duration : number(seconds / speed) + "s")\" repeatCount=\"indefinite\" calcMode=\"spline\" keyTimes=\"\(times)\" keySplines=\"\(splines)\""
     let animations = tracks.map { type, values in
         if type == "opacity" { return "<animate attributeName=\"opacity\" values=\"\(values)\" \(timing)/>" }
         return "<animateTransform attributeName=\"transform\" type=\"\(type)\" additive=\"sum\" values=\"\(values)\" \(timing)/>"
@@ -434,10 +442,18 @@ private func animatedBox(_ contents: String, mode: BoxAnimation?) -> String {
     return "<g data-box-animation=\"\(mode?.rawValue ?? "")\">\(animations)\(contents)</g>"
 }
 
-private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
+private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: VisualTheme.Graphics?) -> String {
     let node = drawing.node
     if node.kind == .connectionPoint {
         let label = node.title.isEmpty ? "" : "<text x=\"\(number(node.position.x + node.width/2 + 4))\" y=\"\(number(node.position.y + 4))\" font-size=\"14\" fill=\"\(node.textColor)\">\(escaped(node.title))</text>"
+        let r = node.width / 2
+        let x = node.position.x, y = node.position.y
+        if node.shape == .rectangle {
+            return "<rect x='\(number(x-r))' y='\(number(y-r))' width='\(number(2*r))' height='\(number(2*r))' fill='\(escaped(node.fill))'/>" + label
+        }
+        if node.shape == .diamond {
+            return "<path d='M \(number(x)) \(number(y-r)) l \(number(r)) \(number(r)) l \(number(-r)) \(number(r)) l \(number(-r)) \(number(-r)) Z' fill='\(escaped(node.fill))'/>" + label
+        }
         return """
             <circle cx="\(number(node.position.x))" cy="\(number(node.position.y))" r="\(number(node.width/2))" fill="\(escaped(node.fill))" aria-label="\(escaped(node.title))"/>\(label)
             """
@@ -462,7 +478,7 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
     case .ellipse:
         geometry = "<ellipse rx=\"\(number(x))\" ry=\"\(number(y))\" \(appearance)/>"
     case .diamond, .triangle, .pentagon, .hexagon, .parallelogram:
-        let points = node.shape.vertices.map { "\(number($0.x * x)),\(number($0.y * y))" }.joined(separator: " ")
+        let points = vertices(node.shape, graphics).map { "\(number($0.x * x)),\(number($0.y * y))" }.joined(separator: " ")
         geometry = "<polygon points=\"\(points)\" \(appearance)/>"
     }
     let labelWidth = drawing.labelWidth
@@ -527,7 +543,7 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?) -> String {
         """
     return """
         <g aria-label="\(escaped(node.title))" transform="translate(\(number(node.position.x)) \(number(node.position.y)))">
-          \(animatedBox(contents, mode: node.animation))
+          \(animatedBox(contents, mode: node.animation, speed: graphics?.motionSpeed ?? 1))
         </g>
         """
 }
@@ -564,11 +580,12 @@ private func wireAnimation(_ edge: Connection, from: Point, to: Point) -> (strok
     return ("url(#" + id + ")", "", gradient)
 }
 
-func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = nil, assetBase: String? = nil) -> String {
-    renderWorksheetCanvas(board, noteBase: noteBase, siteHost: siteHost, assetBase: assetBase).svg
+func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = nil, assetBase: String? = nil, mode: String? = nil) -> String {
+    renderWorksheetCanvas(board.painted(mode: mode), noteBase: noteBase, siteHost: siteHost, assetBase: assetBase).svg
 }
 
 func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: String?, assetBase: String? = nil) -> (svg: String, tooltipNodes: [Idea]) {
+    let graphics = Themes.catalog.first { $0.id == board.appearance?.theme }?.graphics
     let drawings = board.nodes.map(ideaDrawing)
     let renderedIdeas = drawings.map(\.node)
     let nodes = Dictionary(uniqueKeysWithValues: renderedIdeas.map { ($0.id, $0) })
@@ -604,9 +621,14 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
         let targetNode = edge.target.node.flatMap { nodes[$0] }
         guard let source = sourceNode?.position ?? edge.sourcePoint,
               let target = targetNode?.position ?? edge.target.point else { return nil }
-        let (command, points) = edgeRoute(edge.type, from: source, to: target)
-        let beginning = sourceNode.map { borderPoint($0, toward: points.first ?? target) } ?? source
-        let ending = targetNode.map { borderPoint($0, toward: points.last ?? source) } ?? target
+        let command: String, points: [Point]
+        if graphics?.line == edge.type, let bends = graphics?.linePoints {
+            let dx = target.x-source.x, dy = target.y-source.y
+            command = "L"
+            points = bends.map { Point(x: source.x+dx*$0.x-dy*$0.y, y: source.y+dy*$0.x+dx*$0.y) }
+        } else { (command, points) = edgeRoute(edge.type, from: source, to: target) }
+        let beginning = sourceNode.map { borderPoint($0, toward: points.first ?? target, graphics: graphics) } ?? source
+        let ending = targetNode.map { borderPoint($0, toward: points.last ?? source, graphics: graphics) } ?? target
         let segments = (points + [ending]).map { "\(number($0.x)) \(number($0.y))" }.joined(separator: " ")
         let drawing = "M \(number(beginning.x)) \(number(beginning.y)) \(command) \(segments)"
         for point in [beginning, ending] + points {
@@ -727,9 +749,9 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
                 "<rect x=\"\(number(node.position.x-node.width/2))\" y=\"\(number(node.position.y-node.height/2))\" width=\"\(number(node.width))\" height=\"\(number(node.height))\" rx=\"\(radius)\" fill=\"\(escaped($0))\"/>"
             } ?? ""
             graphic = """
-                \(imageBackground)<foreignObject x="\(number(node.position.x-node.width/2))" y="\(number(node.position.y-node.height/2-above))" width="\(number(node.width))" height="\(number(node.height+above+below))"><div xmlns="http://www.w3.org/1999/xhtml" class="\(image || note ? "canvas-image" : "canvas-file")">\(title)\(body)</div></foreignObject>
+                \(imageBackground)<foreignObject x="\(number(node.position.x-node.width/2))" y="\(number(node.position.y-node.height/2-above))" width="\(number(node.width))" height="\(number(node.height+above+below))"><div xmlns="http://www.w3.org/1999/xhtml" data-file-ink="\(escaped(node.textColor))" data-file-paper="\(escaped(node.fill))" style="color:\(escaped(node.textColor));background-color:\(image ? "transparent" : escaped(node.fill))" class="\(image || note ? "canvas-image" : "canvas-file")">\(title)\(body)</div></foreignObject>
                 """
-        } else { graphic = nodeSVG(drawing, siteHost: siteHost) }
+        } else { graphic = nodeSVG(drawing, siteHost: siteHost, graphics: graphics) }
         guard let noteBase else { return graphic }
         let parts = noteBase.split(separator: "/").map { String($0).removingPercentEncoding ?? String($0) }
         let path = try? WorksheetPath(parts)
@@ -739,7 +761,7 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
         if let raw = node.link, let link = WorksheetLink(raw), link.isExternal(siteHost: siteHost) {
             linked += " target=\"_blank\" rel=\"noopener noreferrer\""
         }
-        let geometry = "data-x=\"\(node.position.x)\" data-y=\"\(node.position.y)\" data-width=\"\(node.width)\" data-height=\"\(node.height)\" data-shape=\"\(node.kind == .connectionPoint ? "ellipse" : node.shape.rawValue)\" data-parent=\"\(node.parent ?? "")\""
+        let geometry = "data-x=\"\(node.position.x)\" data-y=\"\(node.position.y)\" data-width=\"\(node.width)\" data-height=\"\(node.height)\" data-shape=\"\(node.shape.rawValue)\" data-parent=\"\(node.parent ?? "")\""
         return "<\(tag) id=\"object-\(node.id)\" data-node=\"\(node.id)\" \(geometry)\(linked) aria-label=\"\(escaped(node.title))\">\(graphic)</\(tag)>"
     }
     let wiresByLayer = Dictionary(grouping: edges, by: \.layer)
@@ -751,11 +773,17 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
     scene.append(contentsOf: wiresByLayer[ordered.count, default: []].map(\.markup))
     let width = number(halfWidth * 2)
     let height = number(halfHeight * 2)
+    let step = number(board.gridSpacing ?? 32)
+    let grid = graphics?.grid == "lines" ? """
+        <defs><pattern id="draft-grid" width="\(step)" height="\(step)" patternUnits="userSpaceOnUse"><path d="M \(step) 0 H 0 V \(step)" stroke="#789BB0" stroke-opacity=".35" fill="none"/></pattern></defs>
+        <rect x="\(number(-halfWidth))" y="\(number(-halfHeight))" width="\(width)" height="\(height)" fill="url(#draft-grid)"/>
+        """ : ""
     let svg = """
         <svg xmlns="http://www.w3.org/2000/svg" class="passive-canvas" role="\(noteBase == nil ? "img" : "group")" aria-label="\(escaped(board.title))" width="\(width)" height="\(height)" viewBox="\(number(-halfWidth)) \(number(-halfHeight)) \(width) \(height)">
           \(noteBase == nil ? "<title>\(escaped(board.title))</title>" : "")
           <defs>\(definitions.joined())</defs>
           <rect x="\(number(-halfWidth))" y="\(number(-halfHeight))" width="\(width)" height="\(height)" fill="\(escaped(board.backgroundColor))"/>
+          \(grid)
           \(scene.joined(separator: "\n"))
         </svg>
         """

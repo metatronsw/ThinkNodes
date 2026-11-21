@@ -42,7 +42,7 @@ enum IdeaKind: String, Codable, Sendable {
 }
 
 struct TextStyle: Codable, Equatable, Sendable {
-    var color: String?
+    @OptionalPaint var color: String? = nil
     var size: Double?
     var bold: Bool?
     var italic: Bool?
@@ -70,7 +70,7 @@ struct CanvasFile: Codable, Equatable, Sendable {
     var filename: String?
     var showFilename: Bool?
     var alphaEnabled: Bool?
-    var alphaBackground: String?
+    @OptionalPaint var alphaBackground: String? = nil
 
     var imageStem: String {
         filename ?? asset.map { ($0 as NSString).deletingPathExtension } ?? ""
@@ -165,10 +165,10 @@ struct Idea: Codable, Equatable, Sendable {
     var width: Double = 176
     var height: Double = 80
     var shape: Shape = .rounded
-    var fill = "#dce9ff"
+    @StoredPaint var fill = "#dce9ff"
     var backgroundEnabled: Bool?
     var animation: BoxAnimation?
-    var textColor = "#182335"
+    @StoredPaint var textColor = "#182335"
     var border: String { automaticBorder(fill) }
     var fitText: Bool?
     var fontSize: Double = 16
@@ -264,7 +264,7 @@ struct Connection: Equatable, Codable, Sendable {
     var type: ConnectionType = .straight
     var appearance: ConnectionAppearance = .plain
     var animated: Bool?
-    var color: String?
+    @OptionalPaint var color: String? = nil
     var width: Double?
     var startArrow: Bool?
     var endArrow: Bool?
@@ -298,7 +298,7 @@ extension Connection {
         type = (try? fields.decode(ConnectionType.self, forKey: .type)) ?? (legacy == .rope ? .rope : .straight)
         appearance = (try? fields.decode(ConnectionAppearance.self, forKey: .appearance)) ?? (legacy == .dashed ? .dashed : .plain)
         animated = try? fields.decode(Bool.self, forKey: .animated)
-        color = (try? fields.decode(String.self, forKey: .color))
+        color = (try? fields.decode(StoredPaint.self, forKey: .color).wrappedValue)
         width = (try? fields.decode(Double.self, forKey: .width))
         startArrow = (try? fields.decode(Bool.self, forKey: .startArrow)) ?? (legacy == .both ? true : nil)
         endArrow = (try? fields.decode(Bool.self, forKey: .endArrow)) ?? (legacy == .rope || legacy == .solid ? false : nil)
@@ -307,6 +307,7 @@ extension Connection {
 }
 
 struct Worksheet: Content, Equatable {
+    var appearance: Appearance?
     var schemaVersion = 2
     var revision = 1
     var resetRevision: Int?
@@ -314,14 +315,14 @@ struct Worksheet: Content, Equatable {
     var text: String?
     var previewImage: String?
     var textJustified: Bool?
-    var background: String?
+    @OptionalPaint var background: String? = nil
     var gridSpacing: Double?
     var creator: String?
     var nodes: [Idea] = []
     var edges: [Connection] = []
 
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, revision, resetRevision, title, text, textJustified, background
+        case appearance, schemaVersion, revision, resetRevision, title, text, textJustified, background
         case creator, nodes, edges, previewImage
         case gridSpacing = "gridStep"
     }
@@ -348,6 +349,13 @@ struct Worksheet: Content, Equatable {
     func validate() throws {
         guard duplicateConnections.isEmpty else {
             throw Abort(.unprocessableEntity, reason: "Ezen az útvonalon már van kábel.")
+        }
+        if let appearance {
+            guard let theme = Themes.catalog.first(where: { $0.id == appearance.theme }),
+                  theme.palettes.contains(where: { $0.id == appearance.palette }),
+                  appearance.mode == "auto" || theme.modes.contains(appearance.mode) else {
+                throw Abort(.unprocessableEntity, reason: "Érvénytelen munkalaptéma, paletta vagy mód.")
+            }
         }
         let nodeIDs = Set(nodes.map(\.id))
         guard schemaVersion == 2, revision > 0, revision < Int.max, validTitle(title),
@@ -439,7 +447,7 @@ private func validComment(_ value: String?) -> Bool {
 }
 
 private func validColor(_ value: String) -> Bool {
-    value.utf8.count == 7 && value.first == "#" && value.dropFirst().utf8.allSatisfy {
+    paintID(value) != nil || value.utf8.count == 7 && value.first == "#" && value.dropFirst().utf8.allSatisfy {
         (48...57).contains($0) || (65...70).contains($0) || (97...102).contains($0)
     }
 }
@@ -761,7 +769,7 @@ final class WorksheetStore: @unchecked Sendable {
         }
         guard let user else { throw Abort(.unauthorized) }
         var inherited = DocumentPolicy(owner: user.name, guestReadable: false)
-        var sheet = Worksheet(title: String(path.name.prefix(120)), creator: user.name)
+        var sheet = Worksheet(appearance: Appearance(), title: String(path.name.prefix(120)), creator: user.name)
         if path.parts.count > 1 {
             let parent = try WorksheetPath(Array(path.parts.dropLast()))
             guard parent.name != path.name else { throw Abort(.conflict) }
@@ -772,7 +780,8 @@ final class WorksheetStore: @unchecked Sendable {
             inherited = ctx.local
             inherited.mediaFiles = nil
             inherited.worksheets = nil
-            sheet.background = parentSheet.background
+            sheet.appearance = parentSheet.appearance ?? Appearance()
+            sheet.background = parentSheet.appearance == nil ? nil : parentSheet.background
             sheet.gridSpacing = parentSheet.gridSpacing
         }
         guard !files.fileExists(atPath: entry.path) else { throw Abort(.conflict) }
@@ -801,7 +810,7 @@ final class WorksheetStore: @unchecked Sendable {
 
     enum Preview { case drawing(String), image(URL, String) }
 
-    func preview(_ path: WorksheetPath, user: User?, unlocks: Set<String> = []) throws -> Preview {
+    func preview(_ path: WorksheetPath, user: User?, unlocks: Set<String> = [], mode: String? = nil) throws -> Preview {
         try lock.withLock {
             if try readSettings().requireLogin && user == nil { throw Abort(.unauthorized) }
             let url = try worksheetURL(path)
@@ -811,12 +820,13 @@ final class WorksheetStore: @unchecked Sendable {
             if let name = sheet.previewImage,
                let file = try attachments(at: url, named: name, metadata: ctx.local).first,
                let mime = previewType(file) { return .image(file, mime) }
-            let cache = url.deletingLastPathComponent().appendingPathComponent("." + path.name + ".preview-v8.svg")
+            let suffix = mode == "dark" ? ".preview-v8-dark.svg" : ".preview-v8.svg"
+            let cache = url.deletingLastPathComponent().appendingPathComponent("." + path.name + suffix)
             try rejectLink(cache)
             let modified = try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
             if let modified, let cached = try? cache.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
-               cached > modified { return .drawing(try String(contentsOf: cache, encoding: .utf8)) }
-            let svg = boardSVG(sheet, assetBase: "/" + path.url)
+               cached > modified && cached > Themes.loadedAt { return .drawing(try String(contentsOf: cache, encoding: .utf8)) }
+            let svg = boardSVG(sheet, assetBase: "/" + path.url, mode: mode)
             try Data(svg.utf8).write(to: cache, options: .atomic)
             return .drawing(svg)
         }
@@ -848,10 +858,15 @@ final class WorksheetStore: @unchecked Sendable {
                 }
             }
             var updated = worksheet
+            if current.appearance != nil && updated.appearance == nil { throw Abort(.unprocessableEntity) }
+            if updated.appearance != current.appearance && user.name != current.creator {
+                throw Abort(.forbidden, reason: "A témát csak a munkalap létrehozója módosíthatja.")
+            }
             updated.creator = current.creator
             updated.revision = current.revision + 1
             updated.resetRevision = restoring ? updated.revision : current.resetRevision
             try updated.validate()
+            updated.storePaletteReferences()
             updated.schemaVersion = 2
             let url = try worksheetURL(path)
             let directory = ctx.directory
@@ -1243,10 +1258,10 @@ extension Idea {
         width = (try? fields.decode(Double.self, forKey: .width)) ?? (kind == .connectionPoint ? 12 : 176)
         height = (try? fields.decode(Double.self, forKey: .height)) ?? (kind == .connectionPoint ? width : 80)
         shape = (try? fields.decode(Shape.self, forKey: .shape)) ?? .rounded
-        fill = (try? fields.decode(String.self, forKey: .fill)) ?? "#dce9ff"
+        fill = (try? fields.decode(StoredPaint.self, forKey: .fill).wrappedValue) ?? "#dce9ff"
         backgroundEnabled = try? fields.decode(Bool.self, forKey: .backgroundEnabled)
         animation = try? fields.decode(BoxAnimation.self, forKey: .animation)
-        textColor = (try? fields.decode(String.self, forKey: .textColor)) ?? "#182335"
+        textColor = (try? fields.decode(StoredPaint.self, forKey: .textColor).wrappedValue) ?? "#182335"
         fitText = try? fields.decode(Bool.self, forKey: .fitText)
         fontSize = (try? fields.decode(Double.self, forKey: .fontSize)) ?? 16
         bold = (try? fields.decode(Bool.self, forKey: .bold)) ?? true
@@ -1265,6 +1280,7 @@ extension Idea {
 extension Worksheet {
     init(from decoder: Decoder) throws {
         let fields = try decoder.container(keyedBy: CodingKeys.self)
+        appearance = try fields.decodeIfPresent(Appearance.self, forKey: .appearance)
         schemaVersion = (try? fields.decode(Int.self, forKey: .schemaVersion)) ?? 2
         revision = (try? fields.decode(Int.self, forKey: .revision)) ?? 1
         resetRevision = try? fields.decode(Int.self, forKey: .resetRevision)
@@ -1272,7 +1288,7 @@ extension Worksheet {
         text = try? fields.decode(String.self, forKey: .text)
         previewImage = try? fields.decode(String.self, forKey: .previewImage)
         textJustified = try? fields.decode(Bool.self, forKey: .textJustified)
-        background = try? fields.decode(String.self, forKey: .background)
+        background = try? fields.decode(StoredPaint.self, forKey: .background).wrappedValue
         gridSpacing = try? fields.decode(Double.self, forKey: .gridSpacing)
         creator = try? fields.decode(String.self, forKey: .creator)
         nodes = (try? fields.decode([WorksheetElement<Idea>].self, forKey: .nodes))?.compactMap(\.value) ?? []

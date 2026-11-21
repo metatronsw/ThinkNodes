@@ -18,8 +18,18 @@ const polygons = {
   parallelogram: [[-.55,-1], [1,-1], [.55,1], [-1,1]],
 };
 
+// The viewer receives resolved geometry from the server. The editor supplies its reactive theme.
+let currentGraphics = () => ({});
+export function useWorksheetGeometry(readGraphics) { currentGraphics = readGraphics; }
+export function displayShape(shape) { return shape === "rounded" ? currentGraphics().box ?? shape : shape; }
+function verticesFor(shape) {
+  const graphics = currentGraphics();
+  return graphics.box === shape && graphics.contour
+    ? graphics.contour.map(({x,y}) => [x,y]) : polygons[shape];
+}
 export function polygonVertices(shape, halfWidth, halfHeight) {
-  if (Object.hasOwn(polygons, shape)) return polygons[shape].map(([x, y]) => [x * halfWidth, y * halfHeight]);
+  shape = displayShape(shape);
+  if (Object.hasOwn(polygons, shape)) return verticesFor(shape).map(([x, y]) => [x * halfWidth, y * halfHeight]);
 }
 
 const labelRatios = {
@@ -30,7 +40,7 @@ const labelRatios = {
   hexagon: [.68, .76, .65],
   parallelogram: [.60, .75, .58],
 };
-export const shapeLabelRatios = shape => Object.hasOwn(labelRatios, shape) ? labelRatios[shape] : [.94, .94, .94];
+export const shapeLabelRatios = shape => labelRatios[displayShape(shape)] ?? [.94, .94, .94];
 
 export const edgeStyles = {
   arrow: "Egyirányú nyíl",
@@ -64,6 +74,7 @@ export const cableColor = "#526982";
 export const limit = (value, min, max) => Math.min(max, Math.max(min, value));
 
 export function shapeGeometry(shape, width, height, padding = 0) {
+  shape = displayShape(shape);
   const x = width / 2 + padding, y = height / 2 + padding;
   if (shape === "ellipse") return ["ellipse", {rx: x, ry: y}];
   const vertices = polygonVertices(shape, x, y);
@@ -88,9 +99,10 @@ export function selectionOutline(shape, width, height) {
 export function shapeDistance(node, point, padding = 0) {
   const x = (point.x - node.position.x) / (node.width / 2 + padding);
   const y = (point.y - node.position.y) / (node.height / 2 + padding);
-  if (node.kind === "connectionPoint" || node.shape === "ellipse") return Math.hypot(x, y);
-  if (Object.hasOwn(polygons, node.shape)) {
-    const vertices = polygons[node.shape];
+  const shape = node.kind === "connectionPoint" ? currentGraphics().junction ?? "ellipse" : displayShape(node.shape);
+  if (shape === "ellipse") return Math.hypot(x, y);
+  if (Object.hasOwn(polygons, shape)) {
+    const vertices = verticesFor(shape);
     // Each edge gives a linear distance from the center, normalized to one at the edge.
     return Math.max(...vertices.map(([ax, ay], i) => {
       const [bx, by] = vertices[(i + 1) % vertices.length];
@@ -179,7 +191,12 @@ export function edgeGeometry(edge, findNode) {
   const targetNode = findNode(edge.target.node);
   const source = sourceNode?.position ?? edge.sourcePoint;
   const target = targetNode?.position ?? edge.target.point;
-  const {command, points} = route(edge.type, source, target);
+  const graphics = currentGraphics();
+  const type = edge.type === "straight" ? graphics.line ?? "straight" : edge.type;
+  const dx = target.x-source.x, dy = target.y-source.y;
+  const {command, points} = type === graphics.line && graphics.linePoints
+    ? {command: "L", points: graphics.linePoints.map(p => ({x: source.x+dx*p.x-dy*p.y, y: source.y+dy*p.x+dx*p.y}))}
+    : route(type, source, target);
   const from = sourceNode ? borderPoint(sourceNode, points[0] ?? target) : source;
   const to = targetNode ? borderPoint(targetNode, points.at(-1) ?? source) : target;
   const sourceToward = points[0] ?? to;

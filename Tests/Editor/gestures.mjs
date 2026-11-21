@@ -30,7 +30,8 @@ const renderer = Vue.createRenderer({
   remove, parentNode: n => n.parent, nextSibling: n => n.parent?.children[n.parent.children.indexOf(n)+1],
 });
 const root = element("root");
-root.dataset = {path: "test", role: "admin", user: "admin"};
+root.dataset = {themes: JSON.stringify(["ThinkDefault","VectorStudio","Blueprint"].map(name =>
+  JSON.parse(readFileSync("Public/themes/" + name + ".json", "utf8")))), path: "test", role: "admin", user: "admin"};
 const listeners = {};
 const zoomEvents = {};
 let requestedZoom;
@@ -56,7 +57,7 @@ function node(id, x, y, width, height) {
     fill: "#bbbbbb", border: "#555555", textColor: "#111111", alignment: "center", fontSize: 16, bold: true};
 }
 const {decodeWorksheet, encodeWorksheet} = await import("../../Public/worksheet-json.js");
-let sheet = {title: "Próba", revision: 1, nodes: [
+let sheet = {appearance: {theme:1,palette:1,mode:"auto"}, creator: "admin", title: "Próba", revision: 1, nodes: [
   {...node("outer", 0, 0, 300, 240), text: "child"}, node("inner", 10, 10, 160, 120), node("child", 10, 10, 64, 40),
   node("outside", 340, 0, 100, 80), {...node("auto", -420, 0, 120, 60), autoSize: true},
 ], edges: [{id: "one", source: "outside", target: {point: {x: 400, y: 230}}, type: "straight", appearance: "plain"}]};
@@ -606,10 +607,10 @@ for (const [id, x, y, automatic] of [["outside",180,30,false], ["auto",-420,0,tr
 await properties("outside");
 assert.equal(prop("aria-label", "Háttér HEX"), undefined);
 prop("aria-label","Háttér színválasztó").props.onClick(); await tick();
-prop("aria-label","Háttér #60b77a").props.onClick(); await tick();
-assert.ok(prop("fill","#60b77a", graphic("outside")));
-find(n => n.props.type === "range").props.onInput({target: {value: "255"}}); await tick();
-assert.ok(prop("fill","#ffb77a", graphic("outside")));
+prop("aria-label","Moha").props.onClick(); await tick();
+assert.ok(prop("fill","#478666", graphic("outside")));
+assert.equal(find(n => n.props.type === "range", panel()), undefined);
+assert.ok(prop("fill","#478666", graphic("outside")));
 const section = label => find(n => n.tag === "fieldset" && n.children[0]?.text === label);
 const control = (scope, label) => prop("aria-label", label, scope);
 const edit = (control, value) => control.props.onInput({target: {value}});
@@ -634,13 +635,13 @@ assert.equal(backgroundSwitch.props["aria-pressed"], true);
 backgroundSwitch.props.onClick(); await tick(); await save();
 assert.equal(model("outside").backgroundEnabled, false);
 assert.equal(prop("aria-label", "Háttér színválasztó").props.disabled, true);
-assert.equal(prop("aria-label", "Háttér #60b77a"), undefined);
+assert.equal(prop("aria-label", "Moha"), undefined);
 assert.equal(prop("pointer-events", "fill", graphic("outside")).props.stroke, "none");
 assert.equal(prop("pointer-events", "fill", graphic("outside")).props.fill, "none");
 assert.equal(find(n => n.tag === "clipPath", graphic("outside")), undefined);
 backgroundSwitch.props.onClick(); await tick();
 assert.equal(prop("aria-label", "Háttér színválasztó").props.disabled, false);
-assert.ok(prop("fill", "#ffb77a", graphic("outside")));
+assert.ok(prop("fill", "#478666", graphic("outside")));
 assert.equal(find(n => n.tag === "clipPath", graphic("outside")), undefined);
 const titleSize = control(section("Cím"), "Betűméret");
 assert.equal(titleSize.props.min, 1);
@@ -899,7 +900,7 @@ assert.equal(animatedNode.file.type, "image");
 assert.equal(svgUpload.headers["Content-Type"], "image/svg+xml");
 assert.equal(await svgUpload.body.text(), animation, "the original animation is uploaded intact");
 assert.ok(prop("src", "/api/attachment/test?inline=1&name=mozgas.svg", graphic(animatedNode.id)));
-const alphaColor = () => prop("aria-label", "Kép háttérszíne", panel());
+const alphaColor = () => prop("aria-label", "Kép háttérszíne színválasztó", panel());
 assert.equal(alphaColor().props.disabled, true, "color is inactive until transparency is detected");
 document.createElement = () => ({getContext: () => ({
   drawImage() {},
@@ -910,9 +911,10 @@ graphicImage().props.onLoad({target: {naturalWidth: 1, naturalHeight: 1}});
 delete document.createElement;
 await tick();
 assert.equal(alphaColor().props.disabled, false);
-alphaColor().props.onChange({target: {value: "#123456"}});
+alphaColor().props.onClick(); await tick();
+prop("aria-label","Jelzőfény",panel()).props.onClick();
 await tick();
-assert.equal(graphicImage().props.style.backgroundColor, "#123456");
+assert.equal(graphicImage().props.style.backgroundColor, "#304ccc");
 await press("Alpha csatorna");
 assert.equal(alphaColor().props.disabled, true);
 assert.equal(graphicImage().props.style.backgroundColor, "#ffffff");
@@ -920,7 +922,7 @@ await save();
 assert.equal(model(animatedNode.id).file.alphaEnabled, false);
 await press("Alpha csatorna");
 await save();
-assert.equal(graphicImage().props.style.backgroundColor, "#123456");
+assert.equal(graphicImage().props.style.backgroundColor, "#304ccc");
 delete globalThis.Image;
 toggle("Escape", true); await tick();
 assert.ok(!text(canvasPanel()).includes("fájl feltöltve"));
@@ -1079,7 +1081,7 @@ const gradient = find(n => n.tag === "linearGradient", oneWire());
 const stops = gradient.children.filter(n => n.tag === "stop");
 assert.deepEqual(stops.map(n => n.props.offset), [0, .25, .5, .75, 1]);
 assert.deepEqual(stops.map(n => n.props["stop-opacity"]), [1, 1, .5, 1, 1]);
-assert.ok(stops.every(n => n.props["stop-color"] === "#365bd6"));
+assert.ok(stops.every(n => n.props["stop-color"] === "#304ccc"));
 await press("Nyíl a vonal elején");
 assert.equal(prop("attributeName", "gradientTransform", oneWire()).props.dur, "12s");
 await press("Nyíl a vonal végén");
@@ -1107,8 +1109,8 @@ assert.equal(prop("attributeName", "transform", arrow).props.type, "scale");
 const selectionGlow = prop("class", "wire-selected", oneWire());
 assert.ok(selectionGlow);
 assert.equal(selectionGlow.children.filter(n => n.props["stroke-width"] !== undefined).length, 1);
-assert.equal(prop("attributeName", "stroke-width", selectionGlow).parent.props.stroke, "#365bd6");
-assert.equal(arrow.props.fill, "#365bd6");
+assert.equal(prop("attributeName", "stroke-width", selectionGlow).parent.props.stroke, "#304ccc");
+assert.equal(arrow.props.fill, "#304ccc");
 assert.equal(prop("class", "selection-glow", oneWire()), undefined);
 await press("Animáció bekapcsolása");
 assert.equal(prop("attributeName", "stroke-width", oneWire()), undefined);
@@ -1127,7 +1129,7 @@ for (const [label, shape, vertices] of [["Háromszög", "triangle", 3], ["Ötsz�
   assert.equal(button(label).props["aria-pressed"], true);
   await save();
   assert.equal(model("outside").shape, shape);
-  const polygon = find(n => n.tag === "polygon" && n.props.fill === model("outside").fill, graphic("outside"));
+  const polygon = find(n => n.tag === "polygon" && n.props.fill === "#478666", graphic("outside"));
   assert.equal(polygon.props.points.split(" ").length, vertices);
 }
 await press("Téglalap"); await save();
@@ -1173,3 +1175,23 @@ assert.deepEqual(JSON.parse(doc.text).nested, [{},{literal:"a,b"}]);
 await assert.rejects(importFile(new File(["szöveg"], "hibás.json")), /JSON/);
 await assert.rejects(importFile(new File(["data"], "lap.thnode")), /munkalapok/);
 console.log("Passed document import, JSON precision and unsupported format checks.");
+
+if (!canvasPanel()) { canvasToggle().props.onClick(); await tick(); }
+const chooseAppearance = async (label, value) => {
+  const control = prop("aria-label", label, canvasPanel());
+  assert.equal(control.props.disabled, false);
+  control.props.onChange({target: {value}});
+  await tick();
+};
+await chooseAppearance("Téma", "3");
+await chooseAppearance("Mód", "dark");
+assert.ok(prop("fill", "#102a40", canvas()));
+await chooseAppearance("Téma", "1");
+await chooseAppearance("Paletta", "2");
+assert.ok(prop("fill", "#18251e", canvas()));
+await chooseAppearance("Paletta", "1");
+await chooseAppearance("Mód", "auto");
+assert.ok(prop("fill", "#f5f8fc", canvas()));
+await save();
+assert.deepEqual(sheet.appearance, {theme:1, palette:1, mode:"auto"});
+console.log("Passed theme, palette and display mode changes.");
