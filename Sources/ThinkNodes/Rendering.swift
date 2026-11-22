@@ -795,7 +795,7 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
         }
         return exported ? "<a class=\"\(classes)\" href=\"\(download)\" aria-label=\"Letöltés · \(filename)\">\(packageIcon)\(label)</a>" : "<span class=\"\(classes)\">\(label)</span>"
     }
-    let header = file.showFilename != false ? "<div class=\"node-above\"><header class=\"node-file-name\">\(downloadControl("<span>\(filename)</span>"))</header></div>" : ""
+    let header = file.showFilename != false ? "<header class=\"node-file-name\">\(downloadControl("<span>\(filename)</span>"))</header>" : ""
     let content: String
     switch node.root {
     case "image":
@@ -822,13 +822,20 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
     let comment = node.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || node.hideText == true ? "" :
         "<footer class=\"node-comment formatted-text align-\(node.alignment.rawValue)\">\(markdownHTML(node.text))</footer>"
     let below = marker + comment
-    let belowBlock = below.isEmpty ? "" : "<div class=\"node-below\">\(below)</div>"
     let geometry = boxGeometry(node, graphics: graphics)
     let chrome = elevationShadow(node, geometry: geometry, graphics: graphics) +
         boxSurface(node, geometry: geometry, graphics: graphics, interactive: interactive)
     let translated = chrome.isEmpty ? "" : "<g transform=\"translate(\(number(node.position.x)) \(number(node.position.y)))\">\(chrome)</g>"
+    // A fájlnév a doboz felett, a link és a megjegyzés alatta, külön foreignObjectben
+    // (a Safari a foreignObjecten belüli abszolút pozicionálást rossz helyre rajzolja).
+    let left = number(node.position.x - node.width / 2), top = node.position.y - node.height / 2
+    let ink = "xmlns=\"http://www.w3.org/1999/xhtml\" style=\"color:\(escaped(node.textColor))\""
+    let above = header.isEmpty ? "" :
+        "<foreignObject class=\"node-outside\" x=\"\(left)\" y=\"\(number(top - 30))\" width=\"\(number(node.width))\" height=\"30\"><div \(ink) class=\"node-file-outside node-above\">\(header)</div></foreignObject>"
+    let underneath = below.isEmpty ? "" :
+        "<foreignObject class=\"node-outside\" x=\"\(left)\" y=\"\(number(top + node.height))\" width=\"\(number(node.width))\" height=\"400\"><div \(ink) class=\"node-file-outside node-below\">\(below)</div></foreignObject>"
     return """
-        \(translated)<foreignObject x="\(number(node.position.x-node.width/2))" y="\(number(node.position.y-node.height/2))" width="\(number(node.width))" height="\(number(node.height))" style="overflow:visible"><div xmlns="http://www.w3.org/1999/xhtml" data-file-ink="\(escaped(node.textColor))" style="color:\(escaped(node.textColor))" class="node-file node-\(node.root)">\(header)<div class="node-body">\(content)</div>\(belowBlock)</div></foreignObject>
+        \(translated)\(above)<foreignObject x="\(left)" y="\(number(top))" width="\(number(node.width))" height="\(number(node.height))"><div xmlns="http://www.w3.org/1999/xhtml" data-file-ink="\(escaped(node.textColor))" style="color:\(escaped(node.textColor))" class="node-file node-\(node.root)"><div class="node-body">\(content)</div></div></foreignObject>\(underneath)
         """
 }
 

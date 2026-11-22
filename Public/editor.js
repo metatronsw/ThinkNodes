@@ -2448,6 +2448,7 @@ createApp({
     }
 
     // Fájlt tároló objektum (Rendering.swift fileBox): felül fájlnév, középen tartalom, alul megjegyzés.
+    const fileNameSpace = 30, belowSpace = 400;
     function renderFileBox(node, destination) {
       const file = node.file, root = rootType(node.type);
       let content;
@@ -2485,12 +2486,18 @@ createApp({
         onClick: e => { e.stopPropagation(); if (destination) followBoxLink(destination); }},
         [icon(node.link.kind === "url" ? "website" : "link"), h("span", linkCaption(node.link))]) : null;
       // A doboz belsejében csak a tartalom van; a fájlnév a doboz felett, a link és a megjegyzés alatta áll.
-      return h("foreignObject", {x: -node.width/2, y: -node.height/2, width: node.width, height: node.height, style: {overflow: "visible"}}, [
-        h("div", {class: ["node-file", "node-" + root], style: {color: paint(node.textColor, 1)}}, [
-          file.showFilename !== false ? h("div", {class: "node-above"}, [h("header", {class: "node-file-name"}, [renderFileDownload(node)])]) : null,
-          h("div", {class: "node-body"}, [content]),
-          marker || comment ? h("div", {class: "node-below"}, [marker, comment]) : null,
+      // Külön foreignObjectek, mert a Safari a foreignObjecten belüli abszolút pozicionálást rossz helyre rajzolja.
+      const ink = {color: paint(node.textColor, 1)}, left = -node.width / 2, top = -node.height / 2;
+      return h("g", {class: "node-file-parts"}, [
+        file.showFilename !== false ? h("foreignObject", {class: "node-outside", x: left, y: top - fileNameSpace, width: node.width, height: fileNameSpace}, [
+          h("div", {class: "node-file-outside node-above", style: ink}, [h("header", {class: "node-file-name"}, [renderFileDownload(node)])]),
+        ]) : null,
+        h("foreignObject", {x: left, y: top, width: node.width, height: node.height}, [
+          h("div", {class: ["node-file", "node-" + root], style: ink}, [h("div", {class: "node-body"}, [content])]),
         ]),
+        marker || comment ? h("foreignObject", {class: "node-outside", x: left, y: -top, width: node.width, height: belowSpace}, [
+          h("div", {class: "node-file-outside node-below", style: ink}, [marker, comment]),
+        ]) : null,
       ]);
     }
 
