@@ -723,3 +723,6 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 /* Kép láthatósága: az Áttetsző és az Elmosott magára a képre hat. */
 .node-file.node-image.mode-translucent img { opacity: .75; }
 .node-file.node-image.mode-blurred img { opacity: .98; filter: blur(2px); }
+/* A vászon szövege nagyításkor arányosan skálázódik: a Safari (WebKit) enélkül minden nagyításon
+   kerekített betűméretet választ, ezért a szöveg mérete a dobozhoz képest ugrál. */
+svg text { text-rendering: geometricPrecision; }
