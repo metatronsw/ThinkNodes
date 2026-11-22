@@ -644,8 +644,8 @@ export function labelLayout(node, blocks = []) {
     offset += line.step;
     const align = line.justify || line.indent > 0 ? "left" : node.alignment ?? "center";
     const x = align === "left" ? -labelWidth / 2 + line.indent : align === "right" ? labelWidth / 2 : 0;
-    // Kényszerített sorkizárás: minden (nem üres) sor a doboz mindkét széléig ér (textLength, a böngésző méri).
-    const justifyWidth = line.justify && line.text.length > 1 && textWidth(line.text, line.size) < labelWidth - line.indent
+    // Sorkizárás: csak a tördelt (nem bekezdés-záró) sorok érnek a doboz mindkét széléig; a rövid sor balra zárt marad.
+    const justifyWidth = line.justify && line.wrapped && line.text.includes(" ") && textWidth(line.text, line.size) < labelWidth - line.indent
       ? labelWidth - line.indent : undefined;
     return {...line, x, y, anchor: {left: "start", center: "middle", right: "end"}[align], justifyWidth};
   });

@@ -1201,9 +1201,9 @@ assert.ok(listed.lines[0].x > -sample.width / 2 * 0.94 + 8);
 const blocks = [{kind: "body", runs: [{text: "Text"}]}];
 const justifiedRows = labelLayout({...sample, width: 130, justified: true},
   [{kind: "body", runs: [{text: "Ez egy rövid példa több szövegsorral."}]}]).lines;
-// Kényszerített sorkizárás: az utolsó sor is a doboz teljes szélességéig ér.
+// Sorkizárás: a tördelt sorok kifeszülnek, a bekezdés utolsó (rövid) sora nem.
 assert.ok(justifiedRows[0].justifyWidth > 0);
-assert.equal(justifiedRows.at(-1).justifyWidth, justifiedRows[0].justifyWidth);
+assert.equal(justifiedRows.at(-1).justifyWidth, undefined);
 assert.equal(justifiedRows.at(-1).anchor, "start");
 const largeLabel = {...sample, width: 64, height: 40, fontSize: 80};
 const bounded = labelLayout(largeLabel, [{kind: "body", runs: [{text: "Hosszú szöveg"}]}]);

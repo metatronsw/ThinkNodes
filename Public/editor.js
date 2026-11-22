@@ -2455,7 +2455,8 @@ createApp({
     const scrollbarPress = e => {
       const el = e.currentTarget, bounds = el.getBoundingClientRect();
       const scale = bounds.width / (el.offsetWidth || 1), band = 14;
-      const x = (e.clientX - bounds.left) / scale, y = (e.clientY - bounds.top) / scale;
+      const point = e.touches?.[0] ?? e;
+      const x = (point.clientX - bounds.left) / scale, y = (point.clientY - bounds.top) / scale;
       const vertical = el.scrollHeight > el.clientHeight && x >= el.offsetWidth - band;
       const horizontal = el.scrollWidth > el.clientWidth && y >= el.offsetHeight - band;
       if (vertical || horizontal) e.stopPropagation();
@@ -2503,7 +2504,7 @@ createApp({
         ]);
       } else if (root === "text") {
         content = h("div", {class: ["node-note", {"with-fold": backgroundMode(node) === "solid"}], style: {fontSize: (node.fontSize ?? 13) + "px"},
-          onPointerdown: scrollbarPress, onWheel: stopScroll},
+          onPointerdown: scrollbarPress, onMousedown: scrollbarPress, onTouchstart: scrollbarPress, onWheel: stopScroll},
           [renderFileText(node)]);
       } else {
         const ext = (file.filename ?? file.asset).split(".").pop().toUpperCase();
@@ -2519,18 +2520,17 @@ createApp({
         onClick: e => { e.stopPropagation(); if (destination) followBoxLink(destination); }},
         [icon(node.link.kind === "url" ? "website" : "link"), h("span", linkCaption(node.link))]) : null;
       // A doboz belsejében csak a tartalom van; a fájlnév a doboz felett, a link és a megjegyzés alatta áll.
-      // Külön foreignObjectek, mert a Safari a foreignObjecten belüli abszolút pozicionálást rossz helyre rajzolja.
-      const ink = {color: paint(node.textColor, 1)}, left = -node.width / 2, top = -node.height / 2;
-      return h("g", {class: "node-file-parts"}, [
-        file.showFilename !== false ? h("foreignObject", {class: "node-outside", x: left, y: top - fileNameSpace, width: node.width, height: fileNameSpace}, [
-          h("div", {class: "node-file-outside node-above", style: ink}, [h("header", {class: "node-file-name"}, [renderFileDownload(node)])]),
-        ]) : null,
-        h("foreignObject", {x: left, y: top, width: node.width, height: node.height}, [
-          h("div", {class: ["node-file", "node-" + root, "mode-" + backgroundMode(node)], style: ink}, [h("div", {class: "node-body"}, [content])]),
+      // Egyetlen foreignObject, normál (nem abszolút) elrendezéssel: a Safari így is jó helyre rajzolja,
+      // és dobozonként csak egy HTML-réteget kell újraelrendezni nagyításkor.
+      const below = marker || comment;
+      return h("foreignObject", {class: "node-file-frame", x: -node.width / 2, y: -node.height / 2 - fileNameSpace, width: node.width,
+        height: fileNameSpace + node.height + (below ? belowSpace : 0)}, [
+        h("div", {class: "node-file-stack", style: {color: paint(node.textColor, 1)}}, [
+          h("div", {class: "node-above", style: {height: fileNameSpace + "px"}},
+            file.showFilename !== false ? [h("header", {class: "node-file-name"}, [renderFileDownload(node)])] : []),
+          h("div", {class: ["node-file", "node-" + root, "mode-" + backgroundMode(node)], style: {height: node.height + "px"}}, [h("div", {class: "node-body"}, [content])]),
+          below ? h("div", {class: "node-below"}, [marker, comment]) : null,
         ]),
-        marker || comment ? h("foreignObject", {class: "node-outside", x: left, y: -top, width: node.width, height: belowSpace}, [
-          h("div", {class: "node-file-outside node-below", style: ink}, [marker, comment]),
-        ]) : null,
       ]);
     }
 
@@ -2634,9 +2634,8 @@ createApp({
           node.file ? renderFileBox(node, destination) : null,
           junctionLabel,
           linkPreview,
-          labels ? h("svg", {x: -drawn.width/2, y: -drawn.height/2, width: drawn.width, height: drawn.height,
-            viewBox: [-drawn.width/2, -drawn.height/2, drawn.width, drawn.height].join(" "), overflow: "hidden",
-            "pointer-events": "none"}, [labels]) : null,
+          // A szöveg közvetlenül a doboz csoportjában van (nincs dobozonkénti vágás): az elrendezés eleve a dobozon belül tartja.
+          labels,
           editingObject.value === node.id ? editOverlay(node, -drawn.width/2,
             junction ? -14 : (layout.lines[0]?.y ?? (node.file ? drawn.height/2 - 20 : 0)) - 18,
             drawn.width, editKey.value === "text" && !junction ? Math.max(34, drawn.height/2) : 28) : null,

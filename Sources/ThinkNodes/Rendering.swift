@@ -593,8 +593,8 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
         case .center: (textX, anchor) = (0, "middle")
         }
         var style = ""
-        // Kényszerített sorkizárás: minden (nem üres) sor a doboz mindkét széléig ér; a böngésző méri ki a szélességet.
-        if line.justify && line.text.count > 1 && textWidth(line.text, size: line.size) < labelWidth - line.indent {
+        // Sorkizárás: csak a tördelt (nem bekezdés-záró) sorok érnek a doboz mindkét széléig; a rövid sor balra zárt marad.
+        if line.justify && line.wrapped && line.text.contains(" ") && textWidth(line.text, size: line.size) < labelWidth - line.indent {
             style += " textLength=\"\(number(labelWidth - line.indent))\" lengthAdjust=\"spacing\""
         }
         let baseline = top + line.gap + line.size * (1.25 / 2 + 0.33)
@@ -624,7 +624,7 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
     let contents = """
         \(elevationShadow(node, geometry: geometry, graphics: graphics))
         \(boxSurface(node, geometry: geometry, graphics: graphics, interactive: interactive))
-        \(previewImage)<svg x="\(number(-x))" y="\(number(-y))" width="\(number(width))" height="\(number(height))" viewBox="\(number(-x)) \(number(-y)) \(number(width)) \(number(height))" overflow="hidden" pointer-events="none"><text class="node-text" font-family="\(escaped((graphics ?? VisualTheme.Graphics()).fontFamily(node.font)))" pointer-events="none">\(spans)</text></svg>
+        \(previewImage)<text class="node-text" font-family="\(escaped((graphics ?? VisualTheme.Graphics()).fontFamily(node.font)))" pointer-events="none">\(spans)</text>
         \(marker)
         """
     return """
@@ -820,16 +820,13 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
     let chrome = elevationShadow(node, geometry: geometry, graphics: graphics) +
         boxSurface(node, geometry: geometry, graphics: graphics, interactive: interactive)
     let translated = chrome.isEmpty ? "" : "<g transform=\"translate(\(number(node.position.x)) \(number(node.position.y)))\">\(chrome)</g>"
-    // A fájlnév a doboz felett, a link és a megjegyzés alatta, külön foreignObjectben
-    // (a Safari a foreignObjecten belüli abszolút pozicionálást rossz helyre rajzolja).
-    let left = number(node.position.x - node.width / 2), top = node.position.y - node.height / 2
-    let ink = "xmlns=\"http://www.w3.org/1999/xhtml\" style=\"color:\(escaped(node.textColor))\""
-    let above = header.isEmpty ? "" :
-        "<foreignObject class=\"node-outside\" x=\"\(left)\" y=\"\(number(top - 30))\" width=\"\(number(node.width))\" height=\"30\"><div \(ink) class=\"node-file-outside node-above\">\(header)</div></foreignObject>"
-    let underneath = below.isEmpty ? "" :
-        "<foreignObject class=\"node-outside\" x=\"\(left)\" y=\"\(number(top + node.height))\" width=\"\(number(node.width))\" height=\"400\"><div \(ink) class=\"node-file-outside node-below\">\(below)</div></foreignObject>"
+    // A fájlnév a doboz felett, a link és a megjegyzés alatta, egyetlen foreignObjectben normál
+    // (nem abszolút) elrendezéssel: a Safari így is jó helyre rajzolja, és nagyításkor kevesebb a munka.
+    let top = node.position.y - node.height / 2 - 30
+    let height = 30 + node.height + (below.isEmpty ? 0 : 400)
+    let underneath = below.isEmpty ? "" : "<div class=\"node-below\">\(below)</div>"
     return """
-        \(translated)\(above)<foreignObject x="\(left)" y="\(number(top))" width="\(number(node.width))" height="\(number(node.height))"><div xmlns="http://www.w3.org/1999/xhtml" data-file-ink="\(escaped(node.textColor))" style="color:\(escaped(node.textColor))" class="node-file node-\(node.root) mode-\(node.resolvedBackgroundMode.rawValue)"><div class="node-body">\(content)</div></div></foreignObject>\(underneath)
+        \(translated)<foreignObject class="node-file-frame" x="\(number(node.position.x - node.width / 2))" y="\(number(top))" width="\(number(node.width))" height="\(number(height))"><div xmlns="http://www.w3.org/1999/xhtml" class="node-file-stack" style="color:\(escaped(node.textColor))"><div class="node-above" style="height:30px">\(header)</div><div data-file-ink="\(escaped(node.textColor))" style="height:\(number(node.height))px" class="node-file node-\(node.root) mode-\(node.resolvedBackgroundMode.rawValue)"><div class="node-body">\(content)</div></div>\(underneath)</div></foreignObject>
         """
 }
 
