@@ -1,6 +1,12 @@
-for (const card of document.querySelectorAll(".project-card")) {
-  card.style.setProperty("--sheet-color", card.dataset.color);
+const projectCards = document.querySelectorAll(".project-card");
+function updateCardColors() {
+  const dark = document.documentElement.dataset.display === "dark";
+  for (const card of projectCards) {
+    card.style.setProperty("--sheet-color", dark ? card.dataset.colorDark : card.dataset.colorLight);
+  }
 }
+window.addEventListener("thinknodes-display", updateCardColors);
+updateCardColors();
 
 export function contextMenu(event, entries) {
   event.preventDefault();

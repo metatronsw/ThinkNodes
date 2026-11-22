@@ -20,6 +20,26 @@ export function imageStem(file) {
   return file.filename ?? file.asset.replace(/\.[^.]+$/, "");
 }
 
+export function fileNameParts(file, title) {
+  if (file.type === "image") {
+    return {stem: imageStem(file), extension: file.fileExtension ?? file.asset.split(".").at(-1)};
+  }
+  const name = file.filename ?? file.asset ?? (title.toLowerCase().endsWith("." + file.type)
+    ? title : (title || "Dokumentum") + "." + file.type);
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? {stem: name.slice(0, dot), extension: name.slice(dot + 1)} : {stem: name, extension: ""};
+}
+
+export function fileName(file, title) {
+  const {stem, extension} = fileNameParts(file, title);
+  return extension ? stem + "." + extension : stem;
+}
+
+export function fileReference(file, title) {
+  return file.asset ?? file.filename ?? (["md","txt","json"].includes(file.type)
+    && title.toLowerCase().endsWith("." + file.type) ? title : undefined);
+}
+
 export function objectURL(path, id) {
   return new URL("/" + path + "#object-" + id, location.origin).href;
 }
@@ -73,20 +93,26 @@ async function storeAttachment(blob, path, csrf, name) {
     const detail = await response.json().catch(() => ({}));
     throw Error(detail.reason || "A fájl feltöltése sikertelen (" + response.status + ").");
   }
+  return response.headers.get("X-ThinkNodes-Asset") ?? name;
 }
 
 export async function importFile(blob, path, csrf) {
   const name = blob.name || (blob.type.startsWith("image/") ? "Beillesztett kép" : "Dokumentum");
   const title = Array.from(name.replace(/[\u0000-\u001f\u007f]/g, " ").trim()).slice(0,120).join("") || "Dokumentum";
   const ext = name.split(".").pop().toLowerCase();
-  let mime = media[blob.type] ? blob.type : extensions[ext];
-  if (!mime && (blob.type.startsWith("image/") || ["avif","bmp","ico","tiff","heic"].includes(ext))) {
-    if (blob.size > 12*1024*1024) throw Error("A kép legfeljebb 12 MiB lehet.");
-    const source = URL.createObjectURL(blob);
-    try { blob = await pngForClipboard(source); mime = "image/png"; }
-    catch { throw Error("A böngésző nem tudja megjeleníteni ezt a képet."); }
-    finally { URL.revokeObjectURL(source); }
+  if (ext === "thnode") {
+    if (blob.size > 12*1024*1024) throw Error("A fájl legfeljebb 12 MiB lehet.");
+    const response = await fetch("/api/worksheet-file/" + path + "?name=" + encodeURIComponent(name), {
+      method: "POST", headers: {"Content-Type": "application/octet-stream", "X-CSRF-Token": csrf}, body: blob,
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw Error(detail.reason || "A munkalap feltöltése sikertelen.");
+    }
+    const item = await response.json();
+    return {title: item.title, link: item.link, file: {type: "worksheet", asset: item.asset, filename: name}, width: 260, height: 80};
   }
+  const mime = media[blob.type] ? blob.type : extensions[ext];
   if (mime) {
     if (blob.size > 12*1024*1024) throw Error("A médiafájl legfeljebb 12 MiB lehet.");
     const image = media[mime] === "image";
@@ -121,21 +147,23 @@ export async function importFile(blob, path, csrf) {
     }
     const {asset} = await response.json();
     const file = {type: media[mime], asset};
-    if (image) file.filename = filename;
+    if (image) {
+      file.filename = filename;
+      file.fileExtension = mediaName.split(".").at(-1);
+    } else file.filename = mediaName;
     return {title: image ? "" : title, file, ...dimensions};
   }
-  if (ext === "thnode") throw Error("A .thnode kiterjesztés a munkalapoké.");
   if (!textExtensions.includes(ext) || blob.size > 100000) {
-    await storeAttachment(blob, path, csrf, name);
-    return {title, file: {type: "attachment", asset: name}, width: 260, height: 100};
+    const asset = await storeAttachment(blob, path, csrf, name);
+    return {title, file: {type: "attachment", asset, filename: name}, width: 260, height: 100};
   }
   let text = await blob.text();
   if (ext === "json") {
     text = formatJSON(text);
   }
   checkText(text);
-  await storeAttachment(blob, path, csrf, name);
-  return {title, text, file: ext === "json" ? {type: ext} : {type: ext, filename: name}, width: 340, height: 220};
+  const asset = await storeAttachment(blob, path, csrf, name);
+  return {title, text, file: {type: ext, asset, filename: name}, width: 340, height: 220};
 }
 
 export async function pngForClipboard(url) {

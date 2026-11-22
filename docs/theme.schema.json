@@ -113,6 +113,11 @@
             "parallelogram"
           ]
         },
+        "boxChamfer": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 24
+        },
         "junction": {
           "enum": [
             "ellipse",
@@ -129,6 +134,14 @@
             "arc",
             "rope"
           ]
+        },
+        "roundedWires": {
+          "type": "boolean"
+        },
+        "lineArc": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.25
         },
         "contour": {
           "type": "array",
@@ -183,8 +196,12 @@
         "grid": {
           "enum": [
             "lines",
-            "dots"
+            "dots",
+            "drafting"
           ]
+        },
+        "glass": {
+          "type": "boolean"
         },
         "glow": {
           "type": "number",

@@ -1,15 +1,15 @@
 import {bindAudioPlayers} from "./audio-player.js";
-import {assetURL, attachmentURL, checkText, imageStem, importFile, objectURL, pngForClipboard, validImageStem, writeText} from "./canvas-files.js";
+import {assetURL, attachmentURL, checkText, fileName, fileNameParts, fileReference, imageStem, importFile, objectURL, pngForClipboard, validImageStem, writeText} from "./canvas-files.js";
 import {decodeWorksheet, encodeWorksheet} from "./worksheet-json.js";
 import {sharedMouse} from "./mouse.js";
-import {worksheetChanges, replayChanges} from "./editor-history.js";
+import {worksheetChanges, replayChanges} from "./editor-history.js?v=1";
 import {flashNode, flashPoint} from "./ping.js";
 import {showTooltip, hideTooltip} from "./tooltip.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {useWorksheetGeometry, automaticBorder, automaticGridColor, arrowTransform, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, lineAppearances, lineTypes, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, wireGradientValues} from "./geometry.js?v=9";
+import {useWorksheetGeometry, automaticBorder, automaticGridColor, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, lineAppearances, lineTypes, maximumLineWidth, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=17";
 
-import {ancestors, overlapFraction} from "./containers.js?v=2";
+import {ancestors, overlapFraction} from "./containers.js?v=3";
 
 const mount = document.querySelector("#editor");
 const {path, csrf, user, motionRate} = mount.dataset;
@@ -26,6 +26,11 @@ function icon(name) {
 function button(label, onClick, props = {}) {
   const {symbol = "file", ...attributes} = props;
   return h("button", {type: "button", class: "button", onClick, ...attributes}, [icon(symbol), label]);
+}
+
+const headerButtonClass = "button header-button";
+function headerButton(onClick, {class: modifiers, ...props}) {
+  return button("", onClick, {...props, class: [headerButtonClass, modifiers]});
 }
 
 const themes = JSON.parse(mount.dataset.themes || "[]");
@@ -50,7 +55,7 @@ function paint(value, role) {
 }
 
 const ColorPicker = {
-  props: {label: String, color: [String, Number], role: Number, disabled: Boolean, compact: Boolean},
+  props: {label: String, color: [String, Number], role: Number, disabled: Boolean, compact: Boolean, transparent: Boolean, clear: Function},
   emits: ["update"],
   setup(props, {emit}) {
     const expanded = ref(false);
@@ -59,17 +64,22 @@ const ColorPicker = {
       props.compact ? null : h("span", props.label),
       h("button", {type: "button", class: "color-sample", "aria-label": props.label + " színválasztó",
         disabled: props.disabled, "aria-expanded": expanded.value,
-        onClick: () => { expanded.value = !expanded.value; }}, [tile(props.color)]),
-      expanded.value && !props.disabled ? h("div", {class: "color-tools color-presets"},
-        activePalette.value?.colors.map(c => h("button", {type: "button", key: c.id, title: c.name,
-          "aria-label": c.name, "aria-pressed": c.id === props.color,
-          onClick: () => { emit("update", c.id); }}, [tile(c.id)]))) : null,
+        onClick: () => { expanded.value = !expanded.value; }}, [
+          props.transparent ? h("span", {class: "palette-tile transparent-swatch"}) : tile(props.color),
+        ]),
+      expanded.value && !props.disabled ? h("div", {class: "color-tools color-presets"}, [
+        h("button", {type: "button", ...controlName(props.clear ? "Háttér törlése" : "Alapértelmezett szín"),
+          onClick: () => props.clear ? props.clear() : emit("update", props.role)}, [icon("clear-color")]),
+        ...(activePalette.value?.colors ?? []).map(c => h("button", {type: "button", key: c.id, title: c.name,
+          "aria-label": c.name, "aria-pressed": !props.transparent && c.id === props.color,
+          onClick: () => { emit("update", c.id); }}, [tile(c.id)])),
+      ]) : null,
     ]);
   },
 };
 
-function colorPicker(label, value, change, key, disabled = false, compact = false, role = 2) {
-  return h(ColorPicker, {key, label, role, color: value, disabled, compact, onUpdate: change});
+function colorPicker(label, value, change, key, disabled = false, compact = false, role = 2, options = {}) {
+  return h(ColorPicker, {key, label, role, color: value, disabled, compact, onUpdate: change, ...options});
 }
 
 function controlName(label) {
@@ -95,12 +105,13 @@ function optionSymbol(tag, attributes, viewBox = "0 0 24 24") {
 
 function shapeSymbol(value) {
   const [tag, geometry] = shapeGeometry(value, 18, 16);
-  if (value === "rounded") geometry.rx = 4;
+  if (value === "rounded" && tag === "rect") geometry.rx = 4;
   return optionSymbol(tag, geometry, "-12 -12 24 24");
 }
 
 function lineTypeSymbol(type) {
   if (type === "zigzag") return optionSymbol("path", {d: "M3 12H10L14 8L10 16L14 12H21", "stroke-linecap": "round"});
+  if (type === "lightning") return optionSymbol("path", {d: "M2 12L5 8L8 16L11 8L14 16L17 8L20 16L23 12"});
   const target = {point: {x: 21, y: type === "sCurve" ? 18 : 12}};
   const sourcePoint = {x: 3, y: type === "sCurve" ? 6 : 12};
   const {d} = edgeGeometry({type, sourcePoint, target}, () => undefined);
@@ -199,14 +210,26 @@ function shape(node, linked, dropTarget = false) {
     return h(tag, {...attrs, fill: paint(node.fill, 2)});
   }
   const [tag, geometry] = shapeGeometry(node.shape, node.width, node.height);
+  const image = node.file?.type === "image" ? node.file : null;
+  const blurred = node.backgroundBlur === true;
+  const empty = node.backgroundEnabled === false ||
+    (image && !blurred && image.alphaEnabled !== false && image.alphaBackground == null);
   if (dropTarget) return h(tag, {...geometry, class: "container-drop-target", "data-container-candidate": "",
-    fill: node.backgroundEnabled === false ? "none" : paint(node.fill, 2), "pointer-events": "fill",
+    fill: empty ? "none" : paint(node.fill, 2), "pointer-events": "fill",
     stroke: "#08796c", "stroke-width": 5, "stroke-dasharray": "0 8", "stroke-linecap": "round",
     "vector-effect": "non-scaling-stroke"});
-  if (node.backgroundEnabled === false) return h(tag, {...geometry, fill: "none", stroke: "none", "pointer-events": "fill"});
+  if (empty) return h(tag, {...geometry, "data-editor-only": "", fill: "none", stroke: "none", "pointer-events": "fill"});
   const locked = node.kind === "container" && node.locked;
-  const style = {fill: paint(node.fill, 2), stroke: automaticBorder(paint(node.fill, 2)), "stroke-width": locked ? 6.4 : 1.6,
-    "data-locked-outline": locked ? "" : undefined, "stroke-dasharray": linked ? "7 4" : undefined};
+  const glass = graphics.value.glass && !blurred && !image;
+  const fill = image?.alphaEnabled === false ? "#ffffff" : paint(image?.alphaBackground ?? node.fill, 2);
+  const style = {fill, stroke: image ? "none" : glass ? "url(#glass-rim)" : automaticBorder(fill), "data-box-surface": "",
+    "stroke-width": locked ? 6.4 : glass ? 3 : 1.6,
+    "data-locked-outline": locked ? "" : undefined, "stroke-dasharray": linked && !node.file ? "7 4" : undefined,
+    opacity: blurred ? .5 : undefined, filter: blurred ? "url(#box-background-blur)" : undefined};
+  if (glass) return [
+    h(tag, {...style, ...geometry, "fill-opacity": .66}),
+    h(tag, {...geometry, fill: "url(#glass-sheen)", "pointer-events": "none", "aria-hidden": "true"}),
+  ];
   return h(tag, {...style, ...geometry});
 }
 
@@ -216,29 +239,25 @@ function resolveWireColor(edge) { return paint(edge.color, 3); }
 function wireDrawing(edge, geometry) {
   const {from, to, sourceToward, targetToward, bent, path} = geometry;
   const paint = edgePaint({...edge, color: resolveWireColor(edge)});
-  const ends = {};
-  for (const [end, tip, toward, visible] of [
-    ["source", from, sourceToward, paint.startArrow], ["target", to, targetToward, paint.endArrow],
-  ]) {
-    const dx = toward.x-tip.x, dy = toward.y-tip.y;
-    const distance = Math.hypot(dx,dy);
-    const available = bent || !(paint.startArrow && paint.endArrow) ? distance : distance/2;
-    const length = visible ? Math.min(paint.width*6.75, available) : paint.width*6.75;
-    const ratio = visible && distance ? length/distance : 0;
-    ends[end] = {visible, transform: arrowTransform(tip,toward,length/6.75),
-      base: {x: tip.x+dx*ratio, y: tip.y+dy*ratio}};
+  const taper = taperedArc(geometry, paint);
+  if (taper) {
+    return {ends: taper.ends, stroke: {d: taper.outline(), fill: paint.color, stroke: "none"}, paint, taper};
   }
+  const limit = bent || !(paint.startArrow && paint.endArrow) ? Infinity : Math.hypot(to.x - from.x, to.y - from.y) / 2;
+  const ends = {source: wireArrow(from, sourceToward, paint.width, paint.startArrow, limit),
+    target: wireArrow(to, targetToward, paint.width, paint.endArrow, limit)};
   const stroke = {d: path(ends.source.base, ends.target.base), fill: "none", stroke: paint.color,
     "stroke-width": paint.lineWidth, "stroke-linecap": paint.linecap, "stroke-dasharray": paint.dash};
   return {ends, stroke, paint};
 }
 
-function animatedWire(edge, paint, from, to) {
+function animatedWire(edge, paint, from, to, taper, shaftPath) {
   if (!edge.animated) return {};
   const loop = {repeatCount: "indefinite"};
   if (edge.appearance === "thick") {
-    return {shaft: h("animate", {...loop, attributeName: "stroke-width",
-      values: [paint.lineWidth, paint.lineWidth * 1.45, paint.lineWidth].join(";"), dur: "3s"})};
+    const pulse = Math.min(maximumLineWidth, paint.lineWidth * 1.45);
+    const values = taper ? [shaftPath, taper.outline(pulse / paint.lineWidth), shaftPath] : [paint.lineWidth, pulse, paint.lineWidth];
+    return {shaft: h("animate", {...loop, attributeName: taper ? "d" : "stroke-width", values: values.join(";"), dur: "3s"})};
   }
   const reverse = paint.startArrow && !paint.endArrow;
   const roundTrip = paint.startArrow && paint.endArrow;
@@ -299,15 +318,29 @@ createApp({
       const draft = insertion.value;
       return draft ? edges.filter(e => e.id !== draft.original?.id).concat(insertionEdges.value) : edges;
     });
+    const elevatedNodes = computed(() => {
+      const elevated = new Set(sceneNodes.value.filter(node => node.elevated === true).map(node => node.id));
+      if (!elevated.size) return elevated;
+      const children = new Map();
+      for (const {id, parent} of sceneNodes.value) {
+        if (!parent) continue;
+        if (!children.has(parent)) children.set(parent, []);
+        children.get(parent).push(id);
+      }
+      for (const id of elevated) for (const child of children.get(id) ?? []) elevated.add(child);
+      return elevated;
+    });
     const orderedNodes = computed(() => [...sceneNodes.value].sort((a,b) =>
+      Number(elevatedNodes.value.has(a.id))-Number(elevatedNodes.value.has(b.id)) ||
       Number(b.kind === "container")-Number(a.kind === "container") || b.width*b.height-a.width*a.height));
     const wireLayers = computed(() => {
       const nodes = orderedNodes.value;
       const order = new Map(nodes.map((node, index) => [node.id, index]));
+      const firstElevated = nodes.findIndex(node => elevatedNodes.value.has(node.id));
       const layers = Array.from({length: nodes.length + 1}, () => []);
       for (const edge of sceneEdges.value) {
         const index = Math.min(order.get(edge.source) ?? nodes.length, order.get(edge.target.node) ?? nodes.length);
-        layers[index].push(edge);
+        layers[index === nodes.length && firstElevated >= 0 ? firstElevated : index].push(edge);
       }
       return layers;
     });
@@ -396,7 +429,6 @@ createApp({
     const gridVisible = ref(preferences.showGrid ?? true);
     const snapToGrid = ref(preferences.snap ?? false);
     const panLocked = ref(preferences.panLocked ?? false);
-    const projectFiles = ref(null);
     const spacePan = ref(false);
     const previewImages = ref([]);
     async function loadPreviewImages() {
@@ -663,6 +695,12 @@ createApp({
         problem.value = "A művelet ütközik a munkalap jelenlegi állapotával vagy egy másik szerkesztő foglalásával.";
         return;
       }
+      const retained = new Set(next.nodes.flatMap(node => node.file ? [fileReference(node.file, node.title)] : []));
+      const removedFiles = board.value.nodes.filter(node => {
+        const reference = node.file && fileReference(node.file, node.title);
+        return reference && !retained.has(reference);
+      });
+      if (!confirmFileRemoval(removedFiles)) return;
       board.value = next;
       historyBase = copy(next);
       destination.value = [...destination.value, entry];
@@ -850,13 +888,13 @@ createApp({
         if (item?.file) {
           const file = {...item.file};
           if (file.asset && sourcePath !== path) {
-            const generic = file.type === "attachment";
-            const url = generic ? attachmentURL(sourcePath, file.asset) : assetURL(sourcePath, file.asset);
+            const url = ["image","mp3"].includes(file.type) ? assetURL(sourcePath, file.asset) : "/api/box-file/" + sourcePath + "?id=" + encodeURIComponent(item.id);
             const blob = await (await checked(await fetch(url))).blob();
-            const filename = generic ? file.asset : file.type === "image" ? imageStem(file) + "." + file.asset.split(".").at(-1) : item.title;
-            file.asset = (await importFile(new File([blob], filename, {type: blob.type}), path, csrf)).file.asset;
+            const imported = await importFile(new File([blob], fileName(file, item.title), {type: blob.type}), path, csrf);
+            addNode(position, {...imported, text: item.text, title: item.title, width: item.width, height: item.height});
+            return;
           }
-          addNode(position, {file, text: item.text, title: item.title, width: item.width, height: item.height});
+          addNode(position, {file, link: item.link, text: item.text, title: item.title, width: item.width, height: item.height});
           return;
         }
       }
@@ -869,12 +907,14 @@ createApp({
     async function importFiles(files, position, belowButton = false) {
       if (!online.value) throw Error("A beillesztéshez aktív szerkesztői kapcsolat szükséges.");
       const failures = [];
-      for (const [index, blob] of files.entries()) {
+      let bottom = position.y;
+      for (const blob of files) {
         try {
           const properties = await importFile(blob, path, csrf);
           if (!online.value) throw Error("A kapcsolat megszakadt.");
-          const offset = belowButton ? properties.height / 2 : 0;
-          addNode({x: position.x + 24*index, y: position.y + offset + 24*index}, properties);
+          const y = bottom + (belowButton || bottom !== position.y ? properties.height / 2 : 0);
+          addNode({x: position.x, y}, properties);
+          bottom = y + properties.height / 2 + 46;
         } catch (error) { failures.push((blob.name || "Vágólap") + " · " + error.message); }
       }
       if (failures.length) throw Error(failures.join("\n"));
@@ -986,7 +1026,37 @@ createApp({
       board.value.edges = board.value.edges.filter(e => e.id !== shorter.id);
     }
 
-    function removeObjects(ids, preserve, selectedEdges = new Set()) {
+    function confirmFileRemoval(nodes) {
+      if (!nodes.length) return true;
+      const names = new Set(nodes.map(node => fileName(node.file, node.title)));
+      return confirm("Lomtárba helyezed a fájlokat és törlöd a dobozaikat?\n" + [...names].join("\n"));
+    }
+
+    function deleteObjects(ids, preserve, edges = new Set()) {
+      const fileNodes = [...ids].map(id => nodeMap.value.get(id))
+        .filter(node => node?.file && fileReference(node.file, node.title));
+      if (!fileNodes.length) { removeObjects(ids, preserve, edges); return; }
+      const refs = new Set(fileNodes.map(node => fileReference(node.file, node.title)).filter(Boolean));
+      if (!confirmFileRemoval(fileNodes)) return;
+      for (const node of board.value.nodes) {
+        if (node.file && refs.has(fileReference(node.file, node.title))) ids.add(node.id);
+      }
+      if (batchBlocked(ids)) return;
+      transfer(() => enqueue(async () => {
+        await commit();
+        const before = copy(board.value);
+        removeObjects(ids, preserve, edges, false);
+        const after = copy(board.value);
+        try { await commit(); recordChanges(); }
+        catch (error) {
+          board.value = rebaseWorksheet(after, copy(board.value), before);
+          if (!worksheetChanges(baseline, copy(board.value)).length) savedGeneration.value = generation.value;
+          throw error;
+        }
+      }));
+    }
+
+    function removeObjects(ids, preserve, selectedEdges = new Set(), record = true) {
       const boxes = new Set([...ids].filter(id => nodeMap.value.get(id)?.kind !== "connectionPoint"));
       board.value.edges = board.value.edges.filter(edge => {
         if (preserve && (ids.has(edge.source) || ids.has(edge.target.node))) return true;
@@ -1009,14 +1079,14 @@ createApp({
       }
       board.value.nodes = board.value.nodes.filter(node => !ids.has(node.id));
       pruneJunctions();
-      modified();
+      if (record) modified(); else markDirty();
       clearSelection();
     }
 
     async function deleteNode(node, preserve = false, includeChildren = false) {
       if (!(await selectNode(node.id)) || groupBlocked(node)) return;
       const ids = new Set(includeChildren && node.kind === "container" ? moveGroup(node).map(n => n.id) : [node.id]);
-      removeObjects(ids, preserve);
+      deleteObjects(ids, preserve);
     }
 
     function removeEdge(edge) {
@@ -1054,13 +1124,18 @@ createApp({
       for (const {id, x, y} of group) nodeMap.value.get(id).position = {x: x+dx, y: y+dy};
     }
 
+    function fitsInside(child, container) {
+      return container.width >= child.width && container.height >= child.height &&
+        (container.width > child.width || container.height > child.height) &&
+        overlapFraction(child, container) > 0.5;
+    }
+
     function dropReceiver(node, excluded) {
+      if (node.elevated === true) return;
       const dragged = drawnNode(node.id);
       return containerReceivers.value.find(candidate => candidate.id !== node.id && !excluded?.has(candidate.id) &&
         (node.kind !== "connectionPoint" || candidate.kind === "container") &&
-        candidate.width >= dragged.width && candidate.height >= dragged.height &&
-        (candidate.width > dragged.width || candidate.height > dragged.height) &&
-        overlapFraction(dragged, drawnNode(candidate.id)) > 0.5 &&
+        fitsInside(dragged, drawnNode(candidate.id)) &&
         !occupied(candidate.id) && !ancestors(candidate, nodeMap.value).some(parent => parent.id === node.id));
     }
 
@@ -1070,18 +1145,40 @@ createApp({
       node.parent = target?.id;
     }
 
+    function capturableChildren(container, excluded) {
+      if (container.kind !== "container") return [];
+      const drawn = drawnNode(container.id);
+      const parents = new Set(ancestors(container, nodeMap.value).map(parent => parent.id));
+      const candidates = new Map();
+      for (const child of board.value.nodes) {
+        if (child.id === container.id || child.elevated === true || child.kind === "connectionPoint" || excluded?.has(child.id) ||
+            parents.has(child.id) || occupied(child.id) || !fitsInside(drawnNode(child.id), drawn)) continue;
+        const lineage = ancestors(child, nodeMap.value);
+        if (!lineage.some(parent => parent.id === container.id || parent.locked)) candidates.set(child.id, {child, lineage});
+      }
+      // A captured container brings its descendants with it.
+      return [...candidates.values()].filter(({lineage}) => !lineage.some(parent => candidates.has(parent.id)))
+        .map(({child}) => child);
+    }
+
+    function dropBox(node, excluded) {
+      dropParent(node, excluded);
+      for (const child of capturableChildren(node, excluded)) child.parent = node.id;
+    }
+
     const containerDropTargets = computed(() => {
       const drag = gesture.value;
       const targets = new Set();
       if (!drag?.moved || drag.waiting || drag.locked) return targets;
-      function mark(node, excluded) {
+      function mark(node, excluded, capture = true) {
         const target = node && node.kind !== "connectionPoint" && dropReceiver(node, excluded);
         if (target && target.id !== node.parent) targets.add(target.id);
+        if (capture && node && capturableChildren(node, excluded).length) targets.add(node.id);
       }
       if (drag.type === "move" && !drag.group.some(member => occupied(member.id))) {
         mark(nodeMap.value.get(drag.nodeID));
       } else if (drag.type === "clone") {
-        mark(insertion.value?.nodes[0]);
+        mark(insertion.value?.nodes[0], undefined, false);
       } else if (drag.type === "batch" && batch.value &&
           [...drag.members].every(id => {
             const node = nodeMap.value.get(id);
@@ -1095,6 +1192,47 @@ createApp({
       }
       return targets;
     });
+
+    function junctionDropTarget(node, excluded) {
+      if (node?.kind !== "connectionPoint") return;
+      const point = drawnNode(node.id).position;
+      return orderedNodes.value.findLast(box => box.kind !== "connectionPoint" && !excluded?.has(box.id) &&
+        shapeDistance(drawnNode(box.id), point) <= 1);
+    }
+
+    const junctionTarget = computed(() => {
+      const drag = gesture.value;
+      if (!drag?.moved || drag.waiting || drag.locked) return;
+      if (drag.type === "split") return junctionDropTarget(insertion.value?.nodes[0])?.id;
+      if (drag.type === "move" && !occupied(drag.nodeID)) return junctionDropTarget(nodeMap.value.get(drag.nodeID))?.id;
+    });
+
+    function junctionAttachments(boxes, edges) {
+      const changes = new Map();
+      const routes = new Set();
+      for (const edge of edges) {
+        const source = boxes.get(edge.source), target = boxes.get(edge.target.node);
+        const from = source ?? edge.source, to = target ?? edge.target.node;
+        if (from && to) {
+          const route = from + "/" + to;
+          if (from === to || routes.has(route)) return null;
+          routes.add(route);
+        }
+        if (!source && !target) continue;
+        const attached = {...edge};
+        if (source) setEndpoint(attached, "source", {node: source});
+        if (target) setEndpoint(attached, "target", {node: target});
+        changes.set(edge.id, attached);
+      }
+      return changes;
+    }
+
+    function dissolveJunctions(boxes, attachments) {
+      board.value.edges = board.value.edges.map(edge => attachments.get(edge.id) ?? edge);
+      board.value.nodes = board.value.nodes.filter(node => !boxes.has(node.id));
+    }
+
+    const junctionConflict = "A csomópont nem oldható fel ezen a dobozon, mert önmagába vezető vagy ismétlődő vonal keletkezne.";
 
     function pruneJunctions() {
       const counts = new Map();
@@ -1195,23 +1333,30 @@ createApp({
 
     function commitInsertion() {
       const draft = insertion.value;
-      const edges = insertionEdges.value;
+      const root = draft.nodes[0];
+      let edges = insertionEdges.value, nodes = draft.nodes;
+      const target = junctionDropTarget(root);
+      const attachments = target && junctionAttachments(new Map([[root.id, target.id]]), sceneEdges.value);
       insertion.value = null;
       if (!online.value || draft.original && JSON.stringify(edgeMap.value.get(draft.original.id)) !== JSON.stringify(draft.original)) return;
-      if (board.value.nodes.length + draft.nodes.length > 2000 ||
+      if (target && !attachments) { problem.value = junctionConflict; return; }
+      if (attachments) {
+        nodes = nodes.filter(node => node.id !== root.id);
+        edges = edges.map(edge => attachments.get(edge.id) ?? edge);
+      }
+      if (board.value.nodes.length + nodes.length > 2000 ||
           board.value.edges.length + edges.length - (draft.original ? 1 : 0) > 4000) {
         problem.value = "A művelettel a munkalap túllépné a dobozok vagy vonalak számának korlátját.";
         return;
       }
-      const ids = new Set([...nodeMap.value.keys(), ...draft.nodes.map(n => n.id)]);
+      const ids = new Set([...nodeMap.value.keys(), ...nodes.map(n => n.id)]);
       if (edges.some(e => e.source && !ids.has(e.source) || e.target.node && !ids.has(e.target.node))) return;
-      board.value.nodes.push(...draft.nodes);
+      board.value.nodes.push(...nodes);
       if (draft.original) board.value.edges.splice(board.value.edges.findIndex(e => e.id === draft.original.id),1,...edges);
       else board.value.edges.push(...edges);
-      const root = draft.nodes[0];
-      dropParent(root);
+      if (!attachments) dropParent(root);
       modified();
-      openProperties("node", root.id, true);
+      if (!attachments) openProperties("node", root.id, true);
     }
 
     function pressNode(event, node) {
@@ -1464,12 +1609,21 @@ createApp({
       } else if (operation.type === "move" && operation.moved) {
         lastClick = null;
         const node = nodeMap.value.get(operation.nodeID);
-        if (cancel && !operation.locked) live.endMotion(node.id, baseline.revision);
-        if (cancel && !operation.locked) translateGroup(operation.group, 0, 0);
-        else if (!operation.locked && !operation.group.some(member => occupied(member.id))) {
-          live.flushMotion();
-          dropParent(node);
-          modified();
+        if (!operation.locked) {
+          const target = !cancel && junctionDropTarget(node);
+          const boxes = target && new Map([[node.id, target.id]]);
+          const attachments = boxes && junctionAttachments(boxes, board.value.edges);
+          if (cancel || target && !attachments) {
+            live.endMotion(node.id, baseline.revision);
+            translateGroup(operation.group, 0, 0);
+            if (target) problem.value = junctionConflict;
+          } else if (!operation.group.some(member => occupied(member.id))) {
+            live.flushMotion();
+            if (attachments) dissolveJunctions(boxes, attachments);
+            else dropBox(node);
+            modified();
+            if (attachments) clearSelection();
+          }
         }
       } else if (!operation.moved && !cancel && (operation.nodeID || operation.edgeID || operation.hitID)) {
         const kind = operation.hitKind ?? (operation.nodeID ? "node" : "edge");
@@ -1554,7 +1708,7 @@ createApp({
             touches = edgeInRectangle({boundsPoints: [...points, points[0]], command: "L"}, box, true);
           }
         }
-        if (touches && node.shape === "rounded") {
+        if (touches && node.shape === "rounded" && !graphics.value.boxChamfer) {
           const dx = Math.max(0, Math.abs(closest.x-node.position.x)-node.width/2+12);
           const dy = Math.max(0, Math.abs(closest.y-node.position.y)-node.height/2+12);
           touches = Math.hypot(dx,dy) <= 12;
@@ -1593,25 +1747,37 @@ createApp({
 
     function finishBatch(drag) {
       if (!batch.value || batchBlocked(drag.members)) return;
+      const boxes = new Map();
+      for (const id of batch.value.nodes) {
+        const target = junctionDropTarget(nodeMap.value.get(id), drag.members);
+        if (target) boxes.set(id, target.id);
+      }
+      const attachments = boxes.size ? junctionAttachments(boxes, board.value.edges) : null;
+      if (boxes.size && !attachments) { problem.value = junctionConflict; return; }
       gesture.value = null;
       for (const id of drag.members) {
         const node = nodeMap.value.get(id);
         node.position = shifted(node.position,drag.delta);
+      }
+      if (attachments) {
+        dissolveJunctions(boxes, attachments);
+        for (const id of boxes.keys()) batch.value.nodes.delete(id);
       }
       for (const edge of board.value.edges) {
         if (batch.value.edges.has(edge.id)) Object.assign(edge,moveBatchEdge(edge,drag));
       }
       for (const id of batch.value.nodes) {
         const node = nodeMap.value.get(id);
-        if (!drag.members.has(node.parent)) dropParent(node, drag.members);
+        if (!drag.members.has(node.parent)) dropBox(node, drag.members);
       }
+      if (!batch.value.nodes.size && !batch.value.edges.size) batch.value = null;
       modified();
     }
 
     function deleteBatch(preserve = false) {
       const group = batch.value;
       if (!group || batchBlocked(group.nodes)) return;
-      removeObjects(group.nodes, preserve, group.edges);
+      deleteObjects(new Set(group.nodes), preserve, group.edges);
     }
 
     function beginDrag(event, type, extra = {}) {
@@ -1713,25 +1879,40 @@ createApp({
       modified();
     }
 
-    async function renameImage(id, filename) {
-      await enqueue(async () => {
-        const node = nodeMap.value.get(id);
-        if (node?.file?.type !== "image" || occupied(id) || filename === imageStem(node.file)) return;
-        const previous = node.file;
-        node.file = {...previous, filename};
-        markDirty();
+    function elevationButton(node, inMenu = false) {
+      const blocked = item => !online.value || occupied(item.id) || ancestors(item, nodeMap.value).some(parent => parent.locked);
+      return button("Kiemelés", async () => {
+        if (inMenu) {
+          menu.value = null;
+          if (!await selectNode(node.id)) return;
+        }
+        const current = nodeMap.value.get(node.id);
+        if (!current || blocked(current)) return;
+        const elevated = current.elevated !== true;
+        if (elevated) current.parent = undefined;
+        updateItem(current, "elevated", elevated ? true : undefined);
+      }, {symbol: "box-elevated", "aria-pressed": node.elevated === true, disabled: !!blocked(node)});
+    }
+
+    function renameFile(node, stem) {
+      const {extension} = fileNameParts(node.file, node.title);
+      const filename = node.file.type === "image" || !extension ? stem : stem + "." + extension;
+      if (!validImageStem(filename)) { problem.value = "Érvénytelen fájlnév."; return false; }
+      const previous = node.file;
+      node.file = {...previous, filename};
+      markDirty();
+      transfer(() => enqueue(async () => {
         try {
           await commit();
           recordChanges();
         } catch (error) {
-          const current = nodeMap.value.get(id);
-          if (current?.file?.asset === previous.asset && current.file.filename === filename) {
-            current.file = {...current.file, filename: previous.filename};
-          }
+          const current = nodeMap.value.get(node.id);
+          if (current?.file?.filename === filename) current.file = {...current.file, filename: previous.filename};
           if (!worksheetChanges(baseline, copy(board.value)).length) savedGeneration.value = generation.value;
           throw error;
         }
-      });
+      }));
+      return true;
     }
 
     async function commit() {
@@ -1789,7 +1970,7 @@ createApp({
 
     async function sessionAction(action) {
       if (!online.value || checkpointBusy.value || gesture.value) return;
-      if (action === "resign" && !confirm("Visszaállítod a közös munkalapot a legutóbbi Mentéshez vagy a munkamenet elejéhez? Ez minden résztvevő vásznára érvényes.")) return;
+      if (action === "resign" && !confirm("Visszaállítod a közös munkalapot a legutóbbi Mentéshez vagy a munkamenet elejéhez? Ez minden résztvevő vásznára érvényes. A visszaállítás során eltűnő fájlok a lomtárba kerülnek.")) return;
       checkpointBusy.value = true;
       problem.value = "";
       const expectedCheckpoint = checkpointRevision;
@@ -2040,24 +2221,34 @@ createApp({
           onKeydown: e => { e.stopPropagation(); if (e.key === "Enter" && !e.isComposing && !e.shiftKey) { e.preventDefault(); e.target.blur(); } }})
       ]);
     }
+    function renderFileDownload(node) {
+      const filename = fileName(node.file, node.title);
+      const href = "/api/box-file/" + path + "?id=" + encodeURIComponent(node.id);
+      const download = () => transfer(async () => { await enqueue(commit); location.assign(href); });
+      return h("button", {type: "button", class: "file-download", title: filename,
+        "aria-label": "Letöltés · " + filename,
+        onPointerdown: event => event.stopPropagation(),
+        onClick: event => { event.stopPropagation(); if (event.detail === 0) download(); },
+        onDblclick: event => { event.stopPropagation(); download(); },
+      }, [icon("package"), h("span", filename)]);
+    }
+
     function renderCaptionedFile(node) {
       const file = node.file;
       const title = file.hideTitle ? "" : node.title;
-      const filename = file.showFilename ? (isNote(file) ? file.filename || node.title : imageStem(file)) : "";
       return h("foreignObject", {x: -node.width/2, y: -node.height/2 - (title ? 22 : 0),
-        width: node.width, height: node.height + (title ? 22 : 0) + (filename ? 22 : 0)}, [
+        width: node.width, height: node.height + (title ? 22 : 0) + 22}, [
         h("div", {class: "canvas-image", style: {color: paint(node.textColor, 1)}}, [
           title ? h("strong", title) : null,
-          isNote(file) ? h("div", {class: "folded-note", onPointerdown: e => {
+          isNote(file) ? h("div", {class: ["folded-note", {"with-fold": node.backgroundEnabled !== false && !node.backgroundBlur}], onPointerdown: e => {
             const el = e.currentTarget;
             if (el.scrollHeight > el.clientHeight && e.clientX >= el.getBoundingClientRect().right - Math.max(16, el.offsetWidth - el.clientWidth) * view.value.k) e.stopPropagation();
-          }, style: {backgroundColor: paint(node.fill, 2)}},
+          }},
             file.type === "md" ? [h(FormattedText, {source: node.text, justified: node.textStyle?.justified})] :
             [h("pre", {class: {"justified-text": node.textStyle?.justified}}, node.text)]) :
           h("img", {src: assetURL(path, file.asset), alt: title || imageStem(file), draggable: false,
-            style: {backgroundColor: file.alphaEnabled === false ? "#ffffff" : file.alphaBackground == null ? undefined : paint(file.alphaBackground, 2)},
             onLoad: event => detectImageAlpha(event, file.asset)}),
-          filename ? h("span", filename) : null,
+          renderFileDownload(node),
         ]),
       ]);
     }
@@ -2073,7 +2264,8 @@ createApp({
       const textDrag = gesture.value?.type === "text" && gesture.value.nodeID === node.id ? gesture.value : null;
       const [, , inset] = shapeLabelRatios(node.shape);
       const [outline, dimensions] = selectionOutline(node.kind === "connectionPoint" ? graphics.value.junction ?? "ellipse" : drawn.shape, drawn.width, drawn.height);
-      const snapTarget = preview.value?.target === node.id;
+      const snapTarget = (preview.value?.target ?? junctionTarget.value) === node.id;
+      const [shadowShape, shadowGeometry] = drawn.elevated === true ? shapeGeometry(drawn.shape, drawn.width, drawn.height) : [];
       const labels = layout.lines.length ? h("text", {"font-family": "system-ui, sans-serif", "pointer-events": "none"},
           layout.lines.map(line => h("tspan", {
             class: destination && !line.runs ? "link-label" : undefined,
@@ -2125,10 +2317,12 @@ createApp({
           stroke: owner && !owner.mine ? owner.color : paint(graphics.value.selection ?? 4, 4), "stroke-width": 3, "pointer-events": "none"}) : null,
         candidates.value.has("node/" + node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "search-candidate", "stroke-width": 3}) : null,
         ...animateBox(!node.file && node.kind !== "connectionPoint" ? node.animation : undefined, [
-          node.file?.type === "image" || isNote(node.file) ? null : shape(drawn, !!destination, containerDropTargets.value.has(node.id)),
+          shadowShape ? h(shadowShape, {...shadowGeometry, "data-elevated-shadow": "", filter: "url(#elevated-box-shadow)",
+            fill: "black", "pointer-events": "none", "aria-hidden": "true"}) : null,
+          shape(drawn, !!destination, containerDropTargets.value.has(node.id)),
           node.file?.type === "image" || isNote(node.file) ? renderCaptionedFile(node) : null,
           node.file && !isNote(node.file) && node.file.type !== "image" ? h("foreignObject", {x: -drawn.width/2, y: -drawn.height/2, width: drawn.width, height: drawn.height}, [
-            h("div", {class: "canvas-file", style: {color: paint(node.textColor, 1), backgroundColor: paint(node.fill, 2)}}, [
+            h("div", {class: "canvas-file", style: {color: paint(node.textColor, 1)}}, [
               !node.file.hideTitle ? h("strong",node.title) : null,
               node.file.type === "mp3" ? h("div", {"data-audio-player": "", class: "canvas-audio",
                   onPointerdown: e => e.stopPropagation(), onDblclick: e => e.stopPropagation()}, [
@@ -2137,10 +2331,9 @@ createApp({
                   h("input", {type: "range", min: 0, max: 0, step: "any", disabled: true, "data-audio-seek": "", "aria-label": "Lejátszási pozíció"}),
                   h("small", {"data-audio-status": "", role: "status"}),
                 ]) :
-                node.file.type === "attachment" ? h("a", {class: "button small", href: attachmentURL(path, node.file.asset),
-                  onPointerdown: event => event.stopPropagation(), onDblclick: event => event.stopPropagation()}, "Letöltés") :
-                  h("pre", {class: {"justified-text": node.textStyle?.justified}}, node.text),
-              node.file.asset && node.text ? h("small", {class: {"justified-text": node.textStyle?.justified}}, node.text) : null,
+                node.file.type === "json" ? h("pre", {class: {"justified-text": node.textStyle?.justified}}, node.text) : null,
+              node.file.type === "mp3" && node.text ? h("small", {class: {"justified-text": node.textStyle?.justified}}, node.text) : null,
+              renderFileDownload(node),
             ]),
           ]) : null,
           node.kind === "connectionPoint" && node.title ? h("text", {x: drawn.width/2 + 4, y: 4, fill: paint(node.textColor, 1), "font-size": 14}, node.title) : null,
@@ -2149,14 +2342,14 @@ createApp({
             (layout.lines.find(line => (line.section === "textStyle") === (editKey.value === "text"))?.y ??
              (node.file && editKey.value === "title" ? -drawn.height/2 - 6 : 0)) - 18,
             drawn.width, editKey.value === "text" ? Math.max(34, drawn.height/2) : 28) : null,
-          destination ? h("svg", {overflow: "visible", x: drawn.width/2*inset-15, y: drawn.height/2*inset-16, width: 14, height: 14,
+          destination ? h("svg", {overflow: "visible", x: drawn.width/2*inset-15, y: node.file?.type === "worksheet" ? -drawn.height/2 + 5 : drawn.height/2*inset-16, width: 14, height: 14,
             viewBox: "0 0 24 24", fill: "none", stroke: paint(node.textColor, 1), "stroke-width": 1.8,
             "stroke-linecap": "round", "stroke-linejoin": "round", "pointer-events": "all",
             role: "link", tabindex: 0, "aria-label": "Hivatkozás megnyitása", cursor: "pointer",
             onPointerdown: e => { if (!e.altKey) e.stopPropagation(); }, onClick: e => e.stopPropagation(),
             onDblclick: e => { if (e.altKey) return; e.preventDefault(); e.stopPropagation(); followBoxLink(destination); },
             onKeydown: e => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); followBoxLink(destination); } }},
-            [h("text", {class: "box-link", x: -5, y: 19, fill: paint(node.textColor, 1), stroke: "none", "text-anchor": "end", "font-size": 28,
+            [node.file?.type === "worksheet" ? null : h("text", {class: "box-link", x: -5, y: 19, fill: paint(node.textColor, 1), stroke: "none", "text-anchor": "end", "font-size": 28,
               textLength: node.link.length * 17 > (drawn.width*inset-22)*24/14 ? Math.max(12,drawn.width*inset-22)*24/14 : undefined, lengthAdjust: "spacingAndGlyphs"}, node.link), h("rect", {width: 24, height: 24, fill: "transparent", stroke: "none"}), h("path", {d: linkIcons[destination.kind]})]) : null,
         ]),
         ...(resizeTarget.value === node.id && !occupied(node.id) && !ancestors(node, nodeMap.value).some(n => n.locked)
@@ -2186,7 +2379,7 @@ createApp({
       if (!head.visible) return null;
       return h("path", {transform: head.transform, stroke: "none", fill: color, "pointer-events": "none", d: "M0 0L-1 -.5V.5Z"},
         animated ? [h("animateTransform", {attributeName: "transform", type: "scale", additive: "sum",
-          values: "1;1.45;1", dur: "3s", repeatCount: "indefinite"})] : undefined);
+          values: "1;1.12;1", dur: "3s", repeatCount: "indefinite"})] : undefined);
     }
 
     function endpointHandle(edge, end, point) {
@@ -2210,8 +2403,10 @@ createApp({
       }
       const geometry = wireGeometry(edge);
       const {d, from, to} = geometry;
-      const {stroke, ends, paint} = cachedWireDrawing(edge, geometry);
-      const label = edge.label?.trim() ? geometry.labelPosition : null;
+      const {stroke, ends, paint, taper} = cachedWireDrawing(edge, geometry);
+      const label = edge.label?.trim() ? wireLabelLayout(geometry, edge.label, paint, edge.labelInLine) : null;
+      const clipId = "editor-wire-gap-" + edge.id;
+      const clipPath = label?.clip ? "url(#" + clipId + ")" : undefined;
       const mine = selected.value?.id === edge.id && ["edge","endpoint"].includes(selected.value.kind);
       const targets = mine ? activeHandles : handles;
       targets.push(endpointHandle(original, "source", from), endpointHandle(original, "target", to));
@@ -2220,7 +2415,8 @@ createApp({
       const selectionColor = local ? resolveWireColor({color: graphics.value.selection ?? 4}) :
         peers.value.find(peer => !peer.mine && peer.edge === edge.id)?.color;
       const color = selectionColor ?? paint.color;
-      const animation = animatedWire(edge, {...paint, color}, from, to);
+      const animation = animatedWire(edge, {...paint, color}, from, to, taper, stroke.d);
+      const shaftColor = animation.color ?? color;
       return h("g", {key: "edge/" + edge.id, "data-edge": edge.id, fill: "none", "stroke-linecap": "round",
         tabindex: 0, role: "button", "aria-label": edge.label || "Vonal",
         onPointerdown: event => {
@@ -2269,18 +2465,22 @@ createApp({
         },
         onContextmenu: event => context(event, "edge", edge.id),
       }, [
-        candidates.value.has("edge/" + edge.id) ? h("path", {"data-editor-only": "", d: stroke.d, class: "search-candidate",
-          "stroke-width": paint.width + 9 / zoomScale.value}) : null,
+        label?.clip ? h("defs", [h("clipPath", {id: clipId}, [
+          h("path", {d: label.clip, transform: label.transform}),
+        ])]) : null,
+        candidates.value.has("edge/" + edge.id) ? h("path", {"data-editor-only": "", d: taper ? d : stroke.d, class: "search-candidate", "clip-path": clipPath,
+          "stroke-width": paint.lineWidth + 9 / zoomScale.value}) : null,
         animation.gradient ? h("defs", [animation.gradient]) : null,
-        h("path", {"data-editor-only": "", d, stroke: "transparent", "stroke-width": Math.max(paint.width + 10, 14 / zoomScale.value),
+        h("path", {"data-editor-only": "", d, stroke: "transparent", "stroke-width": Math.max(paint.lineWidth + 10, 14 / zoomScale.value),
           "pointer-events": "stroke", class: "edge-hit"}),
         h("g", {class: {"wire-selected": !!selectionColor}, color: selectionColor}, [
-          h("path", {...stroke, stroke: animation.color ?? color, "pointer-events": "none"}, animation.shaft ? [animation.shaft] : undefined),
+          h("path", {...stroke, ...(taper ? {fill: shaftColor} : {stroke: shaftColor}), "pointer-events": "none", "clip-path": clipPath}, animation.shaft ? [animation.shaft] : undefined),
           renderArrow(ends.source, color, animatedArrows),
           renderArrow(ends.target, color, animatedArrows),
         ]),
-        label ? h("text", {transform: "translate(" + label.x + " " + label.y + ") rotate(" + geometry.angle + ")",
-          y: -paint.width / 2 - 6, "font-family": "system-ui, sans-serif", "font-size": 14, "text-anchor": "middle",
+        label ? h("text", {transform: label.transform, y: label.y, textLength: label.textLength,
+          lengthAdjust: label.clip ? "spacingAndGlyphs" : undefined, "dominant-baseline": label.clip ? "central" : undefined,
+          "font-family": "system-ui, sans-serif", "font-size": label.fontSize, "font-weight": label.fontWeight, "text-anchor": "middle",
           stroke: "none", fill: paint.color, class: "edge-label"}, edge.label) : null,
         editingObject.value === edge.id ? editOverlay(original, geometry.labelPosition.x-80, geometry.labelPosition.y-30,160,28) : null,
       ]);
@@ -2318,6 +2518,12 @@ createApp({
     function renderCanvas() {
       const [centerX, centerY] = center();
       const spacing = gridSpacing.value;
+      const {grid, glass} = graphics.value;
+      const drafting = grid === "drafting";
+      const lined = drafting || grid === "lines";
+      const gridSize = drafting ? spacing * 5 : spacing;
+      const gridLine = at => `M0 ${at} H${gridSize} M${at} 0 V${gridSize}`;
+      const gridStroke = {stroke: "#789bb0", fill: "none"};
       const [left, top] = view.value.invert([0, 0]);
       const cable = preview.value?.edge;
       const shown = cable ? wireDrawing({...cable, color: "#4168e9"}, wireGeometry(cable)) : null;
@@ -2357,10 +2563,34 @@ createApp({
 
         }, [
           h("defs", [
-            h("pattern", {id: "worksheet-grid", patternUnits: "userSpaceOnUse", x: -spacing/2, y: -spacing/2, width: spacing, height: spacing}, [
-              graphics.value.grid === "lines" ? h("path", {d: "M0 "+spacing/2+" H"+spacing+" M"+spacing/2+" 0 V"+spacing,
-                stroke: "#789bb0", "stroke-opacity": .35, fill: "none"}) : h("circle", {cx: spacing/2, cy: spacing/2, r: 1.1, fill: gridColor.value}),
+            sceneNodes.value.some(node => node.backgroundBlur && node.backgroundEnabled !== false)
+              ? h("filter", {id: "box-background-blur", x: "-30%", y: "-30%", width: "160%", height: "160%"}, [h("feGaussianBlur", {stdDeviation: 2})]) : null,
+            elevatedNodes.value.size ? h("filter", {id: "elevated-box-shadow", x: "-110%", y: "-140%", width: "320%",
+              height: "380%", "color-interpolation-filters": "sRGB"}, [
+              h("feDropShadow", {dx: 12, dy: 28, stdDeviation: 16, "flood-color": "#11172b", "flood-opacity": .66}),
+              h("feComposite", {in2: "SourceAlpha", operator: "out"}),
+            ]) : null,
+            h("pattern", {id: "worksheet-grid", patternUnits: "userSpaceOnUse", x: -spacing/2, y: -spacing/2, width: gridSize, height: gridSize}, [
+              ...(drafting ? [h("path", {...gridStroke, "stroke-opacity": .08, d: [1, 2, 3, 4].map(i => gridLine((i + .5) * spacing)).join(" ")})] : []),
+              lined
+                ? h("path", {...gridStroke, "stroke-opacity": .22, d: gridLine(spacing/2)})
+                : h("circle", {cx: spacing/2, cy: spacing/2, r: glass ? 1 : 1.1, fill: glass ? "#a397bf" : gridColor.value,
+                  "fill-opacity": glass ? .24 : .28}),
             ]),
+            ...(glass ? [
+              h("linearGradient", {id: "glass-rim", x2: "25%", y2: "100%"}, [
+                h("stop", {offset: "0%", "stop-color": "#f4eeff", "stop-opacity": .93}),
+                h("stop", {offset: "40%", "stop-color": "#b39bd8", "stop-opacity": .72}),
+                h("stop", {offset: "76%", "stop-color": "#6e5a98", "stop-opacity": .62}),
+                h("stop", {offset: "100%", "stop-color": "#ab91df", "stop-opacity": .78}),
+              ]),
+              h("linearGradient", {id: "glass-sheen", x2: "0%", y2: "100%"}, [
+                h("stop", {offset: "0%", "stop-color": "#fff", "stop-opacity": .30}),
+                h("stop", {offset: "34%", "stop-color": "#fff", "stop-opacity": .08}),
+                h("stop", {offset: "58%", "stop-color": "#fff", "stop-opacity": 0}),
+                h("stop", {offset: "100%", "stop-color": "#a58ade", "stop-opacity": .17}),
+              ]),
+            ] : []),
           ]),
           h("rect", {width: "100%", height: "100%", fill: paint(board.value.background, 0), "pointer-events": "none"}),
           h("g", {transform: view.value + " translate(" + centerX + " " + centerY + ")"}, [
@@ -2387,7 +2617,8 @@ createApp({
           button("", () => { toolbarOpen.value = !toolbarOpen.value; }, {symbol: toolbarOpen.value ? "left" : "right",
             "aria-label": "Eszköztár", "aria-expanded": toolbarOpen.value}),
           button("", toggleGrid, {
-            title: "Saját pontrács megjelenítése", "aria-label": "Pontrács", "aria-pressed": gridVisible.value, symbol: "grid"}),
+            title: lined ? "Saját rács megjelenítése" : "Saját pontrács megjelenítése",
+            "aria-label": lined ? "Rács" : "Pontrács", "aria-pressed": gridVisible.value, symbol: "grid"}),
           button("", () => { snapToGrid.value = !snapToGrid.value; savePreferences(); }, {title: "Rácsra igazítás", "aria-label": "Rácsra igazítás", "aria-pressed": snapToGrid.value, symbol: "snap"}),
           button("", () => { panLocked.value = !panLocked.value; savePreferences(); },
             {symbol: "hand", title: "Vászonmozgatás zárolása", "aria-label": "Vászonmozgatás zárolása", "aria-pressed": panLocked.value}),
@@ -2417,6 +2648,7 @@ createApp({
       const entries = type === "node" && node ? [
         node.file ? button("Link másolása", () => { menu.value = null; transfer(() => writeText(objectURL(path,node.id))); }, {symbol: "link"}) : null,
         button("Ping", () => ping({node: node.id}), {symbol: "center", disabled: !online.value}),
+        node.kind !== "connectionPoint" ? elevationButton(node, true) : null,
         node.kind !== "connectionPoint" ? button(node.link ? "Link feloldása" : "Link", async () => {
           menu.value = null;
           if (!await selectNode(node.id)) return;
@@ -2652,9 +2884,9 @@ createApp({
       return sidebar("Munkalap", [
         h("input", {ref: attachmentInput, type: "file", multiple: true, hidden: true,
           onChange: uploadAttachments}),
-        themeSettings(sheet),
         group("Cím", [input(sheet.title, value => updateItem(sheet, "title", value), {"aria-label": "Cím", maxlength: 120})]),
         group("Szöveg", [textArea(sheet.text ?? "", value => updateItem(sheet, "text", value), 7, sheet.textJustified)]),
+        themeSettings(sheet),
         group("Előnézeti kép", [h("select", {"aria-label": "Előnézeti kép", value: previewImages.value.includes(sheet.previewImage) ? sheet.previewImage : "",
           onFocus: loadPreviewImages, onChange: e => updateItem(sheet, "previewImage", e.target.value || undefined)}, [
           h("option", {value: ""}, "Default · Munkalap SVG"), ...previewImages.value.map(name => h("option", {value: name}, name))
@@ -2665,27 +2897,7 @@ createApp({
           const bounds = event.currentTarget.getBoundingClientRect();
           uploadAnchor = {clientX: bounds.left + bounds.width / 2, clientY: bounds.bottom + 12};
           attachmentInput.value?.click();
-        }, {symbol: "plus", disabled: uploading.value || !online.value, title: "Fájl feltöltése"}),
-          button("Beillesztés", () => transfer(async () => {
-            projectFiles.value = await (await checked(await fetch("/api/project-files/" + path))).json();
-          }), {symbol: "folder", title: "Projektfájl beillesztése"})]),
-        projectFiles.value ? h("select", {"aria-label": "Projektfájl", value: "", onChange: e => {
-          const entry = projectFiles.value.find(item => item.name === e.target.value);
-          if (!entry) return;
-          projectFiles.value = null;
-          transfer(async () => {
-            const {name, asset} = entry, ext = name.split(".").pop().toLowerCase();
-            let file = {type: "attachment", asset: name}, text = "";
-            if (["txt","md","json"].includes(ext)) {
-              const response = await checked(await fetch(attachmentURL(path,name)));
-              const blob = await response.blob();
-              if (blob.size <= 100000) { file = {type: ext, filename:name}; text = await blob.text(); }
-            } else if (/^[a-f0-9-]{36}\.(png|jpg|gif|webp|svg|mp3)$/i.test(asset)) {
-              file = ext === "mp3" ? {type:"mp3",asset} : {type:"image",asset,filename:name.replace(/\.[^.]+$/,"")};
-            }
-            addNode(worldAtCenter(), {title:Array.from(name).slice(0,120).join(""), file,text,width:320,height:180});
-          });
-        }}, [h("option",{value:""},projectFiles.value.length ? "Válassz fájlt…" : "A mappában nincs fájl"), ...projectFiles.value.map(f=>h("option",{value:f.name},f.name))]) : null,
+        }, {symbol: "plus", disabled: uploading.value || !online.value, title: "Fájl feltöltése"})]),
       ], true);
     }
 
@@ -2708,7 +2920,7 @@ createApp({
             input(edge.label || "", value => updateItem(edge, "label", value), {...controlName("Címke"), "data-object-label": "", maxlength: 120}),
             propertyTools(
               colorPicker("Vonal színe", edge.color ?? 3, value => updateItem(edge, "color", value), edge.id + "/line", false, true, 3),
-              numeric(edge.width ?? 2, value => updateItem(edge, "width", value), 0.5, 24, controlName("Alapvastagság")),
+              numeric(edge.width ?? 2, value => updateItem(edge, "width", value), 0.5, maximumLineWidth, controlName("Alapvastagság")),
             ),
           ]),
           group("Vonaltípus", [optionPicker("Vonaltípus", lineTypes, edge.type ?? "straight",
@@ -2716,6 +2928,8 @@ createApp({
           group("Megjelenés", [h("div", {class: "property-options line-appearance-options"}, [
             optionPicker("Megjelenés", lineAppearances, edge.appearance ?? "plain",
               value => updateItem(edge, "appearance", value), lineAppearanceSymbol),
+            iconToggle("Felirat a vonalban", edge.labelInLine === true,
+              () => updateItem(edge, "labelInLine", edge.labelInLine ? undefined : true), icon("wire-label")),
             iconToggle("Animáció bekapcsolása", !!edge.animated,
               () => updateItem(edge, "animated", !edge.animated), icon("play")),
           ])]),
@@ -2743,63 +2957,90 @@ createApp({
       };
       const color = (label, key, disabled) => colorPicker(label, node[key],
         v => change(key, v), node.id + "/" + key, disabled, true);
+      const transparent = node.backgroundEnabled === false;
+      const clearBackground = () => change("backgroundEnabled", false);
+      const backgroundControls = () => [
+        iconToggle("Átlátszóság", transparent, () => change("backgroundEnabled", transparent), icon("box-background")),
+        iconToggle("Elmosás", node.backgroundBlur === true && !transparent, () => {
+          const enable = transparent || node.backgroundBlur !== true;
+          if (enable && transparent) {
+            node.backgroundEnabled = true;
+            node.backgroundBlur = true;
+            modified();
+          } else change("backgroundBlur", enable ? true : undefined);
+        }, icon("box-blur")),
+        node.file?.type === "image" ? null : colorPicker("Háttér", node.fill, value => {
+          if (transparent) {
+            node.fill = value;
+            change("backgroundEnabled", true);
+          } else change("fill", value);
+        }, node.id + "/fill", false, true, 2, {transparent, clear: clearBackground}),
+      ];
+      const filenameField = () => {
+        const {stem, extension} = fileNameParts(node.file, node.title);
+        return group("Fájlnév", [h("div", {class: "property-inline file-name-field"}, [
+          h("input", {type: "text", "aria-label": "Fájlnév", value: stem, maxlength: 200,
+            onChange: event => {
+              const name = event.target.value.trim();
+              if (name === stem || !renameFile(node, name)) event.target.value = stem;
+            },
+            onKeydown: event => {
+              if (event.key !== "Enter" || event.isComposing) return;
+              event.preventDefault();
+              event.stopPropagation();
+              event.target.blur();
+            }}),
+          extension ? h("span", {class: "muted"}, "." + extension) : null,
+        ])]);
+      };
       if (node.file?.type === "image") return sidebar("Kép szerkesztése", [
         group("Átlátszóság", [h("div", {class: "property-options image-alpha-options"}, [
           iconToggle("Alpha csatorna", node.file.alphaEnabled !== false,
             () => change("file", {...node.file, alphaEnabled: node.file.alphaEnabled === false}),
             optionSymbol("path", {d: "M4 4h16v16H4z M4 12h16 M12 4v16 M4 4h8v8H4z M12 12h8v8h-8z", "fill-rule": "evenodd"})),
           colorPicker("Kép háttérszíne", node.file.alphaBackground ?? 2,
-            value => change("file", {...node.file, alphaBackground: value}), node.id + "/alpha",
-            node.file.alphaEnabled === false || imageAlpha.value.get(node.file.asset) !== true, true),
+            value => {
+              if (transparent) node.backgroundEnabled = true;
+              change("file", {...node.file, alphaBackground: value});
+            }, node.id + "/alpha", node.file.alphaEnabled === false || imageAlpha.value.get(node.file.asset) !== true, true, 2,
+            {transparent, clear: clearBackground}),
         ])]),
         group("Cím", [title]),
-        group("Fájlnév", [h("div", {class: "property-inline"}, [h("input", {type: "text", "aria-label": "Fájlnév", value: imageStem(node.file),
-          onBlur: event => { event.target.value = imageStem(node.file); },
-          onKeydown: event => {
-            if (event.key !== "Enter" || event.isComposing) return;
-            event.preventDefault();
-            event.stopPropagation();
-            const filename = event.target.value.trim();
-            if (!validImageStem(filename)) { problem.value = "Érvénytelen képfájlnév."; return; }
-            event.target.blur();
-            finishField();
-            if (filename !== imageStem(node.file)) transfer(() => renameImage(node.id, filename));
-          }}),
-          iconToggle("Fájlnév megjelenítése", !!node.file.showFilename,
-            () => change("file", {...node.file, showFilename: !node.file.showFilename}), icon(node.file.showFilename ? "eye" : "eye-off")),
-        ])]),
+        filenameField(),
+        group("Megjelenés", [propertyTools(...backgroundControls(), elevationButton(node))]),
         group("Megjegyzés", [bodyEditor(), propertyTools(justify())]),
       ]);
       if (isNote(node.file)) {
-        const name = node.file.filename || (/\.(txt|md)$/i.test(node.title) ? node.title : "");
+        const name = fileReference(node.file, node.title);
         async function syncText(write) {
-          if (!name && write) {
-            const filename = node.id + ".txt";
-            await checked(await fetch(attachmentURL(path, filename), {method: "POST", headers: {"X-CSRF-Token": csrf}, body: checkText(node.text)}));
-            change("file", {...node.file, filename});
-            return;
-          }
-          const url = attachmentURL(path, name);
-          if (write) await checked(await fetch(url, {method: "PUT", headers: {"X-CSRF-Token": csrf}, body: checkText(node.text)}));
-          else {
+          const filename = fileName(node.file, node.title);
+          const headers = {"X-CSRF-Token": csrf};
+          if (write) {
+            const body = checkText(node.text);
+            const response = name ? await fetch(attachmentURL(path, name), {method: "PUT", headers, body}) : null;
+            if (!response || [400,404].includes(response.status)) {
+              const uploaded = await checked(await fetch(attachmentURL(path, filename), {method: "POST", headers, body}));
+              change("file", {...node.file, asset: uploaded.headers.get("X-ThinkNodes-Asset") ?? filename, filename});
+            } else await checked(response);
+          } else {
             const before = node.text;
-            const source = checkText(await (await checked(await fetch(url))).text());
+            const source = checkText(await (await checked(await fetch(attachmentURL(path, name)))).text());
             const current = nodeMap.value.get(node.id);
             if (held.value === node.id && current?.text === before) updateItem(current, "text", source);
           }
         }
         return sidebar("Szövegfájl", [group("Cím", [h("div", {class: "property-inline"}, [title,
           iconToggle("Cím megjelenítése", !node.file.hideTitle, () => change("file", {...node.file, hideTitle: !node.file.hideTitle}),
-            icon(node.file.hideTitle ? "eye-off" : "eye"))])]), group("Megjelenés", [propertyTools(color("Háttér", "fill"),
-          iconToggle("Fájlnév megjelenítése", !!node.file.showFilename, () => change("file", {...node.file, showFilename: !node.file.showFilename}), icon("eye")))]),
+            icon(node.file.hideTitle ? "eye-off" : "eye"))])]), filenameField(), group("Megjelenés", [propertyTools(...backgroundControls(), elevationButton(node))]),
           group("Szöveg", [bodyEditor(), propertyTools(justify(),
             ...[[true,"save","Szöveg mentése"], [false,"restore","Szöveg újratöltése"]].map(([write,symbol,label]) =>
               button("", () => transfer(() => syncText(write)), {symbol,title:label,"aria-label":label,disabled:(!name && !write) || !online.value})))])]);
       }
       if (node.file) return sidebar("Fájl szerkesztése", [
-        group("Cím", [h("div", {class: "property-inline"}, [title, iconToggle("Cím megjelenítése", !node.file.hideTitle,
-          () => change("file", {...node.file, hideTitle: !node.file.hideTitle}), icon(node.file.hideTitle ? "eye-off" : "eye"))])]),
-        group(node.file.asset ? "Megjegyzés" : "Szöveg", [bodyEditor(), propertyTools(justify())]),
+        group("Cím", [title]),
+        filenameField(),
+        group("Megjelenés", [propertyTools(...backgroundControls(), elevationButton(node))]),
+        ["attachment","worksheet"].includes(node.file.type) ? null : group(node.file.type === "mp3" ? "Megjegyzés" : "Szöveg", [bodyEditor(), propertyTools(justify())]),
       ]);
       if (node.kind === "connectionPoint") return sidebar("Csomópont", [
         group("Címke", [title]),
@@ -2866,9 +3107,8 @@ createApp({
           optionPicker("Animáció", boxAnimations, node.animation ?? "none",
             value => change("animation", value), value => icon("box-" + value)),
           propertyTools(
-            iconToggle("Háttér megjelenítése", node.backgroundEnabled !== false,
-              () => change("backgroundEnabled", node.backgroundEnabled === false), icon("box-background")),
-            color("Háttér", "fill", node.backgroundEnabled === false),
+            ...backgroundControls(),
+            elevationButton(node),
             node.kind === "container" ? iconToggle("Tartalom rögzítése", !!node.locked,
               () => change("locked", !node.locked), icon(node.locked ? "lock" : "unlock")) : null,
           ),
@@ -2900,16 +3140,16 @@ createApp({
       const changed = online.value && (dirty.value || (board.value.revision > checkpointState.value.revision
         ? board.value.revision !== checkpointRevision : checkpointState.value.changed));
       const historyButton = (label, symbol, forward, available) =>
-        button("", () => replay(forward), {title: label, "aria-label": label,
+        headerButton(() => replay(forward), {title: label, "aria-label": label,
           symbol, disabled: !available || !online.value || !!gesture.value,
-          class: available && online.value && gesture.value ? "button gesture-disabled" : "button",
+          class: {"gesture-disabled": available && online.value && !!gesture.value},
         });
       const controls = [
           historyButton("Visszavonás", "undo", false, undo.value.length || fieldChanged),
           historyButton("Újra", "redo", true, redo.value.length),
-          button("", () => sessionAction("resign"), {"aria-label": "Resign", symbol: "restore", title: "A közös visszaállítási pont betöltése",
+          headerButton(() => sessionAction("resign"), {"aria-label": "Resign", symbol: "restore", title: "A közös visszaállítási pont betöltése",
             disabled: checkpointBusy.value || !online.value}),
-          button("", () => sessionAction("checkpoint"), {symbol: "save", "aria-label": "Mentés", class: ["button", {"save-label-changed": changed}],
+          headerButton(() => sessionAction("checkpoint"), {symbol: "save", "aria-label": "Mentés", class: {"save-label-changed": changed},
             title: "Közös visszaállítási pont rögzítése", disabled: checkpointBusy.value || !online.value}),
       ];
       return h("div", {class: "worksheet-history"}, controls);
@@ -2920,7 +3160,7 @@ createApp({
       const currentStatus = reconnect.value ? "Kattints az új célra vagy a vászonra. Esc a megszakításhoz."
         : "";
       return [
-        h("div", {class: "editor-workspace", style: {
+        h("div", {class: "editor-workspace", "data-glass": graphics.value.glass ? mode.value : undefined, style: {
           "--sheet-glow": (graphics.value.glow ?? 3) + "px"
         }}, [
           renderCanvas(),
@@ -2930,15 +3170,15 @@ createApp({
           renderSearch(),
           h(topRow ? window.Vue.Teleport : "div", topRow ? {to: topRow} : {}, [
           renderHeader(),
-          h("a", {class: "button worksheet-close", href: "/" + path, title: "Szerkesztő bezárása", "aria-label": "Bezárás", onClick: switchToViewer}, [icon("close")]),
-          button("", () => { finishField(); editingObject.value = null; objectPanelOpen.value = !objectPanelOpen.value; }, {
-            class: ["button", "sidebar-open", {active: (selected.value || batch.value) && !objectPanelOpen.value}],
+          h("a", {class: [headerButtonClass, "worksheet-close"], href: "/" + path, title: "Szerkesztő bezárása", "aria-label": "Bezárás", onClick: switchToViewer}, [icon("close")]),
+          headerButton(() => { finishField(); editingObject.value = null; objectPanelOpen.value = !objectPanelOpen.value; }, {
+            class: ["sidebar-open", {active: (selected.value || batch.value) && !objectPanelOpen.value}],
             "aria-expanded": objectPanelOpen.value,
             "aria-label": objectPanelOpen.value ? "Oldalsáv bezárása" : "Oldalsáv megnyitása",
             symbol: "property-panel",
           }),
-          button("", () => { finishField(); canvasPanelOpen.value = !canvasPanelOpen.value; if (canvasPanelOpen.value) loadPreviewImages(); }, {
-            class: "button sidebar-open sidebar-open-canvas",
+          headerButton(() => { finishField(); canvasPanelOpen.value = !canvasPanelOpen.value; if (canvasPanelOpen.value) loadPreviewImages(); }, {
+            class: "sidebar-open sidebar-open-canvas",
             "aria-expanded": canvasPanelOpen.value,
             "aria-label": canvasPanelOpen.value ? "Vászonbeállítások bezárása" : "Vászonbeállítások megnyitása",
             symbol: "canvas-menu",

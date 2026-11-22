@@ -14,6 +14,9 @@ import VaporTesting
     sheet.background = "@0"
     sheet.nodes = [Idea(id: "box", title: "Vázlat", position: Point(x: 0, y: 0), fill: "@2", textColor: "@1")]
     sheet.appearance = Appearance(theme: 3, palette: 1)
+    sheet.gridSpacing = 24
+    sheet.edges = [Connection(id: "wire", sourcePoint: Point(x: 0, y: 80),
+                              target: ConnectionTarget(point: Point(x: 120, y: 80)))]
     #expect(throws: Abort.self) { try store.update(path, worksheet: sheet, user: other) }
     let saved = try store.update(path, worksheet: sheet, user: creator)
     #expect(saved.creator == creator.name)
@@ -25,8 +28,37 @@ import VaporTesting
     #expect((json["nodes"] as? [[String: Any]])?.first?["fill"] as? Int == 2)
     let dark = boardSVG(reopened, mode: "dark")
     let light = boardSVG(reopened, mode: "light")
-    #expect(dark.contains("#111a27") && light.contains("#f1fafd"))
-    #expect(dark.contains("draft-grid") && !dark.contains("fill=\"@"))
+    #expect(dark.contains("#14273a") && light.contains("#f2f7fa"))
+    #expect(dark.contains(#"points="-83.000,-40.000 83.000,-40.000 88.000,-35.000 "#))
+    #expect(dark.contains(##"<pattern id="draft-grid" x="-12.000" y="-12.000" width="120.000" height="120.000""##))
+    #expect(dark.contains(##"M0 36.000 H120.000 M36.000 0 V120.000"##))
+    #expect(dark.contains(##"M0 108.000 H120.000 M108.000 0 V120.000" stroke="#789bb0" stroke-opacity=".08""##))
+    #expect(dark.contains(##"M0 12.000 H120.000 M12.000 0 V120.000" stroke="#789bb0" stroke-opacity=".22""##))
+    #expect(reopened.painted(mode: "dark").edges[0].type == .straight)
+    #expect(!dark.contains("fill=\"@"))
+    var vectorStudio = reopened
+    vectorStudio.appearance = Appearance(theme: 2, palette: 1)
+    vectorStudio.edges.append(Connection(id: "curved", sourcePoint: Point(x: 0, y: 100),
+                                         target: ConnectionTarget(point: Point(x: 120, y: 140)), type: .sCurve))
+    let glass = boardSVG(vectorStudio, mode: "dark")
+    #expect(glass.contains(##"fill="url(#glass-sheen)" pointer-events="none""##))
+    #expect(glass.contains(##"fill="#282534" stroke="url(#glass-rim)" stroke-width="3" fill-opacity=".66""##))
+    #expect(glass.contains("data-wire-taper"))
+    var withoutArrows = vectorStudio
+    withoutArrows.edges[0].startArrow = false
+    withoutArrows.edges[0].endArrow = false
+    #expect(boardSVG(withoutArrows, mode: "dark").contains("M 0.000 80.000 Q 60.000 56.000 120.000 80.000"))
+    #expect(glass.contains("M 0.000 100.000 C 60.000 100.000 60.000 140.000 120.000 140.000"))
+    #expect(!glass.contains("glass-ambient"))
+    vectorStudio.edges = [
+        Connection(id: "bolt", sourcePoint: Point(x: 0, y: 80),
+                   target: ConnectionTarget(point: Point(x: 140, y: 80)), type: .zigzag),
+        Connection(id: "zigzag", sourcePoint: Point(x: 0, y: 100),
+                   target: ConnectionTarget(point: Point(x: 140, y: 100)), type: .lightning, label: "Zigzag"),
+    ]
+    let rounded = boardSVG(vectorStudio, mode: "dark")
+    #expect(rounded.components(separatedBy: " Q ").count - 1 == 8)
+    #expect(rounded.contains(">Zigzag</text>"))
     var otherEdit = reopened
     otherEdit.title = "Közös szerkesztés"
     _ = try store.update(path, worksheet: otherEdit, user: other)
@@ -50,4 +82,38 @@ import VaporTesting
     #expect(sheet.background == "@63")
     theme.palettes[0].colors.removeLast()
     #expect(!theme.valid)
+}
+
+@Test func themeChangesPreserveLiteralColorsOnDisk() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    let creator = User(name: "creator", role: .editor, passwordHash: "")
+    let path = try WorksheetPath(["MixedPaint"])
+    var sheet = try store.open(path, user: creator)
+    sheet.background = "#213a57"
+    sheet.nodes = [Idea(id: "box", title: "Vázlat", position: Point(x: 0, y: 0),
+                        fill: "@2", textColor: "#aBcDeF", textStyle: TextStyle(color: "#BADA55"))]
+    sheet.edges = [Connection(id: "wire", sourcePoint: Point(x: 0, y: 80),
+                              target: ConnectionTarget(point: Point(x: 120, y: 80)), color: "#9022AA")]
+    sheet = try store.update(path, worksheet: sheet, user: creator)
+    let originalFill = sheet.painted(mode: "light").nodes[0].fill
+    sheet.appearance = Appearance(theme: 3, palette: 1)
+    _ = try store.update(path, worksheet: sheet, user: creator)
+    let reopened = try store.load(path, user: creator)
+    let data = try Data(contentsOf: root.appendingPathComponent("MixedPaint/MixedPaint.thnode"))
+    let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    let box = try #require((json["nodes"] as? [[String: Any]])?.first)
+    #expect(json["background"] as? String == "#213a57")
+    #expect(box["fill"] as? Int == 2)
+    #expect(box["textCol"] as? String == "#aBcDeF")
+    #expect((box["textStyle"] as? [String: Any])?["color"] as? String == "#BADA55")
+    #expect((json["edges"] as? [[String: Any]])?.first?["color"] as? String == "#9022AA")
+    #expect(reopened.painted(mode: "light").nodes[0].fill != originalFill)
+    for mode in ["light", "dark"] {
+        let display = reopened.painted(mode: mode)
+        #expect(display.nodes[0].textColor == "#aBcDeF")
+        #expect(display.edges[0].color == "#9022AA")
+        #expect(reopened.resolvedBackground(mode: mode) == "#213a57")
+    }
 }

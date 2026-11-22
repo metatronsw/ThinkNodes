@@ -43,6 +43,7 @@ enum ThinkNodes {
                 _ = try NIOSSLContext(configuration: tls)
                 app.http.server.configuration.tlsConfiguration = tls
             }
+            store.reconcileAtStartup()
             configure(app, store: store)
             try await app.execute()
         } catch {
@@ -180,6 +181,21 @@ private func loginPage(_ req: Request, next: String, message: String? = nil) -> 
         """)
 }
 
+private func missingPage(_ identity: SessionInfo) -> Response {
+    let account = identity.user == nil
+        ? "<p><a href=\"/login\">Jelentkezz be</a> új oldal létrehozásához. Ha még nincs fiókod, kérj regisztrációt az adminisztrátortól.</p>"
+        : "<p>A főoldalon az Új projekt gombbal hozhatsz létre oldalt.</p>"
+    let page = htmlPage(title: "Az oldal nem létezik", body: """
+        <main class="shell narrow">
+          <h1>Ez az oldal nem létezik</h1>
+          <p><a href="/">Vissza a főoldalra</a></p>
+          \(account)
+        </main>
+        """)
+    page.status = .notFound
+    return page
+}
+
 func configure(_ application: Application, store: WorksheetStore) {
     let live = Collaboration(store: store)
     let assets = application.directory.publicDirectory
@@ -249,22 +265,27 @@ func configure(_ application: Application, store: WorksheetStore) {
     }
 
     app.get("open") { req -> Response in
-        guard let input = req.query[String.self, at: "path"] else { throw Abort(.badRequest) }
-        let path = try worksheetPath(input.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard let input = req.query[String.self, at: "path"],
+              let path = try? worksheetPath(input.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            return missingPage(try session(req, store: store))
+        }
         return redirect("/" + path.url)
     }
 
     configureAdmin(app, store: store, live: live)
 
     app.get("edit", "**") { req async throws -> Response in
-        let path = try WorksheetPath(req.parameters.getCatchall())
         let identity = try session(req, store: store)
+        guard let path = try? WorksheetPath(req.parameters.getCatchall()) else { return missingPage(identity) }
+        guard try await req.application.threadPool.runIfActive({ store.pageExists(path) }) else { return missingPage(identity) }
         guard let user = identity.user, let csrf = identity.csrf else {
             return redirect("/login?next=/edit/" + path.url)
         }
         let worksheet: Worksheet
         do {
-            worksheet = try await req.application.threadPool.runIfActive { try store.open(path, user: user, unlocks: identity.unlocks) }
+            worksheet = try await req.application.threadPool.runIfActive { try store.load(path, user: user, unlocks: identity.unlocks) }
+        } catch let error as Abort where error.status == .notFound {
+            return missingPage(identity)
         } catch let error as Abort where error.status == .locked {
             return unlockPage(req, path: path, identity: identity, editing: true)
         }
@@ -427,21 +448,6 @@ func configure(_ application: Application, store: WorksheetStore) {
         return .noContent
     }
 
-    app.get("api", "project-files", "**") { req async throws -> [[String: String]] in
-        let identity = try session(req, store: store)
-        let user = try identity.editor()
-        let path = try WorksheetPath(req.parameters.getCatchall())
-        return try await req.application.threadPool.runIfActive {
-            let sheet = try store.load(path, user: user, unlocks: identity.unlocks)
-            let access = try store.access(path, sheet: sheet, user: user, unlocks: identity.unlocks)
-            let media = access.projectRule.mediaFiles ?? [:]
-            return try store.contents(path, user: user, unlocks: identity.unlocks).map { file in
-                let name = file.lastPathComponent
-                return ["name": name, "asset": media.first(where: { $0.value == name })?.key ?? name]
-            }
-        }
-    }
-
     app.get("api", "preview-images", "**") { req async throws -> [String] in
         let identity = try session(req, store: store)
         _ = try identity.editor()
@@ -507,17 +513,30 @@ func configure(_ application: Application, store: WorksheetStore) {
         return ["asset": name]
     }
 
-    app.post("api", "attachment", "**") { req async throws -> HTTPStatus in
+    app.post("api", "worksheet-file", "**") { req async throws -> [String: String] in
+        let identity = try session(req, store: store)
+        let user = try identity.editor()
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        guard let name = req.query[String.self, at: "name"], let body = req.body.data else { throw Abort(.badRequest) }
+        let bytes = Data(body.readableBytesView)
+        let file = try await req.application.threadPool.runIfActive {
+            try store.importWorksheet(bytes, named: name, at: path, user: user, unlocks: identity.unlocks)
+        }
+        return ["asset": file.asset, "link": file.link, "title": file.title]
+    }
+
+    app.post("api", "attachment", "**") { req async throws -> Response in
         let identity = try session(req, store: store)
         let user = try identity.editor()
         try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
         let path = try WorksheetPath(req.parameters.getCatchall())
         guard let name = req.query[String.self, at: "name"] else { throw Abort(.badRequest) }
         let bytes = req.body.data.map { Data($0.readableBytesView) } ?? Data()
-        try await req.application.threadPool.runIfActive {
+        let asset = try await req.application.threadPool.runIfActive {
             try store.storeAttachment(bytes, named: name, at: path, user: user, unlocks: identity.unlocks)
         }
-        return .created
+        return Response(status: .created, headers: ["X-ThinkNodes-Asset": asset])
     }
 
     app.put("api", "attachment", "**") { req async throws -> HTTPStatus in
@@ -527,7 +546,7 @@ func configure(_ application: Application, store: WorksheetStore) {
         let path = try WorksheetPath(req.parameters.getCatchall())
         guard let name = req.query[String.self, at: "name"] else { throw Abort(.badRequest) }
         let bytes = req.body.data.map { Data($0.readableBytesView) } ?? Data()
-        try await req.application.threadPool.runIfActive {
+        _ = try await req.application.threadPool.runIfActive {
             try store.storeAttachment(bytes, named: name, at: path, user: user, unlocks: identity.unlocks, replaceText: true)
         }
         return .noContent
@@ -562,20 +581,48 @@ func configure(_ application: Application, store: WorksheetStore) {
         return result
     }
 
-    app.get("**") { req async throws -> Response in
-        let path = try WorksheetPath(req.parameters.getCatchall())
+    app.get("api", "box-file", "**") { req async throws -> Response in
         let identity = try session(req, store: store)
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        guard let id = req.query[String.self, at: "id"], validSlug(id) else { throw Abort(.badRequest) }
+        let source = try await req.application.threadPool.runIfActive {
+            try store.boxFile(path, id: id, user: identity.user, unlocks: identity.unlocks)
+        }
+        switch source {
+        case .disk(let url):
+            let result = try await req.fileio.asyncStreamFile(at: url.path)
+            result.headers.replaceOrAdd(name: .contentDisposition, value: "attachment; filename*=UTF-8''" + encodeQuery(url.lastPathComponent))
+            result.headers.replaceOrAdd(name: .contentType, value: "application/octet-stream")
+            result.headers.replaceOrAdd(name: "X-Content-Type-Options", value: "nosniff")
+            result.headers.replaceOrAdd(name: .cacheControl, value: "no-store")
+            return result
+        case .text(let text, let name):
+            let result = response(text, type: "application/octet-stream")
+            result.headers.replaceOrAdd(name: .contentDisposition, value: "attachment; filename*=UTF-8''" + encodeQuery(name))
+            return result
+        }
+    }
+
+    app.get("**") { req async throws -> Response in
+        let raw = req.parameters.getCatchall()
+        let identity = try session(req, store: store)
+        guard let path = try? WorksheetPath(raw) else {
+            if ["api", "export"].contains(raw.first?.lowercased() ?? "") { throw Abort(.notFound) }
+            return missingPage(identity)
+        }
+        guard try await req.application.threadPool.runIfActive({ store.pageExists(path) }) else { return missingPage(identity) }
         let worksheet: Worksheet
         do {
-            let opened = try await req.application.threadPool.runIfActive {
-                try store.openWithStatus(path, user: identity.user, unlocks: identity.unlocks)
+            worksheet = try await req.application.threadPool.runIfActive {
+                try store.load(path, user: identity.user, unlocks: identity.unlocks)
             }
-            if opened.created { return redirect("/edit/" + path.url) }
-            worksheet = opened.worksheet
+        } catch let error as Abort where error.status == .notFound {
+            return missingPage(identity)
         } catch let error as Abort where error.status == .unauthorized {
             return redirect("/login?next=/" + path.url)
+        } catch let error as Abort where error.status == .locked {
+            return unlockPage(req, path: path, identity: identity)
         }
-        catch let error as Abort where error.status == .locked { return unlockPage(req, path: path, identity: identity) }
         let children = try await req.application.threadPool.runIfActive {
             try store.list(user: identity.user, childrenOf: path, unlocks: identity.unlocks)
         }
@@ -584,7 +631,11 @@ func configure(_ application: Application, store: WorksheetStore) {
         let pages = try children.map { child in
             (child.path, child.worksheet, try store.access(child.path, sheet: child.worksheet, user: identity.user, unlocks: identity.unlocks))
         }
-        return try passivePage(req, path: path, worksheet: worksheet, session: identity, access: access, children: pages, files: files)
+        do {
+            return try passivePage(req, path: path, worksheet: worksheet, session: identity, access: access, children: pages, files: files)
+        } catch let error as Abort where error.status == .notFound {
+            return missingPage(identity)
+        }
     }
 }
 
@@ -645,7 +696,7 @@ private func indexPage(_ items: [ProjectCard], session: SessionInfo) -> Response
     let cards = items.map { item in
         let count = item.count
         return """
-        <a class="project-card panel layers-\(min(count, 2))" data-scope="project" \(menuState(item.access.projectRule)) data-manage="\(item.access.manageable)" data-color="\(escaped(item.worksheet.backgroundColor))" data-revision="\(item.worksheet.revision)" href="/\(item.path.url)">
+        <a class="project-card panel layers-\(min(count, 2))" data-scope="project" \(menuState(item.access.projectRule)) data-manage="\(item.access.manageable)" data-color-light="\(escaped(item.worksheet.resolvedBackground(mode: "light")))" data-color-dark="\(escaped(item.worksheet.resolvedBackground(mode: "dark")))" data-revision="\(item.worksheet.revision)" href="/\(item.path.url)">
           \(item.access.readable ? "<img class=\"project-background\" loading=\"lazy\" alt=\"\" src=\"/api/preview/\(item.path.url)?v=\(item.worksheet.revision)\">" : "")
           <div class="project-summary"><h2>\(escaped(item.worksheet.title))</h2>
           <span class="muted">/\(escaped(item.path.parts.joined(separator: "/")))</span> · \(count + 1) munkalap\(credits(item.worksheet, item.access))<div class="project-badges">\(projectBadges(item.access))</div></div>
@@ -654,10 +705,10 @@ private func indexPage(_ items: [ProjectCard], session: SessionInfo) -> Response
     }.joined()
     let create = session.user == nil ? "" : "<button type=\"button\" class=\"panel sub-preview new-worksheet\">\(uiIcon("plus"))Új projekt</button>"
     let openProject = """
-        <form class="header-open" method="get" action="/open"><input aria-label="Munkalap útvonala" name="path" placeholder="Munkalap útvonala" required><button class="button" aria-label="Megnyitás">\(uiIcon("folder"))</button></form>
+        <form class="header-open" method="get" action="/open"><input aria-label="Munkalap útvonala" name="path" placeholder="Munkalap útvonala" required><button class="\(headerButtonClass)" aria-label="Megnyitás">\(uiIcon("folder"))</button></form>
         """
     return htmlPage(title: "Munkalapok", body: """
-        \(siteHeader(user: session.user, csrf: session.csrf, actions: headerLink("/utmutato.html", "Útmutató", symbol: "file"), centerAction: openProject))
+        \(siteHeader(user: session.user, csrf: session.csrf, actions: buttonLink("/utmutato.html", "Útmutató", symbol: "file", classes: headerButtonClass), centerAction: openProject))
         <main class="shell">
           <script type="module" src="/cards.js"></script>
           <div class="page-heading"><h1>Munkalapok</h1></div>
@@ -688,7 +739,7 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
     let downloads = [
         ("svg", "SVG"), ("thnode", "ThinkNodes"), ("text", "Text"),
     ].map { format, title in
-        headerLink("/export/" + format + "/" + path.url, title, symbol: "download")
+        buttonLink("/export/" + format + "/" + path.url, title, symbol: "download", classes: "button small")
     }.joined()
     let note: String
     if let noteID = req.query[String.self, at: "note"] {
@@ -728,7 +779,7 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
     let newPage = access.editable ? "<button type=\"button\" class=\"button new-worksheet\">\(uiIcon("plus"))Új munkalap</button><button type=\"button\" class=\"button new-worksheet\" data-folder=\"1\">Új almappa</button>" : ""
     return htmlPage(title: worksheet.title, body: """
         \(siteHeader(path: path.url, project: worksheet.title, user: session.user, csrf: session.csrf, canEdit: access.editable, folder: access.folderPath))
-        <script type="module" src="/viewer.js?v=5"></script>
+        <script type="module" src="/viewer.js?v=13"></script>
         <main class="shell" id="worksheet-view" data-graphics="\(escaped(graphicsJSON))" data-selection="\(selectionColor)" data-site-mode="\(siteMode(req) ?? "light")" data-path="\(path.url)" data-csrf="\(token(req))" data-revision="\(worksheet.revision)" data-editable="\(access.editable)" data-member="\(session.user != nil)">
           <a hidden data-current-document data-scope="\(access.folderPath == path.url ? "project" : "sheet")" \(menuState(access.sheetRule)) data-manage="\(access.manageable)" href="\(base)">Munkalap</a>
           <div class="passive-frame panel">

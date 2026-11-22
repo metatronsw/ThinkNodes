@@ -26,21 +26,22 @@ h2 { letter-spacing: -.02em; }
 .error { overflow-wrap: anywhere; }
 
 .site-header {
-  height: 62px;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);
+  min-height: 62px;
+  flex: none;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 clamp(16px, 3vw, 36px);
+  padding: 7px clamp(16px, 3vw, 36px);
   overflow-x: auto;
   color: #e9effb;
   background: #18253b;
 }
-.breadcrumbs, .account, .brand { display: flex; align-items: center; gap: 13px; }
+.breadcrumbs, .account { display: flex; align-items: center; gap: 13px; }
 .breadcrumbs { flex: 1 1 auto; min-width: 145px; }
 .header-user { flex: 0 0 auto; }
 .breadcrumbs a { color: #ebf1ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.brand { font-size: 1.15rem; font-weight: 750; flex: 0 0 auto; letter-spacing: -.03em; }
 .brand-icon { width: 24px; height: 24px; position: relative; display: inline-block; }
 .brand-icon::before { content: ""; position: absolute; left: 10px; top: 6px; width: 10px; height: 12px; border: solid #aebdff; border-width: 0 0 1px 1px; transform: rotate(38deg); }
 .brand-icon span { position: absolute; width: 7px; height: 7px; border-radius: 2px; background: #aebdff; }
@@ -78,6 +79,8 @@ h2 { letter-spacing: -.02em; }
 .button.soft, .button[aria-pressed="true"] { background: #e7ecff; color: var(--accent-ink); border-color: #bbc9f5; }
 .button.small { min-height: 34px; font-size: .85rem; }
 .button.danger { color: #9e2230; }
+.header-button { height: 36px; min-height: 0; flex: none; padding: 0 10px; font-size: .85rem; }
+.header-button.brand { font-size: 1.05rem; font-weight: 750; letter-spacing: -.03em; }
 .ui-icon { flex: 0 0 auto; width: 1.1em; height: 1.1em; }
 .icon-button { padding-inline: 10px; }
 .panel { border: 1px solid var(--line); background: #fff; border-radius: 12px; }
@@ -207,14 +210,14 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .color-field > .color-tools { grid-column: 1 / -1; }
 .color-field input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
 .color-field input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 4px; }
-.canvas-status { position: absolute; inset: 12px auto auto 14px; max-width: calc(100% - 28px); padding: 6px 9px; margin: 0; border-radius: 5px; background: #fff; color: var(--muted); font-size: .85rem; pointer-events: none; }
+.canvas-status { position: absolute; inset: auto auto 62px 12px; max-width: calc(100% - 28px); padding: 6px 9px; margin: 0; border-radius: 5px; background: #fff; color: var(--muted); font-size: .85rem; pointer-events: none; }
 .canvas-status.error { color: #9e2230; }
 .worksheet-notes { margin-top: 18px; padding: 22px; }
 .context-menu { position: fixed; z-index: 8; width: 228px; padding: 7px; display: grid; gap: 3px; box-shadow: 0 10px 25px #1c315326; }
 .context-menu .button { justify-content: flex-start; border-color: transparent; white-space: normal; }
 
 @media (max-width: 680px) {
-  .site-header { height: 58px; padding: 0 12px; }
+  .site-header { padding-inline: 12px; }
   .site-header .account span { display: none; }
   .breadcrumbs { gap: 7px; }
   .brand { gap: 5px; }
@@ -292,7 +295,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
   .editor-header .participants { order: -1; max-width: 100%; width: 100%; justify-content: flex-end; }
 }
 
-.quick-search { grid-template-columns: minmax(0, 1fr); position: absolute; z-index: 6; top: 12px; left: 50%; transform: translateX(-50%); width: min(360px, 92%); max-height: 65%; overflow: auto; padding: 12px; }
+.quick-search { grid-template-columns: minmax(0, 1fr); position: absolute; z-index: 6; top: 48px; left: 50%; transform: translateX(-50%); width: min(360px, 92%); max-height: 65%; overflow: auto; padding: 12px; }
 .editor-canvas [data-edge]:focus { outline: none; }
 .sidebar-open.active use { stroke: currentColor; stroke-width: 3; }
 .sidebar-open.active svg { filter: drop-shadow(1px 0 currentColor); }
@@ -300,18 +303,9 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .canvas-controls::-webkit-scrollbar { display: none; }
 .passive-frame { position: relative; }
 .canvas-area > .participants, .passive-frame > .participants { position: absolute; bottom: 56px; left: 12px; flex-direction: column; align-items: flex-start; gap: 3px; background: #fffffff0; padding: 4px 7px; border-radius: 5px; max-height: 40%; flex-wrap: nowrap; overflow-y: auto; }
-.canvas-status { inset: auto auto 62px 12px; }
 .canvas-tooltip { position: fixed; z-index: 20; pointer-events: none; padding: 10px 14px; background: white; border: 1px solid var(--line); border-radius: 7px; max-width: min(360px, 90vw); max-height: 45vh; overflow: hidden; box-shadow: 0 4px 16px #18233524; }
 .canvas-tooltip > :last-child { margin-bottom: 0; }
 
-.site-header {
-  display: grid;
-  grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);
-  height: auto;
-  min-height: 62px;
-  flex: none;
-  padding-block: 7px;
-}
 .header-left, .header-actions, #editor-tools { display: flex; align-items: center; gap: 8px; }
 .header-left { gap: 20px; }
 .header-actions { justify-content: flex-end; }
@@ -382,7 +376,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .project-summary .project-badges { margin-top: .6rem; }
 [data-node]:hover .box-link, a:hover .box-link { text-decoration: underline; }
 
-.canvas-file { box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; height: 100%; padding: 10px; background: white; border: 1px solid #a8b7cb; border-radius: 10px; overflow: hidden; font: 14px/1.4 system-ui, sans-serif; color: #182335; }
+.canvas-file { box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; height: 100%; padding: 10px; overflow: hidden; font: 14px/1.4 system-ui, sans-serif; color: #182335; }
 .canvas-file strong, .canvas-file small { flex: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .canvas-file pre, .canvas-file .formatted-text { margin: 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .canvas-audio { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
@@ -484,7 +478,7 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 .canvas-controls { left:6px; bottom:6px; padding:0; background:transparent; border:0; box-shadow:none; }
 .canvas-controls[data-open="false"] > :not(:first-child) { display:none; }
 .editor-root { position:relative; }
-.editor-root > .worksheet-nav { position:absolute; z-index:5; inset:4px 4px auto; min-height:36px; flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; padding:0; display:flex; justify-content:space-between; pointer-events:none; }
+.editor-root > .worksheet-nav { position:absolute; z-index:5; inset:4px 4px auto; flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; padding:0; display:flex; justify-content:space-between; pointer-events:none; }
 .editor-root .worksheet-nav :is(a,button,form,.worksheet-history) { pointer-events:auto; }
 .editor-root .worksheet-nav .breadcrumbs { flex-wrap:nowrap; }
 .editor-root .header-left { min-width:0; }
@@ -497,12 +491,19 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 .editor-root .sidebar-open:not(.sidebar-open-canvas) { order:2; }
 .editor-root .worksheet-nav .header-user { margin:0; }
 .editor-root .worksheet-nav { gap:4px; }
+.editor-root .worksheet-nav,
+.editor-root .worksheet-nav > :is(.header-left, .header-parent, .header-actions, .worksheet-history, .header-appearance) {
+  background: transparent;
+}
+.editor-root .worksheet-nav .button:not(:hover, :active, [aria-pressed="true"], .primary) {
+  background: color-mix(in srgb, var(--panel-surface, #fff) 36%, transparent);
+}
 @media (max-width:700px) {
   .editor-root .worksheet-nav { pointer-events:auto; }
   .editor-root .worksheet-nav .header-left { min-width:max-content; }
 }
 .folded-note { position:relative; flex:1; min-height:0; overflow:hidden; padding:8px 20px 8px 10px; text-align:left; border-radius:7px; clip-path:polygon(0 0,calc(100% - 16px) 0,100% 16px,100% 100%,0 100%); }
-.folded-note::after { content:""; position:absolute; top:0; right:0; width:16px; height:16px; background:#0003; }
+.folded-note.with-fold::after { content:""; position:absolute; top:0; right:0; width:16px; height:16px; background:#0003; }
 .folded-note pre { white-space:pre-wrap; margin:0; }
 
 
@@ -519,8 +520,6 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 /* Panels share the site's colors and dimensions in every worksheet. */
 .header-appearance { display: flex; gap: 4px; align-items: center; flex: none; }
 .editor-root .worksheet-nav > .header-appearance { order: 2; }
-.site-mode-button { flex: none; }
-.site-header .header-appearance .site-mode-button { padding-inline: 9px; }
 
 :root[data-display="dark"] {
   color-scheme: dark;
@@ -549,5 +548,68 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 :is(.editor-workspace, .passive-canvas) :is(.selection-glow, .wire-selected) { filter: drop-shadow(0 0 var(--sheet-glow, 4px) currentColor); }
 .color-sample, .color-presets button { width: 32px; height: 32px; padding: 3px; border-radius: 7px; }
 .palette-tile { display: block; width: 100%; height: 100%; border-radius: 4px; }
+.transparent-swatch { background: conic-gradient(#c3cbd7 25%, #fff 0 50%, #c3cbd7 0 75%, #fff 0) 0 0 / 10px 10px; }
 .color-tools.color-presets { grid-template-columns: repeat(auto-fill, 32px); gap: 4px; }
 .color-presets button[aria-pressed=true] .palette-tile::after { content: "✓"; color: white; text-shadow: 0 0 3px black; }
+
+.editor-workspace[data-glass] {
+  --ink: #282337;
+  --muted: #655975;
+  --line: #8370a13d;
+  --accent: #7049b8;
+  --accent-ink: #6540a4;
+  --glass-surface: #faf8ffb8;
+  --glass-field: #ffffff50;
+  --glass-highlight: #ffffffbd;
+  --glass-shadow: #30214925;
+}
+.editor-workspace[data-glass="dark"] {
+  --ink: #f2eff8;
+  --muted: #bcb1cb;
+  --line: #a99ac64a;
+  --accent: #c5a9fa;
+  --accent-ink: #dbc6ff;
+  --glass-surface: #252231b8;
+  --glass-field: #16141e48;
+  --glass-highlight: #e0ccff24;
+  --glass-shadow: #08060c80;
+}
+.editor-workspace[data-glass] :is(.inspector, .quick-search, .canvas-controls, .canvas-empty, .participants) {
+  color: var(--ink);
+  background: var(--glass-surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: inset 0 1px var(--glass-highlight), 0 8px 24px var(--glass-shadow);
+  -webkit-backdrop-filter: blur(16px) saturate(125%);
+  backdrop-filter: blur(16px) saturate(125%);
+}
+.editor-workspace[data-glass] .canvas-controls { padding: 4px; border-radius: 13px; }
+.editor-workspace[data-glass] :is(.inspector-content > fieldset, .inspector-content > p, .inspector-content legend, .canvas-controls .button) {
+  background-color: var(--glass-field);
+}
+.editor-workspace[data-glass] .canvas-controls .button:is(:hover, [aria-pressed="true"]) {
+  color: var(--accent-ink);
+  background-color: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.file-name-field > .muted { align-self: center; white-space: nowrap; }
+.file-download {
+  display: flex;
+  align-items: center;
+  align-self: flex-end;
+  flex: none;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  height: 22px;
+  margin-top: auto;
+  padding: 0 4px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  font: 13px/22px system-ui, sans-serif;
+  cursor: pointer;
+}
+.file-download span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-download:hover span { text-decoration: underline; }
+.canvas-file pre { min-height: 0; }

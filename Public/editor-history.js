@@ -62,6 +62,7 @@ export function replayChanges(sheet, changes, redo, occupied) {
   const checked = new Set();
   for (const node of result.nodes) {
     if (node.kind === "connectionPoint" && (degrees.get(node.id) ?? 0) < 2) return null;
+    if (node.elevated === true && (node.parent || node.kind === "connectionPoint")) return null;
     const path = new Set();
     let current = node;
     while (current.parent && !checked.has(current.id)) {

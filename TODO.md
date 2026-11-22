@@ -1,6 +1,9 @@
 
 
 
+[ **ÖTLET** ]
++ lézer rajz
++ szabadkézi rajz
 + svg -nél beágyazható legyen mentéskor a kép
 + A munkalapon automatikusan jelenjenek meg a képek és a file-ok amik a mappában vannak. 
 + svg üres háttér kezelése
@@ -11,51 +14,61 @@
 + javascript nélkül is működjön a statikus oldal megtekintés
 + Animációk az SVG -be, futó vonal 
 
-konténer:
-- jelezni kell vizuálisan mikor befoglal magába egy másik dobozt. Legyeni ilyenkor a konténer kerete pontozott és kapjon glow effektet.
-? Konténert rátolva a kisebb dobozra, akkor is foglalja magába (ha teljesül a befoglalási méret szabály )
 
-
+[ **KÍSÉRLETI** ]
 
 SHIFT DRAG: 
 - vonal húzáskor, vagy kijelölt vonal vastagítás legyen
 - szín váltás ? 
 - shift duplakatt: doboz, nyíl, forma váltás
 
-{ 
 SPACE INSERT: 
 - kereső ablak nyílik, rendszer parancsokat lehet megadni, vagy a könyvtárból / közös könyvtárból dokumentumokat - szimbólumokat beilleszteni
-}
 
 
 
-
-
-
-
-ÉRVÉNYTELEN URL:
-ha a felhasználó nem létező útvonalat ad meg akkor most egy sima json üzenet van: 
-{"error":true,"reason":"Érvénytelen munkalapútvonal."}
-
-Ezt cseréld le egy statikus lapra, amin azt írja ilyen oldal nem létezik. 
-linket a fő oldalra, és hogy jelentkezzen be  vagy regisztráljon, hozzon létre új oldalt
-
-
-
----
+[ **HIBÁK** ]
 
 nyilak húzása belül - konténerből befelé (hibás)
 
 
-FILE KEZELÉS: 
-- töröld a file beillesztés gombot, csak file feltöltése legyen
-- file törlése minden esetben a file mappából való törlése is, ezért kérdezzen meg. 
-- a törölt file átkerül a project fő mappa .trash/ könyvtárába úgy, hogy ha a projecten belül másik subdirectory -ban volt, akkor másolja annak elérsi útját, hogy vissza állításkor a megfelelő mappába kerüljön majd vissza
-- Minden file ami a munkalapon megjelenik, egységesen kapjon megjeleníthető filename -t a property panelen. A panelen NE lehessen átírni az extensiont, de a dobozon alul jelenítse meg teljes filename.extension formába
-- HIBA: Nézd át az átnevezést, első átnevezéskor van hogy nem történik meg, és vissza ugrik az eredeti névre
-- Ha külsőleg valaki berak valamit a project mappába, akkor azt induláskor/project betöltéskor ellenőrizni kell, és ha lehetséges be kell emelni a canvasra. Ha több van, egymás alá sorba. 
 
-+ KONCEPCIÓ: Mindig, minden file jelenjen meg a canvas-on, csatolt file vagy munkalap. Ha nem támogatott típus - megjeleníthető, akkor egy alap doboz legyen, mint a .txt -nek, aminek csak a címét és a file nevet lehet változtatni. a csomag ikon + filename.extension jelenjen meg. Duplán rákattintva letölthető
+[ **DESIGN** ]
 
-+ KÉRDÉS: meg engedni hogy kívülről is elérhető legyen link alapján ? ez milyen kockázattal jár ? hogy valósítható meg, hogy működik a Vapor szerver ?
+
+
+## KONTÉNER ÚJ működés
+
+A konténer kapjon egy Automatikus elrendezés beállítást. Bekapcsolásakor a konténer saját címe és szövege a tartalomterület felett jelenik meg, az alatta lévő gyermekdobozok pedig rácsban rendeződnek. Keskeny konténernél a rács egy oszlopra vált, és a szöveg sorokra törik.
+
+A gyermekdobozok szélességét és magasságát az elérhető helyhez kell igazítani, a tartalmukat pedig a meglévő dobozrajzolás kezeli. Ha a gyermekek nem férnek el a konténer jelenlegi méretében, a rendszer növelheti a konténer belső tartalmi területét. Ennek látható következménye lehet, hogy a konténer automatikus módban nagyobb lesz.
+
+A kézi pozicionálás megőrzéséhez az automatikus elrendezést külön kapcsolóval érdemes aktiválni, és kezdetben csak a közvetlen gyermekdobozokra alkalmazni. A konténerek egymásba ágyazásának és a konténeren belüli további konténereknek a viselkedését külön szabályként kell meghatározni.
+
+## Fontos adatmodell-kérdés
+
+A jelenlegi rendszer a gyermekdobozok vászon-koordinátáit használja, és a konténerbe kerülés parent kapcsolatként működik. Az automatikus rács megjelenítéskor számított pozíciókat adna a gyerekeknek. Ezeket nem célszerű minden rajzolási ciklusban elmenteni vagy a dokumentumba írni, mert az megnehezíti a közös szerkesztést, az undo-t és a kézi mozgatást.
+
+Javaslat: a konténer tárolja az elrendezési beállításokat, a gyermekek eredeti pozíciói pedig maradjanak meg. A kiszámított pozíció csak megjelenítési réteg legyen; kézi mozgatáskor a felhasználó választhat vagy átválthat kézi elrendezésre. Így az automatikus újratördelés nem írja át észrevétlenül a canvas szerkezetét.
+
+## Teljesítmény és erőforrásigény
+
+Ez várhatóan könnyű számítás, nem folyamatosan nagy terhelésű funkció. A rács kiszámítása alapvetően a közvetlen gyermekek számával arányos (O(n)), a szöveg tördelése pedig a szöveg hosszától függ.
+
+Az elrendezést csak akkor kell újraszámolni, amikor a releváns adatok változnak: gyermek hozzáadása vagy eltávolítása, szöveg- vagy méretmódosítás, konténerméret-változás, illetve ablakméret miatti újrarajzolás. Nem szükséges animációs képkockánként futtatni. A szerkesztőben a számítás kis, korlátos dokumentumokon történhet; szerveroldalon pedig csak akkor kell, ha ugyanazt az automatikus elrendezést a statikus előnézetnek is meg kell jelenítenie.
+
+A legnagyobb költség inkább a viselkedés és szerkesztési élmény megtervezése: például hogy egy gyermek tartalmának növekedése átrendezze-e a többi elemet, vagy hogy a konténer magassága automatikusan nőjön-e.
+
+## Javasolt első változat
+
+Első körben egy kapcsolható Rács elrendezés módot terveznék, amely:
+
+- a konténer saját címét és szövegét felül, olvashatóan mutatja;
+- a közvetlen gyermekeket alatta, egy vagy több oszlopban rendezi;
+- szűk helyen egy oszlopra vált;
+- sorokra tördeli a gyermekek szövegét;
+- változáskor újraszámol, nem folyamatosan;
+- kikapcsolható, hogy a jelenlegi kézi konténerhasználat megmaradjon.
+
+Ez reális és takarékos megoldás. A megvalósítás előtt tisztázandó tervezési pont, hogy az automatikus mód változtathatja-e a konténer külső méretét, vagy csak annak meglévő méretein belül rendezheti a tartalmát.
 

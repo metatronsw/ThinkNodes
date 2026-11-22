@@ -56,6 +56,7 @@ struct VisualTheme: Content, Equatable {
         var contour: [Point]?
         var linePoints: [Point]?
         var box: Shape?
+        var boxChamfer: Double?
         var validGeometry: Bool {
             if let linePoints, linePoints.isEmpty || linePoints.count > 12 ||
                 !linePoints.allSatisfy({ (0...1).contains($0.x) && (-1...1).contains($0.y) }) { return false }
@@ -71,8 +72,11 @@ struct VisualTheme: Content, Equatable {
             return true
         }
         var line: ConnectionType?
+        var lineArc: Double?
+        var roundedWires: Bool?
         var junction: Shape?
         var grid: String?
+        var glass: Bool?
         var junctionSize: Double?
         var motionSpeed: Double?
     }
@@ -83,7 +87,8 @@ struct VisualTheme: Content, Equatable {
     var palettes: [Palette]
     var graphics: Graphics?
     var valid: Bool {
-        (graphics?.validGeometry ?? true) && version == 1 && !name.isEmpty && !modes.isEmpty && Set(modes).isSubset(of: ["light","dark"])
+        (graphics?.validGeometry ?? true) && (0...24).contains(graphics?.boxChamfer ?? 0)
+        && version == 1 && !name.isEmpty && !modes.isEmpty && Set(modes).isSubset(of: ["light","dark"])
         && Set(modes).count == modes.count && !palettes.isEmpty && Set(palettes.map(\.id)).count == palettes.count
         && palettes.allSatisfy { palette in
             let ids = Set(palette.colors.map(\.id))
@@ -95,7 +100,8 @@ struct VisualTheme: Content, Equatable {
                 }
         } && (0...24).contains(graphics?.glow ?? 3)
         && (0..<8).contains(graphics?.selection ?? 4) && (4...128).contains(graphics?.junctionSize ?? 12)
-        && ["dots","lines"].contains(graphics?.grid ?? "dots")
+        && ["dots","lines","drafting"].contains(graphics?.grid ?? "dots")
+        && (0...0.25).contains(graphics?.lineArc ?? 0)
         && [.rectangle, .ellipse, .diamond].contains(graphics?.junction ?? .ellipse)
         && (0.1...5).contains(graphics?.motionSpeed ?? 1)
     }
@@ -118,18 +124,30 @@ enum Themes {
     }()
 }
 
-extension Worksheet {
-    func painted(mode: String?, catalog: [VisualTheme] = Themes.catalog) -> Worksheet {
-        let appearance = self.appearance ?? Appearance()
-        guard let theme = catalog.first(where: { $0.id == appearance.theme }),
-              let palette = theme.palettes.first(where: { $0.id == appearance.palette }) else { return self }
-        let dark = (mode.flatMap { theme.modes.contains($0) ? $0 : nil } ?? theme.modes[0]) == "dark"
+extension VisualTheme {
+    fileprivate func paintResolver(paletteID: Int, mode: String?) -> ((String?, Int) -> String)? {
+        guard let palette = palettes.first(where: { $0.id == paletteID }) else { return nil }
+        let dark = (mode.flatMap { modes.contains($0) ? $0 : nil } ?? modes[0]) == "dark"
         let colors = Dictionary(uniqueKeysWithValues: palette.colors.map { ($0.id, $0) })
-        func resolve(_ value: String?, _ role: Int) -> String {
+        return { value, role in
             if let value, value.hasPrefix("#") { return value }
             let color = value.flatMap(paintID).flatMap { colors[$0] } ?? colors[role]!
             return (dark ? color.dark ?? color.light : color.light ?? color.dark)!
         }
+    }
+}
+
+extension Worksheet {
+    func resolvedBackground(mode: String?) -> String {
+        let appearance = self.appearance ?? Appearance()
+        return Themes.catalog.first(where: { $0.id == appearance.theme })?
+            .paintResolver(paletteID: appearance.palette, mode: mode)?(background, 0) ?? backgroundColor
+    }
+
+    func painted(mode: String?, catalog: [VisualTheme] = Themes.catalog) -> Worksheet {
+        let appearance = self.appearance ?? Appearance()
+        guard let theme = catalog.first(where: { $0.id == appearance.theme }),
+              let resolve = theme.paintResolver(paletteID: appearance.palette, mode: mode) else { return self }
         var sheet = self
         sheet.background = resolve(background, 0)
         for i in sheet.nodes.indices {
@@ -146,39 +164,5 @@ extension Worksheet {
             if edges[i].type == .straight { sheet.edges[i].type = theme.graphics?.line ?? .straight }
         }
         return sheet
-    }
-}
-
-extension Worksheet {
-    mutating func storePaletteReferences() {
-        guard let appearance, let palette = Themes.catalog.first(where: { $0.id == appearance.theme })?
-            .palettes.first(where: { $0.id == appearance.palette }) else { return }
-        func channels(_ hex: String) -> [Int] {
-            let rgb = Int(hex.dropFirst(), radix: 16) ?? 0
-            return [rgb >> 16, (rgb >> 8) & 255, rgb & 255]
-        }
-        let samples = palette.colors.flatMap { color in
-            [color.light, color.dark].compactMap { $0 }.map { (color.id, channels($0)) }
-        }
-        func reference(_ color: String) -> String {
-            if paintID(color) != nil { return color }
-            let rgb = channels(color)
-            func distance(_ sample: [Int]) -> Int {
-                zip(rgb, sample).reduce(0) { sum, pair in
-                    let delta = pair.0 - pair.1
-                    return sum + delta * delta
-                }
-            }
-            let closest = samples.min { distance($0.1) < distance($1.1) }
-            return "@\(closest?.0 ?? 2)"
-        }
-        background = background.map(reference)
-        for i in nodes.indices {
-            nodes[i].fill = reference(nodes[i].fill)
-            nodes[i].textColor = reference(nodes[i].textColor)
-            if let color = nodes[i].textStyle?.color { nodes[i].textStyle?.color = reference(color) }
-            if let color = nodes[i].file?.alphaBackground { nodes[i].file?.alphaBackground = reference(color) }
-        }
-        for i in edges.indices { edges[i].color = edges[i].color.map(reference) }
     }
 }

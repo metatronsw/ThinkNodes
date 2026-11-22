@@ -83,7 +83,7 @@ A `./run.sh --test` indításkor minden új böngésző-munkamenet automatikusan
 
 ## Munkalapok és fájlok
 
-A főoldalon minden kártya egy projektmappát nyit meg. A mappával azonos nevű **.thnode** a fő munkalap. A többi **.thnode** melléklap, a további fájlok a **Mappa tartalma** alatt tölthetők le. A JSON-adatfájlok is mellékletek. Minden almappának saját főlapja és beállításfájlja van.
+A főoldalon minden kártya egy projektmappát nyit meg. A mappával azonos nevű **.thnode** a fő munkalap. A többi **.thnode** melléklap. A mappába kívülről másolt fájlok indításkor vagy a főlap megnyitásakor egymás alá kerülnek a vásznon. A támogatott fájlok előnézetet kapnak, a többi letölthető fájldobozként jelenik meg. Minden almappának saját főlapja és beállításfájlja van. Új munkalapot a felület **Új projekt** vagy **Új munkalap** műveletével lehet létrehozni.
 
 | Útvonal | Adatfájl |
 |---|---|
@@ -95,6 +95,8 @@ A főoldalon minden kártya egy projektmappát nyit meg. A mappával azonos nev�
 A munkalap JSON-formátumban tárolja a vásznat, a címét, a létrehozóját és a mentési revíziót. A projekt **.settings.json** fájljában vannak a tagság és a lapok láthatóságának beállításai. A rejtett lap közvetlen hivatkozással elérhető a jogosultaknak. Az új almappa átveszi a szülő aktuális jogosultságait. A hozzáféréshez minden szülőmappán is át kell jutni. A nyilvános mód olvasást enged, szerkeszteni a jogosult tagok tudnak. A rendszergazda kezeli az összes projektet.
 
 A **Projects/.settings.json** tartalmazza az alkalmazás beállításait, a fiókokat és a bcrypt-jelszóhasheket. A beállításfájlokat és a munkalapokat a mellékletlista kihagyja. A munkalap saját letöltési gombja **.thnode** fájlt ad.
+
+A fájldoboz alján a csomagikon melletti teljes fájlnévre dupla kattintással lehet letölteni a fájlt. A tulajdonságpanelen a név a kiterjesztés előtt szerkeszthető. A jóváhagyott törlés a projekt **.trash/** mappájába helyezi a fájlt az eredeti projektbeli alkönyvtárral együtt.
 
 A mentés atomi fájlcserét és revízióellenőrzést használ. Egy adatkönyvtárhoz egy futó szerverpéldány tartozik.
 

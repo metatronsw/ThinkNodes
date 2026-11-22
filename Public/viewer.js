@@ -8,8 +8,8 @@ import {flashNode, flashPoint} from "./ping.js";
 import {hideTooltip, showTooltip} from "./tooltip.js";
 import {liveConnection} from "./collaboration.js";
 
-import {useWorksheetGeometry, arrowTransform, edgeGeometry, edgePaint, selectionOutline, wireGradientValues} from "./geometry.js?v=9";
-import {ancestors} from "./containers.js";
+import {useWorksheetGeometry, arrowLength, arrowTransform, edgeGeometry, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireGradientValues, wireLabelLayout} from "./geometry.js?v=17";
+import {ancestors} from "./containers.js?v=3";
 
 let selection;
 let peers = [];
@@ -30,8 +30,6 @@ function bindCanvas() {
   mouse?.bind(svg, svg, main.dataset.member === "true" ? main.querySelector(".passive-frame") : null);
   for (const element of svg.querySelectorAll("[data-file-ink]")) {
     element.style.color = element.dataset.fileInk;
-    const body = element.querySelector(".folded-note") ?? (element.matches(".canvas-file") ? element : null);
-    if (body) body.style.backgroundColor = element.dataset.filePaper;
   }
   hideTooltip();
   main.querySelector(".passive-frame").append(roster);
@@ -69,7 +67,9 @@ function previewScene() {
       ? document.getElementById("wire-gradient-" + edge.id) : null;
     const wire = {path, frame, edge, gradient, sweep: gradient?.querySelector("animateTransform"), paint: edgePaint(edge),
       marker: document.getElementById("arrow-" + edge.id), arrows: [...frame.querySelectorAll("[data-arrow-end]")],
-      label: edge.label?.trim() ? frame.nextElementSibling : null};
+      label: edge.label?.trim() ? frame.nextElementSibling : null,
+      clip: document.getElementById("wire-gap-" + edge.id)?.firstElementChild,
+      taper: path.hasAttribute("data-wire-taper"), pulse: path.querySelector('animate[attributeName="d"]')};
     wires.set(edge.id, wire);
     index(wiresByNode, edge.source, wire);
     index(wiresByNode, edge.target.node, wire);
@@ -90,10 +90,16 @@ function previewScene() {
       if (delta) node.anchor.setAttribute("transform", "translate(" + delta.x + " " + delta.y + ")");
       else node.anchor.removeAttribute("transform");
     }
-    for (const {path, edge, gradient, sweep, paint, arrows, label} of affectedWires) {
+    for (const {path, edge, gradient, sweep, paint, arrows, label, clip, taper, pulse} of affectedWires) {
       const geometry = edgeGeometry(edge, id => nodes.get(id));
       const {d, from, to, sourceToward, targetToward} = geometry;
-      path.setAttribute("d", d);
+      const profile = taper ? taperedArc(geometry, paint) : null;
+      const outline = profile?.outline();
+      path.setAttribute("d", outline ?? d);
+      if (pulse && profile) {
+        const scale = Math.min(1.45, maximumLineWidth / paint.lineWidth);
+        pulse.setAttribute("values", [outline, profile.outline(scale), outline].join(";"));
+      }
       if (sweep) {
         for (const [key, value] of Object.entries({x1: from.x, y1: from.y, x2: to.x, y2: to.y})) {
           gradient.setAttribute(key, value);
@@ -101,12 +107,30 @@ function previewScene() {
         sweep.setAttribute("values", wireGradientValues(from, to, paint));
       }
       for (const arrow of arrows) {
-        const start = arrow.dataset.arrowEnd === "source";
-        arrow.setAttribute("transform", arrowTransform(start ? from : to, start ? sourceToward : targetToward, paint.width));
+        const end = arrow.dataset.arrowEnd;
+        const start = end === "source";
+        arrow.setAttribute("transform", profile?.ends[end].transform ??
+          arrowTransform(start ? from : to, start ? sourceToward : targetToward, arrowLength(paint.width)));
       }
       if (label) {
-        const {labelPosition, angle} = geometry;
-        label.setAttribute("transform", "translate(" + labelPosition.x + " " + labelPosition.y + ") rotate(" + angle + ")");
+        const layout = wireLabelLayout(geometry, edge.label, paint, edge.labelInLine);
+        label.setAttribute("transform", layout.transform);
+        label.setAttribute("y", layout.y);
+        label.setAttribute("font-size", layout.fontSize);
+        label.setAttribute("font-weight", layout.fontWeight);
+        if (layout.clip && clip) {
+          clip.setAttribute("d", layout.clip);
+          clip.setAttribute("transform", layout.transform);
+          path.setAttribute("clip-path", "url(#wire-gap-" + edge.id + ")");
+          label.setAttribute("textLength", layout.textLength);
+          label.setAttribute("lengthAdjust", "spacingAndGlyphs");
+          label.setAttribute("dominant-baseline", "central");
+        } else if (clip) {
+          path.removeAttribute("clip-path");
+          label.removeAttribute("textLength");
+          label.removeAttribute("lengthAdjust");
+          label.removeAttribute("dominant-baseline");
+        }
       }
     }
   }
@@ -187,10 +211,11 @@ function paint(peers) {
     if (color === (paintedWireOwners.get(id) ?? "")) continue;
     const wire = scene.wires.get(id);
     if (!wire) continue;
-    const {frame, gradient, path, marker, arrows} = wire;
+    const {frame, gradient, path, marker, arrows, taper} = wire;
     frame.classList.toggle("wire-selected", !!color);
     frame.style.color = color;
     if (gradient) gradient.style.color = color;
+    else if (taper) path.style.fill = color;
     else path.style.stroke = color;
     if (marker) marker.style.color = color;
     for (const arrow of arrows) arrow.style.fill = color;
@@ -230,7 +255,17 @@ document.addEventListener("click", async event => {
   }
 
 });
+document.addEventListener("click", event => {
+  const download = event.target.closest(".file-download[data-download]");
+  if (download && event.detail === 0) location.assign(download.dataset.download);
+});
 document.addEventListener("dblclick", event => {
+  const download = event.target.closest(".file-download[data-download]");
+  if (download) {
+    event.preventDefault();
+    location.assign(download.dataset.download);
+    return;
+  }
   const box = event.target.closest(".passive-canvas a[data-link]");
   if (event.target.closest("button, audio, [data-audio-player], .canvas-file a")) return;
   if (!box) {
