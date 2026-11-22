@@ -81,10 +81,11 @@ func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: 
     // (szerkesztő vagy megtekintő) nyitják meg a munkalapot. Az aktuális munkalap nem link.
     let crumb = parts.indices.map { i in
         let name = parts[i].removingPercentEncoding ?? parts[i]
+        let separator = "<span class=\"crumb-sep\" aria-hidden=\"true\">›</span>"
         if i == parts.count - 1 {
-            return "<span class=\"\(headerButtonClass) crumb\" aria-current=\"page\">\(escaped(name))</span>"
+            return separator + "<span class=\"\(headerButtonClass) crumb\" aria-current=\"page\">\(escaped(name))</span>"
         }
-        return "<a class=\"\(headerButtonClass) crumb\" href=\"\(escaped(base + parts[...i].joined(separator: "/")))\">\(escaped(name))</a>"
+        return separator + "<a class=\"\(headerButtonClass) crumb\" href=\"\(escaped(base + parts[...i].joined(separator: "/")))\">\(escaped(name))</a>"
     }.joined()
     let parent = editing && parts.count > 1
         ? "<a class=\"\(headerButtonClass)\" aria-label=\"Szülő munkalap\" title=\"Szülő munkalap\" href=\"/edit/\(parts.dropLast().joined(separator: "/"))\">\(uiIcon("parent-up"))</a>"
