@@ -1,5 +1,12 @@
 const playbackEvents = ["loadedmetadata", "durationchange", "timeupdate", "play", "pause", "ended", "error"];
 
+const clock = seconds => Math.floor(seconds / 60) + ":" + String(Math.floor(seconds % 60)).padStart(2, "0");
+const audioTypes = {mp3: "audio/mpeg", wav: "audio/wav", ogg: "audio/ogg", flac: "audio/flac", m4a: "audio/mp4", aac: "audio/aac"};
+function playable(audio) {
+  const ext = (new URL(audio.currentSrc || audio.src, location.href).searchParams.get("name") ?? "").split(".").pop().toLowerCase();
+  return !audioTypes[ext] || audio.canPlayType(audioTypes[ext]) !== "";
+}
+
 function syncPlayer(player) {
   const audio = player.querySelector("audio");
   const toggle = player.querySelector("[data-audio-toggle]");
@@ -13,7 +20,9 @@ function syncPlayer(player) {
   seek.disabled = !duration || !!audio.error;
   seek.max = duration;
   seek.value = Math.min(duration, audio.currentTime);
-  if (audio.error) player.querySelector("[data-audio-status]").textContent = "A hangfájl nem tölthető be.";
+  const time = player.querySelector("[data-audio-time]");
+  if (time) time.textContent = duration ? clock(audio.currentTime) + " / " + clock(duration) : clock(audio.currentTime);
+  if (audio.error) player.querySelector("[data-audio-status]").textContent = playable(audio) ? "A hangfájl nem tölthető be." : "A böngésző nem játssza le.";
 }
 
 export function syncAudioPlayers(root) {
@@ -40,6 +49,8 @@ export function bindAudioPlayers(root) {
     try {
       if (audio.paused || audio.ended) {
         if (audio.error) audio.load();
+        // Egyszerre csak egy hang szól (docs/node-types.md, audio típus).
+        for (const other of document.querySelectorAll("[data-audio-player] audio")) if (other !== audio) other.pause();
         await audio.play();
       } else audio.pause();
     } catch (error) {

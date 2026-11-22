@@ -62,9 +62,9 @@ import VaporTesting
         worksheet.background = "@0"
         worksheet.text = "**A munkalap bevezetője**"
         worksheet.nodes = [
-            Idea(id: "elso", title: "Első <ötlet>", text: "## Próba\n\n**Szöveg**",
-                 hideText: false, position: Point(x: -250, y: 0), height: 140),
-            Idea(id: "masodik", title: "Második ötlet", position: Point(x: 250, y: 0), shape: .ellipse)
+            Idea(id: "elso", text: "# Első <ötlet>\n\n## Próba\n\n**Szöveg**",
+                 hideText: false, position: Point(x: -250, y: 0), width: 260, height: 160),
+            Idea(id: "masodik", text: "Második ötlet", position: Point(x: 250, y: 0), shape: .ellipse)
         ]
         worksheet.edges = [
             Connection(id: "kapcsolat", source: "elso", target: ConnectionTarget(node: "masodik"), startArrow: true),
@@ -152,7 +152,7 @@ import VaporTesting
         #expect(inlineSVG.headers.first(name: .contentDisposition) == "inline")
         #expect(inlineSVG.headers.first(name: "Content-Security-Policy")?.hasPrefix("sandbox; default-src 'none'; style-src 'unsafe-inline'") == true)
         var withAnimation = child
-        withAnimation.nodes = [Idea(id: "animation", title: "", file: CanvasFile(type: .image, asset: svgAsset), position: Point(x: 0, y: 0))]
+        withAnimation.nodes = [Idea(id: "animation", type: "image", file: CanvasFile(asset: svgAsset), position: Point(x: 0, y: 0))]
         try withAnimation.validate()
         let animatedCanvas = boardSVG(withAnimation, noteBase: "/" + path + "/terv")
         #expect(animatedCanvas.contains("<img alt=") && animatedCanvas.contains("name=" + encodeQuery(svgAsset)))
@@ -163,7 +163,7 @@ import VaporTesting
             #expect(rejected.status == .unsupportedMediaType)
         }
         var withArchive = child
-        withArchive.nodes = [Idea(id: "archive", title: "Anyag", file: CanvasFile(type: .attachment, asset: "Ötletek.zip"), position: Point(x: 0, y: 0))]
+        withArchive.nodes = [Idea(id: "archive", type: "document", file: CanvasFile(asset: "Ötletek.zip"), position: Point(x: 0, y: 0))]
         try withArchive.validate()
         let archiveSVG = boardSVG(withArchive, assetBase: "/" + path + "/terv")
         #expect(archiveSVG.contains("/api/box-file/" + path + "/terv?id=archive"))
@@ -417,38 +417,38 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
 }
 
 @Test func autoSizeSurvivesRoundTripAndFitsSVGText() throws {
-    let idea = Idea(id: "fit", title: "Cím", text: "Törzs", position: Point(x: 0, y: 0),
-                    width: 240, height: 100, shape: .rectangle, backgroundEnabled: false, fitText: true)
+    let idea = Idea(id: "fit", text: "# Cím\n\nTörzs", position: Point(x: 0, y: 0),
+                    width: 240, height: 100, shape: .rectangle, backgroundMode: .free, fitText: true)
     let board = Worksheet(title: "AutoSize", nodes: [idea])
     let saved = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(board))
     #expect(saved.nodes[0].fitText == true)
-    #expect(saved.nodes[0].backgroundEnabled == false)
+    #expect(saved.nodes[0].backgroundMode == .free)
     #expect(saved.nodes[0].fontSize == 16)
     let svg = boardSVG(saved)
     #expect(!svg.contains("rx=\"0\""))
     #expect(!svg.contains("node-surface"))
     #expect(boardSVG(saved, noteBase: "/sheet").contains("rx=\"0\" fill=\"none\" pointer-events=\"fill\""))
-    #expect(svg.contains("font-size=\"33.600\" font-weight=\"650\">Cím</tspan>"))
-    #expect(svg.contains("font-size=\"24.000\" font-weight=\"400\">Törzs</tspan>"))
+    #expect(svg.contains("font-weight=\"700\">Cím</tspan>"))
+    #expect(svg.contains("font-weight=\"400\">Törzs</tspan>"))
 }
 
 @Test func transparentAndBlurredBoxSurfacesExportWithTheirContent() throws {
     let position = Point(x: 0, y: 0)
-    let note = Idea(id: "note", title: "Jegyzet", text: "Tartalom", file: CanvasFile(type: .txt),
-                    position: position, backgroundEnabled: false, backgroundBlur: true)
+    let note = Idea(id: "note", type: "text", file: CanvasFile(asset: "file-note", filename: "jegyzet.txt"),
+                    position: position, backgroundMode: .free)
     let asset = UUID().uuidString.lowercased() + ".png"
-    let image = Idea(id: "image", title: "Kép", file: CanvasFile(type: .image, asset: asset, alphaEnabled: false),
-                     position: position, backgroundEnabled: false)
+    let image = Idea(id: "image", type: "image", file: CanvasFile(asset: asset, alphaEnabled: false),
+                     position: position, backgroundMode: .free)
     let transparent = Worksheet(title: "Átlátszó", nodes: [note, image])
     try transparent.validate()
-    let exported = boardSVG(transparent)
+    let exported = boardSVG(transparent, fileText: { $0.id == "note" ? "Tartalom" : nil })
     #expect(exported.contains("Tartalom") && exported.contains("<img"))
     #expect(!exported.contains("node-surface") && !exported.contains("pointer-events=\"fill\""))
     #expect(!exported.contains("background-color:") && !exported.contains("box-background-blur"))
     var blurred = transparent
-    blurred.nodes[0].backgroundEnabled = true
+    blurred.nodes[0].backgroundMode = .blurred
     blurred = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(blurred))
-    #expect(blurred.nodes[0].backgroundBlur == true)
+    #expect(blurred.nodes[0].backgroundMode == .blurred)
     let svg = boardSVG(blurred)
     #expect(svg.contains(#"opacity=".5" filter="url(#box-background-blur)""#))
     #expect(svg.contains(#"<feGaussianBlur stdDeviation="2"/>"#))
@@ -472,13 +472,13 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
 }
 
 @Test func svgShortensBoxLabelsWithoutClipping() throws {
-    var node = Idea(id: "box", title: "Hosszú cím", text: "**Nagy szöveg**", position: Point(x: 0, y: 0),
-                    width: 64, height: 40, shape: .ellipse, fontSize: 80, textStyle: TextStyle(size: 120))
+    var node = Idea(id: "box", text: "# Hosszú cím\n\n**Nagy szöveg**", position: Point(x: 0, y: 0),
+                    width: 64, height: 40, shape: .ellipse, fontSize: 80)
     let bounded = boardSVG(Worksheet(title: "Doboz", nodes: [node]))
     #expect(!bounded.contains("<clipPath"))
     #expect(!bounded.contains("clip-path="))
     #expect(bounded.contains("…</tspan>"))
-    node.backgroundEnabled = false
+    node.backgroundMode = .free
     let board = Worksheet(title: "Doboz", nodes: [node])
     try board.validate()
     let free = boardSVG(board)
@@ -490,12 +490,11 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
 
 @Test func containerStylesAndJunctionsSurviveRoundTrip() throws {
     let origin = Point(x: 0, y: 0)
-    var container = Idea(id: "group", title: "Konténer", position: origin, link: "aloldal", kind: .container, locked: true)
-    let child = Idea(id: "child", title: "Ötlet", text: "**törzs**", hideText: false,
-                     position: origin, parent: "group", italic: true, underline: true,
-                     textStyle: TextStyle(color: "#663300", size: 17, italic: true, alignment: .left))
-    let junction = Idea(id: "joint", title: "Kapocs", position: Point(x: 200, y: 80), width: 34, height: 34,
-                        shape: .ellipse, kind: .connectionPoint)
+    var container = Idea(id: "group", text: "Konténer", position: origin, link: NodeLink(kind: .sheet, target: "aloldal"), container: true, locked: true)
+    let child = Idea(id: "child", text: "Ötlet\n\n**törzs** *kiemelés*", hideText: false, position: origin, width: 300, height: 120, textColor: "#663300",
+                     fontSize: 17, italic: true, underline: true, alignment: .left, parent: "group")
+    let junction = Idea(id: "joint", type: "junction", text: "Kapocs", position: Point(x: 200, y: 80), width: 34, height: 34,
+                        shape: .ellipse, angle: 30)
     let line = Connection(id: "line", source: child.id, target: ConnectionTarget(node: junction.id))
     let second = Connection(id: "other-line", source: junction.id, target: ConnectionTarget(point: origin), endArrow: false)
     var board = Worksheet(title: "Ábra", gridSpacing: 32,
@@ -503,7 +502,6 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     try board.validate()
     var largeTitle = board
     largeTitle.nodes[0].fontSize = 10000
-    largeTitle.nodes[0].textStyle?.size = 1
     try largeTitle.validate()
     var legacy = board
     var duplicate = line
@@ -513,18 +511,22 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     let saved = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(board))
     try saved.validate()
     #expect(saved.nodes.first?.parent == container.id)
-    #expect(saved.nodes.first?.textStyle?.size == 17)
+    #expect(saved.nodes.first?.fontSize == 17)
+    #expect(saved.nodes[1].angle == 30)
     #expect(saved.nodes.last?.locked == true)
+    #expect(saved.nodes.last?.link == NodeLink(kind: .sheet, target: "aloldal"))
     let svg = boardSVG(saved)
     #expect(!svg.contains("worksheet-grid"))
     #expect(!svg.contains("<pattern"))
     #expect(svg.contains("text-anchor=\"start\""))
     #expect(svg.contains("font-style=\"italic\" text-decoration=\"underline\""))
-    #expect(svg.contains("r=\"17.000\" fill=\"#dce9ff\" aria-label=\"Kapocs\""))
-    #expect(svg.contains(">Kapocs</text>"))
+    #expect(svg.contains("font-style=\"normal\""))
+    #expect(svg.contains("r=\"17.000\" fill=\"#dce9ff\""))
+    #expect(svg.contains("rotate(30.000)") && svg.contains(">Kapocs</text>"))
     #expect(svg.contains("stroke-width=\"6.4\" data-locked-outline=\"\""))
-    #expect(svg.contains("font-size=\"16\" fill=\"#182335\">aloldal</text>"))
-    board.nodes[1].title = ""
+    #expect(svg.contains("font-size=\"13\" fill=\"#182335\">aloldal</text>"))
+    #expect(svg.contains("has-children") && svg.contains("node is-junction"))
+    board.nodes[1].text = ""
     try board.validate()
     let groupStart = try #require(svg.range(of: "aria-label=\"Konténer\" transform="))
     let edgeStart = try #require(svg.range(of: "marker-end=\"url(#arrow-line)"))
@@ -542,14 +544,19 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     #expect(throws: Abort.self) { try board.validate() }
     board.nodes[0].parent = "missing"
     #expect(throws: Abort.self) { try board.validate() }
+    var fileLink = Worksheet(title: "Link", nodes: [Idea(id: "doc", type: "document", file: CanvasFile(asset: "file-doc", filename: "a.pdf"),
+                                                     position: origin, link: NodeLink(kind: .url, target: "https://example.org"))])
+    #expect(throws: Abort.self) { try fileLink.validate() }
+    fileLink.nodes[0].link = nil
+    try fileLink.validate()
 }
 
 @Test func elevatedBoxesKeepTheirShadowAndStayOutsideContainers() throws {
     let position = Point(x: 0, y: 0)
-    let group = Idea(id: "group", title: "Kiemelt konténer", position: position, kind: .container, elevated: true)
-    let child = Idea(id: "child", title: "Tartalom", position: position, parent: group.id)
-    let ordinary = Idea(id: "ordinary", title: "Másik doboz", position: position)
-    let file = Idea(id: "file", title: "Kiemelt fájl", file: CanvasFile(type: .txt), position: position, elevated: true)
+    let group = Idea(id: "group", text: "Kiemelt konténer", position: position, container: true, elevated: true)
+    let child = Idea(id: "child", text: "Tartalom", position: position, parent: group.id)
+    let ordinary = Idea(id: "ordinary", text: "Másik doboz", position: position)
+    let file = Idea(id: "file", type: "text", file: CanvasFile(asset: "file-kiemelt", filename: "kiemelt.txt"), position: position, elevated: true)
     var sheet = Worksheet(title: "Kiemelés", nodes: [group, child, ordinary, file])
     sheet = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(sheet))
     try sheet.validate()
@@ -587,7 +594,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     let a = User(name: "anna", role: .admin, passwordHash: "")
     let b = User(name: "bela", role: .admin, passwordHash: "")
     var sheet = try store.open(path, user: a)
-    sheet.nodes = [Idea(id: "box", title: "Doboz", position: Point(x: 0, y: 0))]
+    sheet.nodes = [Idea(id: "box", text: "Doboz", position: Point(x: 0, y: 0))]
     sheet = try store.update(path, worksheet: sheet, user: a)
     let eventLoop = MultiThreadedEventLoopGroup.singleton.next()
     func select(_ user: User, node: String?) throws -> LiveState {
@@ -863,21 +870,19 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
 }
 
 @Test func bodyJustificationSurvivesRoundTrip() throws {
-    let node = Idea(id: "box", title: "Cím", text: "Ez egy rövid példa több szövegsorral.",
-                    position: Point(x: 0, y: 0), width: 130, height: 180, textStyle: TextStyle(justified: true))
+    let node = Idea(id: "box", text: "# Cím\n\nEz egy rövid példa több szövegsorral.",
+                    position: Point(x: 0, y: 0), width: 130, height: 180, justified: true)
     let board = Worksheet(title: "Munkalap", text: "Bevezetés", textJustified: true, nodes: [node])
     let saved = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(board))
     #expect(saved.textJustified == true)
-    #expect(saved.nodes[0].textStyle?.justified == true)
+    #expect(saved.nodes[0].justified == true)
     let svg = boardSVG(saved)
     #expect(svg.contains("word-spacing="))
-    #expect(!svg.contains("class=\"node-link-label\" word-spacing="))
 }
 
 @Test func compactWorksheetKeysRoundTrip() throws {
-    let node = Idea(id: "idea", title: "Ötlet", position: Point(x: 12, y: 34),
-                    alignment: .left, verticalAlignment: .top,
-                    textStyle: TextStyle(alignment: .right, verticalAlignment: .bottom))
+    let node = Idea(id: "idea", text: "Ötlet", position: Point(x: 12, y: 34),
+                    alignment: .left, verticalAlignment: .top)
     let edge = Connection(id: "wire", sourcePoint: Point(x: 0, y: 0),
                           target: ConnectionTarget(node: node.id), width: 3)
     let sheet = Worksheet(title: "Teszt", gridSpacing: 25, nodes: [node], edges: [edge])
@@ -993,7 +998,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
 }
 
 @Test func boxAnimationsRoundTripAndRenderSVG() throws {
-    var box = Idea(id: "box", title: "Doboz", position: Point(x: 0, y: 0))
+    var box = Idea(id: "box", text: "Doboz", position: Point(x: 0, y: 0))
     for (mode, track): (BoxAnimation, String) in [
         (.pulse, "type=\"scale\""), (.blink, "attributeName=\"opacity\""),
         (.rock, "type=\"rotate\""), (.hop, "type=\"translate\""),
@@ -1011,10 +1016,10 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
 }
 
 @Test func connectedWiresRenderBelowTheirEndpointsInsideContainers() throws {
-    let container = Idea(id: "container", title: "Konténer", position: Point(x: 0, y: 0),
-                         width: 600, height: 320, kind: .container)
-    let source = Idea(id: "source", title: "Kezdőpont", position: Point(x: -120, y: 0), parent: container.id)
-    let target = Idea(id: "target", title: "Végpont", position: Point(x: 120, y: 0), animation: .pulse, parent: container.id)
+    let container = Idea(id: "container", text: "Konténer", position: Point(x: 0, y: 0),
+                         width: 600, height: 320, container: true)
+    let source = Idea(id: "source", text: "Kezdőpont", position: Point(x: -120, y: 0), parent: container.id)
+    let target = Idea(id: "target", text: "Végpont", position: Point(x: 120, y: 0), animation: .pulse, parent: container.id)
     let edge = Connection(id: "wire", source: source.id, target: ConnectionTarget(node: target.id))
     let svg = boardSVG(Worksheet(title: "Rétegek", nodes: [source, target, container], edges: [edge]), noteBase: "/retegek")
     let containerOffset = try #require(svg.range(of: "id=\"object-container\"")).lowerBound
@@ -1031,7 +1036,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     (.parallelogram, 4, "46.500"),
 ])
 func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
-    let box = Idea(id: "box", title: "Doboz", position: Point(x: 0, y: 0), width: 120, height: 80, shape: shape)
+    let box = Idea(id: "box", text: "Doboz", position: Point(x: 0, y: 0), width: 120, height: 80, shape: shape)
     let edge = Connection(id: "wire", source: box.id, target: ConnectionTarget(point: Point(x: 200, y: 0)), endArrow: false)
     let sheet = Worksheet(title: "Sokszögek", nodes: [box], edges: [edge])
     let saved = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(sheet))
@@ -1044,7 +1049,7 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
 }
 
 @Test func experimentalAnchorsLoadAsAutomaticConnections() throws {
-    let box = Idea(id: "box", title: "Doboz", position: Point(x: 0, y: 0), width: 120, height: 80, shape: .rectangle)
+    let box = Idea(id: "box", text: "Doboz", position: Point(x: 0, y: 0), width: 120, height: 80, shape: .rectangle)
     var second = box
     second.id = "second"
     second.position = Point(x: 200, y: 60)
@@ -1058,7 +1063,7 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
 }
 
 @Test func incompleteWorksheetUsesDefaultsAndDropsUnknownKeys() throws {
-    let data = Data(##"{"gridCol":"#ff0000","gridVisible":false,"nodes":[{"id":"a","shape":"unknown","pos":{"x":42},"border":"#ffffff","textFill":"#ffffff","textBorder":"#663344","extra":true}]}"##.utf8)
+    let data = Data(##"{"schemaVersion":3,"gridCol":"#ff0000","gridVisible":false,"nodes":[{"id":"a","type":"box","shape":"unknown","pos":{"x":42},"border":"#ffffff","textFill":"#ffffff","textBorder":"#663344","extra":true}]}"##.utf8)
     let board = try JSONDecoder().decode(Worksheet.self, from: data)
     try board.validate()
     let node = try #require(board.nodes.first)
@@ -1106,8 +1111,8 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
         try store.storeMedia(png, type: "image/png", filename: "Eredeti.png", at: path, user: owner, unlocks: [])
     }
     sheet.nodes = [
-        Idea(id: "one", title: "", text: "Csak mutatáskor", file: CanvasFile(type: .image, asset: asset, filename: "Eredeti"), position: Point(x: 0, y: 0)),
-        Idea(id: "two", title: "", file: CanvasFile(type: .image, asset: asset, filename: "Eredeti"), position: Point(x: 400, y: 0)),
+        Idea(id: "one", type: "image", text: "Csak mutatáskor", file: CanvasFile(asset: asset, filename: "Eredeti"), position: Point(x: 0, y: 0)),
+        Idea(id: "two", type: "image", file: CanvasFile(asset: asset, filename: "Eredeti"), position: Point(x: 400, y: 0)),
     ]
     sheet = try store.update(path, worksheet: sheet, user: owner)
     sheet.nodes[0].file?.filename = "Új név"
@@ -1129,10 +1134,10 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     #expect(try Data(contentsOf: directory.appendingPathComponent("Foglalt.png")) == png)
     #expect(FileManager.default.fileExists(atPath: renamed.path))
     #expect(sheet.nodes[1].file?.filename == "Új név")
-    #expect(needsTextTooltip(sheet.nodes[0]))
+    #expect(!needsTextTooltip(sheet.nodes[0]))
     let svg = boardSVG(sheet, noteBase: "/image")
     #expect(svg.contains("<span>Új név.png</span>"))
-    #expect(!svg.contains("Csak mutatáskor"))
+    #expect(svg.contains("node-comment") && svg.contains("Csak mutatáskor"))
     sheet.nodes[0].file?.filename = "../tiltott"
     #expect(throws: Abort.self) { try store.update(path, worksheet: sheet, user: owner) }
     #expect(FileManager.default.fileExists(atPath: renamed.path))
@@ -1199,7 +1204,7 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     #expect(sheet.nodes.map { $0.file?.filename } == ["adat.bin", "jegyzet.txt"])
     #expect(sheet.nodes[0].position.x == sheet.nodes[1].position.x)
     #expect(sheet.nodes[0].position.y < sheet.nodes[1].position.y)
-    #expect(sheet.nodes[1].text == "Szöveg")
+    #expect(sheet.nodes.map(\.type) == ["document", "text"])
     let externalFolder = directory.appendingPathComponent("ujmappa")
     try FileManager.default.createDirectory(at: externalFolder, withIntermediateDirectories: false)
     try Data([7]).write(to: externalFolder.appendingPathComponent("kulso.dat"))
@@ -1237,7 +1242,7 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     let project = try WorksheetPath(["project"])
     _ = try store.open(project, user: owner)
     let attachment = try store.storeAttachment(Data("peldaszoveg".utf8), named: "note.txt", at: project, user: owner, unlocks: [])
-    let note = Idea(id: "note", title: "Jegyzet", file: CanvasFile(type: .txt, asset: attachment, filename: "note.txt"),
+    let note = Idea(id: "note", type: "text", file: CanvasFile(asset: attachment, filename: "note.txt"),
                     position: Point(x: 0, y: 0))
     let source = try JSONEncoder().encode(Worksheet(title: "Importált", nodes: [note]))
     let imported = try store.importWorksheet(source, named: "lap.thnode", at: project, user: owner, unlocks: [])
@@ -1253,27 +1258,35 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("project/.trash/uj/uj.thnode").path))
 }
 
-@Test func legacyWorksheetsMoveWithAttachmentsAndPageSettings() throws {
-    let files = FileManager.default
-    let root = files.temporaryDirectory.appendingPathComponent("thinknodes-legacy-" + UUID().uuidString)
-    defer { try? files.removeItem(at: root) }
+@Test func legacyWorksheetsAreRejectedWithoutMigration() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-legacy-" + UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
     let store = try WorksheetStore(root: root)
     let owner = User(name: "owner", role: .admin, passwordHash: "")
     let project = try WorksheetPath(["project"])
-    let child = try WorksheetPath(["project", "child"])
     _ = try store.open(project, user: owner)
     try Data("""
-        {"title":"Régi lap","nodes":[{"id":"note","title":"Jegyzet","pos":{"x":0,"y":0},"file":{"type":"txt","asset":"file-note","filename":"note.txt"}}]}
-        """.utf8).write(to: root.appendingPathComponent("project/child.thnode"))
-    try Data(#"{"owner":"owner","mediaFiles":{"file-note":"note.txt"},"worksheets":{"child.thnode":{"hidden":true}}}"#.utf8)
-        .write(to: root.appendingPathComponent("project/.settings.json"))
-    try Data("Jegyzet".utf8).write(to: root.appendingPathComponent("project/note.txt"))
-    store.reconcileAtStartup()
-    store.reconcileAtStartup()
-    #expect(!files.fileExists(atPath: root.appendingPathComponent("project/child.thnode").path))
-    #expect(files.fileExists(atPath: root.appendingPathComponent("project/.trash/child.thnode").path))
-    #expect(try store.load(child, user: owner).title == "Régi lap")
-    #expect(try store.contents(child, user: owner, unlocks: [], named: "file-note").first?.lastPathComponent == "note.txt")
-    #expect(try store.list(user: owner, childrenOf: project).isEmpty)
-    #expect(try store.load(project, user: owner).nodes.allSatisfy { $0.file?.type != .worksheet && $0.link == nil })
+        {"schemaVersion":2,"title":"Régi lap","nodes":[{"id":"note","title":"Jegyzet","pos":{"x":0,"y":0}}]}
+        """.utf8).write(to: root.appendingPathComponent("project/project.thnode"))
+    do {
+        _ = try store.load(project, user: owner)
+        Issue.record("A régi munkalap betöltődött.")
+    } catch let error as Abort {
+        #expect(error.status == .unprocessableEntity && error.reason.contains("Régi formátumú"))
+    }
+    #expect(throws: Abort.self) { try store.importWorksheet(Data(#"{"title":"Régi","nodes":[]}"#.utf8), named: "regi.thnode", at: project, user: owner, unlocks: []) }
+}
+
+@Test func nodeTypeRegistryClassifiesFiles() throws {
+    #expect(NodeTypes.classify(filename: "kép.PNG", bytes: Data()) == "image")
+    #expect(NodeTypes.classify(filename: "dal.flac", bytes: Data()) == "audio")
+    #expect(NodeTypes.classify(filename: "app.swift", bytes: Data("let a = 1".utf8)) == "code")
+    #expect(NodeTypes.classify(filename: "adat.csv", bytes: Data("a,b\n1,2".utf8)) == "csv")
+    #expect(NodeTypes.classify(filename: "jegyzet", bytes: Data("szöveg".utf8)) == "text")
+    #expect(NodeTypes.classify(filename: "doc.pdf", bytes: Data([0x25, 0x50, 0x00, 0x01])) == "document")
+    #expect(NodeTypes.classify(filename: "ascii.pdf", bytes: Data("%PDF-1.4 szöveg".utf8)) == "document")
+    #expect(NodeTypes.root("code") == "text" && NodeTypes.has("code", "fileText") && !NodeTypes.has("text", "link"))
+    #expect(NodeTypes.has("image", "link") && NodeTypes.has("box", "children"))
+    #expect(parseCSV("a,\"b,c\"\n1,\"x\"\"y\"") == [["a", "b,c"], ["1", "x\"y"]])
+    #expect(plainFirstLine("\n# **Cím** [link](https://x)\nmásodik") == "Cím link")
 }

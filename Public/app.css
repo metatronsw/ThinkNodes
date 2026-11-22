@@ -653,3 +653,42 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 .web-presentation-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .web-presentation-row strong { flex: 1 1 12rem; overflow-wrap: anywhere; }
 :root .passive-frame > .participants.connection-lost { background-color: #a62739; color: white; }
+
+/* Egységes objektumtípusok (docs/node-types.md): fájlobjektum felül fájlnévvel, középen tartalommal, alul megjegyzéssel. */
+.node-file { box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; height: 100%; padding: 8px; overflow: hidden; font: 14px/1.4 system-ui, sans-serif; }
+.node-file.node-image { padding: 0; gap: 2px; text-align: center; }
+.node-file-name { flex: none; display: flex; justify-content: center; min-width: 0; }
+.node-file-name .node-download { align-self: center; margin: 0; max-width: 100%; }
+.node-body { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.node-image .node-body img { display: block; flex: 1; width: 100%; min-height: 0; object-fit: contain; background: transparent; }
+.node-image .node-body img:not([src$=".svg"]) { border-radius: 6px; }
+.node-comment { flex: none; max-height: 45%; overflow: auto; font-size: 13px; line-height: 1.35; }
+.node-comment.align-left { text-align: left; } .node-comment.align-center { text-align: center; } .node-comment.align-right { text-align: right; }
+.node-comment > :first-child, .node-comment .formatted-text > :first-child { margin-top: 0; }
+.node-comment > :last-child, .node-comment .formatted-text > :last-child { margin-bottom: 0; }
+.node-link-caption { flex: none; display: flex; align-items: center; justify-content: center; gap: 5px; margin: 0; font-size: 13px; cursor: pointer; }
+.node-link-caption .ui-icon { width: 14px; height: 14px; }
+.node-link-caption span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node-document { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+.node-document-icon { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.node-document-icon .ui-icon { width: 32px; height: 32px; opacity: .8; }
+.node-document .node-download.button { align-self: center; margin: 0; height: auto; }
+.node-code, .node-plain { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92em; line-height: 1.4; }
+.node-code { white-space: pre; overflow: auto; }
+.node-plain { white-space: pre-wrap; overflow-wrap: anywhere; }
+.node-note .node-code { overflow: visible; }
+.node-csv { border-collapse: collapse; font-size: .9em; line-height: 1.3; }
+.node-csv :is(th, td) { padding: 2px 6px; border: 1px solid color-mix(in srgb, currentColor 25%, transparent); text-align: left; white-space: nowrap; }
+.node-csv th { font-weight: 650; background: color-mix(in srgb, currentColor 8%, transparent); }
+.node-audio [data-audio-time] { flex: none; font-variant-numeric: tabular-nums; }
+.editor-canvas .node-link { cursor: pointer; }
+.editor-canvas .node-link:hover text, .passive-canvas a:hover .node-link text { text-decoration: underline; }
+.markdown-editor textarea { width: 100%; box-sizing: border-box; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.markdown-tools { flex-wrap: wrap; }
+.file-text-editor { width: 100%; box-sizing: border-box; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
+.link-group legend { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+.link-group .link-remove { min-height: 26px; padding: 2px; }
+.link-group .link-target { align-self: center; overflow-wrap: anywhere; }
+.endpoint-tools { width: 100%; }
+.endpoint-tools .endpoint-actions { display: flex; gap: 4px; margin-left: auto; }
+.canvas-preview-thumbnail { display: block; width: 100%; max-height: 120px; object-fit: contain; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); }

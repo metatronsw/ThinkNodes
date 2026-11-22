@@ -242,7 +242,7 @@ final class Collaboration: @unchecked Sendable {
                 let submitted = Dictionary(sheet.nodes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
                 for node in current.nodes where locked.contains(node.id) && submitted[node.id] != node {
                     // Removing the last cable also removes its orphaned connection point.
-                    if node.kind == .connectionPoint && submitted[node.id] == nil { continue }
+                    if node.isJunction && submitted[node.id] == nil { continue }
                     throw Abort(.locked, reason: "A dobozt egy másik felhasználó jelölte ki.")
                 }
             }

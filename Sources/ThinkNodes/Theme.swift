@@ -152,11 +152,10 @@ extension Worksheet {
         sheet.background = resolve(background, 0)
         for i in sheet.nodes.indices {
             let node = nodes[i]
-            if node.kind == .connectionPoint { sheet.nodes[i].shape = theme.graphics?.junction ?? .ellipse }
+            if node.isJunction { sheet.nodes[i].shape = theme.graphics?.junction ?? .ellipse }
             else if node.shape == .rounded { sheet.nodes[i].shape = theme.graphics?.box ?? .rounded }
             sheet.nodes[i].fill = resolve(node.fill, 2)
             sheet.nodes[i].textColor = resolve(node.textColor, 1)
-            if let color = node.textStyle?.color { sheet.nodes[i].textStyle?.color = resolve(color, 1) }
             if let color = node.file?.alphaBackground { sheet.nodes[i].file?.alphaBackground = resolve(color, 2) }
         }
         for i in sheet.edges.indices {

@@ -48,8 +48,8 @@ import VaporTesting
     try directory.createSymbolicLink(at: prezi.appendingPathComponent("symlink-dir"), withDestinationURL: root)
     try directory.createSymbolicLink(at: root.appendingPathComponent("demoproject/link.web"), withDestinationURL: prezi)
 
-    board.nodes = [Idea(id: "webbox", title: "Bemutató", file: CanvasFile(type: .web, webPath: "anyagok/nested.web"),
-                        position: Point(x: 0, y: 0))]
+    board.nodes = [Idea(id: "webbox", text: "Bemutató", position: Point(x: 0, y: 0),
+                        link: NodeLink(kind: .web, target: "anyagok/nested.web"))]
     _ = try store.update(project, worksheet: board, user: owner)
 
     try await withApp(configure: { app in configure(app, store: store, secureCookies: true) }) { app in

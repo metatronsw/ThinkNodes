@@ -1,8 +1,8 @@
-const media = {"image/png": "image", "image/jpeg": "image", "image/webp": "image", "image/gif": "image",
-  "image/svg+xml": "image", "audio/mpeg": "mp3"};
+import {classify, mediaType, rootType} from "./node-types.js";
+
+// Médiafájlok MIME-típusa kiterjesztés szerint (Model.swift canvasMediaTypes).
 const extensions = {png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif",
-  svg: "image/svg+xml", mp3: "audio/mpeg"};
-const textExtensions = ["txt", "md", "json"];
+  svg: "image/svg+xml", mp3: "audio/mpeg", wav: "audio/wav", ogg: "audio/ogg", flac: "audio/flac", m4a: "audio/mp4", aac: "audio/aac"};
 export function attachmentURL(path, name) {
   return "/api/attachment/" + path + "?name=" + encodeURIComponent(name);
 }
@@ -20,25 +20,29 @@ export function imageStem(file) {
   return file.filename ?? file.asset.replace(/\.[^.]+$/, "");
 }
 
-export function fileNameParts(file, title) {
-  if (file.type === "image") {
-    return {stem: imageStem(file), extension: file.fileExtension ?? file.asset.split(".").at(-1)};
-  }
-  const name = file.filename ?? file.asset ?? (title.toLowerCase().endsWith("." + file.type)
-    ? title : (title || "Dokumentum") + "." + file.type);
+// Fájlnév tő és kiterjesztés; képnél a tárolt tő + fileExtension.
+export function fileNameParts(file, image = false) {
+  if (image) return {stem: imageStem(file), extension: file.fileExtension ?? file.asset.split(".").at(-1)};
+  const name = file.filename ?? file.asset;
   const dot = name.lastIndexOf(".");
   return dot > 0 ? {stem: name.slice(0, dot), extension: name.slice(dot + 1)} : {stem: name, extension: ""};
 }
 
-export function fileName(file, title) {
-  const {stem, extension} = fileNameParts(file, title);
+export function fileName(file, image = false) {
+  const {stem, extension} = fileNameParts(file, image);
   return extension ? stem + "." + extension : stem;
 }
 
-export function fileReference(file, title) {
-  if (file.type === "web") return undefined;
-  return file.asset ?? file.filename ?? (["md","txt","json"].includes(file.type)
-    && title.toLowerCase().endsWith("." + file.type) ? title : undefined);
+// Az objektum rövid neve (Model.swift Idea.name): fájlnév, illetve a szöveg első sora formázójelek nélkül.
+export function nodeName(node) {
+  if (node?.file) return fileName(node.file, rootType(node.type) === "image");
+  return plainFirstLine(node?.text ?? "");
+}
+
+export function plainFirstLine(text) {
+  const line = text.split(/\r?\n/).find(row => row.trim()) ?? "";
+  return line.trim().replace(/^[#>*+\- ]+/, "").replace(/^\d+[.)]\s+/, "")
+    .replace(/[*_`~]|\[([^\]]*)\]\([^)]*\)/g, "$1").trim().slice(0, 120);
 }
 
 export function objectURL(path, id) {
@@ -97,10 +101,10 @@ async function storeAttachment(blob, path, csrf, name) {
   return response.headers.get("X-ThinkNodes-Asset") ?? name;
 }
 
+// Importált fájlból objektum (docs/node-types.md): kép és hang médiaként, minden más tartalom szerint szöveg vagy dokumentum.
 export async function importFile(blob, path, csrf) {
-  const name = blob.name || (blob.type.startsWith("image/") ? "Beillesztett kép" : "Dokumentum");
-  const title = Array.from(name.replace(/[\u0000-\u001f\u007f]/g, " ").trim()).slice(0,120).join("") || "Dokumentum";
-  const ext = name.split(".").pop().toLowerCase();
+  const name = blob.name || (blob.type.startsWith("image/") ? "Beillesztett kép.png" : "Dokumentum");
+  const ext = name.includes(".") ? name.split(".").pop().toLowerCase() : "";
   if (ext === "thnode") {
     if (blob.size > 12*1024*1024) throw Error("A fájl legfeljebb 12 MiB lehet.");
     const response = await fetch("/api/worksheet-file/" + path + "?name=" + encodeURIComponent(name), {
@@ -112,11 +116,13 @@ export async function importFile(blob, path, csrf) {
     }
     return null;
   }
-  const mime = media[blob.type] ? blob.type : extensions[ext];
-  if (mime) {
-    if (blob.size > 12*1024*1024) throw Error("A médiafájl legfeljebb 12 MiB lehet.");
-    const image = media[mime] === "image";
-    let dimensions = {width: 320, height: 106};
+  if (blob.size > 12*1024*1024) throw Error("A fájl legfeljebb 12 MiB lehet.");
+  const pastedImage = !ext && blob.type.startsWith("image/");
+  const media = pastedImage ? "image" : mediaType(ext);
+  if (media) {
+    const mime = pastedImage ? blob.type : extensions[ext];
+    const image = media === "image";
+    let dimensions = {width: 320, height: 130};
     let filename;
     if (image) {
       const previewBlob = mime === "image/svg+xml" && blob.type !== mime ? blob.slice(0, blob.size, mime) : blob;
@@ -134,11 +140,9 @@ export async function importFile(blob, path, csrf) {
       filename = name.replace(/\.[^.]+$/, "").trim();
       if (!validImageStem(filename)) throw Error("Érvénytelen képfájlnév.");
     }
-    const originalExtension = /\.([^.]+)$/.exec(name)?.[1];
-    const mediaName = image
-      ? filename + "." + (extensions[originalExtension?.toLowerCase()] === mime ? originalExtension :
-          Object.keys(extensions).find(extension => extensions[extension] === mime))
-      : originalExtension?.toLowerCase() === "mp3" ? name : name + ".mp3";
+    const original = name.includes(".") ? name.split(".").pop() : "";
+    const extension = extensions[original.toLowerCase()] === mime ? original : Object.keys(extensions).find(key => extensions[key] === mime);
+    const mediaName = image ? filename + "." + extension : name;
     const upload = "/api/media/" + path + "?filename=" + encodeURIComponent(mediaName);
     const response = await fetch(upload, {method: "POST", headers: {"Content-Type": mime, "X-CSRF-Token": csrf}, body: blob});
     if (!response.ok) {
@@ -146,24 +150,22 @@ export async function importFile(blob, path, csrf) {
       throw Error(detail.reason || "A fájl feltöltése sikertelen (" + response.status + ").");
     }
     const {asset} = await response.json();
-    const file = {type: media[mime], asset, showFilename: false};
-    if (image) {
-      file.filename = filename;
-      file.fileExtension = mediaName.split(".").at(-1);
-    } else file.filename = mediaName;
-    return {title: image ? "" : title, file, ...dimensions};
+    const file = image ? {asset, filename, fileExtension: extension, showFilename: false} : {asset, filename: mediaName, showFilename: true};
+    return {type: media, file, ...dimensions};
   }
-  if (!textExtensions.includes(ext) || blob.size > 100000) {
+  let bytes = new Uint8Array(await blob.arrayBuffer());
+  const type = classify(name, bytes);
+  if (rootType(type) !== "text") {
     const asset = await storeAttachment(blob, path, csrf, name);
-    return {title, file: {type: "attachment", asset, filename: name, showFilename: false}, width: 260, height: 100};
+    return {type, file: {asset, filename: name, showFilename: true}, width: 260, height: 120};
   }
-  let text = await blob.text();
+  let upload = blob;
   if (ext === "json") {
-    text = formatJSON(text);
+    const formatted = formatJSON(new TextDecoder().decode(bytes));
+    upload = new Blob([formatted], {type: "application/json"});
   }
-  checkText(text);
-  const asset = await storeAttachment(blob, path, csrf, name);
-  return {title, text, file: {type: ext, asset, filename: name, showFilename: false}, width: 340, height: 220};
+  const asset = await storeAttachment(upload, path, csrf, name);
+  return {type, file: {asset, filename: name, showFilename: true}, fontSize: 13, width: 340, height: 240};
 }
 
 export async function pngForClipboard(url) {

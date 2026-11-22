@@ -61,13 +61,13 @@ export function replayChanges(sheet, changes, redo, occupied) {
   }
   const checked = new Set();
   for (const node of result.nodes) {
-    if (node.kind === "connectionPoint" && (degrees.get(node.id) ?? 0) < 2) return null;
-    if (node.elevated === true && (node.parent || node.kind === "connectionPoint")) return null;
+    if (node.type === "junction" && (degrees.get(node.id) ?? 0) < 2) return null;
+    if (node.elevated === true && (node.parent || node.type === "junction")) return null;
     const path = new Set();
     let current = node;
     while (current.parent && !checked.has(current.id)) {
       const parent = nodes.get(current.parent);
-      if (parent?.kind !== "container" || path.has(current.id)) return null;
+      if (parent?.type !== "box" || !parent.container || path.has(current.id)) return null;
       path.add(current.id);
       current = parent;
     }

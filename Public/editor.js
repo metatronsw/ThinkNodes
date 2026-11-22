@@ -1,7 +1,8 @@
 import {openPresentation, openPresentationPicker, webPresentationURL} from "./web-presentations.js";
 import {fetchPage, updateSection, watchPageUpdates} from "./page-updates.js";
 import {bindAudioPlayers} from "./audio-player.js";
-import {assetURL, attachmentURL, checkText, fileName, fileNameParts, fileReference, imageStem, importFile, objectURL, pngForClipboard, validImageStem, writeText} from "./canvas-files.js";
+import {assetURL, attachmentURL, checkText, fileName, fileNameParts, importFile, nodeName, objectURL, pngForClipboard, validImageStem, writeText} from "./canvas-files.js";
+import {hasTrait, rootType, traits, typeLabel} from "./node-types.js";
 import {decodeWorksheet, encodeWorksheet} from "./worksheet-json.js";
 import {sharedMouse} from "./mouse.js";
 import {worksheetChanges, replayChanges} from "./editor-history.js?v=1";
@@ -9,7 +10,7 @@ import {flashNode, flashPoint} from "./ping.js";
 import {showTooltip, hideTooltip} from "./tooltip.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {useWorksheetGeometry, automaticBorder, automaticGridColor, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, lineAppearances, lineTypes, maximumLineWidth, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=17";
+import {useWorksheetGeometry, automaticBorder, automaticGridColor, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=17";
 
 import {ancestors, overlapFraction} from "./containers.js?v=3";
 
@@ -155,9 +156,25 @@ function propertyTools(...controls) {
   return h("div", {class: "property-options property-tools"}, controls);
 }
 
-function textArea(value, change, rows = 4, justified = false) {
-  return h("textarea", {"aria-label": "Text", class: justified ? "justified-text" : undefined,
-    value, maxlength: 30000, rows, onInput: event => change(event.target.value)});
+
+// Egyszerű CSV/TSV feldolgozás a táblázatnézethez (Rendering.swift parseCSV).
+function parseCSV(source, separator = ",") {
+  const rows = [];
+  let row = [], field = "", quoted = false;
+  for (let i = 0; i < source.length && rows.length < 200; i++) {
+    const c = source[i];
+    if (quoted) {
+      if (c === '"') { if (source[i + 1] === '"') { field += '"'; i++; } else quoted = false; }
+      else field += c;
+    } else if (c === '"' && !field) quoted = true;
+    else if (c === separator) { row.push(field); field = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && source[i + 1] === "\n") i++;
+      row.push(field); field = ""; rows.push(row.slice(0, 30)); row = [];
+    } else field += c;
+  }
+  if (field || row.length) { row.push(field); rows.push(row.slice(0, 30)); }
+  return rows.filter(r => !(r.length === 1 && r[0] === ""));
 }
 
 const FormattedText = {
@@ -194,13 +211,19 @@ const boxMotion = {
     translate: "0 0;0 1;0 -17;0 0;0 -4;0 0;0 0", scale: "1 1;1.03 .95;1.035 1.06;1.045 .96;.99 1.02;1 1;1 1"},
 };
 
-// Egységes vászon-osztálynév: `node` + fajta szerinti módosító. A Rendering.swift `nodeClasses` ugyanezt adja.
-const fileKinds = {image: "is-image", txt: "is-note", md: "is-note", json: "is-note", mp3: "is-audio",
-  web: "is-web", worksheet: "is-worksheet", attachment: "is-file"};
-function nodeClasses(node) {
-  const kind = node.kind === "container" ? "is-container" : node.kind === "connectionPoint" ? "is-point" : fileKinds[node.file?.type];
-  return kind ? "node " + kind : "node";
+// Egységes vászon-osztálynév: `node is-<típus>` (+ `has-children` konténernél). A Rendering.swift `nodeClasses` ugyanezt adja.
+function nodeClasses(node, hasChildren = false) {
+  const root = rootType(node.type);
+  let classes = "node is-" + node.type;
+  if (root !== node.type) classes += " is-" + root;
+  if (node.link) classes += " has-link";
+  if (hasChildren) classes += " has-children";
+  return classes;
 }
+const isJunction = node => node?.type === "junction";
+const isBox = node => node?.type === "box";
+const isImage = node => rootType(node?.type) === "image";
+const isTextFile = node => rootType(node?.type) === "text";
 
 function animateBox(mode, contents) {
   const motion = Object.hasOwn(boxMotion, mode) ? boxMotion[mode] : null;
@@ -215,7 +238,7 @@ function animateBox(mode, contents) {
 }
 
 function backgroundMode(node) {
-  return node.backgroundMode ?? (node.backgroundEnabled === false ? "free" : node.backgroundBlur ? "blurred" : "solid");
+  return node.backgroundMode ?? "solid";
 }
 
 function elevationShadow(node) {
@@ -233,12 +256,12 @@ function elevationShadow(node) {
 }
 
 function shape(node, linked, dropTarget = false) {
-  if (node.kind === "connectionPoint") {
+  if (isJunction(node)) {
     const [tag, attrs] = shapeGeometry(graphics.value.junction ?? "ellipse", node.width, node.height);
     return h(tag, {...attrs, fill: paint(node.fill, 2)});
   }
   const [tag, geometry] = shapeGeometry(node.shape, node.width, node.height);
-  const image = node.file?.type === "image" ? node.file : null;
+  const image = isImage(node) ? node.file : null;
   const mode = backgroundMode(node);
   const blurred = mode === "blurred", empty = mode === "empty";
   const free = mode === "free" || (mode === "solid" && image && image.alphaEnabled !== false && image.alphaBackground == null);
@@ -247,13 +270,13 @@ function shape(node, linked, dropTarget = false) {
     stroke: "#08796c", "stroke-width": 5, "stroke-dasharray": "0 8", "stroke-linecap": "round",
     "vector-effect": "non-scaling-stroke"});
   if (free) return h(tag, {...geometry, "data-editor-only": "", fill: "none", stroke: "none", "pointer-events": "fill"});
-  const locked = node.kind === "container" && node.locked;
+  const locked = isBox(node) && node.locked;
   const glass = graphics.value.glass && mode === "solid" && !image;
   const fill = image?.alphaEnabled === false ? "#ffffff" : paint(image?.alphaBackground ?? node.fill, 2);
   const style = {fill: empty ? "none" : fill, stroke: image && !empty ? "none" : glass ? "url(#glass-rim)" : automaticBorder(fill),
     "pointer-events": empty ? "fill" : undefined, class: "node-surface",
     "stroke-width": locked ? 6.4 : glass ? 3 : 1.6,
-    "data-locked-outline": locked ? "" : undefined, "stroke-dasharray": linked && !node.file ? "7 4" : undefined,
+    "data-locked-outline": locked ? "" : undefined, "stroke-dasharray": linked && isBox(node) ? "7 4" : undefined,
     opacity: blurred ? .5 : undefined, filter: blurred ? "url(#box-background-blur)" : undefined};
   if (glass) return [
     h(tag, {...style, ...geometry, "fill-opacity": .66}),
@@ -359,9 +382,10 @@ createApp({
       for (const id of elevated) for (const child of children.get(id) ?? []) elevated.add(child);
       return elevated;
     });
+    const containerIDs = computed(() => new Set(sceneNodes.value.filter(node => isBox(node) && node.container).map(node => node.id)));
     const orderedNodes = computed(() => [...sceneNodes.value].sort((a,b) =>
       Number(elevatedNodes.value.has(a.id))-Number(elevatedNodes.value.has(b.id)) ||
-      Number(b.kind === "container")-Number(a.kind === "container") || b.width*b.height-a.width*a.height));
+      Number(containerIDs.value.has(b.id))-Number(containerIDs.value.has(a.id)) || b.width*b.height-a.width*a.height));
     const wireLayers = computed(() => {
       const nodes = orderedNodes.value;
       const order = new Map(nodes.map((node, index) => [node.id, index]));
@@ -379,13 +403,13 @@ createApp({
     const nodeMap = computed(() => new Map(sceneNodes.value.map(node => [node.id, node])));
     const edgeMap = computed(() => new Map(board.value?.edges.map(edge => [edge.id, edge])));
     const containerReceivers = computed(() => (board.value?.nodes ?? [])
-      .filter(node => node.kind !== "connectionPoint" && (!node.file || node.kind === "container"))
+      .filter(isBox)
       .sort((a, b) => a.width * a.height - b.width * b.height));
     const ctrl = ref(false);
     const alt = ref(false);
     const canvasText = shallowRef(new Map());
     const textSources = computed(() => [...new Set(
-      board.value?.nodes.filter(node => !node.file && !node.hideText && node.text).map(node => node.text)
+      board.value?.nodes.filter(node => isBox(node) && node.text).map(node => node.text)
     )]);
     const motions = shallowRef(new Map());
     function receiveMotion(frame) {
@@ -409,10 +433,10 @@ createApp({
         let lastBlocks = emptyBlocks;
         const text = computed(() => {
           if (!node.text) lastBlocks = emptyBlocks;
-          else if (!node.hideText) lastBlocks = canvasText.value.get(node.text) ?? lastBlocks;
-          return node.hideText ? emptyBlocks : lastBlocks;
+          else lastBlocks = canvasText.value.get(node.text) ?? lastBlocks;
+          return lastBlocks;
         });
-        layout = computed(() => node.file ? {width: node.width, height: node.height, lines: []} : labelLayout(node, text.value));
+        layout = computed(() => labelLayout(node, text.value));
         nodeLayouts.set(node, layout);
       }
       return layout.value;
@@ -444,8 +468,8 @@ createApp({
       const start = source?.position ?? edge.sourcePoint, end = target?.position ?? edge.target.point;
       const nested = nestingDirection(source, target);
       const inputs = [graphics.value, edge.type, nested,
-        start.x, start.y, source?.width, source?.height, source?.shape, source?.kind,
-        end.x, end.y, target?.width, target?.height, target?.shape, target?.kind];
+        start.x, start.y, source?.width, source?.height, source?.shape, source?.type,
+        end.x, end.y, target?.width, target?.height, target?.shape, target?.type];
       const cached = edgeGeometries.get(edge);
       if (cached && inputs.every((value, i) => value === cached.inputs[i])) return cached.geometry;
       const geometry = edgeGeometry(edge, id => id === edge.source ? source : target, nested);
@@ -739,11 +763,8 @@ createApp({
         problem.value = "A művelet ütközik a munkalap jelenlegi állapotával vagy egy másik szerkesztő foglalásával.";
         return;
       }
-      const retained = new Set(next.nodes.flatMap(node => node.file ? [fileReference(node.file, node.title)] : []));
-      const removedFiles = board.value.nodes.filter(node => {
-        const reference = node.file && fileReference(node.file, node.title);
-        return reference && !retained.has(reference);
-      });
+      const retained = new Set(next.nodes.flatMap(node => node.file ? [node.file.asset] : []));
+      const removedFiles = board.value.nodes.filter(node => node.file && !retained.has(node.file.asset));
       if (!confirmFileRemoval(removedFiles)) return;
       board.value = next;
       historyBase = copy(next);
@@ -787,7 +808,7 @@ createApp({
       const point = world(canvasPointer.value);
       const padding = 16 / view.value.k;
       return orderedNodes.value.findLast(node => {
-        if (node.kind === "connectionPoint") return false;
+        if (isJunction(node)) return false;
         const drawn = drawnNode(node.id);
         return Math.abs(point.x - drawn.position.x) <= drawn.width / 2 + padding
           && Math.abs(point.y - drawn.position.y) <= drawn.height / 2 + padding;
@@ -899,19 +920,18 @@ createApp({
       return Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, "0")).join("");
     }
 
-    function makeNode(position) {
-      const fill = 2;
-      return {id: id(), title: "Új ötlet", text: "", hideText: false, position: clampPoint(position), width: 176, height: 80,
-        shape: "rounded", fill, textColor: 1, fontSize: 16, bold: true, alignment: "center"};
+    function makeNode(position, type = "box") {
+      return {id: id(), type, text: "", position: clampPoint(position), width: 176, height: 80,
+        shape: "rounded", fill: 2, textColor: 1, fontSize: 16, alignment: "center"};
     }
 
     function addNode(position = worldAtCenter(), properties = {}) {
       if (!board.value || !online.value) return;
       finishField();
-      const node = {...makeNode(position), ...properties};
+      const node = {...makeNode(position, properties.type), ...properties};
       board.value.nodes.push(node);
       modified();
-      openProperties("node", node.id, true);
+      openProperties("node", node.id, isBox(node) ? "text" : true);
     }
 
     function selectedBox() {
@@ -922,6 +942,18 @@ createApp({
       Promise.resolve().then(action).catch(error => { problem.value = error.message; });
     }
 
+    // http(s) cím a vágólapon vagy behúzva: linkes doboz (docs/node-types.md, link képesség).
+    function externalURL(text) {
+      const value = text.trim();
+      if (!/^https?:\/\/\S+$/i.test(value)) return null;
+      try { const url = new URL(value); return url.hostname && !url.username && !url.password ? url.href : null; }
+      catch { return null; }
+    }
+
+    function addLinkBox(href, position) {
+      addNode(position, {link: {kind: "url", target: href}, width: 220, height: 90});
+    }
+
     async function pasteText(text, position) {
       if (!text || !online.value) return;
       const source = text.startsWith(location.origin + "/") ? new URL(text) : null;
@@ -930,26 +962,26 @@ createApp({
         const sheet = sourcePath === path ? board.value : decodeWorksheet(await (await checked(await fetch("/api/worksheet/" + sourcePath))).json());
         const item = sheet.nodes.find(n => n.id === source.hash.slice(8));
         if (item?.file) {
-          const file = {...item.file};
-          if (file.type === "web" && sourcePath.split("/")[0] !== path.split("/")[0]) {
-            throw Error("A prezentáció doboza a saját projektjén belül másolható.");
-          }
-          if (file.asset && sourcePath !== path) {
-            const url = ["image","mp3"].includes(file.type) ? assetURL(sourcePath, file.asset) : "/api/box-file/" + sourcePath + "?id=" + encodeURIComponent(item.id);
+          const copied = {type: item.type, text: item.text, link: item.link, width: item.width, height: item.height,
+            alignment: item.alignment, hideText: item.hideText};
+          if (sourcePath !== path) {
+            const url = ["image", "audio"].includes(rootType(item.type)) ? assetURL(sourcePath, item.file.asset) : "/api/box-file/" + sourcePath + "?id=" + encodeURIComponent(item.id);
             const blob = await (await checked(await fetch(url))).blob();
-            const imported = await importFile(new File([blob], fileName(file, item.title), {type: blob.type}), path, csrf);
+            const imported = await importFile(new File([blob], fileName(item.file, isImage(item)), {type: blob.type}), path, csrf);
             if (!imported) return;
-            addNode(position, {...imported, text: item.text, title: item.title, width: item.width, height: item.height});
+            addNode(position, {...imported, ...copied, type: imported.type});
             return;
           }
-          addNode(position, {file, link: item.link, text: item.text, title: item.title, width: item.width, height: item.height});
+          addNode(position, {...copied, file: {...item.file}});
           return;
         }
       }
+      const href = externalURL(text);
+      if (href) { addLinkBox(href, position); return; }
       checkText(text);
       const box = selectedBox();
-      if (box && !box.file && !box.kind && held.value === box.id && !occupied(box.id)) updateItem(box, "text", checkText([box.text,text].filter(Boolean).join("\n")));
-      else addNode(position, {text, title: "Szöveg", file: {type: "txt", showFilename: false}, width: 340, height: 220});
+      if (isBox(box) && held.value === box.id && !occupied(box.id)) updateItem(box, "text", checkText([box.text,text].filter(Boolean).join("\n")));
+      else addNode(position, {text, width: 260, height: 140});
     }
 
     async function importFiles(files, position, belowButton = false) {
@@ -994,17 +1026,17 @@ createApp({
     }
     function copyBox(node) {
       if (!node) return;
-      if (node.file?.type === "image" && navigator.clipboard?.write && window.ClipboardItem) {
+      if (isImage(node) && navigator.clipboard?.write && window.ClipboardItem) {
         return navigator.clipboard.write([new ClipboardItem({"image/png": pngForClipboard(assetURL(path,node.file.asset))})]);
       }
-      return writeText(["mp3", "attachment"].includes(node.file?.type) ? objectURL(path,node.id) : node.text || node.title);
+      return writeText(node.file ? objectURL(path,node.id) : node.text);
     }
     function onCopy(event) {
       const node = selectedBox();
       if (!node || editingText(event.target) || window.getSelection()?.toString()) return;
       event.preventDefault();
-      event.clipboardData.setData("text/plain", node.file?.asset ? objectURL(path,node.id) : node.text || node.title);
-      if (node.file?.type === "image") transfer(() => copyBox(node));
+      event.clipboardData.setData("text/plain", node.file ? objectURL(path,node.id) : node.text);
+      if (isImage(node)) transfer(() => copyBox(node));
     }
 
     async function addSubworksheet() {
@@ -1025,13 +1057,13 @@ createApp({
       } catch (error) { problem.value = error.message; }
     }
 
-    const editKey = ref("title");
+    const editKey = ref("text");
     const inlineDraft = ref("");
     async function editObject(kind, id, focus = true) {
       if (objectPanelOpen.value) return openProperties(kind, id, focus);
       await openProperties(kind, id);
       if (selected.value?.id !== id) return;
-      editKey.value = kind === "edge" ? "label" : focus === "text" ? "text" : "title";
+      editKey.value = kind === "edge" ? "label" : "text";
       const item = kind === "edge" ? edgeMap.value.get(id) : nodeMap.value.get(id);
       inlineDraft.value = item?.[editKey.value] ?? "";
       editingObject.value = id;
@@ -1050,10 +1082,10 @@ createApp({
       if (focusLabel) {
         objectPanelOpen.value = true;
         await nextTick();
-        const field = mount.querySelector?.(focusLabel === "text" ? ".object-inspector textarea" : ".object-inspector [data-object-label]");
+        const field = mount.querySelector?.(".object-inspector [data-object-label]");
         if (selected.value?.id === itemID && field) {
           field.focus();
-          editKey.value = kind === "edge" ? "label" : focusLabel === "text" ? "text" : "title";
+          editKey.value = kind === "edge" ? "label" : "text";
           editingObject.value = showCanvasInput ? itemID : null;
           field.select();
         }
@@ -1077,18 +1109,17 @@ createApp({
 
     function confirmFileRemoval(nodes) {
       if (!nodes.length) return true;
-      const names = new Set(nodes.map(node => fileName(node.file, node.title)));
+      const names = new Set(nodes.map(nodeName));
       return confirm("Lomtárba helyezed a fájlokat és törlöd a dobozaikat?\n" + [...names].join("\n"));
     }
 
     function deleteObjects(ids, preserve, edges = new Set()) {
-      const fileNodes = [...ids].map(id => nodeMap.value.get(id))
-        .filter(node => node?.file && fileReference(node.file, node.title));
+      const fileNodes = [...ids].map(id => nodeMap.value.get(id)).filter(node => node?.file);
       if (!fileNodes.length) { removeObjects(ids, preserve, edges); return; }
-      const refs = new Set(fileNodes.map(node => fileReference(node.file, node.title)).filter(Boolean));
+      const refs = new Set(fileNodes.map(node => node.file.asset));
       if (!confirmFileRemoval(fileNodes)) return;
       for (const node of board.value.nodes) {
-        if (node.file && refs.has(fileReference(node.file, node.title))) ids.add(node.id);
+        if (node.file && refs.has(node.file.asset)) ids.add(node.id);
       }
       if (batchBlocked(ids)) return;
       transfer(() => enqueue(async () => {
@@ -1106,7 +1137,7 @@ createApp({
     }
 
     function removeObjects(ids, preserve, selectedEdges = new Set(), record = true) {
-      const boxes = new Set([...ids].filter(id => nodeMap.value.get(id)?.kind !== "connectionPoint"));
+      const boxes = new Set([...ids].filter(id => !isJunction(nodeMap.value.get(id))));
       board.value.edges = board.value.edges.filter(edge => {
         if (preserve && (ids.has(edge.source) || ids.has(edge.target.node))) return true;
         if (selectedEdges.has(edge.id)) return false;
@@ -1134,7 +1165,7 @@ createApp({
 
     async function deleteNode(node, preserve = false, includeChildren = false) {
       if (!(await selectNode(node.id)) || groupBlocked(node)) return;
-      const ids = new Set(includeChildren && node.kind === "container" ? moveGroup(node).map(n => n.id) : [node.id]);
+      const ids = new Set(includeChildren && containerIDs.value.has(node.id) ? moveGroup(node).map(n => n.id) : [node.id]);
       deleteObjects(ids, preserve);
     }
 
@@ -1183,24 +1214,24 @@ createApp({
       if (node.elevated === true) return;
       const dragged = drawnNode(node.id);
       return containerReceivers.value.find(candidate => candidate.id !== node.id && !excluded?.has(candidate.id) &&
-        (node.kind !== "connectionPoint" || candidate.kind === "container") &&
+        (!isJunction(node) || containerIDs.value.has(candidate.id)) &&
         fitsInside(dragged, drawnNode(candidate.id)) &&
         !occupied(candidate.id) && !ancestors(candidate, nodeMap.value).some(parent => parent.id === node.id));
     }
 
     function dropParent(node, excluded) {
       const target = dropReceiver(node, excluded);
-      if (target) target.kind = "container";
+      if (target) target.container = true;
       node.parent = target?.id;
     }
 
     function capturableChildren(container, excluded) {
-      if (container.kind !== "container") return [];
+      if (!containerIDs.value.has(container.id)) return [];
       const drawn = drawnNode(container.id);
       const parents = new Set(ancestors(container, nodeMap.value).map(parent => parent.id));
       const candidates = new Map();
       for (const child of board.value.nodes) {
-        if (child.id === container.id || child.elevated === true || child.kind === "connectionPoint" || excluded?.has(child.id) ||
+        if (child.id === container.id || child.elevated === true || isJunction(child) || excluded?.has(child.id) ||
             parents.has(child.id) || occupied(child.id) || !fitsInside(drawnNode(child.id), drawn)) continue;
         const lineage = ancestors(child, nodeMap.value);
         if (!lineage.some(parent => parent.id === container.id || parent.locked)) candidates.set(child.id, {child, lineage});
@@ -1220,7 +1251,7 @@ createApp({
       const targets = new Set();
       if (!drag?.moved || drag.waiting || drag.locked) return targets;
       function mark(node, excluded, capture = true) {
-        const target = node && node.kind !== "connectionPoint" && dropReceiver(node, excluded);
+        const target = node && !isJunction(node) && dropReceiver(node, excluded);
         if (target && target.id !== node.parent) targets.add(target.id);
         if (capture && node && capturableChildren(node, excluded).length) targets.add(node.id);
       }
@@ -1243,9 +1274,9 @@ createApp({
     });
 
     function junctionDropTarget(node, excluded) {
-      if (node?.kind !== "connectionPoint") return;
+      if (!isJunction(node)) return;
       const point = drawnNode(node.id).position;
-      return orderedNodes.value.findLast(box => box.kind !== "connectionPoint" && !excluded?.has(box.id) &&
+      return orderedNodes.value.findLast(box => !isJunction(box) && !excluded?.has(box.id) &&
         shapeDistance(drawnNode(box.id), point) <= 1);
     }
 
@@ -1290,7 +1321,7 @@ createApp({
           if (id) counts.set(id, (counts.get(id) ?? 0) + 1);
         }
       }
-      const removed = new Map(board.value.nodes.filter(n => n.kind === "connectionPoint" && (counts.get(n.id) ?? 0) < 2)
+      const removed = new Map(board.value.nodes.filter(n => isJunction(n) && (counts.get(n.id) ?? 0) < 2)
         .map(n => [n.id, n.position]));
       if (!removed.size) return;
       for (const edge of board.value.edges) {
@@ -1410,7 +1441,7 @@ createApp({
 
     function pressNode(event, node) {
       finishField();
-      if (event.altKey && !event.ctrlKey && event.button === 0 && node.kind !== "connectionPoint") {
+      if (event.altKey && !event.ctrlKey && event.button === 0 && !isJunction(node)) {
         if (!online.value || reconnect.value) return;
         beginDrag(event,"clone",{nodeID: node.id});
         return;
@@ -1487,7 +1518,7 @@ createApp({
           return {point, blocked: "Ezen az útvonalon már van kábel."};
         }
         if (!commit) return {point: free.point, junction: free.point};
-        const node = {...makeNode(free.point), title: "", kind: "connectionPoint",
+        const node = {...makeNode(free.point, "junction"),
           shape: "ellipse", fill: free.edge.color ?? 3, width: graphics.value.junctionSize ?? 12, height: graphics.value.junctionSize ?? 12};
         board.value.nodes.push(node);
         dropParent(node);
@@ -1646,12 +1677,7 @@ createApp({
         const slot = (v, size) => v < -size/6 ? 0 : v > size/6 ? 2 : 1;
         const alignment = ["left","center","right"][slot(point.x-node.position.x,drawn.width)];
         const verticalAlignment = ["top","middle","bottom"][slot(point.y-node.position.y,drawn.height)];
-        const style = {alignment,verticalAlignment};
-        if (operation.section === "title") Object.assign(node,style);
-        else node[operation.section] = {...node[operation.section], ...style};
-        if (alignment === "center" && verticalAlignment === "middle") {
-          if (operation.section === "title" && node.titleOutside) node.titleOutside = false;
-        }
+        Object.assign(node, {alignment, verticalAlignment, justified: undefined});
         modified();
       } else if (operation.type === "resize" && operation.moved && !operation.locked) {
         if (cancel) {
@@ -1685,9 +1711,7 @@ createApp({
         if (lastClick?.id === id && lastClick.kind === kind && time-lastClick.time < 450 &&
             Math.hypot(x-lastClick.x,y-lastClick.y) < 10) {
           lastClick = null;
-          if (kind !== "node" || nodeMap.value.get(id)?.file?.type !== "web") {
-            editObject(kind,id,event.altKey && kind === "node" ? "text" : true);
-          }
+          editObject(kind,id,event.altKey && kind === "node" ? "text" : true);
         } else {
           lastClick = {id,kind,time,x,y};
         }
@@ -1949,8 +1973,8 @@ createApp({
     }
 
     function renameFile(node, stem) {
-      const {extension} = fileNameParts(node.file, node.title);
-      const filename = node.file.type === "image" || !extension ? stem : stem + "." + extension;
+      const {extension} = fileNameParts(node.file, isImage(node));
+      const filename = isImage(node) || !extension ? stem : stem + "." + extension;
       if (!validImageStem(filename)) { problem.value = "Érvénytelen fájlnév."; return false; }
       const previous = node.file;
       node.file = {...previous, filename};
@@ -2044,6 +2068,7 @@ createApp({
     }
 
     async function followBoxLink(destination) {
+      if (destination.kind === "web") { openPresentation(destination.href); return; }
       if (destination.kind === "website") { openExternalLink(destination.href); return; }
       const target = new URL(destination.href, location.href);
       if (dirty.value) await save();
@@ -2250,6 +2275,48 @@ createApp({
       window.removeEventListener("beforeunload", beforeUnload);
     });
 
+    // Szövegfájl-objektumok tartalma (docs/node-types.md, text típus): a szöveg csak a fájlban van.
+    // Kulcs: asset + változásszámláló; mentés után a `file.rev` nő, a többi kliens ebből tölti újra.
+    const fileTexts = shallowRef(new Map());
+    const fileSaveState = ref(new Map());
+    const fileTextKey = node => node.file.asset + "#" + (node.file.rev ?? 0);
+    const pendingFileSaves = new Map();
+    watch(() => (board.value?.nodes ?? []).filter(isTextFile).map(fileTextKey), async keys => {
+      for (const key of new Set(keys)) {
+        if (fileTexts.value.has(key)) continue;
+        const asset = key.slice(0, key.lastIndexOf("#"));
+        fileTexts.value = new Map(fileTexts.value).set(key, null);
+        try {
+          const text = await (await checked(await fetch(assetURL(path, asset)))).text();
+          fileTexts.value = new Map(fileTexts.value).set(key, text);
+        } catch (error) {
+          const next = new Map(fileTexts.value);
+          next.delete(key);
+          fileTexts.value = next;
+          problem.value = error.message;
+        }
+      }
+    }, {immediate: true});
+
+    function editFileText(node, text) {
+      const key = fileTextKey(node);
+      fileTexts.value = new Map(fileTexts.value).set(key, text);
+      fileSaveState.value = new Map(fileSaveState.value).set(node.id, "Mentés…");
+      clearTimeout(pendingFileSaves.get(node.id));
+      pendingFileSaves.set(node.id, setTimeout(() => transfer(async () => {
+        pendingFileSaves.delete(node.id);
+        const current = nodeMap.value.get(node.id);
+        if (!current?.file) return;
+        const latest = fileTexts.value.get(fileTextKey(current)) ?? text;
+        await checked(await fetch(attachmentURL(path, current.file.asset), {method: "PUT",
+          headers: {"X-CSRF-Token": csrf, "Content-Type": "text/plain; charset=utf-8"}, body: latest}));
+        const rev = (current.file.rev ?? 0) + 1;
+        fileTexts.value = new Map(fileTexts.value).set(current.file.asset + "#" + rev, latest);
+        if (held.value === current.id) updateItem(current, "file", {...current.file, rev});
+        fileSaveState.value = new Map(fileSaveState.value).set(node.id, "Mentve");
+      }), 1500));
+    }
+
     const imageAlpha = ref(new Map());
 
     function detectImageAlpha(event, asset) {
@@ -2270,7 +2337,6 @@ createApp({
       }
     }
 
-    const isNote = file => ["txt", "md"].includes(file?.type);
     function editOverlay(item, x, y, width, height) {
       if (editingObject.value !== item.id) return null;
       const key = editKey.value, inline = !objectPanelOpen.value;
@@ -2279,50 +2345,126 @@ createApp({
       const light = parseInt(background.slice(1,3),16)*.299 + parseInt(background.slice(3,5),16)*.587 + parseInt(background.slice(5),16)*.114 > 150;
       return h("foreignObject", {class: "inline-edit", x, y, width, height, "pointer-events": inline ? "all" : "none",
         onPointerdown: e => e.stopPropagation(), onClick: e => e.stopPropagation(), onDblclick: e => e.stopPropagation()}, [
-        h(key === "text" ? "textarea" : "input", {value: inline ? inlineDraft.value : item[key] || "", onInput: e => { if (inline) inlineDraft.value = e.target.value; }, readonly: !inline, tabindex: inline ? 0 : -1,
-          maxlength: key === "text" ? 100000 : 120, style: {background, color: light ? "#101010" : "white"},
+        h(key === "text" && !isJunction(item) ? "textarea" : "input", {value: inline ? inlineDraft.value : item[key] || "", onInput: e => { if (inline) inlineDraft.value = e.target.value; }, readonly: !inline, tabindex: inline ? 0 : -1,
+          maxlength: key === "text" && !isJunction(item) ? 100000 : 120, style: {background, color: light ? "#101010" : "white"},
           onChange: e => {
             if (!inline) return;
             const target = key === "label" ? edgeMap.value.get(item.id) : nodeMap.value.get(item.id);
             if (!target || (key !== "label" && held.value !== item.id)) return;
             const value = e.target.value;
-            if (key === "title" && !value.trim() && target.file?.type !== "image" && target.kind !== "connectionPoint") return;
-            if (key === "title" && isNote(target.file) && !target.file.filename && /\.(txt|md)$/i.test(target.title)) target.file.filename = target.title;
             updateItem(target, key, value);
           },
           onBlur: () => { if (inline) editingObject.value = null; },
           onKeydown: e => { e.stopPropagation(); if (e.key === "Enter" && !e.isComposing && !e.shiftKey) { e.preventDefault(); e.target.blur(); } }})
       ]);
     }
-    function renderFileDownload(node) {
-      const filename = fileName(node.file, node.title);
-      const href = "/api/box-file/" + path + "?id=" + encodeURIComponent(node.id);
-      const download = () => transfer(async () => { await enqueue(commit); location.assign(href); });
-      return h("button", {type: "button", class: "node-download", title: filename,
-        "aria-label": "Letöltés · " + filename,
-        onPointerdown: event => event.stopPropagation(),
-        onClick: event => { event.stopPropagation(); if (event.detail === 0) download(); },
-        onDblclick: event => { event.stopPropagation(); download(); },
-      }, [icon("package"), node.file.showFilename !== false ? h("span", filename) : null]);
+    // A link célja a szerkesztőben: külső / belső cím a worksheetLink szerint, .web mappa prezentációként.
+    function linkDestination(link) {
+      if (!link) return null;
+      if (link.kind === "web") {
+        const href = webPresentationURL(path, link.target);
+        return href ? {kind: "web", href, preview: href + "_tn-preview"} : null;
+      }
+      const destination = worksheetLink(link.target, path);
+      if (!destination) return null;
+      return link.kind === "sheet" ? {...destination, preview: "/api/preview" + (destination.href === "/" ? "" : destination.href)} : destination;
     }
 
-    function renderCaptionedFile(node) {
-      const file = node.file;
-      const title = file.hideTitle ? "" : node.title;
-      return h("foreignObject", {x: -node.width/2, y: -node.height/2 - (title ? 22 : 0),
-        width: node.width, height: node.height + (title ? 22 : 0) + 22}, [
-        h("div", {class: "node-image", style: {color: paint(node.textColor, 1)}}, [
-          title ? h("strong", title) : null,
-          isNote(file) ? h("div", {class: ["node-note", {"with-fold": backgroundMode(node) === "solid"}], onPointerdown: e => {
-            const el = e.currentTarget;
-            if (el.scrollHeight > el.clientHeight && e.clientX >= el.getBoundingClientRect().right - Math.max(16, el.offsetWidth - el.clientWidth) * view.value.k) e.stopPropagation();
-          }},
-            file.type === "md" ? [h(FormattedText, {source: node.text, justified: node.textStyle?.justified})] :
-            [h("pre", {class: {"justified-text": node.textStyle?.justified}}, node.text)]) :
-          h("img", {src: assetURL(path, file.asset), alt: title || imageStem(file), draggable: false,
-            onLoad: event => detectImageAlpha(event, file.asset)}),
-          renderFileDownload(node),
+    function renderFileDownload(node, label = null, classes = "node-download") {
+      const filename = nodeName(node);
+      const href = "/api/box-file/" + path + "?id=" + encodeURIComponent(node.id);
+      const download = () => transfer(async () => { await enqueue(commit); location.assign(href); });
+      return h("button", {type: "button", class: classes, title: filename,
+        "aria-label": "Letöltés · " + filename,
+        onPointerdown: event => event.stopPropagation(),
+        onClick: event => { event.stopPropagation(); if (event.detail === 0 || classes !== "node-download") download(); },
+        onDblclick: event => { event.stopPropagation(); download(); },
+      }, [icon("package"), label ?? h("span", filename)]);
+    }
+
+    const stopScroll = e => {
+      const el = e.currentTarget;
+      if (el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth) e.stopPropagation();
+    };
+
+    function renderFileText(node) {
+      const text = fileTexts.value.get(fileTextKey(node));
+      if (text == null) return h("p", {class: "muted"}, "…");
+      const preview = text.slice(0, 200000);
+      const ext = (node.file.filename ?? "").split(".").pop().toLowerCase();
+      if (node.type === "csv") {
+        const [head = [], ...rows] = parseCSV(preview, ext === "tsv" ? "\t" : ",");
+        return h("table", {class: "node-csv"}, [
+          h("thead", [h("tr", head.map(cell => h("th", cell)))]),
+          h("tbody", rows.map(row => h("tr", row.map(cell => h("td", cell))))),
+        ]);
+      }
+      if (node.type === "code") return h("pre", {class: "node-code"}, [h("code", preview)]);
+      if (ext === "md" || ext === "markdown") return h(FormattedText, {source: preview, justified: node.justified});
+      return h("pre", {class: ["node-plain", {"justified-text": node.justified}]}, preview);
+    }
+
+    // Fájlt tároló objektum (Rendering.swift fileBox): felül fájlnév, középen tartalom, alul megjegyzés.
+    function renderFileBox(node, destination) {
+      const file = node.file, root = rootType(node.type);
+      let content;
+      if (root === "image") {
+        content = h("img", {src: assetURL(path, file.asset), alt: nodeName(node), draggable: false,
+          onLoad: event => detectImageAlpha(event, file.asset)});
+      } else if (root === "audio") {
+        content = h("div", {"data-audio-player": "", class: "node-audio",
+          onPointerdown: e => e.stopPropagation(), onDblclick: e => e.stopPropagation()}, [
+          h("audio", {src: assetURL(path, file.asset), preload: "metadata", hidden: true}),
+          button("", null, {symbol: "play", "data-audio-toggle": "", "aria-label": "Lejátszás", title: "Lejátszás"}),
+          h("input", {type: "range", min: 0, max: 0, step: "any", disabled: true, "data-audio-seek": "", "aria-label": "Lejátszási pozíció"}),
+          h("small", {"data-audio-time": ""}, "0:00"),
+          h("small", {"data-audio-status": "", role: "status"}),
+        ]);
+      } else if (root === "text") {
+        content = h("div", {class: ["node-note", {"with-fold": backgroundMode(node) === "solid"}], style: {fontSize: (node.fontSize ?? 13) + "px"},
+          onPointerdown: stopScroll, onWheel: stopScroll},
+          [renderFileText(node)]);
+      } else {
+        const ext = (file.filename ?? file.asset).split(".").pop().toUpperCase();
+        content = h("div", {class: "node-document"}, [
+          h("span", {class: "node-document-icon"}, [icon("package"), h("b", ext)]),
+          renderFileDownload(node, "Letöltés", "node-download button small"),
+        ]);
+      }
+      const comment = node.text?.trim() && !node.hideText
+        ? h("footer", {class: "node-comment align-" + (node.alignment ?? "center")}, [h(FormattedText, {source: node.text})]) : null;
+      const marker = node.link ? h("p", {class: "node-link-caption", "data-link-kind": node.link.kind,
+        onPointerdown: e => { if (!e.altKey && !e.ctrlKey) e.stopPropagation(); },
+        onClick: e => { e.stopPropagation(); if (destination) followBoxLink(destination); }},
+        [icon(node.link.kind === "url" ? "website" : "link"), h("span", linkCaption(node.link))]) : null;
+      return h("foreignObject", {x: -node.width/2, y: -node.height/2, width: node.width, height: node.height}, [
+        h("div", {class: ["node-file", "node-" + root], style: {color: paint(node.textColor, 1)}}, [
+          file.showFilename !== false ? h("header", {class: "node-file-name"}, [renderFileDownload(node)]) : null,
+          h("div", {class: "node-body"}, [content]),
+          marker,
+          comment,
         ]),
+      ]);
+    }
+
+    function renderLinkMarker(node, destination) {
+      const [, , inset] = shapeLabelRatios(node.shape);
+      const caption = linkCaption(node.link);
+      const available = Math.max(12, node.width * inset - 22);
+      const shown = Math.min(available, textWidth(caption, 13));
+      const left = -(shown + 18) / 2, bottom = node.height / 2 * inset - 4;
+      const color = paint(node.textColor, 1);
+      const iconPath = node.link.kind === "web" ? linkIcons.web : linkIcons[destination?.kind ?? "worksheet"];
+      const open = e => { e.preventDefault(); e.stopPropagation(); if (destination) followBoxLink(destination); };
+      return h("g", {class: "node-link", "data-link-kind": node.link.kind, role: "link", tabindex: 0, cursor: "pointer",
+        "aria-label": "Hivatkozás megnyitása · " + caption,
+        onPointerdown: e => { if (!e.altKey && !e.ctrlKey) e.stopPropagation(); },
+        onClick: open, onKeydown: e => { if (e.key === "Enter") open(e); }}, [
+        h("rect", {x: left - 4, y: bottom - 17, width: shown + 26, height: 20, fill: "transparent", stroke: "none"}),
+        h("svg", {x: left, y: bottom - 14, width: 14, height: 14, viewBox: "0 0 24 24", fill: "none", stroke: color,
+          "stroke-width": 1.8, "stroke-linecap": "round", "stroke-linejoin": "round"}, [h("path", {d: iconPath})]),
+        h("text", {x: left + 18, y: bottom - 2, "font-size": 13, fill: color, stroke: "none",
+          textLength: textWidth(caption, 13) > available ? available : undefined, lengthAdjust: "spacingAndGlyphs"}, caption),
       ]);
     }
 
@@ -2332,106 +2474,84 @@ createApp({
       const position = displayPosition(node);
       const selectors = peers.value.filter(p => p.node === node.id && (!p.mine || (selected.value?.kind === "node" && selected.value.id === node.id)));
       const owner = selectors.find(p => !p.viewing) ?? selectors[0];
-      const webURL = node.file?.type === "web" ? webPresentationURL(path, node.file.webPath) : null;
-      const destination = node.kind === "connectionPoint" || webURL ? null : worksheetLink(node.link, path);
+      const destination = linkDestination(node.link);
+      const junction = isJunction(node);
 
       const textDrag = gesture.value?.type === "text" && gesture.value.nodeID === node.id ? gesture.value : null;
       const [, , inset] = shapeLabelRatios(node.shape);
-      const [outline, dimensions] = selectionOutline(node.kind === "connectionPoint" ? graphics.value.junction ?? "ellipse" : drawn.shape, drawn.width, drawn.height);
+      const [outline, dimensions] = selectionOutline(junction ? graphics.value.junction ?? "ellipse" : drawn.shape, drawn.width, drawn.height);
       const snapTarget = (preview.value?.target ?? junctionTarget.value) === node.id;
-      const labels = layout.lines.length ? h("text", {class: "node-label", "font-family": "system-ui, sans-serif", "pointer-events": "none"},
+      const strong = node.bold === true;
+      const labels = layout.lines.length ? h("text", {class: "node-text", "font-family": "system-ui, sans-serif", "pointer-events": "none"},
           layout.lines.map(line => h("tspan", {
-            class: destination && !line.runs ? "node-link-label" : undefined,
-            "data-body-row": line.section === "textStyle" ? "" : undefined,
+            "data-body-row": "",
             "pointer-events": "visiblePainted", cursor: alt.value && ctrl.value ? "text" : undefined,
             onPointerdown: e => {
               if (!e.ctrlKey || !e.altKey || ![0,2].includes(e.button) || occupied(node.id) || ancestors(node,nodeMap.value).some(n => n.locked)) return;
-              let bounds;
-              if (line.section === "textStyle") {
-                const rows = Array.from(e.currentTarget.parentNode.querySelectorAll("[data-body-row]"), row => row.getBBox());
-                if (rows.length) bounds = {
-                  left: Math.min(...rows.map(r => r.x)), right: Math.max(...rows.map(r => r.x+r.width)),
-                  top: Math.min(...rows.map(r => r.y)), bottom: Math.max(...rows.map(r => r.y+r.height)),
-                };
-              }
-              beginDrag(e,"text",{nodeID: node.id, section: line.section, bounds});
+              const rows = Array.from(e.currentTarget.parentNode?.querySelectorAll?.("[data-body-row]") ?? [], row => row.getBBox());
+              const bounds = rows.length ? {
+                left: Math.min(...rows.map(r => r.x)), right: Math.max(...rows.map(r => r.x+r.width)),
+                top: Math.min(...rows.map(r => r.y)), bottom: Math.max(...rows.map(r => r.y+r.height)),
+              } : undefined;
+              beginDrag(e,"text",{nodeID: node.id, bounds});
               claimGesture(node);
             },
-            x: line.x + (textDrag?.section === line.section ? textDrag.delta.x : 0),
-            y: line.y + (textDrag?.section === line.section ? textDrag.delta.y : 0), "text-anchor": line.anchor, "font-style": line.italic ? "italic" : undefined,
-            "text-decoration": line.underline ? "underline" : undefined, "word-spacing": line.wordSpacing ? line.wordSpacing + "px" : undefined, fill: paint(line.color, 1), "font-size": line.size, "font-weight": line.weight,
-          }, line.runs ? line.runs.map(run => {
+            x: line.x + (textDrag ? textDrag.delta.x : 0),
+            y: line.y + (textDrag ? textDrag.delta.y : 0), "text-anchor": line.anchor,
+            "font-style": node.italic ? "italic" : undefined, "text-decoration": node.underline ? "underline" : undefined,
+            "word-spacing": line.wordSpacing ? line.wordSpacing + "px" : undefined, fill: paint(line.color, 1), "font-size": line.size, "font-weight": line.weight,
+          }, line.runs.map(run => {
             const format = run.format || {};
             if (!format.bold && !format.italic && !format.code && !format.link) return run.text;
-            return h("tspan", {"font-weight": format.bold ? 700 : undefined,
-              "font-style": format.italic ? "italic" : undefined, "font-family": format.code ? "monospace" : undefined,
+            return h("tspan", {"font-weight": format.bold ? (strong ? 900 : 700) : undefined,
+              "font-size": format.bold && strong ? line.size * 1.1 : undefined,
+              "font-style": format.italic ? (node.italic ? "normal" : "italic") : undefined, "font-family": format.code ? "monospace" : undefined,
               "xml:space": format.code ? "preserve" : undefined,
               "text-decoration": format.link ? "underline" : undefined}, run.text);
-          }) : line.text))) : null;
-      return h("g", {key: node.id, "data-node": node.id, "data-width": drawn.width, "data-height": drawn.height, tabindex: 0, role: node.file?.type === "mp3" ? "group" : "button",
-        "aria-label": node.title || (node.file?.type === "image" ? imageStem(node.file) : ""), "data-link": destination ? "" : undefined, class: [nodeClasses(node), {"editing-object": editingObject.value === node.id, occupied: occupied(node.id), claimed: !!owner}],
+          })))) : null;
+      const linkPreview = isBox(node) && destination?.preview && layout.previewSpace ? h("image", {class: "node-link-preview",
+        href: destination.preview, x: -drawn.width/2*inset + 6, y: -drawn.height/2*inset + 6,
+        width: Math.max(1, drawn.width*inset - 12), height: Math.max(1, layout.previewSpace - 6),
+        preserveAspectRatio: "xMidYMid meet", "pointer-events": "none"}) : null;
+      const junctionLabel = junction && node.text ? h("g", {class: "node-label-turn", transform: "rotate(" + (node.angle ?? 0) + ")"}, [
+        h("text", {class: "node-label", x: drawn.width/2 + 4, y: 4, fill: paint(node.textColor, 1), "font-size": 14}, node.text)]) : null;
+      return h("g", {key: node.id, "data-node": node.id, "data-type": node.type, "data-width": drawn.width, "data-height": drawn.height, tabindex: 0,
+        role: rootType(node.type) === "audio" ? "group" : "button",
+        "aria-label": nodeName(node), "data-link": destination ? "" : undefined,
+        class: [nodeClasses(node, containerIDs.value.has(node.id)), {"editing-object": editingObject.value === node.id, occupied: occupied(node.id), claimed: !!owner}],
         transform: "translate(" + position.x + " " + position.y + ")",
         onPointerenter: event => {
-          if (!gesture.value && (node.file?.type === "image" || node.hideText || layout.overflow) && node.text) showTooltip(event, async signal => {
+          if (!gesture.value && isBox(node) && layout.overflow && node.text) showTooltip(event, async signal => {
             const result = await checked(await fetch("/api/text", {method: "POST", signal,
               headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify({text: node.text})}));
             return result.text();
-          }, node.textStyle?.justified);
+          }, node.justified);
         },
         onPointerleave: hideTooltip,
         onPointerdown: event => { hideTooltip(); pressNode(event, node); },
         onDblclick: event => {
           event.stopPropagation();
-          if (webURL && !event.altKey) openPresentation(webURL);
-          else editObject("node", node.id, event.altKey ? "text" : true);
+          editObject("node", node.id, event.altKey ? "text" : true);
         },
         onContextmenu: event => context(event, "node", node.id),
         onKeydown: event => {
           if (event.key === "Enter" && event.shiftKey) openProperties("node", node.id);
-          else if (event.key === "Enter" && webURL) { event.preventDefault(); event.stopPropagation(); openPresentation(webURL); }
         },
       }, [
         owner || snapTarget || batch.value?.nodes.has(node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-glow", color: owner && !owner.mine ? owner.color : paint(graphics.value.selection ?? 4, 4), fill: "none",
           stroke: owner && !owner.mine ? owner.color : paint(graphics.value.selection ?? 4, 4), "stroke-width": 3, "pointer-events": "none"}) : null,
         candidates.value.has("node/" + node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "search-candidate", "stroke-width": 3}) : null,
-        ...animateBox(!node.file && node.kind !== "connectionPoint" ? node.animation : undefined, [
+        ...animateBox(isBox(node) ? node.animation : undefined, [
           elevationShadow(drawn),
           shape(drawn, !!destination, containerDropTargets.value.has(node.id)),
-          node.file?.type === "image" || isNote(node.file) ? renderCaptionedFile(node) : null,
-          node.file && !isNote(node.file) && node.file.type !== "image" ? h("foreignObject", {x: -drawn.width/2, y: -drawn.height/2, width: drawn.width, height: drawn.height}, [
-            h("div", {class: "node-file", style: {color: paint(node.textColor, 1)}}, [
-              !node.file.hideTitle ? h("strong",node.title) : null,
-              node.file.type === "mp3" ? h("div", {"data-audio-player": "", class: "node-audio",
-                  onPointerdown: e => e.stopPropagation(), onDblclick: e => e.stopPropagation()}, [
-                  h("audio", {src: assetURL(path, node.file.asset), preload: "metadata", hidden: true}),
-                  button("", null, {symbol: "play", "data-audio-toggle": "", "aria-label": "Lejátszás", title: "Lejátszás"}),
-                  h("input", {type: "range", min: 0, max: 0, step: "any", disabled: true, "data-audio-seek": "", "aria-label": "Lejátszási pozíció"}),
-                  h("small", {"data-audio-status": "", role: "status"}),
-                ]) :
-                node.file.type === "json" ? h("pre", {class: {"justified-text": node.textStyle?.justified}}, node.text) : null,
-              node.file.type === "mp3" && node.text ? h("small", {class: {"justified-text": node.textStyle?.justified}}, node.text) : null,
-              webURL ? h("div", {class: "node-web"}, [
-                h("img", {class: "node-web-preview", src: webURL + "_tn-preview", alt: "", draggable: false,
-                  onLoad: event => { event.target.dataset.ready = ""; }}),
-                h("span", [icon("website"), node.file.webPath]),
-              ]) : renderFileDownload(node),
-            ]),
-          ]) : null,
-          node.kind === "connectionPoint" && node.title ? h("text", {class: "node-label", x: drawn.width/2 + 4, y: 4, fill: paint(node.textColor, 1), "font-size": 14}, node.title) : null,
+          node.file ? renderFileBox(node, destination) : null,
+          junctionLabel,
+          linkPreview,
           labels,
           editingObject.value === node.id ? editOverlay(node, -drawn.width/2,
-            (layout.lines.find(line => (line.section === "textStyle") === (editKey.value === "text"))?.y ??
-             (node.file && editKey.value === "title" ? -drawn.height/2 - 6 : 0)) - 18,
-            drawn.width, editKey.value === "text" ? Math.max(34, drawn.height/2) : 28) : null,
-          destination ? h("svg", {overflow: "visible", x: drawn.width/2*inset-15, y: drawn.height/2*inset-16, width: 14, height: 14,
-            viewBox: "0 0 24 24", fill: "none", stroke: paint(node.textColor, 1), "stroke-width": 1.8,
-            "stroke-linecap": "round", "stroke-linejoin": "round", "pointer-events": "all",
-            role: "link", tabindex: 0, "aria-label": "Hivatkozás megnyitása", cursor: "pointer",
-            onPointerdown: e => { if (!e.altKey) e.stopPropagation(); }, onClick: e => e.stopPropagation(),
-            onDblclick: e => { if (e.altKey) return; e.preventDefault(); e.stopPropagation(); followBoxLink(destination); },
-            onKeydown: e => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); followBoxLink(destination); } }},
-            [h("text", {class: "node-link", x: -5, y: 19, fill: paint(node.textColor, 1), stroke: "none", "text-anchor": "end", "font-size": 28,
-              textLength: node.link.length * 17 > (drawn.width*inset-22)*24/14 ? Math.max(12,drawn.width*inset-22)*24/14 : undefined, lengthAdjust: "spacingAndGlyphs"}, node.link), h("rect", {width: 24, height: 24, fill: "transparent", stroke: "none"}), h("path", {d: linkIcons[destination.kind]})]) : null,
+            junction ? -14 : (layout.lines[0]?.y ?? (node.file ? drawn.height/2 - 20 : 0)) - 18,
+            drawn.width, editKey.value === "text" && !junction ? Math.max(34, drawn.height/2) : 28) : null,
+          isBox(node) && node.link ? renderLinkMarker(drawn, destination) : null,
         ]),
         ...(resizeTarget.value === node.id && !occupied(node.id) && !ancestors(node, nodeMap.value).some(n => n.locked)
           ? [[-1,-1], [1,-1], [1,1], [-1,1]].map(([sx, sy]) => {
@@ -2445,7 +2565,7 @@ createApp({
 
     function renderJunctionHandles() {
       // Transparent centers keep junctions reachable under the wires' wider hit areas.
-      const handles = orderedNodes.value.filter(node => node.kind === "connectionPoint").map(node => {
+      const handles = orderedNodes.value.filter(isJunction).map(node => {
         const drawn = drawnNode(node.id);
         return h("circle", {key: node.id, "data-node": node.id,
           cx: drawn.position.x, cy: drawn.position.y, r: drawn.width/2, fill: "transparent",
@@ -2532,7 +2652,7 @@ createApp({
           }
           if (Math.min(nearest, length-nearest) < 8/view.value.k) return;
           const p = pathElement.getPointAtLength(nearest);
-          const joint = {...makeNode(clampPoint(p)), title: "", kind: "connectionPoint", shape: "ellipse",
+          const joint = {...makeNode(clampPoint(p), "junction"), shape: "ellipse",
             width: graphics.value.junctionSize ?? 12, height: graphics.value.junctionSize ?? 12, fill: edge.color ?? 3};
           const tail = {...edge, id: id(), source: joint.id, sourcePoint: undefined, startArrow: false, label: ""};
           const head = {...copy(edge), target: {node: joint.id}, endArrow: false};
@@ -2624,11 +2744,18 @@ createApp({
                 gesture.value || reconnect.value || event.target.closest("[data-node], [data-edge]")) return;
             addNode(world(event));
           },
-          onDragover: event => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); },
+          onDragover: event => {
+            const types = event.dataTransfer.types;
+            if (types.includes("Files") || types.includes("text/uri-list") || types.includes("text/plain")) event.preventDefault();
+          },
           onDrop: event => {
             event.preventDefault();
             const files = Array.from(event.dataTransfer.files), point = world(event);
-            transfer(() => importFiles(files, point));
+            if (files.length) { transfer(() => importFiles(files, point)); return; }
+            const dropped = (event.dataTransfer.getData("text/uri-list") || event.dataTransfer.getData("text/plain"))
+              .split(/\r?\n/).find(line => line && !line.startsWith("#")) ?? "";
+            const href = externalURL(dropped);
+            if (href && online.value) addLinkBox(href, point);
           },
           onTouchstartCapture: startTouchView,
           onTouchmoveCapture: moveTouchView,
@@ -2719,6 +2846,35 @@ createApp({
       live.ping(target).catch(error => { problem.value = error.message; });
     }
 
+    const linkKinds = [["sheet", "Másik munkalap", "file"], ["web", ".web mappa", "website"], ["url", "Külső cím", "link"]];
+
+    // Link hozzáadása (docs/node-types.md, link képesség): a fajtát rögtön meg kell adni.
+    async function addLink(node, kind) {
+      if (!await selectNode(node.id)) return;
+      const set = target => {
+        const current = nodeMap.value.get(node.id);
+        if (current && held.value === node.id && online.value) updateItem(current, "link", {kind, target});
+      };
+      if (kind === "web") { transfer(() => openPresentationPicker(path, csrf, item => set(item.reference))); return; }
+      const value = window.prompt(kind === "url" ? "Webcím (https://…)" : "Munkalap útvonala (allap, ../testvér vagy /projekt/lap)")?.trim();
+      if (!value) return;
+      const destination = kind === "url" ? externalURL(value) : worksheetLink(value, path);
+      if (!destination || (kind === "sheet" && destination.kind !== "worksheet")) { problem.value = "Érvénytelen hivatkozás."; return; }
+      set(kind === "url" ? destination : value);
+    }
+
+    async function removeLink(node) {
+      if (!confirm("Törlöd a linket?\n" + linkCaption(node.link))) return;
+      if (!await selectNode(node.id)) return;
+      const current = nodeMap.value.get(node.id);
+      if (current) updateItem(current, "link", undefined);
+    }
+
+    function chooseLink(node, event) {
+      const bounds = event.currentTarget.getBoundingClientRect();
+      menu.value = {kind: "link", id: node.id, x: bounds.left, y: bounds.bottom + 4};
+    }
+
     function renderMenu() {
       const open = menu.value;
       if (!open) return null;
@@ -2728,21 +2884,18 @@ createApp({
       const entries = type === "node" && node ? [
         node.file ? button("Link másolása", () => { menu.value = null; transfer(() => writeText(objectURL(path,node.id))); }, {symbol: "link"}) : null,
         button("Ping", () => ping({node: node.id}), {symbol: "center", disabled: !online.value}),
-        node.kind !== "connectionPoint" ? elevationButton(node, true) : null,
-        node.kind !== "connectionPoint" && node.file?.type !== "web" ? button(node.link ? "Link feloldása" : "Link", async () => {
-          menu.value = null;
-          if (!await selectNode(node.id)) return;
-          const current = nodeMap.value.get(node.id);
-          if (!current) return;
-          const link = current.link ? "" : window.prompt("Hivatkozás (allap, ../ vagy https://…)")?.trim();
-          if (link == null) return;
-          if (link && !worksheetLink(link, path)) { problem.value = "Érvénytelen hivatkozás."; return; }
-          updateItem(current, "link", link);
+        !isJunction(node) ? elevationButton(node, true) : null,
+        hasTrait(node, "link") ? button(node.link ? "Link törlése" : "Link hozzáadása", () => {
+          if (node.link) { menu.value = null; removeLink(node); }
+          else menu.value = {kind: "link", id: node.id, x: open.x, y: open.y};
         }, {symbol: node.link ? "unlink" : "link", disabled: !!occupied(node.id)}) : null,
         button("Szerkesztés", () => openProperties("node", node.id), {symbol: "edit", disabled: !!occupied(node.id)}),
         button("Törlés", () => { menu.value = null; deleteNode(node); }, {class: "button danger", symbol: "trash", disabled: !!occupied(node.id)}),
         button("Törlés bekötés meghagyásával", () => { menu.value = null; deleteNode(node, true); },
           {class: "button danger", symbol: "trash", disabled: !!occupied(node.id)}),
+      ] : type === "link" && node ? [
+        h("p", {class: "muted"}, "Milyen link legyen?"),
+        ...linkKinds.map(([kind, label, symbol]) => button(label, () => { menu.value = null; addLink(node, kind); }, {symbol})),
       ] : type === "edge" && edge ? [
         button("Szerkesztés", () => openProperties("edge", edge.id), {symbol: "edit"}),
         ...endpointActions(edge),
@@ -2756,7 +2909,7 @@ createApp({
         button("Prezentáció beszúrása", () => {
           menu.value = null;
           transfer(() => openPresentationPicker(path, csrf, item => addNode(open.position, {
-            title: item.title, file: {type: "web", webPath: item.reference}, width: 290, height: 180,
+            text: item.title ?? "", link: {kind: "web", target: item.reference}, width: 290, height: 200,
           })));
         }, {symbol: "website", disabled: !online.value}),
         button("Új munkalap", addSubworksheet, {symbol: "plus", disabled: !online.value}),
@@ -2801,10 +2954,11 @@ createApp({
       const titles = [], bodies = [];
       const matches = text => text?.toLocaleLowerCase("hu").includes(term);
       for (const n of board.value.nodes) {
-        const titleMatch = matches(n.title);
-        if (titleMatch || matches(n.text)) {
-          (titleMatch ? titles : bodies).push({key: "node/" + n.id, kind: "node", id: n.id, title: n.title || "Csomópont",
-            source: titleMatch ? "Cím" : n.file?.asset ? "Megjegyzés" : "Text"});
+        const name = nodeName(n);
+        const nameMatch = matches(name);
+        if (nameMatch || matches(n.text)) {
+          (nameMatch ? titles : bodies).push({key: "node/" + n.id, kind: "node", id: n.id, title: name || typeLabel(n.type),
+            source: nameMatch ? "Cím" : n.file ? "Megjegyzés" : "Text"});
         }
       }
       for (const e of board.value.edges) {
@@ -2945,7 +3099,7 @@ createApp({
       ]);
     }
 
-    function themeSettings(sheet) {
+    function themeSettings(sheet, extra = []) {
       const current = appearance.value;
       const theme = activeTheme.value;
       if (!theme) return null;
@@ -2961,6 +3115,7 @@ createApp({
         }),
         select("Paletta", activePalette.value.id, theme.palettes.map(p => [p.id,p.name]),
           value => ({...current, palette: Number(value)})),
+        ...extra,
       ]);
     }
 
@@ -2971,14 +3126,18 @@ createApp({
         h("input", {ref: attachmentInput, type: "file", multiple: true, hidden: true,
           onChange: uploadAttachments}),
         group("Cím", [input(sheet.title, value => updateItem(sheet, "title", value), {"aria-label": "Cím", maxlength: 120})]),
-        group("Szöveg", [textArea(sheet.text ?? "", value => updateItem(sheet, "text", value), 7, sheet.textJustified)]),
-        themeSettings(sheet),
+        group("Leírás", [markdownEditor(sheet.text ?? "", value => updateItem(sheet, "text", value), 7, "Leírás")]),
+        themeSettings(sheet, [
+          colorPicker("Munkalap háttérszíne", sheet.background ?? 0,
+            value => updateItem(sheet, "background", value), "worksheet/background", false, false, 0),
+          field("Rácsköz", numeric(sheet.gridSpacing ?? 32, value => updateItem(sheet, "gridSpacing", Math.round(value)), 6, 160,
+            {...controlName("Rácsköz"), step: 1, clampValue: true})),
+        ]),
         group("Előnézeti kép", [h("select", {"aria-label": "Előnézeti kép", value: previewImages.value.includes(sheet.previewImage) ? sheet.previewImage : "",
           onFocus: loadPreviewImages, onChange: e => updateItem(sheet, "previewImage", e.target.value || undefined)}, [
           h("option", {value: ""}, "Default · Munkalap SVG"), ...previewImages.value.map(name => h("option", {value: name}, name))
-        ])]),
-        group("Háttér", [colorPicker("Munkalap háttérszíne", sheet.background ?? 0,
-          value => updateItem(sheet, "background", value), "worksheet/background", false, false, 0)]),
+        ]), h("img", {class: "canvas-preview-thumbnail", alt: "Előnézet", loading: "lazy",
+          src: "/api/preview/" + path + "?v=" + sheet.revision + "&image=" + encodeURIComponent(sheet.previewImage ?? "")})]),
         h("div", {class: "property-inline file-actions"}, [button(uploading.value ? "Feltöltés…" : "Fájl feltöltése", event => {
           const bounds = event.currentTarget.getBoundingClientRect();
           uploadAnchor = {clientX: bounds.left + bounds.width / 2, clientY: bounds.bottom + 12};
@@ -2987,247 +3146,277 @@ createApp({
       ], true);
     }
 
+    // Markdown szerkesztő formázógombokkal: a gombok markdown-jeleket szúrnak be a kijelölt szöveg köré.
+    function markdownEditor(value, change, rows = 6, label = "Text", primary = false) {
+      function format(event, before, after = before, linePrefix = false) {
+        const area = event.currentTarget.closest(".markdown-editor").querySelector("textarea");
+        const start = area.selectionStart, end = area.selectionEnd, text = area.value;
+        let next, caret;
+        if (linePrefix) {
+          const lineStart = text.lastIndexOf("\n", start - 1) + 1;
+          next = text.slice(0, lineStart) + before + text.slice(lineStart);
+          caret = end + before.length;
+        } else {
+          next = text.slice(0, start) + before + text.slice(start, end) + after + text.slice(end);
+          caret = end + before.length;
+        }
+        area.value = next;
+        change(next);
+        area.focus();
+        area.setSelectionRange(caret, caret);
+      }
+      const tool = (title, symbol, ...args) => h("button", {type: "button", class: "button option-icon", ...controlName(title),
+        onPointerdown: e => e.preventDefault(), onClick: e => format(e, ...args)}, [icon(symbol)]);
+      return h("div", {class: "markdown-editor stack"}, [
+        h("div", {class: "property-options property-tools markdown-tools"}, [
+          tool("Címsor", "heading", "# ", "", true), tool("Félkövér (markdown)", "bold", "**"), tool("Dőlt (markdown)", "italic", "*"),
+          tool("Lista", "list", "- ", "", true), tool("Kód", "code", "`"), tool("Link (markdown)", "link", "[", "](https://)"),
+        ]),
+        h("textarea", {"aria-label": label, value, maxlength: 100000, rows, "data-object-label": primary ? "" : undefined,
+          onInput: event => change(event.target.value)}),
+      ]);
+    }
+
+    const alignmentPositions = [
+      ["top","left","Bal felső","↖"], ["top","center","Felső közép","↑"], ["top","right","Jobb felső","↗"],
+      ["middle","left","Bal oldal","←"], ["middle","center","Közép","•"], ["middle","right","Jobb oldal","→"],
+      ["bottom","left","Bal alsó","↙"], ["bottom","center","Alsó közép","↓"], ["bottom","right","Jobb alsó","↘"],
+    ];
+
+    // A tulajdonságpanel a típusok képességeiből áll össze (docs/node-types.md); több kijelölt objektumnál
+    // a közös képességek látszanak, és a módosítás mindegyikre érvényes.
+    function nodePanels(nodes) {
+      const single = nodes.length === 1 ? nodes[0] : null;
+      const first = nodes[0];
+      const common = nodes.map(node => traits(node.type)).reduce((a, b) => new Set([...a].filter(trait => b.has(trait))));
+      const same = key => nodes.every(node => node[key] === first[key]);
+      const value = (key, fallback) => same(key) ? first[key] ?? fallback : fallback;
+      const change = (key, next) => {
+        for (const node of nodes) {
+          const current = nodeMap.value.get(node.id);
+          if (current && !occupied(current.id)) current[key] = typeof next === "function" ? next(current) : next;
+        }
+        modified();
+      };
+      const color = (label, key, role, compact = true) => colorPicker(label, value(key, role), v => change(key, v),
+        nodes.map(n => n.id).join(",") + "/" + key, false, compact, role);
+      const mode = value("backgroundMode", "solid");
+      const setBackground = (next, fill) => {
+        for (const node of nodes) {
+          const current = nodeMap.value.get(node.id);
+          if (!current || occupied(current.id)) continue;
+          current.backgroundMode = next === "solid" ? undefined : next;
+          if (fill !== undefined) current.fill = fill;
+        }
+        modified();
+      };
+      const backgroundTools = () => [
+        iconToggle("Free", mode === "free", () => setBackground(mode === "free" ? "solid" : "free"), icon("box-free")),
+        iconToggle("Üres", mode === "empty", () => setBackground(mode === "empty" ? "solid" : "empty"), icon("box-empty")),
+        iconToggle("Elmosott", mode === "blurred", () => setBackground(mode === "blurred" ? "solid" : "blurred"), icon("box-blur")),
+        nodes.some(isImage) ? null : colorPicker("Háttér", value("fill", 2),
+          v => setBackground(mode === "free" || mode === "empty" ? "solid" : mode, v), nodes.map(n => n.id).join(",") + "/fill", false, true, 2,
+          {transparent: mode === "free" || mode === "empty", clear: () => setBackground("free")}),
+      ];
+      const elevation = () => single ? elevationButton(single) : iconToggle("Kiemelés", nodes.every(n => n.elevated === true), () => {
+        const raise = !nodes.every(n => n.elevated === true);
+        change("elevated", node => { if (raise) node.parent = undefined; return raise ? true : undefined; });
+      }, icon("box-elevated"));
+      const linkButton = () => single && common.has("link") && !single.link
+        ? h("button", {type: "button", class: "button option-icon", ...controlName("Link hozzáadása"),
+            disabled: !online.value, onClick: event => chooseLink(single, event)}, [icon("link")]) : null;
+      const panels = [];
+
+      if (common.has("label")) panels.push(group("Címke", [
+        single ? input(single.text ?? "", v => change("text", v), {"aria-label": "Címke", "data-object-label": "", maxlength: 120}) : null,
+        propertyTools(h("span", {class: "muted"}, [icon("rotate")]),
+          numeric(value("angle", 0), v => change("angle", v ? Math.round(v) : undefined), -360, 360, {...controlName("Elforgatás (fok)"), step: 1})),
+      ]));
+
+      if (common.has("file") && single) {
+        const {stem, extension} = fileNameParts(single.file, isImage(single));
+        const visible = single.file.showFilename !== false;
+        panels.push(group("Fájlnév", [h("div", {class: "property-inline file-name-field"}, [
+          h("input", {type: "text", "aria-label": "Fájlnév", value: stem, maxlength: 200, "data-object-label": "",
+            onChange: event => {
+              const name = event.target.value.trim();
+              if (name === stem || !renameFile(single, name)) event.target.value = stem;
+            },
+            onKeydown: event => {
+              if (event.key !== "Enter" || event.isComposing) return;
+              event.preventDefault(); event.stopPropagation(); event.target.blur();
+            }}),
+          extension ? h("span", {class: "muted"}, "." + extension) : null,
+          iconToggle(visible ? "Fájlnév elrejtése" : "Fájlnév megjelenítése", visible,
+            () => change("file", node => ({...node.file, showFilename: !visible})), icon(visible ? "eye" : "eye-off")),
+        ])]));
+      }
+
+      if (common.has("text")) {
+        const fontSize = numeric(value("fontSize", 16), v => change("fontSize", Math.round(v)), 1, 10000,
+          {...controlName("Betűméret"), step: 1, clampValue: true, disabled: nodes.every(n => n.fitText)});
+        const toggle = (key, label, symbol) => iconToggle(label, nodes.every(n => n[key] === true), () => {
+          const on = !nodes.every(n => n[key] === true);
+          change(key, on ? true : undefined);
+        }, icon(symbol));
+        const justified = nodes.every(n => n.justified === true);
+        panels.push(group("Text", [
+          single ? markdownEditor(single.text ?? "", v => change("text", v), 6, "Text", true) : null,
+          h("div", {class: "typography-tools"}, [
+            propertyTools(
+              iconToggle("AutoSize", nodes.every(n => n.fitText), () => change("fitText", !nodes.every(n => n.fitText) || undefined),
+                optionSymbol("path", {d: "M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M8 16l4-8 4 8m-6.5-3h5"})),
+              fontSize,
+              color("Szövegszín", "textColor", 1),
+              toggle("bold", "Félkövér", "bold"), toggle("italic", "Dőlt", "italic"), toggle("underline", "Aláhúzott", "underline"),
+              iconToggle("Sorkizárás", justified, () => change("justified", justified ? undefined : true), icon(justified ? "justify" : "text-" + value("alignment", "center"))),
+              iconToggle("Összecsukás (csak az első sor)", nodes.every(n => n.hideText), () => change("hideText", nodes.every(n => n.hideText) ? undefined : true), icon("more")),
+            ),
+            h("div", {class: "alignment-picker", role: "group", "aria-label": "Igazítás"},
+              alignmentPositions.map(([vertical, horizontal, label, symbol]) => h("button", {
+                type: "button", ...controlName(label),
+                "aria-pressed": vertical === value("verticalAlignment", "middle") && horizontal === (justified ? "left" : value("alignment", "center")),
+                onClick: () => { change("verticalAlignment", vertical); change("alignment", horizontal); change("justified", undefined); },
+              }, symbol))),
+          ]),
+        ]));
+      }
+
+      if (common.has("fileText") && single) {
+        const key = fileTextKey(single);
+        const loaded = fileTexts.value.get(key);
+        const justified = single.justified === true;
+        panels.push(group("Text", [
+          loaded == null ? h("p", {class: "muted"}, "Betöltés…") :
+            h("textarea", {"aria-label": "Fájl tartalma", class: ["file-text-editor", {"justified-text": justified}], value: loaded, rows: 10,
+              spellcheck: single.type !== "code", onInput: event => editFileText(single, event.target.value)}),
+          propertyTools(
+            numeric(single.fontSize ?? 14, v => change("fontSize", Math.round(v)), 6, 72, {...controlName("Betűméret"), step: 1, clampValue: true}),
+            color("Szövegszín", "textColor", 1),
+            single.type === "text" ? iconToggle("Sorkizárás", justified, () => change("justified", justified ? undefined : true), icon("justify")) : null,
+            h("small", {class: "muted", role: "status"}, fileSaveState.value.get(single.id) ?? ""),
+          ),
+        ]));
+      }
+
+      if (common.has("comment")) {
+        const hidden = nodes.every(n => n.hideText);
+        panels.push(group("Megjegyzés", [
+          single ? markdownEditor(single.text ?? "", v => change("text", v), 3, "Megjegyzés") : null,
+          propertyTools(
+            ...[["left", "Balra", "text-left"], ["center", "Középre", "text-center"], ["right", "Jobbra", "text-right"]].map(([align, label, symbol]) =>
+              iconToggle(label, value("alignment", "center") === align, () => change("alignment", align), icon(symbol))),
+            iconToggle(hidden ? "Megjegyzés megjelenítése" : "Megjegyzés elrejtése", !hidden, () => change("hideText", hidden ? undefined : true),
+              icon(hidden ? "eye-off" : "eye")),
+          ),
+        ]));
+      }
+
+      if (common.has("alpha") && single) panels.push(group("Átlátszóság", [h("div", {class: "property-options image-alpha-options"}, [
+        iconToggle("Alpha csatorna", single.file.alphaEnabled !== false,
+          () => change("file", node => ({...node.file, alphaEnabled: node.file.alphaEnabled === false})),
+          optionSymbol("path", {d: "M4 4h16v16H4z M4 12h16 M12 4v16 M4 4h8v8H4z M12 12h8v8h-8z", "fill-rule": "evenodd"})),
+        colorPicker("Kép háttérszíne", single.file.alphaBackground ?? 2,
+          v => { change("file", node => ({...node.file, alphaBackground: v})); if (mode === "free" || mode === "empty") setBackground("solid"); },
+          single.id + "/alpha", single.file.alphaEnabled === false || imageAlpha.value.get(single.file.asset) !== true, true, 2,
+          {transparent: mode === "free" || mode === "empty", clear: () => change("file", node => ({...node.file, alphaBackground: undefined}))}),
+      ])]));
+
+      if (common.has("shape")) panels.push(group("Doboz", [
+        optionPicker("Forma", shapes, value("shape", null), v => change("shape", v), shapeSymbol),
+        optionPicker("Animáció", boxAnimations, value("animation", "none") ?? "none", v => change("animation", v === "none" ? undefined : v), v => icon("box-" + v)),
+        h("div", {class: "property-options property-tools box-effect-options"}, [
+          ...backgroundTools(), elevation(),
+          single && containerIDs.value.has(single.id) ? iconToggle("Tartalom rögzítése", !!single.locked,
+            () => change("locked", single.locked ? undefined : true), icon(single.locked ? "lock" : "unlock")) : null,
+          linkButton(),
+        ]),
+      ]));
+      else if (common.has("surface")) panels.push(group("Megjelenés", [
+        h("div", {class: "property-options property-tools box-effect-options"}, [...backgroundTools(), elevation(), linkButton()]),
+      ]));
+
+      if (common.has("diameter")) panels.push(group("Megjelenés", [propertyTools(
+        numeric(value("width", 12), size => change("width", node => { node.height = size; return size; }), 4, 128, controlName("Átmérő")),
+        color("Szín", "fill", 2),
+      )]));
+
+      if (single?.link) {
+        const destination = linkDestination(single.link);
+        const kindLabel = linkKinds.find(([kind]) => kind === single.link.kind)?.[1] ?? "Link";
+        panels.push(h("fieldset", {class: "property-group stack link-group"}, [
+          h("legend", [h("span", "Link · " + kindLabel),
+            h("button", {type: "button", class: "button option-icon link-remove", ...controlName("Link törlése"),
+              onClick: () => removeLink(single)}, [icon("close")])]),
+          h("div", {class: "property-inline"}, [
+            single.link.kind === "web" ? h("span", {class: "link-target"}, single.link.target) :
+              h("input", {"aria-label": "Link célja", value: single.link.target, maxlength: 2048,
+                onChange: event => {
+                  const raw = event.target.value.trim();
+                  const target = single.link.kind === "url" ? externalURL(raw) : worksheetLink(raw, path)?.kind === "worksheet" ? raw : null;
+                  if (!target) { problem.value = "Érvénytelen hivatkozás."; event.target.value = single.link.target; return; }
+                  change("link", {kind: single.link.kind, target});
+                }}),
+            single.link.kind === "web" ? button("", () => transfer(() => openPresentationPicker(path, csrf, item => change("link", {kind: "web", target: item.reference}))),
+              {symbol: "folder", ...controlName("Mappa kiválasztása"), disabled: !online.value}) : null,
+            destination ? button("", () => followBoxLink(destination), {symbol: single.link.kind === "url" ? "website" : "right", ...controlName("Megnyitás")}) : null,
+          ]),
+        ]));
+      }
+      return panels;
+    }
+
+    function edgePanels(edges) {
+      const single = edges.length === 1 ? edges[0] : null;
+      const first = edges[0];
+      const same = key => edges.every(edge => edge[key] === first[key]);
+      const value = (key, fallback) => same(key) ? first[key] ?? fallback : fallback;
+      const change = (key, next) => { for (const edge of edges) edge[key] = typeof next === "function" ? next(edge) : next; modified(); };
+      const paint = edgePaint(first);
+      const all = (key, fallback) => edges.every(edge => (edge[key] ?? fallback) === true);
+      return [
+        group("Vonal", [
+          single ? input(single.label || "", v => change("label", v), {...controlName("Címke"), "data-object-label": "", maxlength: 120}) : null,
+          propertyTools(
+            colorPicker("Vonal színe", value("color", 3), v => change("color", v), edges.map(e => e.id).join(",") + "/line", false, true, 3),
+            numeric(value("width", 2), v => change("width", v), 0.5, maximumLineWidth, controlName("Alapvastagság")),
+          ),
+        ]),
+        group("Vonaltípus", [optionPicker("Vonaltípus", lineTypes, value("type", "straight"), v => change("type", v), lineTypeSymbol)]),
+        group("Megjelenés", [h("div", {class: "property-options line-appearance-options"}, [
+          optionPicker("Megjelenés", lineAppearances, value("appearance", "plain"), v => change("appearance", v), lineAppearanceSymbol),
+          iconToggle("Felirat a vonalban", all("labelInLine", false), () => change("labelInLine", all("labelInLine", false) ? undefined : true), icon("wire-label")),
+          iconToggle("Animáció bekapcsolása", all("animated", false), () => change("animated", !all("animated", false)), icon("play")),
+        ])]),
+        group("Végpontok", [h("div", {class: "property-options property-tools endpoint-tools"}, [
+          iconToggle("Nyíl a vonal elején", all("startArrow", false), () => change("startArrow", !all("startArrow", false)), icon("left")),
+          iconToggle("Nyíl a vonal végén", all("endArrow", true), () => change("endArrow", !all("endArrow", true)), icon("right")),
+          single ? h("span", {class: "endpoint-actions"}, endpointActions(single, true)) : null,
+        ])]),
+      ];
+    }
+
     function renderInspector() {
       if (!objectPanelOpen.value || !selected.value && !batch.value) return null;
       if (batch.value) {
-        const nodes = board.value.nodes.filter(n => batch.value.nodes.has(n.id));
-        const joints = nodes.filter(n => n.kind === "connectionPoint").length;
-        const edges = board.value.edges.filter(e => batch.value.edges.has(e.id)).length;
-        const summary = (nodes.length-joints)+" doboz, "+edges+" vonal, "+joints+" csomópont";
-        return sidebar("Objektumok", [group(summary, [])]);
+        const nodes = board.value.nodes.filter(n => batch.value.nodes.has(n.id) && !occupied(n.id));
+        const edges = board.value.edges.filter(e => batch.value.edges.has(e.id));
+        const joints = nodes.filter(isJunction).length;
+        const summary = (nodes.length-joints)+" doboz, "+edges.length+" vonal, "+joints+" csomópont";
+        return sidebar("Objektumok", [
+          h("p", {class: "muted"}, summary),
+          ...(nodes.length ? nodePanels(nodes) : []),
+          ...(edges.length ? edgePanels(edges) : []),
+        ]);
       }
       if (!inspector.value) return null;
       if (inspector.value.kind === "edge") {
         const edge = board.value.edges.find(item => item.id === inspector.value.id);
-        if (!edge) return null;
-        const paint = edgePaint(edge);
-        return sidebar("Vonal szerkesztése", [
-          group("Vonal", [
-            input(edge.label || "", value => updateItem(edge, "label", value), {...controlName("Címke"), "data-object-label": "", maxlength: 120}),
-            propertyTools(
-              colorPicker("Vonal színe", edge.color ?? 3, value => updateItem(edge, "color", value), edge.id + "/line", false, true, 3),
-              numeric(edge.width ?? 2, value => updateItem(edge, "width", value), 0.5, maximumLineWidth, controlName("Alapvastagság")),
-            ),
-          ]),
-          group("Vonaltípus", [optionPicker("Vonaltípus", lineTypes, edge.type ?? "straight",
-            value => updateItem(edge, "type", value), lineTypeSymbol)]),
-          group("Megjelenés", [h("div", {class: "property-options line-appearance-options"}, [
-            optionPicker("Megjelenés", lineAppearances, edge.appearance ?? "plain",
-              value => updateItem(edge, "appearance", value), lineAppearanceSymbol),
-            iconToggle("Felirat a vonalban", edge.labelInLine === true,
-              () => updateItem(edge, "labelInLine", edge.labelInLine ? undefined : true), icon("wire-label")),
-            iconToggle("Animáció bekapcsolása", !!edge.animated,
-              () => updateItem(edge, "animated", !edge.animated), icon("play")),
-          ])]),
-          group("Végpontok", [propertyTools(
-            iconToggle("Nyíl a vonal elején", paint.startArrow, () => updateItem(edge, "startArrow", !paint.startArrow), icon("left")),
-            iconToggle("Nyíl a vonal végén", paint.endArrow, () => updateItem(edge, "endArrow", !paint.endArrow), icon("right")),
-            ...endpointActions(edge, true),
-          )]),
-        ]);
+        return edge ? sidebar("Vonal szerkesztése", edgePanels([edge])) : null;
       }
       const node = nodeMap.value.get(inspector.value.id);
       if (!node || held.value !== node.id || occupied(node.id)) return null;
-      const change = (key, value) => updateItem(node, key, value);
-      const title = input(node.title, value => {
-        if (isNote(node.file) && !node.file.filename && /\.(txt|md)$/i.test(node.title)) node.file.filename = node.title;
-        change("title", value);
-      }, {"aria-label": "Címke", "data-object-label": "", maxlength: 120});
-      const bodyEditor = () => textArea(node.text, value => change("text", value));
-      const justify = () => {
-        const active = !!node.textStyle?.justified;
-        const alignment = node.file ? "left" : node.textStyle?.alignment ?? node.alignment;
-        return iconToggle("Sorkizárás", active,
-          () => change("textStyle", {...node.textStyle, justified: !active}),
-          icon(active ? "justify" : "text-" + alignment));
-      };
-      const color = (label, key, disabled) => colorPicker(label, node[key],
-        v => change(key, v), node.id + "/" + key, disabled, true);
-      const mode = backgroundMode(node);
-      function setBackground(value, fill) {
-        node.backgroundEnabled = undefined;
-        node.backgroundBlur = undefined;
-        node.backgroundMode = value === "solid" ? undefined : value;
-        if (fill !== undefined) node.fill = fill;
-        modified();
-      }
-      const backgroundControls = () => [
-        iconToggle("Free", mode === "free", () => setBackground(mode === "free" ? "solid" : "free"), icon("box-free")),
-        iconToggle("Üres", mode === "empty", () => setBackground(mode === "empty" ? "solid" : "empty"), icon("box-empty")),
-        iconToggle("Elmosott", mode === "blurred", () => setBackground(mode === "blurred" ? "solid" : "blurred"), icon("box-blur")),
-      ];
-      const backgroundColor = () => node.file?.type === "image" ? null : colorPicker("Háttér", node.fill,
-        value => setBackground(mode === "free" || mode === "empty" ? "solid" : mode, value),
-        node.id + "/fill", false, true, 2,
-        {transparent: mode === "free" || mode === "empty", clear: () => setBackground("free")});
-      const appearanceTools = (...extra) => h("div", {class: "property-options property-tools box-effect-options"}, [
-        ...backgroundControls(), elevationButton(node), ...extra, backgroundColor(),
-      ]);
-      const filenameToggle = () => {
-        const visible = node.file.showFilename !== false;
-        return iconToggle(visible ? "Fájlnév elrejtése" : "Fájlnév megjelenítése", visible,
-          () => change("file", {...node.file, showFilename: !visible}), icon(visible ? "eye" : "eye-off"));
-      };
-      const filenameField = () => {
-        const {stem, extension} = fileNameParts(node.file, node.title);
-        return group("Fájlnév", [h("div", {class: "property-inline file-name-field"}, [
-          h("input", {type: "text", "aria-label": "Fájlnév", value: stem, maxlength: 200,
-            onChange: event => {
-              const name = event.target.value.trim();
-              if (name === stem || !renameFile(node, name)) event.target.value = stem;
-            },
-            onKeydown: event => {
-              if (event.key !== "Enter" || event.isComposing) return;
-              event.preventDefault();
-              event.stopPropagation();
-              event.target.blur();
-            }}),
-          extension ? h("span", {class: "muted"}, "." + extension) : null,
-        ])]);
-      };
-      if (node.file?.type === "web") return sidebar("Prezentáció", [
-        group("Cím", [title]),
-        group("Prezentációs mappa", [h("p", node.file.webPath),
-          button("Kiválasztás", () => transfer(() => openPresentationPicker(path, csrf, item => {
-            const current = nodeMap.value.get(node.id);
-            if (current && held.value === node.id && online.value) updateItem(current, "file", {...current.file, webPath: item.reference});
-          })), {symbol: "website", disabled: !online.value})]),
-        group("Megjelenés", [appearanceTools()]),
-      ]);
-      if (node.file?.type === "image") return sidebar("Kép szerkesztése", [
-        group("Átlátszóság", [h("div", {class: "property-options image-alpha-options"}, [
-          iconToggle("Alpha csatorna", node.file.alphaEnabled !== false,
-            () => change("file", {...node.file, alphaEnabled: node.file.alphaEnabled === false}),
-            optionSymbol("path", {d: "M4 4h16v16H4z M4 12h16 M12 4v16 M4 4h8v8H4z M12 12h8v8h-8z", "fill-rule": "evenodd"})),
-          colorPicker("Kép háttérszíne", node.file.alphaBackground ?? 2,
-            value => {
-              node.file = {...node.file, alphaBackground: value};
-              setBackground(mode === "free" || mode === "empty" ? "solid" : mode);
-            }, node.id + "/alpha", node.file.alphaEnabled === false || imageAlpha.value.get(node.file.asset) !== true, true, 2,
-            {transparent: mode === "free" || mode === "empty", clear: () => change("file", {...node.file, alphaBackground: undefined})}),
-        ])]),
-        group("Cím", [title]),
-        filenameField(),
-        group("Megjelenés", [appearanceTools(filenameToggle())]),
-        group("Megjegyzés", [bodyEditor(), propertyTools(justify())]),
-      ]);
-      if (isNote(node.file)) {
-        const name = fileReference(node.file, node.title);
-        async function syncText(write) {
-          const filename = fileName(node.file, node.title);
-          const headers = {"X-CSRF-Token": csrf};
-          if (write) {
-            const body = checkText(node.text);
-            const response = name ? await fetch(attachmentURL(path, name), {method: "PUT", headers, body}) : null;
-            if (!response || [400,404].includes(response.status)) {
-              const uploaded = await checked(await fetch(attachmentURL(path, filename), {method: "POST", headers, body}));
-              change("file", {...node.file, asset: uploaded.headers.get("X-ThinkNodes-Asset") ?? filename, filename});
-            } else await checked(response);
-          } else {
-            const before = node.text;
-            const source = checkText(await (await checked(await fetch(attachmentURL(path, name)))).text());
-            const current = nodeMap.value.get(node.id);
-            if (held.value === node.id && current?.text === before) updateItem(current, "text", source);
-          }
-        }
-        return sidebar("Szövegfájl", [group("Cím", [h("div", {class: "property-inline"}, [title,
-          iconToggle("Cím megjelenítése", !node.file.hideTitle, () => change("file", {...node.file, hideTitle: !node.file.hideTitle}),
-            icon(node.file.hideTitle ? "eye-off" : "eye"))])]), filenameField(), group("Megjelenés", [appearanceTools(filenameToggle())]),
-          group("Szöveg", [bodyEditor(), propertyTools(justify(),
-            ...[[true,"save","Szöveg mentése"], [false,"restore","Szöveg újratöltése"]].map(([write,symbol,label]) =>
-              button("", () => transfer(() => syncText(write)), {symbol,title:label,"aria-label":label,disabled:(!name && !write) || !online.value})))])]);
-      }
-      if (node.file) return sidebar("Fájl szerkesztése", [
-        group("Cím", [title]),
-        filenameField(),
-        group("Megjelenés", [appearanceTools(filenameToggle())]),
-        node.file.type === "attachment" ? null : group(node.file.type === "mp3" ? "Megjegyzés" : "Szöveg", [bodyEditor(), propertyTools(justify())]),
-      ]);
-      if (node.kind === "connectionPoint") return sidebar("Csomópont", [
-        group("Címke", [title]),
-        group("Megjelenés", [propertyTools(
-          numeric(node.width, size => { node.height = size; change("width", size); }, 4, 128, controlName("Átmérő")),
-          color("Szín", "fill"),
-        )]),
-      ]);
-      const positions = [
-        ["top","left","Bal felső","↖"], ["top","center","Felső közép","↑"], ["top","right","Jobb felső","↗"],
-        ["middle","left","Bal oldal","←"], ["middle","center","Közép","•"], ["middle","right","Jobb oldal","→"],
-        ["bottom","left","Bal alsó","↙"], ["bottom","center","Alsó közép","↓"], ["bottom","right","Jobb alsó","↘"],
-      ];
-      function typography(section) {
-        const isTitle = section === "title";
-        const style = isTitle ? node : node[section] ?? {};
-        const outside = isTitle && !!node.titleOutside;
-        const sizeKey = isTitle ? "fontSize" : "size";
-        const colorKey = isTitle ? "textColor" : "color";
-        const update = (key, value) => isTitle ? change(key, value) : change(section, {...node[section], [key]: value});
-        const fontSize = numeric(style[sizeKey] ?? 13,
-          v => update(sizeKey, Math.round(v)), 1, 10000,
-          {...controlName("Betűméret"), step: 1, clampValue: true, disabled: !!node.fitText});
-        const autoSize = isTitle ? iconToggle("AutoSize", !!node.fitText, () => change("fitText", !node.fitText),
-          optionSymbol("path", {d: "M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M8 16l4-8 4 8m-6.5-3h5"})) : null;
-        const outsideToggle = isTitle ? iconToggle("Dobozon kívül", outside, () => {
-          if (!outside && (style.verticalAlignment ?? "middle") === "middle" && (style.alignment ?? node.alignment) === "center") {
-            update("verticalAlignment", "top");
-          }
-          change("titleOutside", !outside);
-        }, icon("title-outside")) : null;
-        const hideText = isTitle ? null : iconToggle("Hide text", !!node.hideText,
-          () => change("hideText", !node.hideText), icon(node.hideText ? "eye-off" : "eye"));
-        return h("div", {class: "typography-tools"}, [
-          propertyTools(
-            autoSize, fontSize,
-            colorPicker("Szövegszín", style[colorKey] ?? node.textColor,
-              v => update(colorKey, v), node.id + "/" + section + "/text", false, true, 1),
-            ...[["bold","Félkövér"],["italic","Dőlt"],["underline","Aláhúzott"]].map(([key, label]) =>
-              iconToggle(label, !!style[key], () => update(key, !style[key]), icon(key))),
-            outsideToggle, hideText, isTitle ? null : justify(),
-          ),
-          h("div", {class: "alignment-picker", role: "group", "aria-label": "Igazítás"},
-            positions.map(([vertical, horizontal, label, symbol]) => h("button", {
-              type: "button", ...controlName(label),
-              "aria-pressed": vertical === (style.verticalAlignment ?? "middle") &&
-                horizontal === (style.justified ? "left" : style.alignment ?? node.alignment),
-              onClick: () => {
-                if (!isTitle) {
-                  change(section, {...node[section], verticalAlignment: vertical, alignment: horizontal, justified: false});
-                  return;
-                }
-                if (outside && horizontal === "center" && vertical === "middle") change("titleOutside", false);
-                update("verticalAlignment", vertical);
-                update("alignment", horizontal);
-              },
-            }, symbol))),
-        ]);
-      }
-      return sidebar("Ötlet szerkesztése", [
-        group("Cím", [title, typography("title")]),
-        group("Doboz", [
-          optionPicker("Forma", shapes, node.shape, value => change("shape", value), shapeSymbol),
-          optionPicker("Animáció", boxAnimations, node.animation ?? "none",
-            value => change("animation", value), value => icon("box-" + value)),
-          appearanceTools(
-            node.kind === "container" ? iconToggle("Tartalom rögzítése", !!node.locked,
-              () => change("locked", !node.locked), icon(node.locked ? "lock" : "unlock")) : null,
-          ),
-        ]),
-        group("Text", [bodyEditor(), typography("textStyle")]),
-        group("Link", [
-          h("input", {"aria-label": "Link",
-            value: node.link ?? "", maxlength: 2048,
-            onChange: event => {
-              const link = event.target.value.trim();
-              if (link && !worksheetLink(link, path)) {
-                problem.value = "Érvénytelen hivatkozás.";
-                event.target.value = node.link ?? "";
-                return;
-              }
-              change("link", link);
-            },
-          }),
-        ]),
-      ]);
+      return sidebar(isJunction(node) ? typeLabel(node.type) : typeLabel(node.type) + " szerkesztése", nodePanels([node]));
     }
 
     watch(() => board.value?.title, title => {

@@ -37,64 +37,48 @@ enum LabelAlignment: String, Codable, Sendable {
 
 enum VerticalAlignment: String, Codable, Sendable { case top, middle, bottom }
 
-enum IdeaKind: String, Codable, Sendable {
-    case container, connectionPoint
-}
+/// Objektum hivatkozása (`link` képesség): külső cím, munkalap vagy .web mappa.
+enum NodeLinkKind: String, Codable, Sendable { case url, sheet, web }
 
-struct TextStyle: Codable, Equatable, Sendable {
-    @OptionalPaint var color: String? = nil
-    var size: Double?
-    var bold: Bool?
-    var italic: Bool?
-    var underline: Bool?
-    var justified: Bool?
-    var alignment: LabelAlignment?
-    var verticalAlignment: VerticalAlignment?
+struct NodeLink: Codable, Equatable, Sendable {
+    var kind: NodeLinkKind
+    var target: String
 
-    private enum CodingKeys: String, CodingKey {
-        case color, size, bold, italic, underline, justified
-        case alignment = "align", verticalAlignment = "vAlign"
-    }
+    var worksheetLink: WorksheetLink? { kind == .web ? nil : WorksheetLink(target) }
+    var webReference: WebPresentationReference? { kind == .web ? try? WebPresentationReference(target) : nil }
 
     var isValid: Bool {
-        (color.map(validColor) ?? true) && (size.map { (1...10000).contains($0) && $0.rounded() == $0 } ?? true)
+        switch (kind, WorksheetLink(target)) {
+        case (.url, .website?), (.sheet, .worksheet?): true
+        case (.web, _): webReference != nil
+        default: false
+        }
     }
 }
 
-enum CanvasFileType: String, Codable, Sendable { case image, mp3, txt, md, json, attachment, worksheet, web }
-
+/// A fájlt tároló objektumok (`text`, `code`, `csv`, `image`, `audio`, `document`) fájlja.
 struct CanvasFile: Codable, Equatable, Sendable {
-    var type: CanvasFileType
-    var asset: String?
-    var hideTitle: Bool?
+    var asset: String
     var filename: String?
-    var webPath: String?
     var showFilename: Bool?
     var fileExtension: String?
     var alphaEnabled: Bool?
     @OptionalPaint var alphaBackground: String? = nil
+    /// Szövegfájl változásszámlálója: mentés után nő, a többi kliens ebből tudja, hogy újra kell tölteni.
+    var rev: Int?
 
     var imageStem: String {
-        filename ?? asset.map { ($0 as NSString).deletingPathExtension } ?? ""
+        filename ?? (asset as NSString).deletingPathExtension
     }
 
-    func displayName(title: String) -> String {
-        if type == .image {
-            let ext = fileExtension ?? (asset as NSString?)?.pathExtension ?? ""
+    /// Megjelenített fájlnév; képnél a tárolt tő + kiterjesztés.
+    func displayName(image: Bool) -> String {
+        if image {
+            let ext = fileExtension ?? (asset as NSString).pathExtension
             return ext.isEmpty ? imageStem : imageStem + "." + ext
         }
-        if let filename { return filename }
-        if let asset { return asset }
-        if (title as NSString).pathExtension.lowercased() == type.rawValue { return title }
-        return (title.isEmpty ? "Dokumentum" : title) + "." + type.rawValue
+        return filename ?? asset
     }
-
-    func reference(title: String) -> String? {
-        if type == .web { return nil }
-        return asset ?? filename ?? (["txt", "md", "json"].contains(type.rawValue)
-            && (title as NSString).pathExtension.lowercased() == type.rawValue ? title : nil)
-    }
-
 }
 
 private func validImageStem(_ value: String) -> Bool {
@@ -147,24 +131,27 @@ private func matchesMediaHeader(_ bytes: Data, type: String) -> Bool {
     case "image/svg+xml": return SVGDocument.matches(bytes)
     case "audio/mpeg":
         return bytes.starts(with: "ID3".utf8) || (bytes.count >= 4 && bytes[0] == 255 && bytes[1] & 0xe6 == 0xe2)
+    case "audio/wav": return bytes.starts(with: "RIFF".utf8) && bytes.dropFirst(8).starts(with: "WAVE".utf8)
+    case "audio/ogg": return bytes.starts(with: "OggS".utf8)
+    case "audio/flac": return bytes.starts(with: "fLaC".utf8)
+    case "audio/mp4": return bytes.dropFirst(4).starts(with: "ftyp".utf8)
+    case "audio/aac":
+        return bytes.starts(with: "ID3".utf8) || (bytes.count >= 2 && bytes[0] == 255 && bytes[1] & 0xf6 == 0xf0)
     default: return false
     }
 }
 
 let canvasMediaTypes = ["png": "image/png", "jpg": "image/jpeg", "gif": "image/gif", "webp": "image/webp",
-                        "svg": "image/svg+xml", "mp3": "audio/mpeg"]
+                        "svg": "image/svg+xml", "mp3": "audio/mpeg", "wav": "audio/wav", "ogg": "audio/ogg",
+                        "flac": "audio/flac", "m4a": "audio/mp4", "aac": "audio/aac"]
 
+/// Csatolt (nem média) fájl ellenőrzése: szöveges típusnál a tartalom legyen szöveg, ismert bináris formátumnál a fejléc egyezzen.
 private func matchesAttachmentType(_ bytes: Data, extension ext: String) -> Bool {
     if let mime = canvasMediaTypes[ext == "jpeg" ? "jpg" : ext] {
         return matchesMediaHeader(bytes, type: mime)
     }
     switch ext {
-    case "wav": return bytes.starts(with: "RIFF".utf8) && bytes.dropFirst(8).starts(with: "WAVE".utf8)
-    case "ogg": return bytes.starts(with: "OggS".utf8)
-    case "flac": return bytes.starts(with: "fLaC".utf8)
     case "pdf": return bytes.starts(with: "%PDF-".utf8)
-    case "txt", "md": return String(data: bytes, encoding: .utf8)?.contains("\0") == false
-    case "json": return (try? JSONSerialization.jsonObject(with: bytes, options: [.fragmentsAllowed])) != nil
     case "zip", "docx", "xlsx", "pptx":
         return bytes.starts(with: [0x50, 0x4b, 0x03, 0x04]) || bytes.starts(with: [0x50, 0x4b, 0x05, 0x06])
     default: return ext != "thnode"
@@ -181,77 +168,92 @@ enum BoxBackgroundMode: String, Codable, Sendable {
 
 struct Idea: Codable, Equatable, Sendable {
     var id: String
-    var title: String
+    /// Típus a regiszterből (`Public/node-types.json`): box, text, code, csv, image, audio, document, junction.
+    var type = "box"
+    /// box: markdown szöveg; junction: címke; fájltípusok: megjegyzés.
     var text = ""
     var file: CanvasFile?
+    /// box: összecsukás (csak az első sor); fájltípus: megjegyzés elrejtése.
     var hideText: Bool?
     var position: Point
     var width: Double = 176
     var height: Double = 80
     var shape: Shape = .rounded
     @StoredPaint var fill = "#dce9ff"
-    var backgroundEnabled: Bool?
-    var backgroundBlur: Bool?
     var backgroundMode: BoxBackgroundMode?
-    var resolvedBackgroundMode: BoxBackgroundMode {
-        backgroundMode ?? (backgroundEnabled == false ? .free : backgroundBlur == true ? .blurred : .solid)
-    }
+    var resolvedBackgroundMode: BoxBackgroundMode { backgroundMode ?? .solid }
     var animation: BoxAnimation?
     @StoredPaint var textColor = "#182335"
     var border: String { automaticBorder(fill) }
     var fitText: Bool?
     var fontSize: Double = 16
-    var bold = true
-    var alignment: LabelAlignment = .center
-    var verticalAlignment: VerticalAlignment?
-    var titleOutside: Bool?
-    var link: String?
-
-    var kind: IdeaKind?
-    var parent: String?
-    var locked: Bool?
-    var elevated: Bool?
+    var bold: Bool?
     var italic: Bool?
     var underline: Bool?
-    var textStyle: TextStyle?
+    var justified: Bool?
+    var alignment: LabelAlignment = .center
+    var verticalAlignment: VerticalAlignment?
+    var link: NodeLink?
+    /// junction: a címke elforgatása fokban a középpont körül.
+    var angle: Double?
+    var parent: String?
+    /// box: konténer (egyszer belehúztak valamit); kiürülve is konténer marad.
+    var container: Bool?
+    var locked: Bool?
+    var elevated: Bool?
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, text, file, hideText, fitText, shape, fill, backgroundEnabled, backgroundBlur, backgroundMode, animation, bold, titleOutside, link
-        case kind, parent, locked, elevated, italic, underline, textStyle
+        case id, type, text, file, hideText, fitText, shape, fill, backgroundMode, animation, bold, italic, underline, justified, link
+        case angle, parent, container, locked, elevated
         case position = "pos", width = "w", height = "h", textColor = "textCol"
         case fontSize = "fontSz", alignment = "align", verticalAlignment = "vAlign"
     }
 
-    var isValid: Bool {
-        let sizeValid = kind == .connectionPoint ? (4...128).contains(width) && height == width :
-            (64...880).contains(width) && (40...680).contains(height)
-        guard validSlug(id), validTitle(title) || (title.isEmpty && (kind == .connectionPoint || file?.type == .image)),
-              text.utf8.count <= 100_000, sizeValid,
-              elevated != true || (parent == nil && kind != .connectionPoint) else { return false }
-        if let file {
-            guard file.filename.map(validImageStem) ?? true, file.asset.map(validImageStem) ?? true,
-                  file.fileExtension.map({ !$0.isEmpty && !$0.contains(".") && validImageStem($0) }) ?? true else { return false }
-            switch file.type {
-            case .image:
-                guard file.asset.flatMap(canvasAssetType)?.hasPrefix("image/") == true,
-                      file.filename.map(validImageStem) ?? true, file.alphaBackground.map(validColor) ?? true else { return false }
-            case .mp3: guard file.asset.flatMap(canvasAssetType) == "audio/mpeg" else { return false }
-            case .txt, .json, .md: break
-            case .worksheet: return false
-            case .web:
-                guard file.asset == nil, file.filename == nil, let reference = file.webPath,
-                      (try? WebPresentationReference(reference)) != nil else { return false }
-            case .attachment:
-                guard let name = file.asset, validImageStem(name),
-                      (name as NSString).pathExtension.lowercased() != "thnode" else { return false }
-            }
-        }
-        let validContent = position.isValid
-            && (link.map { $0.isEmpty || WorksheetLink($0) != nil } ?? true)
-        return validContent && (textStyle?.isValid ?? true)
-            && (1...10000).contains(fontSize) && fontSize.rounded() == fontSize
-            && [fill, textColor, border].allSatisfy(validColor)
+    var root: String { NodeTypes.root(type) }
+    var isJunction: Bool { root == "junction" }
+    var isBox: Bool { root == "box" }
+    var isContainer: Bool { isBox && container == true }
+    var isImage: Bool { root == "image" }
+    var isAudio: Bool { root == "audio" }
+    var isTextFile: Bool { root == "text" }
+    func has(_ trait: String) -> Bool { NodeTypes.has(type, trait) }
+
+    /// Rövid név (kereső, akadálymentes felirat, listák): fájlnév, illetve a szöveg első sora formázójelek nélkül.
+    var name: String {
+        if let file { return file.displayName(image: isImage) }
+        return plainFirstLine(text)
     }
+
+    var isValid: Bool {
+        guard NodeTypes.isKnown(type), validSlug(id), position.isValid, text.utf8.count <= 100_000,
+              isJunction ? (4...128).contains(width) && height == width : (64...880).contains(width) && (40...680).contains(height),
+              elevated != true || (parent == nil && !isJunction),
+              (1...10000).contains(fontSize), fontSize.rounded() == fontSize,
+              [fill, textColor, border].allSatisfy(validColor),
+              link.map({ $0.isValid && has("link") }) ?? true,
+              angle.map({ $0.isFinite && isJunction }) ?? true, container != true || isBox,
+              !isJunction || (text.count <= 120 && !text.contains("\n")) else { return false }
+        guard let kind = NodeTypes.fileKind(type) else { return file == nil }
+        guard let file, validImageStem(file.asset), file.filename.map(validImageStem) ?? true,
+              file.fileExtension.map({ !$0.isEmpty && !$0.contains(".") && validImageStem($0) }) ?? true,
+              (file.rev ?? 0) >= 0, file.alphaBackground.map(validColor) ?? true else { return false }
+        switch kind {
+        case "media":
+            return canvasAssetType(file.asset)?.hasPrefix(root + "/") == true
+        default:
+            return canvasAssetType(file.asset) == nil && (file.asset as NSString).pathExtension.lowercased() != "thnode"
+        }
+    }
+}
+
+/// A markdown szöveg első nem üres sora, formázójelek nélkül.
+func plainFirstLine(_ text: String) -> String {
+    let line = text.split(whereSeparator: \.isNewline).first { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? ""
+    var value = String(line).trimmingCharacters(in: .whitespaces)
+    while let first = value.first, "#>-*+ ".contains(first) { value.removeFirst() }
+    if let match = value.range(of: #"^\d+[.)]\s+"#, options: .regularExpression) { value.removeSubrange(match) }
+    value = value.replacingOccurrences(of: #"[*_`~]|\[([^\]]*)\]\([^)]*\)"#, with: "$1", options: .regularExpression)
+    return String(value.trimmingCharacters(in: .whitespaces).prefix(120))
 }
 
 enum ConnectionType: String, Codable, CaseIterable, Sendable {
@@ -350,7 +352,7 @@ extension Connection {
 
 struct Worksheet: Content, Equatable {
     var appearance: Appearance?
-    var schemaVersion = 2
+    var schemaVersion = Worksheet.currentSchema
     var revision = 1
     var resetRevision: Int?
     var title: String
@@ -368,6 +370,9 @@ struct Worksheet: Content, Equatable {
         case creator, nodes, edges, previewImage
         case gridSpacing = "gridStep"
     }
+
+    /// 3: egységes objektumtípusok (docs/node-types.md). Régebbi munkalapot nem töltünk be, migráció nincs.
+    static let currentSchema = 3
 
     var backgroundColor: String { background ?? "#f5f8fc" }
 
@@ -388,23 +393,6 @@ struct Worksheet: Content, Equatable {
         }
     }
 
-    mutating func removeLegacyWorksheetNodes() {
-        let removed = Set(nodes.filter { $0.file?.type == .worksheet }.map(\.id))
-        guard !removed.isEmpty else { return }
-        nodes.removeAll { removed.contains($0.id) }
-        for index in nodes.indices where nodes[index].parent.map(removed.contains) == true {
-            nodes[index].parent = nil
-        }
-        edges.removeAll { $0.source.map(removed.contains) == true || $0.target.node.map(removed.contains) == true }
-        while true {
-            let degrees = junctionDegrees
-            let orphaned = Set(nodes.filter { $0.kind == .connectionPoint && degrees[$0.id, default: 0] < 2 }.map(\.id))
-            if orphaned.isEmpty { break }
-            nodes.removeAll { orphaned.contains($0.id) }
-            edges.removeAll { $0.source.map(orphaned.contains) == true || $0.target.node.map(orphaned.contains) == true }
-        }
-    }
-
     func validate() throws {
         guard duplicateConnections.isEmpty else {
             throw Abort(.unprocessableEntity, reason: "Ezen az útvonalon már van kábel.")
@@ -416,7 +404,7 @@ struct Worksheet: Content, Equatable {
             }
         }
         let nodeIDs = Set(nodes.map(\.id))
-        guard schemaVersion == 2, revision > 0, revision < Int.max, validTitle(title),
+        guard schemaVersion == Worksheet.currentSchema, revision > 0, revision < Int.max, validTitle(title),
               (text?.utf8.count ?? 0) <= 100_000, validColor(backgroundColor),
               (6...160).contains(gridSpacing ?? 32),
               nodes.count <= 2_000, edges.count <= 4_000,
@@ -434,13 +422,13 @@ struct Worksheet: Content, Equatable {
         let degrees = junctionDegrees
         var checked = Set<String>()
         for node in nodes {
-            if node.kind == .connectionPoint && degrees[node.id, default: 0] < 2 {
+            if node.isJunction && degrees[node.id, default: 0] < 2 {
                 throw Abort(.unprocessableEntity, reason: "A csomóponthoz legalább két vonal szükséges.")
             }
             var path = Set<String>()
             var current = node
             while let id = current.parent, !checked.contains(current.id) {
-                guard path.insert(current.id).inserted, let parent = byID[id], parent.kind == .container else {
+                guard path.insert(current.id).inserted, let parent = byID[id], parent.isBox, parent.container == true else {
                     throw Abort(.unprocessableEntity, reason: "Érvénytelen konténerkapcsolat.")
                 }
                 current = parent
@@ -877,9 +865,32 @@ final class WorksheetStore: @unchecked Sendable {
             let modified = try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
             if let modified, let cached = try? cache.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
                cached > modified && cached > Themes.loadedAt { return .drawing(try String(contentsOf: cache, encoding: .utf8)) }
-            let svg = boardSVG(sheet, assetBase: "/" + path.url, mode: mode)
+            let texts = textContents(sheet, url: url, metadata: ctx.local)
+            let svg = boardSVG(sheet, assetBase: "/" + path.url, mode: mode, fileText: { $0.file.flatMap { texts[$0.asset] } })
             try Data(svg.utf8).write(to: cache, options: .atomic)
             return .drawing(svg)
+        }
+    }
+
+    /// Szövegfájl-objektumok tartalma (asset → szöveg) a vászon rendereléséhez; legfeljebb 200 KB fájlonként.
+    private func textContents(_ sheet: Worksheet, url: URL, metadata: DocumentPolicy) -> [String: String] {
+        var result: [String: String] = [:]
+        for node in sheet.nodes where node.isTextFile {
+            guard let asset = node.file?.asset, result[asset] == nil,
+                  let file = try? attachments(at: url, named: asset, metadata: metadata).first,
+                  let handle = try? FileHandle(forReadingFrom: file) else { continue }
+            defer { try? handle.close() }
+            let bytes = (try? handle.read(upToCount: 200_000)) ?? Data()
+            result[asset] = String(decoding: bytes, as: UTF8.self)
+        }
+        return result
+    }
+
+    func fileTexts(_ path: WorksheetPath, sheet: Worksheet, user: User?, unlocks: Set<String>) throws -> [String: String] {
+        try lock.withLock {
+            let ctx = try context(path)
+            try authorize(accessLocked(ctx, user: user, unlocks: unlocks), user: user)
+            return textContents(sheet, url: try worksheetURL(path), metadata: ctx.local)
         }
     }
 
@@ -912,18 +923,17 @@ final class WorksheetStore: @unchecked Sendable {
             }
             try checkSelection(current)
             for node in worksheet.nodes {
-                if let value = node.link, !value.isEmpty, WorksheetLink(value)?.destination(from: path) == nil {
-                    throw Abort(.unprocessableEntity, reason: "Érvénytelen link. Adj meg egy munkalapútvonalat vagy HTTP(S) webcímet.")
+                if let link = node.link, !link.isValid || (link.worksheetLink != nil && link.worksheetLink?.destination(from: path) == nil) {
+                    throw Abort(.unprocessableEntity, reason: "Érvénytelen link. Adj meg egy munkalapútvonalat, .web mappát vagy HTTP(S) webcímet.")
                 }
             }
             var updated = worksheet
-            updated.removeLegacyWorksheetNodes()
             if current.appearance != nil && updated.appearance == nil { throw Abort(.unprocessableEntity) }
             updated.creator = current.creator
             updated.revision = current.revision + 1
             updated.resetRevision = restoring ? updated.revision : current.resetRevision
             try updated.validate()
-            updated.schemaVersion = 2
+            updated.schemaVersion = Worksheet.currentSchema
             let url = try worksheetURL(path)
             let directory = ctx.directory
             var metadata = ctx.local
@@ -933,21 +943,21 @@ final class WorksheetStore: @unchecked Sendable {
                 try attachments(at: url, named: ref, metadata: metadata).first
             }
             let previous = Dictionary(uniqueKeysWithValues: current.nodes.map { ($0.id, $0) })
-            let currentRefs = Set(current.nodes.compactMap { $0.file?.reference(title: $0.title) })
+            let currentRefs = Set(current.nodes.compactMap { $0.file?.asset })
             var renames: [String: String] = [:]
             for index in updated.nodes.indices {
                 let node = updated.nodes[index]
                 guard let file = node.file else { continue }
                 let old = previous[node.id]
-                let ref = file.asset ?? old.flatMap { $0.file?.reference(title: $0.title) }
-                guard let ref, let filename = file.filename, filename != old?.file?.filename else { continue }
+                let ref = file.asset
+                guard let filename = file.filename, filename != old?.file?.filename else { continue }
                 let source = try sourceOf(ref)
                 guard let source else {
-                    if file.asset != nil && archived[ref] == nil { throw Abort(.notFound, reason: "A fájl nem található.") }
+                    if archived[ref] == nil { throw Abort(.notFound, reason: "A fájl nem található.") }
                     continue
                 }
                 let ext = source.pathExtension
-                let name = file.type == .image ? filename + (ext.isEmpty ? "" : "." + ext) : filename
+                let name = node.isImage ? filename + (ext.isEmpty ? "" : "." + ext) : filename
                 guard (name as NSString).pathExtension == ext else {
                     throw Abort(.unprocessableEntity, reason: "A fájl kiterjesztése nem változtatható meg.")
                 }
@@ -956,7 +966,7 @@ final class WorksheetStore: @unchecked Sendable {
                 }
                 updated.nodes[index].file?.asset = ref
             }
-            let nextRefs = Set(updated.nodes.compactMap { $0.file?.reference(title: $0.title) })
+            let nextRefs = Set(updated.nodes.compactMap { $0.file?.asset })
             var moved: [(from: URL, to: URL)] = []
             func move(_ source: URL, _ destination: URL) throws {
                 try files.moveItem(at: source, to: destination)
@@ -989,8 +999,8 @@ final class WorksheetStore: @unchecked Sendable {
                 }
                 for index in updated.nodes.indices {
                     let node = updated.nodes[index]
-                    guard let ref = node.file?.reference(title: node.title), let name = renames[ref] else { continue }
-                    updated.nodes[index].file?.filename = node.file?.type == .image ? (name as NSString).deletingPathExtension : name
+                    guard let ref = node.file?.asset, let name = renames[ref] else { continue }
+                    updated.nodes[index].file?.filename = node.isImage ? (name as NSString).deletingPathExtension : name
                 }
                 let keep = Set(nextRefs.map { media[$0] ?? $0 })
                 for ref in currentRefs.subtracting(nextRefs).sorted() {
@@ -1127,10 +1137,9 @@ final class WorksheetStore: @unchecked Sendable {
         var result = sheet
         for index in sheet.nodes.indices {
             let node = sheet.nodes[index]
-            guard let file = node.file, let ref = file.reference(title: node.title),
-                  let name = metadata.mediaFiles?[ref] else { continue }
-            result.nodes[index].file?.filename = file.type == .image ? (name as NSString).deletingPathExtension : name
-            if file.type == .image { result.nodes[index].file?.fileExtension = (name as NSString).pathExtension }
+            guard let file = node.file, let name = metadata.mediaFiles?[file.asset] else { continue }
+            result.nodes[index].file?.filename = node.isImage ? (name as NSString).deletingPathExtension : name
+            if node.isImage { result.nodes[index].file?.fileExtension = (name as NSString).pathExtension }
         }
         return result
     }
@@ -1146,14 +1155,6 @@ final class WorksheetStore: @unchecked Sendable {
                           let path = try? WorksheetPath(parts + [entry.lastPathComponent]),
                           (try? context(path)) != nil, let url = try? worksheetURL(path),
                           files.fileExists(atPath: url.path) else { continue }
-                    for legacy in (try? sheetFiles(in: entry)) ?? [] where legacy.lastPathComponent != url.lastPathComponent {
-                        do { try migrateLegacyWorksheet(legacy, parent: path, context: try context(path)) }
-                        catch {
-                            let message = "ThinkNodes: Sikertelen munkalap-áthelyezés (/" + path.url + "/" + legacy.lastPathComponent
-                                + "): " + ((error as? any AbortError)?.reason ?? String(describing: error)) + "\n"
-                            FileHandle.standardError.write(Data(message.utf8))
-                        }
-                    }
                     if let ctx = try? context(path) { _ = try? reconcile(context: ctx, url: url) }
                     visit(entry, parts: path.parts)
                 }
@@ -1162,65 +1163,8 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    private func migrateLegacyWorksheet(_ legacy: URL, parent: WorksheetPath, context ctx: Context) throws {
-        let name = legacy.deletingPathExtension().lastPathComponent
-        let child = try WorksheetPath(parent.parts + [name])
-        let destination = try folder(child)
-        guard !files.fileExists(atPath: destination.path) else { throw Abort(.conflict, reason: "A(z) /" + child.url + " mappa már létezik.") }
-
-        var sheet = try JSONDecoder().decode(Worksheet.self, from: Data(contentsOf: legacy))
-        sheet.removeLegacyWorksheetNodes()
-        var metadata = ctx.local
-        var media = metadata.mediaFiles ?? [:]
-        for index in sheet.nodes.indices {
-            guard let file = sheet.nodes[index].file, [.image, .mp3].contains(file.type),
-                  file.asset.flatMap(canvasAssetType) == nil, let reference = file.reference(title: sheet.nodes[index].title),
-                  let attachment = try attachments(at: legacy, named: reference, metadata: metadata).first else { continue }
-            let ext = attachment.pathExtension.lowercased()
-            let canonical = ext == "jpeg" ? "jpg" : ext
-            guard let type = canvasMediaTypes[canonical],
-                  file.type == .image ? type.hasPrefix("image/") : type == "audio/mpeg",
-                  try (attachment.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? Int.max) <= 12 * 1024 * 1024,
-                  try matchesMediaHeader(Data(contentsOf: attachment), type: type) else { continue }
-            let asset = UUID().uuidString.lowercased() + "." + canonical
-            media[asset] = attachment.lastPathComponent
-            sheet.nodes[index].file?.asset = asset
-        }
-        try sheet.validate()
-        metadata.mediaFiles = media
-        let prefix = Array(parent.parts.dropFirst())
-        let oldKey = (prefix + [legacy.lastPathComponent]).joined(separator: "/")
-        let newKey = (prefix + [name, legacy.lastPathComponent]).joined(separator: "/")
-        var next = ctx
-        var pages = ctx.rules[ctx.project]?.worksheets ?? [:]
-        if let page = pages.removeValue(forKey: oldKey) { pages[newKey] = page }
-        next.rules[ctx.project]?.worksheets = pages
-
-        let stage = ctx.directory.appendingPathComponent(".worksheet-migration-" + UUID().uuidString)
-        let backup = try trashDestination(legacy, in: ctx)
-        try files.createDirectory(at: stage, withIntermediateDirectories: false)
-        var published = false
-        do {
-            let policy = try copyReferencedAttachments(in: sheet, from: legacy, metadata: metadata, to: stage)
-            try write(policy, to: settingsURL(stage))
-            try write(sheet, to: stage.appendingPathComponent(legacy.lastPathComponent))
-            try persist(next, previous: ctx)
-            do {
-                try files.moveItem(at: stage, to: destination)
-                published = true
-                try files.moveItem(at: legacy, to: backup)
-            } catch {
-                try persist(ctx, previous: next)
-                throw error
-            }
-        } catch {
-            try files.removeItem(at: published ? destination : stage)
-            throw error
-        }
-    }
-
     private func copyReferencedAttachments(in sheet: Worksheet, from source: URL, metadata: DocumentPolicy, to folder: URL) throws -> DocumentPolicy {
-        var refs = Set(sheet.nodes.compactMap { $0.file?.reference(title: $0.title) })
+        var refs = Set(sheet.nodes.compactMap { $0.file?.asset })
         if let preview = sheet.previewImage { refs.insert(preview) }
         var copied = Set<String>()
         var media: [String: String] = [:]
@@ -1241,17 +1185,17 @@ final class WorksheetStore: @unchecked Sendable {
         var metadata = ctx.local
         var media = metadata.mediaFiles ?? [:]
         let archived = metadata.archivedFiles ?? [:]
-        var referenced = Set(current.nodes.compactMap { $0.file?.reference(title: $0.title) }.map { media[$0] ?? $0 })
+        var referenced = Set(current.nodes.compactMap { $0.file?.asset }.map { media[$0] ?? $0 })
         if let preview = current.previewImage { referenced.insert(media[preview] ?? preview) }
         var updated = current
         let x = current.nodes.isEmpty ? 0 : min(99_000, current.nodes.map { $0.position.x - $0.width / 2 }.min()! + 160)
         var bottom = current.nodes.map { $0.position.y + $0.height / 2 }.max() ?? -140
-        func append(_ title: String, file: CanvasFile, text: String, height: Double) {
+        func append(_ type: String, file: CanvasFile, height: Double) {
             let y = bottom + 55 + height / 2
             guard updated.nodes.count < 2_000, y <= 100_000 else { return }
             bottom = y + height / 2
-            updated.nodes.append(Idea(id: UUID().uuidString.lowercased(), title: String(title.prefix(120)), text: text,
-                                      file: file, position: Point(x: x, y: y), width: 320, height: height,
+            updated.nodes.append(Idea(id: UUID().uuidString.lowercased(), type: type, file: file,
+                                      position: Point(x: x, y: y), width: 320, height: height,
                                       fill: "@2", textColor: "@1"))
         }
         for file in try attachments(at: url, named: nil, metadata: metadata) {
@@ -1264,30 +1208,29 @@ final class WorksheetStore: @unchecked Sendable {
             let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize
             let candidates = media.filter { $0.value == name }.keys.sorted()
             let existing = candidates.first { archived[$0] == nil }
-            var canvasFile = CanvasFile(type: .attachment, asset: existing ?? ("file-" + UUID().uuidString.lowercased()), filename: name, showFilename: false)
-            var text = ""
-            var height = 100.0
+            var canvasFile = CanvasFile(asset: existing.flatMap { canvasAssetType($0) == nil ? $0 : nil } ?? ("file-" + UUID().uuidString.lowercased()),
+                                        filename: name, showFilename: true)
+            var type = "document"
+            var height = 120.0
             if let mime, let size, size <= 12 * 1024 * 1024,
                let bytes = try? Data(contentsOf: file), matchesMediaHeader(bytes, type: mime),
                let canonical = canvasMediaTypes.first(where: { $0.value == mime })?.key {
-                canvasFile.type = mime == "audio/mpeg" ? .mp3 : .image
+                type = mime.hasPrefix("image/") ? "image" : "audio"
                 canvasFile.asset = existing.flatMap { canvasAssetType($0) == mime ? $0 : nil }
                     ?? (UUID().uuidString.lowercased() + "." + canonical)
-                if canvasFile.type == .image {
+                if type == "image" {
                     canvasFile.filename = file.deletingPathExtension().lastPathComponent
                     canvasFile.fileExtension = ext
+                    canvasFile.showFilename = false
                 }
-                height = canvasFile.type == .image ? 180 : 106
-            } else if let size, size <= 100_000, ["md", "txt", "json"].contains(lower),
-                      let bytes = try? Data(contentsOf: file), matchesAttachmentType(bytes, extension: lower),
-                      let source = String(data: bytes, encoding: .utf8) {
-                canvasFile.type = CanvasFileType(rawValue: lower)!
-                text = source
-                height = 200
+                height = type == "image" ? 180 : 130
+            } else if mime == nil, let size, size <= 12 * 1024 * 1024, let bytes = try? Data(contentsOf: file) {
+                type = NodeTypes.classify(filename: name, bytes: bytes)
+                if NodeTypes.root(type) == "text" { height = 220 }
             }
             let count = updated.nodes.count
-            append(name, file: canvasFile, text: text, height: height)
-            if updated.nodes.count != count, let ref = canvasFile.asset { media[ref] = name }
+            append(type, file: canvasFile, height: height)
+            if updated.nodes.count != count { media[canvasFile.asset] = name }
         }
         guard updated.nodes != current.nodes else { return current }
         updated.revision += 1
@@ -1310,7 +1253,6 @@ final class WorksheetStore: @unchecked Sendable {
             }
             sheet.revision = 1
             sheet.resetRevision = nil
-            sheet.removeLegacyWorksheetNodes()
             try sheet.validate()
             let target = try WorksheetPath(path.parts + [(name as NSString).deletingPathExtension])
             _ = try openLocked(target, user: user, createOnly: true, unlocks: unlocks, imported: sheet)
@@ -1348,15 +1290,6 @@ final class WorksheetStore: @unchecked Sendable {
         let direct = try projectTrashPath(relative, project: ctx.project, createParents: true)
         if !files.fileExists(atPath: direct.path) { return direct }
         return try projectTrashPath(".versions/" + UUID().uuidString + "/" + relative, project: ctx.project, createParents: true)
-    }
-
-    private func sheetFiles(in directory: URL) throws -> [URL] {
-        try files.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
-                                      options: [.skipsHiddenFiles]).filter { file in
-            guard file.pathExtension == "thnode" else { return false }
-            let info = try file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
-            return info.isRegularFile == true && info.isSymbolicLink != true
-        }
     }
 
     private func unusedAttachment(_ name: String, in directory: URL, metadata: DocumentPolicy?,
@@ -1435,10 +1368,9 @@ final class WorksheetStore: @unchecked Sendable {
             let directory = ctx.directory
             var metadata = ctx.local
             if replaceText {
-                guard bytes.count <= 100_000,
-                      let existing = try attachments(at: worksheet, named: name, metadata: metadata).first,
-                      ["md", "txt"].contains(existing.pathExtension.lowercased()),
-                      matchesAttachmentType(bytes, extension: existing.pathExtension.lowercased()) else { throw Abort(.badRequest) }
+                guard let existing = try attachments(at: worksheet, named: name, metadata: metadata).first,
+                      canvasMediaTypes[existing.pathExtension.lowercased()] == nil, NodeTypes.isPlainText(bytes),
+                      NodeTypes.isPlainText(try Data(contentsOf: existing)) else { throw Abort(.badRequest) }
                 try bytes.write(to: existing, options: .atomic)
                 return name
             }
@@ -1459,7 +1391,7 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    enum BoxFile { case disk(URL), text(String, String) }
+    enum BoxFile { case disk(URL) }
 
     func boxFile(_ path: WorksheetPath, id: String, user: User?, unlocks: Set<String>) throws -> BoxFile {
         try lock.withLock {
@@ -1470,10 +1402,8 @@ final class WorksheetStore: @unchecked Sendable {
             guard let node = try read(url).nodes.first(where: { $0.id == id }), let file = node.file else {
                 throw Abort(.notFound)
             }
-            if let ref = file.reference(title: node.title),
-               let source = try attachments(at: url, named: ref, metadata: ctx.local).first { return .disk(source) }
-            guard [.txt, .md, .json].contains(file.type) else { throw Abort(.notFound) }
-            return .text(node.text, file.displayName(title: node.title))
+            guard let source = try attachments(at: url, named: file.asset, metadata: ctx.local).first else { throw Abort(.notFound) }
+            return .disk(source)
         }
     }
 
@@ -1609,8 +1539,10 @@ final class WorksheetStore: @unchecked Sendable {
 
     private func read(_ url: URL) throws -> Worksheet {
         guard files.fileExists(atPath: url.path) else { throw Abort(.notFound, reason: "A munkalap nem található.") }
-        var worksheet = try JSONDecoder().decode(Worksheet.self, from: Data(contentsOf: url))
-        worksheet.removeLegacyWorksheetNodes()
+        let worksheet = try JSONDecoder().decode(Worksheet.self, from: Data(contentsOf: url))
+        guard worksheet.schemaVersion == Worksheet.currentSchema else {
+            throw Abort(.unprocessableEntity, reason: "Régi formátumú munkalap (\(worksheet.schemaVersion). verzió). Az új objektumtípusok miatt nem tölthető be; törölhető.")
+        }
         try worksheet.validate()
         return worksheet
     }
@@ -1629,35 +1561,34 @@ final class WorksheetStore: @unchecked Sendable {
 extension Idea {
     init(from decoder: Decoder) throws {
         let fields = try decoder.container(keyedBy: CodingKeys.self)
-        kind = try? fields.decode(IdeaKind.self, forKey: .kind)
-        id = (try? fields.decode(String.self, forKey: .id)) ?? "box-\(decoder.codingPath.last?.intValue ?? 0)"
-        title = (try? fields.decode(String.self, forKey: .title)) ?? "Ötlet"
+        id = try fields.decode(String.self, forKey: .id)
+        type = try fields.decode(String.self, forKey: .type)
         text = (try? fields.decode(String.self, forKey: .text)) ?? ""
-        file = try? fields.decode(CanvasFile.self, forKey: .file)
+        file = try fields.decodeIfPresent(CanvasFile.self, forKey: .file)
         hideText = try? fields.decode(Bool.self, forKey: .hideText)
         position = (try? fields.decode(Point.self, forKey: .position)) ?? Point(x: 0, y: 0)
-        width = (try? fields.decode(Double.self, forKey: .width)) ?? (kind == .connectionPoint ? 12 : 176)
-        height = (try? fields.decode(Double.self, forKey: .height)) ?? (kind == .connectionPoint ? width : 80)
+        let junction = NodeTypes.root(type) == "junction"
+        width = (try? fields.decode(Double.self, forKey: .width)) ?? (junction ? 12 : 176)
+        height = (try? fields.decode(Double.self, forKey: .height)) ?? (junction ? width : 80)
         shape = (try? fields.decode(Shape.self, forKey: .shape)) ?? .rounded
         fill = (try? fields.decode(StoredPaint.self, forKey: .fill).wrappedValue) ?? "#dce9ff"
-        backgroundEnabled = try? fields.decode(Bool.self, forKey: .backgroundEnabled)
-        backgroundBlur = try? fields.decode(Bool.self, forKey: .backgroundBlur)
         backgroundMode = try fields.decodeIfPresent(BoxBackgroundMode.self, forKey: .backgroundMode)
         animation = try? fields.decode(BoxAnimation.self, forKey: .animation)
         textColor = (try? fields.decode(StoredPaint.self, forKey: .textColor).wrappedValue) ?? "#182335"
         fitText = try? fields.decode(Bool.self, forKey: .fitText)
         fontSize = (try? fields.decode(Double.self, forKey: .fontSize)) ?? 16
-        bold = (try? fields.decode(Bool.self, forKey: .bold)) ?? true
-        alignment = (try? fields.decode(LabelAlignment.self, forKey: .alignment)) ?? .center
-        verticalAlignment = try? fields.decode(VerticalAlignment.self, forKey: .verticalAlignment)
-        titleOutside = try? fields.decode(Bool.self, forKey: .titleOutside)
-        link = try? fields.decode(String.self, forKey: .link)
-        parent = try? fields.decode(String.self, forKey: .parent)
-        locked = try? fields.decode(Bool.self, forKey: .locked)
-        elevated = try? fields.decode(Bool.self, forKey: .elevated)
+        bold = try? fields.decode(Bool.self, forKey: .bold)
         italic = try? fields.decode(Bool.self, forKey: .italic)
         underline = try? fields.decode(Bool.self, forKey: .underline)
-        textStyle = try? fields.decode(TextStyle.self, forKey: .textStyle)
+        justified = try? fields.decode(Bool.self, forKey: .justified)
+        alignment = (try? fields.decode(LabelAlignment.self, forKey: .alignment)) ?? .center
+        verticalAlignment = try? fields.decode(VerticalAlignment.self, forKey: .verticalAlignment)
+        link = try fields.decodeIfPresent(NodeLink.self, forKey: .link)
+        angle = try? fields.decode(Double.self, forKey: .angle)
+        parent = try? fields.decode(String.self, forKey: .parent)
+        container = try? fields.decode(Bool.self, forKey: .container)
+        locked = try? fields.decode(Bool.self, forKey: .locked)
+        elevated = try? fields.decode(Bool.self, forKey: .elevated)
     }
 }
 
@@ -1665,7 +1596,7 @@ extension Worksheet {
     init(from decoder: Decoder) throws {
         let fields = try decoder.container(keyedBy: CodingKeys.self)
         appearance = try fields.decodeIfPresent(Appearance.self, forKey: .appearance)
-        schemaVersion = (try? fields.decode(Int.self, forKey: .schemaVersion)) ?? 2
+        schemaVersion = (try? fields.decode(Int.self, forKey: .schemaVersion)) ?? 0
         revision = (try? fields.decode(Int.self, forKey: .revision)) ?? 1
         resetRevision = try? fields.decode(Int.self, forKey: .resetRevision)
         title = (try? fields.decode(String.self, forKey: .title)) ?? "Munkalap"

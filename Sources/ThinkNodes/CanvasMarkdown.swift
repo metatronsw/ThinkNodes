@@ -20,6 +20,10 @@ struct MarkdownBlock: Codable, Sendable {
 
     var kind: Kind
     var runs: [MarkdownRun]
+    /// Címsorszint (1–6), csak `heading` blokknál.
+    var level: Int? = nil
+    /// Listaelem mélysége (1 = legfelső szint).
+    var indent: Int? = nil
 }
 
 func canvasMarkdown(_ source: String) -> [MarkdownBlock] {
@@ -66,7 +70,7 @@ func canvasMarkdown(_ source: String) -> [MarkdownBlock] {
         }
 
         var blocks: [MarkdownBlock] = []
-        func block(_ node: UnsafeMutablePointer<cmark_node>, depth: Int, quote: Bool = false) {
+        func block(_ node: UnsafeMutablePointer<cmark_node>, depth: Int, quote: Bool = false, list: Int = 0) {
             guard depth < 64 else { return }
             let type = cmark_node_get_type(node)
             switch type {
@@ -74,7 +78,10 @@ func canvasMarkdown(_ source: String) -> [MarkdownBlock] {
                 var runs: [MarkdownRun] = []
                 inline(node, format: MarkdownFormat(), depth: 0, runs: &runs)
                 if !runs.isEmpty {
-                    blocks.append(MarkdownBlock(kind: type == CMARK_NODE_HEADING ? .heading : quote ? .quote : .body, runs: runs))
+                    let heading = type == CMARK_NODE_HEADING
+                    blocks.append(MarkdownBlock(kind: heading ? .heading : quote ? .quote : .body, runs: runs,
+                                                level: heading ? Int(cmark_node_get_heading_level(node)) : nil,
+                                                indent: list > 0 ? list : nil))
                 }
             case CMARK_NODE_CODE_BLOCK:
                 blocks.append(MarkdownBlock(kind: .code, runs: [MarkdownRun(text: literal(node), format: MarkdownFormat(code: true))]))
@@ -85,14 +92,14 @@ func canvasMarkdown(_ source: String) -> [MarkdownBlock] {
                 var index = Int(cmark_node_get_list_start(node))
                 children(node) { item in
                     let first = blocks.count
-                    block(item, depth: depth + 1, quote: quote)
+                    block(item, depth: depth + 1, quote: quote, list: list + 1)
                     if first < blocks.count {
                         blocks[first].runs.insert(MarkdownRun(text: ordered ? "\(index). " : "• "), at: 0)
                     }
                     index += 1
                 }
             default:
-                children(node) { block($0, depth: depth + 1, quote: quote || type == CMARK_NODE_BLOCK_QUOTE) }
+                children(node) { block($0, depth: depth + 1, quote: quote || type == CMARK_NODE_BLOCK_QUOTE, list: list) }
             }
         }
 

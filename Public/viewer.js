@@ -31,6 +31,9 @@ function bindCanvas() {
   for (const element of svg.querySelectorAll("[data-file-ink]")) {
     element.style.color = element.dataset.fileInk;
   }
+  for (const element of svg.querySelectorAll("[data-font-size]")) {
+    element.style.fontSize = element.dataset.fontSize + "px";
+  }
   for (const preview of svg.querySelectorAll(".node-web-preview")) {
     if (preview.complete && preview.naturalWidth) preview.dataset.ready = "";
     else preview.addEventListener("load", () => { preview.dataset.ready = ""; }, {once: true});
@@ -260,7 +263,16 @@ document.addEventListener("click", async event => {
     await openPresentationPicker(path, csrf);
     return;
   }
-  if (event.target.closest("audio, [data-audio-player], .node-file a")) return;
+  if (event.target.closest("audio, [data-audio-player], .node-file a, .node-download")) return;
+  const linked = event.target.closest(".passive-canvas a[data-link]");
+  if (linked && event.detail) {
+    // Linkes objektum a megtekintőben kattintásra nyílik (docs/node-types.md, link képesség).
+    event.preventDefault();
+    if (linked.hasAttribute("data-web-presentation")) openPresentation(linked.getAttribute("href"));
+    else if (linked.getAttribute("target") === "_blank") openExternalLink(linked.getAttribute("href"));
+    else location.assign(linked.getAttribute("href"));
+    return;
+  }
   const box = event.target.closest(".passive-canvas [data-node]");
   if (box && event.detail) {
     event.preventDefault();

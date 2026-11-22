@@ -1,0 +1,46 @@
+{
+  "about": "Vászonobjektum-típusok regisztere (docs/node-types.md). A szerver (NodeTypes.swift) és a szerkesztő (node-types.js) is ebből dolgozik. Alkategória: base megadásával örököl; a traits lista felülírja, az addTraits bővíti az alaptípusét.",
+  "types": {
+    "box": {
+      "label": "Doboz",
+      "traits": ["text", "shape", "motion", "surface", "elevation", "size", "children", "link"]
+    },
+    "text": {
+      "label": "Szövegfájl",
+      "file": "text",
+      "traits": ["file", "fileText", "comment", "surface", "elevation", "size"]
+    },
+    "code": {
+      "label": "Kódfájl",
+      "base": "text",
+      "extensions": ["json", "js", "mjs", "cjs", "ts", "swift", "css", "html", "htm", "xml", "py", "sh", "c", "h", "cpp", "java", "kt", "go", "rs", "rb", "php", "sql", "yaml", "yml", "toml", "ini"]
+    },
+    "csv": {
+      "label": "Táblázat",
+      "base": "text",
+      "extensions": ["csv", "tsv"]
+    },
+    "image": {
+      "label": "Kép",
+      "file": "media",
+      "extensions": ["png", "jpg", "jpeg", "gif", "webp", "svg"],
+      "traits": ["file", "comment", "alpha", "surface", "elevation", "size", "link"]
+    },
+    "audio": {
+      "label": "Hang",
+      "file": "media",
+      "extensions": ["mp3", "wav", "ogg", "flac", "m4a", "aac"],
+      "traits": ["file", "comment", "player", "surface", "elevation", "size"]
+    },
+    "document": {
+      "label": "Dokumentum",
+      "file": "binary",
+      "extensions": ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf", "zip", "7z", "rar", "gz", "tar", "epub", "pages", "numbers", "key"],
+      "traits": ["file", "comment", "surface", "elevation", "size"]
+    },
+    "junction": {
+      "label": "Csomópont",
+      "traits": ["label", "diameter", "color"]
+    }
+  }
+}

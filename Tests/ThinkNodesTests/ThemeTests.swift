@@ -12,7 +12,7 @@ import VaporTesting
     let path = try WorksheetPath(["ThemeDemo"])
     var sheet = try store.open(path, user: creator)
     sheet.background = "@0"
-    sheet.nodes = [Idea(id: "box", title: "Vázlat", position: Point(x: 0, y: 0), fill: "@2", textColor: "@1")]
+    sheet.nodes = [Idea(id: "box", text: "Vázlat", position: Point(x: 0, y: 0), fill: "@2", textColor: "@1")]
     sheet.appearance = Appearance(theme: 3, palette: 1)
     sheet.gridSpacing = 24
     sheet.edges = [Connection(id: "wire", sourcePoint: Point(x: 0, y: 80),
@@ -91,8 +91,8 @@ import VaporTesting
     let path = try WorksheetPath(["MixedPaint"])
     var sheet = try store.open(path, user: creator)
     sheet.background = "#213a57"
-    sheet.nodes = [Idea(id: "box", title: "Vázlat", position: Point(x: 0, y: 0),
-                        fill: "@2", textColor: "#aBcDeF", textStyle: TextStyle(color: "#BADA55"))]
+    sheet.nodes = [Idea(id: "box", text: "Vázlat", position: Point(x: 0, y: 0),
+                        fill: "@2", textColor: "#aBcDeF")]
     sheet.edges = [Connection(id: "wire", sourcePoint: Point(x: 0, y: 80),
                               target: ConnectionTarget(point: Point(x: 120, y: 80)), color: "#9022AA")]
     sheet = try store.update(path, worksheet: sheet, user: creator)
@@ -106,7 +106,6 @@ import VaporTesting
     #expect(json["background"] as? String == "#213a57")
     #expect(box["fill"] as? Int == 2)
     #expect(box["textCol"] as? String == "#aBcDeF")
-    #expect((box["textStyle"] as? [String: Any])?["color"] as? String == "#BADA55")
     #expect((json["edges"] as? [[String: Any]])?.first?["color"] as? String == "#9022AA")
     #expect(reopened.painted(mode: "light").nodes[0].fill != originalFill)
     for mode in ["light", "dark"] {

@@ -33,7 +33,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=13">
+          <link rel="stylesheet" href="/app.css?v=14">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -254,12 +254,10 @@ private struct IdeaLabelLine {
     let weight: Int
     let color: String
     var runs: [MarkdownRun] = []
-    var outsideX: Double?
-    var outsideTop: Double?
     var gap: Double = 0
     var justify = false
     var wrapped = false
-    var style: TextStyle?
+    var indent: Double = 0
 
     var step: Double { size * 1.25 + gap }
 }
@@ -268,6 +266,7 @@ private struct IdeaDrawing {
     var node: Idea
     let labelWidth: Double
     var iconSpace: Double = 0
+    var previewSpace: Double = 0
     var available: Double = 0
     var overflow = false
     let lines: [IdeaLabelLine]
@@ -300,51 +299,70 @@ private func shortenLine(_ line: IdeaLabelLine, width: Double) -> IdeaLabelLine 
     runs.append(MarkdownRun(text: "…"))
     result.text = runs.map(\.text).joined()
     result.wrapped = false
-    if !line.runs.isEmpty { result.runs = runs }
+    result.runs = runs
     return result
+}
+
+/// Címsor mérete az alapméret arányában (docs/node-types.md, Text képesség).
+func headingScale(_ level: Int?) -> Double {
+    switch level ?? 3 {
+    case 1: 1.6
+    case 2: 1.3
+    default: 1.15
+    }
+}
+
+/// A link rövid felirata a dobozon: domain, munkalap-útvonal vagy .web mappa neve.
+func linkCaption(_ link: NodeLink) -> String {
+    switch link.kind {
+    case .url: URLComponents(string: link.target)?.host ?? link.target
+    case .sheet: link.target
+    case .web: link.webReference?.name ?? link.target
+    }
 }
 
 private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
     var node = idea
-    if node.kind == .connectionPoint {
+    if node.isJunction {
         if ![.ellipse,.rectangle,.diamond].contains(node.shape) { node.shape = .ellipse }
         return IdeaDrawing(node: node, labelWidth: 0, lines: [])
     }
+    guard node.isBox else { return IdeaDrawing(node: node, labelWidth: node.width, lines: []) }
     let (widthRatio, heightRatio, _) = node.shape.labelRatios
-    let fitText = node.fitText == true && node.file == nil
-    let text = node.hideText != true ? canvasMarkdown(node.text) :
-        (node.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? [] : [MarkdownBlock(kind: .body, runs: [MarkdownRun(text: "•••")])])
+    let fitText = node.fitText == true
+    let blocks = canvasMarkdown(node.text)
     let labelWidth = max(12, node.width * widthRatio - 16)
-    let iconSpace: Double = (node.link ?? "").isEmpty ? 0 : 18
-    let labelHeight = node.height * heightRatio - 12 - iconSpace
+    let iconSpace: Double = node.link == nil ? 0 : 20
+    let previewSpace: Double = node.link.map { $0.kind == .url ? 0 : node.height * 0.5 } ?? 0
+    let labelHeight = node.height * heightRatio - 12 - iconSpace - previewSpace
+    let strong = node.bold == true
 
-    func makeLines(titleSize: Double, bodySize: Double) -> [IdeaLabelLine] {
+    func makeLines(base: Double) -> [IdeaLabelLine] {
         var lines: [IdeaLabelLine] = []
-        func add(_ value: String, size: Double, weight: Int, color: String, style: TextStyle?) {
-            let text = value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-            guard !text.isEmpty else { return }
-            let columns = max(2, Int(labelWidth / (size * 0.65)))
-            let rendered = textWidth(text, size: size) <= labelWidth ? [text] : wrap(text, columns: columns)
-            lines.append(contentsOf: rendered.map { IdeaLabelLine(text: $0, size: size, weight: weight, color: color, style: style) })
-        }
-        add(node.title, size: titleSize, weight: node.bold ? 650 : 400, color: node.textColor,
-            style: TextStyle(italic: node.italic, underline: node.underline, verticalAlignment: node.verticalAlignment))
-        for (index, block) in text.enumerated() {
-            let size = block.kind == .heading ? (fitText ? bodySize * 1.15 : (bodySize * 1.15).rounded()) : bodySize
-            let columns = max(node.hideText == true ? 3 : 2, Int(labelWidth / (size * 0.65)))
+        for (index, block) in blocks.enumerated() {
+            let heading = block.kind == .heading
+            var size = heading ? base * headingScale(block.level) * (strong ? 1.1 : 1) : base
+            if !fitText { size = size.rounded() }
+            let weight = heading ? (strong ? 900 : 700) : (strong ? 650 : 400)
+            let indent = Double(max(0, (block.indent ?? 0) - 1)) * base * 1.2
+            let columns = max(2, Int((labelWidth - indent) / (size * 0.65)))
             var runs = block.runs
             if block.kind == .quote { runs.insert(MarkdownRun(text: "› "), at: 0) }
             for (row, wrappedLine) in wrapMarkdown(runs, columns: columns, preformatted: block.kind == .code).enumerated() {
                 let pieces = wrappedLine.pieces
-                let blockGap: Double = index == 0 ? 8 : 3
-                let gap = row == 0 ? (fitText ? min(blockGap, bodySize * 0.4) : blockGap) : 0
-                lines.append(IdeaLabelLine(text: pieces.map(\.text).joined(), size: size,
-                                           weight: block.kind == .heading || node.textStyle?.bold == true ? 700 : 400,
-                                           color: node.textStyle?.color ?? node.textColor, runs: pieces, gap: gap,
-                                           justify: node.textStyle?.justified == true && block.kind != .code,
-                                           wrapped: wrappedLine.wrapped,
-                                           style: node.textStyle))
+                let blockGap: Double = index == 0 ? 0 : heading ? size * 0.35 : 3
+                let gap = row == 0 ? (fitText ? min(blockGap, base * 0.4) : blockGap) : 0
+                lines.append(IdeaLabelLine(text: pieces.map(\.text).joined(), size: size, weight: weight,
+                                           color: node.textColor, runs: pieces, gap: gap,
+                                           justify: node.justified == true && block.kind != .code,
+                                           wrapped: wrappedLine.wrapped, indent: indent))
             }
+        }
+        if node.hideText == true, lines.count > 1 {
+            var first = lines[0]
+            first.runs.append(MarkdownRun(text: " …"))
+            first.text += " …"
+            return [first]
         }
         return lines
     }
@@ -353,18 +371,12 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
     if fitText {
         var low = 1
         var high = Int((labelHeight / 1.25).rounded(.down))
-        lines = makeLines(titleSize: 1.4, bodySize: 1)
+        lines = makeLines(base: 1)
         while low <= high {
             let size = (low + high) / 2
-            let candidate = makeLines(titleSize: Double(size) * 1.4, bodySize: Double(size))
-            var insideHeight = 0.0
-            var outsideHeight = 0.0
-            for line in candidate {
-                if node.titleOutside == true && line.runs.isEmpty { outsideHeight += line.step }
-                else { insideHeight += line.step }
-            }
-            if max(insideHeight, outsideHeight) <= labelHeight &&
-                candidate.allSatisfy({ textWidth($0.text, size: $0.size) <= labelWidth }) {
+            let candidate = makeLines(base: Double(size))
+            if candidate.reduce(0, { $0 + $1.step }) <= labelHeight &&
+                candidate.allSatisfy({ textWidth($0.text, size: $0.size) + $0.indent <= labelWidth }) {
                 lines = candidate
                 low = size + 1
             } else {
@@ -372,16 +384,7 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
             }
         }
     } else {
-        lines = makeLines(titleSize: node.fontSize, bodySize: node.textStyle?.size ?? 13)
-    }
-    var groups: [String: [IdeaLabelLine]] = [:]
-    lines.removeAll { line in
-        guard line.runs.isEmpty, node.titleOutside == true else { return false }
-        let horizontal = node.alignment
-        var vertical = node.verticalAlignment ?? .middle
-        if horizontal == .center && vertical == .middle { vertical = .top }
-        groups[horizontal.rawValue + "/" + vertical.rawValue, default: []].append(line)
-        return true
+        lines = makeLines(base: node.fontSize)
     }
     let available = max(0, labelHeight)
     var visible: [IdeaLabelLine] = []
@@ -392,59 +395,31 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
         remaining -= line.step
     }
     let omitted = visible.count < lines.count
-    if omitted && visible.isEmpty { visible.append(lines[0]); remaining -= lines[0].step }
-    var overflow = omitted
+    if omitted && visible.isEmpty { visible.append(lines[0]) }
+    var overflow = omitted || (node.hideText == true && canvasMarkdown(node.text).count > 1)
     for index in visible.indices {
         let line = visible[index]
-        if textWidth(line.text, size: line.size) > labelWidth || (omitted && index == visible.count - 1) {
-            visible[index] = shortenLine(line, width: labelWidth)
+        if textWidth(line.text, size: line.size) + line.indent > labelWidth || (omitted && index == visible.count - 1) {
+            visible[index] = shortenLine(line, width: labelWidth - line.indent)
             overflow = true
         }
     }
-    if node.hideText == true,
-       let marker = lines.last, !marker.runs.isEmpty, !visible.contains(where: { !$0.runs.isEmpty }) {
-        while !visible.isEmpty && remaining < marker.step { remaining += visible.removeLast().step }
-        visible.append(marker)
-    }
-    var extentX = node.width / 2, extentY = max(node.height, available + iconSpace) / 2
-    for key in groups.keys.sorted() {
-        let rows = groups[key] ?? []
-        let total = rows.reduce(0) { $0 + $1.step }
-        let side: Double = key.hasPrefix("left/") ? -1 : key.hasPrefix("right/") ? 1 : 0
-        let center = side * (node.width/2 + 8 + labelWidth/2)
-        var top = key.hasSuffix("/top") ? -node.height/2-8-total : key.hasSuffix("/bottom") ? node.height/2+8 : -total/2
-        extentX = max(extentX, abs(center) + labelWidth/2 + 4)
-        extentY = max(extentY, abs(top), abs(top+total))
-        for var line in rows {
-            extentX = max(extentX, abs(center - side * labelWidth/2) + textWidth(line.text, size: line.size) * 1.25 + line.size)
-            line.outsideX = center
-            line.outsideTop = top
-            visible.append(line)
-            top += line.step
-        }
-    }
-    return IdeaDrawing(node: node, labelWidth: labelWidth, iconSpace: iconSpace, available: available,
-                       overflow: overflow, lines: visible, extentX: extentX, extentY: extentY)
+    return IdeaDrawing(node: node, labelWidth: labelWidth, iconSpace: iconSpace, previewSpace: previewSpace,
+                       available: available, overflow: overflow, lines: visible,
+                       extentX: node.width / 2, extentY: node.height / 2)
 }
 
-/// Egységes vászon-osztálynév: `node` + fajta szerinti módosító. Az editor.js `nodeClasses` ugyanezt adja.
-func nodeClasses(_ node: Idea) -> String {
-    let kind: String? = switch (node.kind, node.file?.type) {
-    case (.container?, _): "is-container"
-    case (.connectionPoint?, _): "is-point"
-    case (nil, .image?): "is-image"
-    case (nil, .txt?), (nil, .md?), (nil, .json?): "is-note"
-    case (nil, .mp3?): "is-audio"
-    case (nil, .web?): "is-web"
-    case (nil, .worksheet?): "is-worksheet"
-    case (nil, .attachment?): "is-file"
-    case (nil, nil): nil
-    }
-    return kind.map { "node " + $0 } ?? "node"
+/// Egységes vászon-osztálynév: `node is-<típus>` (+ `has-children` konténernél). Az editor.js `nodeClasses` ugyanezt adja.
+func nodeClasses(_ node: Idea, hasChildren: Bool = false) -> String {
+    var classes = "node is-" + node.type
+    if node.root != node.type { classes += " is-" + node.root }
+    if node.link != nil { classes += " has-link" }
+    if hasChildren { classes += " has-children" }
+    return classes
 }
 
 func needsTextTooltip(_ node: Idea, overflow: @autoclosure () -> Bool) -> Bool {
-    !node.text.isEmpty && (node.file?.type == .image || node.hideText == true || overflow())
+    node.isBox && !node.text.isEmpty && overflow()
 }
 
 func needsTextTooltip(_ node: Idea) -> Bool {
@@ -538,14 +513,14 @@ private func boxSurface(_ node: Idea, geometry: String, graphics: VisualTheme.Gr
     }
     let blurred = mode == .blurred
     let empty = mode == .empty
-    if node.file?.type == .image && mode == .solid && node.file?.alphaEnabled != false && node.file?.alphaBackground == nil { return "" }
-    let image = node.file?.type == .image
-    let locked = node.kind == .container && node.locked == true
+    if node.isImage && mode == .solid && node.file?.alphaEnabled != false && node.file?.alphaBackground == nil { return "" }
+    let image = node.isImage
+    let locked = node.isBox && node.locked == true
     let glass = graphics?.glass == true && mode == .solid && !image
     let fill = image ? (node.file?.alphaEnabled == false ? "#ffffff" : node.file?.alphaBackground ?? node.fill) : node.fill
     let stroke = image && !empty ? "none" : glass ? "url(#glass-rim)" : escaped(node.border)
     let width = locked ? "6.4" : glass ? "3" : "1.6"
-    let dash = node.file == nil && node.link.flatMap(WorksheetLink.init) != nil ? " stroke-dasharray=\"7 4\"" : ""
+    let dash = node.isBox && node.link != nil ? " stroke-dasharray=\"7 4\"" : ""
     let closed = locked ? " data-locked-outline=\"\"" : ""
     let effect = blurred ? " opacity=\".5\" filter=\"url(#box-background-blur)\"" : glass ? " fill-opacity=\".66\"" : ""
     let pointer = empty && interactive ? " pointer-events=\"fill\"" : ""
@@ -553,12 +528,27 @@ private func boxSurface(_ node: Idea, geometry: String, graphics: VisualTheme.Gr
     return surface + (glass ? "<\(geometry) fill=\"url(#glass-sheen)\" pointer-events=\"none\" aria-hidden=\"true\"/>" : "")
 }
 
-private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: VisualTheme.Graphics?, interactive: Bool) -> String {
+/// Link jel a doboz alján középen: ikon + rövid felirat (docs/node-types.md, link képesség).
+private func linkMarker(_ link: NodeLink, node: Idea, bottom: Double, width: Double, siteHost: String?) -> String {
+    let caption = linkCaption(link)
+    let available = max(12, width - 22)
+    let fit = textWidth(caption, size: 13) > available ? " textLength=\"\(number(available))\" lengthAdjust=\"spacingAndGlyphs\"" : ""
+    let shown = min(available, textWidth(caption, size: 13))
+    let icon = link.kind == .web ? WorksheetLink.globe : link.worksheetLink?.iconPath(siteHost: siteHost) ?? WorksheetLink.chain
+    let left = -(shown + 18) / 2
+    return """
+        <g class="node-link" data-link-kind="\(link.kind.rawValue)" pointer-events="none"><svg x="\(number(left))" y="\(number(bottom - 14))" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="\(escaped(node.textColor))" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="\(icon)"/></svg><text\(fit) x="\(number(left + 18))" y="\(number(bottom - 2))" font-size="13" fill="\(escaped(node.textColor))">\(escaped(caption))</text></g>
+        """
+}
+
+private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: VisualTheme.Graphics?, interactive: Bool, preview: String? = nil) -> String {
     let node = drawing.node
-    if node.kind == .connectionPoint {
-        let label = node.title.isEmpty ? "" : "<text class=\"node-label\" x=\"\(number(node.position.x + node.width/2 + 4))\" y=\"\(number(node.position.y + 4))\" font-size=\"14\" fill=\"\(node.textColor)\">\(escaped(node.title))</text>"
+    if node.isJunction {
         let r = node.width / 2
         let x = node.position.x, y = node.position.y
+        let label = node.text.isEmpty ? "" : """
+            <g class="node-label-turn" transform="translate(\(number(x)) \(number(y))) rotate(\(number(node.angle ?? 0)))"><text class="node-label" x="\(number(r + 4))" y="4" font-size="14" fill="\(escaped(node.textColor))">\(escaped(node.text))</text></g>
+            """
         if node.shape == .rectangle {
             return "<rect x='\(number(x-r))' y='\(number(y-r))' width='\(number(2*r))' height='\(number(2*r))' fill='\(escaped(node.fill))'/>" + label
         }
@@ -566,7 +556,7 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
             return "<path d='M \(number(x)) \(number(y-r)) l \(number(r)) \(number(r)) l \(number(-r)) \(number(r)) l \(number(-r)) \(number(-r)) Z' fill='\(escaped(node.fill))'/>" + label
         }
         return """
-            <circle cx="\(number(node.position.x))" cy="\(number(node.position.y))" r="\(number(node.width/2))" fill="\(escaped(node.fill))" aria-label="\(escaped(node.title))"/>\(label)
+            <circle cx="\(number(x))" cy="\(number(y))" r="\(number(r))" fill="\(escaped(node.fill))"/>\(label)
             """
     }
     let width = node.width
@@ -575,44 +565,43 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
     let y = height / 2
     let geometry = boxGeometry(node, graphics: graphics)
     let labelWidth = drawing.labelWidth
-    func rank(_ line: IdeaLabelLine) -> Double {
-        switch line.style?.verticalAlignment {
-        case .top: 0
-        case .bottom: 1
-        default: 0.5
-        }
+    let rank: Double = switch node.verticalAlignment {
+    case .top: 0
+    case .bottom: 1
+    default: 0.5
     }
-    let extra = drawing.available - drawing.lines.filter { $0.outsideTop == nil }.reduce(0) { $0 + $1.step }
-    var offset = -(drawing.available + drawing.iconSpace) / 2
-    let spans = drawing.lines.sorted { rank($0) < rank($1) }.map { line in
-        let top = line.outsideTop ?? (offset + extra * rank(line))
+    let strong = node.bold == true
+    let extra = drawing.available - drawing.lines.reduce(0) { $0 + $1.step }
+    var offset = -(drawing.available + drawing.iconSpace + drawing.previewSpace) / 2 + drawing.previewSpace
+    let spans = drawing.lines.map { line in
+        let top = offset + extra * rank
         let textX: Double
         let anchor: String
-        if let center = line.outsideX {
-            let side: Double = center < 0 ? -1 : center > 0 ? 1 : 0
-            (textX, anchor) = (center - side * labelWidth/2, side < 0 ? "end" : side > 0 ? "start" : "middle")
-        } else { switch line.justify ? .left : line.style?.alignment ?? node.alignment {
-        case .left: (textX, anchor) = (-labelWidth / 2, "start")
+        switch line.justify || line.indent > 0 ? .left : node.alignment {
+        case .left: (textX, anchor) = (-labelWidth / 2 + line.indent, "start")
         case .right: (textX, anchor) = (labelWidth / 2, "end")
         case .center: (textX, anchor) = (0, "middle")
-        } }
-        var style = line.runs.isEmpty ? " class=\"node-link-label\"" : ""
+        }
+        var style = ""
         if line.justify && line.wrapped {
             let spaces = line.text.filter { $0 == " " }.count
             let width = textWidth(line.text, size: line.size)
-            if spaces > 0 && width < labelWidth {
-                style += " word-spacing=\"\(number((labelWidth - width) / Double(spaces)))px\""
+            if spaces > 0 && width < labelWidth - line.indent {
+                style += " word-spacing=\"\(number((labelWidth - line.indent - width) / Double(spaces)))px\""
             }
         }
-        if line.style?.italic == true { style += " font-style=\"italic\"" }
-        if line.style?.underline == true { style += " text-decoration=\"underline\"" }
+        if node.italic == true { style += " font-style=\"italic\"" }
+        if node.underline == true { style += " text-decoration=\"underline\"" }
         let baseline = top + line.gap + line.size * (1.25 / 2 + 0.33)
-        if line.outsideTop == nil { offset += line.step }
-        let content = line.runs.isEmpty ? escaped(line.text) : line.runs.map { run in
+        offset += line.step
+        let content = line.runs.map { run in
             let format = run.format
             var attributes = ""
-            if format.bold { attributes += " font-weight=\"700\"" }
-            if format.italic { attributes += " font-style=\"italic\"" }
+            if format.bold {
+                attributes += " font-weight=\"\(strong ? 900 : 700)\""
+                if strong { attributes += " font-size=\"\(number(line.size * 1.1))\"" }
+            }
+            if format.italic { attributes += node.italic == true ? " font-style=\"normal\"" : " font-style=\"italic\"" }
             if format.code { attributes += " font-family=\"monospace\" xml:space=\"preserve\"" }
             if format.link { attributes += " text-decoration=\"underline\"" }
             return attributes.isEmpty ? escaped(run.text) : "<tspan\(attributes)>\(escaped(run.text))</tspan>"
@@ -621,22 +610,20 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
             <tspan text-anchor="\(anchor)"\(style) x="\(number(textX))" y="\(number(baseline))" fill="\(escaped(line.color))" font-size="\(number(line.size))" font-weight="\(line.weight)">\(content)</tspan>
             """
     }.joined()
-    let symbol = node.link.flatMap(WorksheetLink.init).map { link in
-        let inset = node.shape.labelRatios.link
-        let linkWidth = max(12, node.width * inset - 22)
-        let fit = textWidth(node.link ?? "", size: 16) > linkWidth ? " textLength=\"\(number(linkWidth))\" lengthAdjust=\"spacingAndGlyphs\"" : ""
-        return """
-            <text class="node-link"\(fit) x="\(number(x * inset - 19))" y="\(number(y * inset - 5))" text-anchor="end" font-size="16" fill="\(node.textColor)">\(escaped(node.link ?? ""))</text><svg x="\(number(x * inset - 15))" y="\(number(y * inset - 16))" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="\(node.textColor)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="\(link.iconPath(siteHost: siteHost))"/></svg>
-            """
+    let inset = node.shape.labelRatios.link
+    let marker = node.link.map { linkMarker($0, node: node, bottom: y * inset - 4, width: node.width * inset, siteHost: siteHost) } ?? ""
+    let previewImage = preview.map { url in
+        let top = -y * inset + 6, previewHeight = drawing.previewSpace - 6
+        return "<image class=\"node-link-preview\" href=\"\(escaped(url))\" x=\"\(number(-x * inset + 6))\" y=\"\(number(top))\" width=\"\(number(max(1, node.width * inset - 12)))\" height=\"\(number(max(1, previewHeight)))\" preserveAspectRatio=\"xMidYMid meet\" pointer-events=\"none\"/>"
     } ?? ""
     let contents = """
         \(elevationShadow(node, geometry: geometry, graphics: graphics))
         \(boxSurface(node, geometry: geometry, graphics: graphics, interactive: interactive))
-        <text class="node-label" font-family="system-ui, sans-serif" pointer-events="none">\(spans)</text>
-        \(symbol)
+        \(previewImage)<text class="node-text" font-family="system-ui, sans-serif" pointer-events="none">\(spans)</text>
+        \(marker)
         """
     return """
-        <g aria-label="\(escaped(node.title))" transform="translate(\(number(node.position.x)) \(number(node.position.y)))">
+        <g aria-label="\(escaped(node.name))" transform="translate(\(number(node.position.x)) \(number(node.position.y)))">
           \(animatedBox(contents, mode: node.animation, speed: graphics?.motionSpeed ?? 1))
         </g>
         """
@@ -731,11 +718,115 @@ private func wireAnimation(_ edge: Connection, from: Point, to: Point) -> (strok
     return ("url(#" + id + ")", "", gradient)
 }
 
-func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = nil, assetBase: String? = nil, mode: String? = nil) -> String {
-    renderWorksheetCanvas(board.painted(mode: mode), noteBase: noteBase, siteHost: siteHost, assetBase: assetBase).svg
+/// Egyszerű CSV/TSV feldolgozás a táblázatnézethez (idézőjeles mezők, legfeljebb 200 sor × 30 oszlop).
+func parseCSV(_ source: String, separator: Character = ",") -> [[String]] {
+    var rows: [[String]] = [], row: [String] = [], field = "", quoted = false
+    var iterator = source.makeIterator()
+    while let character = iterator.next(), rows.count < 200 {
+        if quoted {
+            if character == "\"" {
+                if let next = iterator.next() {
+                    if next == "\"" { field.append("\"") }
+                    else {
+                        quoted = false
+                        if next == separator { row.append(field); field = "" }
+                        else if next.isNewline { row.append(field); field = ""; rows.append(Array(row.prefix(30))); row = [] }
+                        else { field.append(next) }
+                    }
+                } else { quoted = false }
+            } else { field.append(character) }
+        } else if character == "\"" && field.isEmpty {
+            quoted = true
+        } else if character == separator {
+            row.append(field); field = ""
+        } else if character.isNewline {
+            row.append(field); field = ""
+            rows.append(Array(row.prefix(30))); row = []
+        } else { field.append(character) }
+    }
+    if !field.isEmpty || !row.isEmpty { row.append(field); rows.append(Array(row.prefix(30))) }
+    return rows.filter { !($0.count == 1 && $0[0].isEmpty) }
 }
 
-func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: String?, assetBase: String? = nil) -> (svg: String, tooltipNodes: [Idea]) {
+/// Szövegfájl tartalmának HTML-je a vásznon: `.md` formázva, `code` egyenközű, `csv` táblázat, egyéb egyszerű szöveg.
+func fileTextHTML(_ node: Idea, text: String?) -> String {
+    guard let text else { return "<p class=\"muted\">…</p>" }
+    let preview = String(text.prefix(200_000))
+    let ext = (node.file?.filename.map { ($0 as NSString).pathExtension } ?? "").lowercased()
+    switch node.type {
+    case "csv":
+        let rows = parseCSV(preview, separator: ext == "tsv" ? "\t" : ",")
+        guard let head = rows.first else { return "<table class=\"node-csv\"></table>" }
+        let header = "<tr>" + head.map { "<th>\(escaped($0))</th>" }.joined() + "</tr>"
+        let body = rows.dropFirst().map { "<tr>" + $0.map { "<td>\(escaped($0))</td>" }.joined() + "</tr>" }.joined()
+        return "<table class=\"node-csv\"><thead>\(header)</thead><tbody>\(body)</tbody></table>"
+    case "code":
+        return "<pre class=\"node-code\"><code>\(escaped(preview))</code></pre>"
+    default:
+        if ext == "md" || ext == "markdown" {
+            return "<div class=\"formatted-text\(node.justified == true ? " justified-text" : "")\">\(markdownHTML(preview))</div>"
+        }
+        return "<pre class=\"node-plain\(node.justified == true ? " justified-text" : "")\">\(escaped(preview))</pre>"
+    }
+}
+
+/// Fájlt tároló objektum (szöveg, kép, hang, dokumentum) a vásznon: felül fájlnév, középen tartalom, alul megjegyzés.
+private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: Bool, exported: Bool, text: String?,
+                     graphics: VisualTheme.Graphics?, siteHost: String?) -> String {
+    let url = escaped("/api/attachment" + base + "?inline=1&name=" + encodeQuery(file.asset))
+    let filename = escaped(file.displayName(image: node.isImage))
+    let download = escaped("/api/box-file" + base + "?id=" + encodeQuery(node.id))
+    let packageIcon = uiIcon("package")
+    let ext = escaped(((file.filename ?? file.asset) as NSString).pathExtension.uppercased())
+    func downloadControl(_ label: String, classes: String = "node-download") -> String {
+        if interactive {
+            return "<button type=\"button\" class=\"\(classes)\" title=\"\(filename)\" aria-label=\"Letöltés · \(filename)\" data-download=\"\(download)\">\(packageIcon)\(label)</button>"
+        }
+        return exported ? "<a class=\"\(classes)\" href=\"\(download)\" aria-label=\"Letöltés · \(filename)\">\(packageIcon)\(label)</a>" : "<span class=\"\(classes)\">\(label)</span>"
+    }
+    let header = file.showFilename != false ? "<header class=\"node-file-name\">\(downloadControl("<span>\(filename)</span>"))</header>" : ""
+    let content: String
+    switch node.root {
+    case "image":
+        content = "<img alt=\"\(filename)\" src=\"\(url)\"/>"
+    case "audio":
+        content = """
+            <div class="node-audio" data-audio-player="">
+              <audio hidden="hidden" preload="metadata" src="\(url)"></audio>
+              <button type="button" class="button" data-audio-toggle="" aria-label="Lejátszás" title="Lejátszás">\(uiIcon("play"))</button>
+              <input type="range" min="0" max="0" step="any" disabled="disabled" data-audio-seek="" aria-label="Lejátszási pozíció"/>
+              <small data-audio-time="">0:00</small>
+              <small data-audio-status="" role="status"></small>
+            </div>
+            """
+    case "text":
+        let fold = node.resolvedBackgroundMode == .solid ? " with-fold" : ""
+        content = "<div class=\"node-note\(fold)\" data-font-size=\"\(number(node.fontSize))\">\(fileTextHTML(node, text: text))</div>"
+    default:
+        content = "<div class=\"node-document\"><span class=\"node-document-icon\">\(packageIcon)<b>\(ext)</b></span>\(downloadControl("Letöltés", classes: "node-download button small"))</div>"
+    }
+    let marker = node.link.map { link in
+        "<p class=\"node-link-caption\" data-link-kind=\"\(link.kind.rawValue)\">\(uiIcon(link.kind == .url ? "website" : "link"))<span>\(escaped(linkCaption(link)))</span></p>"
+    } ?? ""
+    let comment = node.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || node.hideText == true ? "" :
+        "<footer class=\"node-comment formatted-text align-\(node.alignment.rawValue)\">\(markdownHTML(node.text))</footer>"
+    let geometry = boxGeometry(node, graphics: graphics)
+    let chrome = elevationShadow(node, geometry: geometry, graphics: graphics) +
+        boxSurface(node, geometry: geometry, graphics: graphics, interactive: interactive)
+    let translated = chrome.isEmpty ? "" : "<g transform=\"translate(\(number(node.position.x)) \(number(node.position.y)))\">\(chrome)</g>"
+    return """
+        \(translated)<foreignObject x="\(number(node.position.x-node.width/2))" y="\(number(node.position.y-node.height/2))" width="\(number(node.width))" height="\(number(node.height))"><div xmlns="http://www.w3.org/1999/xhtml" data-file-ink="\(escaped(node.textColor))" style="color:\(escaped(node.textColor))" class="node-file node-\(node.root)">\(header)<div class="node-body">\(content)</div>\(marker)\(comment)</div></foreignObject>
+        """
+}
+
+func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = nil, assetBase: String? = nil, mode: String? = nil,
+              fileText: (Idea) -> String? = { _ in nil }) -> String {
+    renderWorksheetCanvas(board.painted(mode: mode), noteBase: noteBase, siteHost: siteHost, assetBase: assetBase, fileText: fileText).svg
+}
+
+/// - Parameter fileText: szövegfájl-objektum (`text`, `code`, `csv`) tartalma; a vásznon csak az eleje jelenik meg.
+func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: String?, assetBase: String? = nil,
+                           fileText: (Idea) -> String? = { _ in nil }) -> (svg: String, tooltipNodes: [Idea]) {
     let graphics = Themes.catalog.first { $0.id == board.appearance?.theme }?.graphics
     let drawings = board.nodes.map(ideaDrawing)
     let renderedIdeas = drawings.map(\.node)
@@ -746,7 +837,7 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
         let node = drawing.node
         var extentX = max(node.width/2, drawing.extentX)
         var extentY = max(node.height/2, drawing.extentY)
-        if node.file == nil && node.kind != .connectionPoint {
+        if node.isBox {
             switch node.animation ?? .none {
             case .pulse: (extentX, extentY) = (extentX * 1.09, extentY * 1.09)
             case .rock: (extentX, extentY) = (extentX + extentY * 0.14, extentY + extentX * 0.14)
@@ -756,9 +847,10 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
         }
         let padding: Double = node.elevated == true ? 84 : 40
         halfWidth = max(halfWidth, abs(node.position.x) + extentX + padding)
-        if node.kind == .connectionPoint && !node.title.isEmpty {
-            let labelEnd = node.position.x + node.width / 2 + 4 + textWidth(node.title, size: 14)
-            halfWidth = max(halfWidth, labelEnd + 40)
+        if node.isJunction && !node.text.isEmpty {
+            let reach = node.width / 2 + 4 + textWidth(node.text, size: 14)
+            halfWidth = max(halfWidth, abs(node.position.x) + reach + 40)
+            halfHeight = max(halfHeight, abs(node.position.y) + reach + 40)
         }
         halfHeight = max(halfHeight, abs(node.position.y) + extentY + padding)
     }
@@ -772,10 +864,12 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
             }
         }
     }
+    let containers = Set(renderedIdeas.filter(\.isContainer).map(\.id))
     let ordered = drawings.sorted { a, b in
         let raisedA = elevated.contains(a.node.id), raisedB = elevated.contains(b.node.id)
         if raisedA != raisedB { return raisedB }
-        if (a.node.kind == .container) != (b.node.kind == .container) { return a.node.kind == .container }
+        let outerA = containers.contains(a.node.id), outerB = containers.contains(b.node.id)
+        if outerA != outerB { return outerA }
         return a.node.width * a.node.height > b.node.width * b.node.height
     }
     let nodeLayers = Dictionary(uniqueKeysWithValues: ordered.enumerated().map { ($0.element.node.id, $0.offset) })
@@ -985,74 +1079,44 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
     }
     let base = assetBase ?? noteBase ?? ""
     let project = base.split(separator: "/").first.flatMap { $0.removingPercentEncoding }
+    let path = (noteBase ?? assetBase).flatMap { base in
+        try? WorksheetPath(base.split(separator: "/").map { String($0).removingPercentEncoding ?? String($0) })
+    }
+    /// A link célja (href) és előnézete: .web mappánál a prezentáció, munkalapnál a céllap képe.
+    func target(_ link: NodeLink) -> (href: String, preview: String?)? {
+        switch link.kind {
+        case .web:
+            guard let project, let url = link.webReference?.url(in: project) else { return nil }
+            return (url, url + "_tn-preview")
+        case .sheet:
+            guard let path, let href = link.worksheetLink?.destination(from: path) else { return nil }
+            return (href, "/api/preview" + (href == "/" ? "" : href))
+        case .url:
+            guard let path, let href = link.worksheetLink?.destination(from: path) else { return nil }
+            return (href, nil)
+        }
+    }
     func render(_ drawing: IdeaDrawing) -> String {
         let node = drawing.node
-        let webURL = node.file?.webPath.flatMap { reference in
-            project.flatMap { name in (try? WebPresentationReference(reference))?.url(in: name) }
-        }
+        let destination = node.link.flatMap(target)
         let graphic: String
         if let file = node.file {
-            let url = escaped("/api/attachment" + (assetBase ?? noteBase ?? "") + "?inline=1&name=" + encodeQuery(file.asset ?? ""))
-            let title = file.hideTitle == true || node.title.isEmpty ? "" : "<strong>\(escaped(node.title))</strong>"
-            let justification = node.textStyle?.justified == true ? " justified-text" : ""
-            let commentClass = justification.isEmpty ? "" : " class=\"justified-text\""
-            let content: String
-            switch file.type {
-            case .image:
-                let alt = escaped(node.title.isEmpty ? file.imageStem : node.title)
-                content = "<img alt=\"\(alt)\" src=\"\(url)\"/>"
-            case .mp3:
-                content = """
-                    <div class="node-audio" data-audio-player="">
-                      <audio hidden="hidden" preload="metadata" src="\(url)"></audio>
-                      <button type="button" class="button" data-audio-toggle="" aria-label="Lejátszás" title="Lejátszás">\(uiIcon("play"))</button>
-                      <input type="range" min="0" max="0" step="any" disabled="disabled" data-audio-seek="" aria-label="Lejátszási pozíció"/>
-                      <small data-audio-status="" role="status"></small>
-                    </div><small\(commentClass)>\(escaped(node.text))</small>
-                    """
-            case .md: content = "<div class=\"formatted-text\(justification)\">\(markdownHTML(node.text))</div>"
-            case .txt, .json: content = "<pre\(commentClass)>\(escaped(node.text))</pre>"
-            case .web:
-                let preview = webURL.map { "<img class=\"node-web-preview\" alt=\"\" src=\"\(escaped($0 + "_tn-preview"))\"/>" } ?? ""
-                let path = escaped(file.webPath ?? "")
-                content = "<div class=\"node-web\">\(preview)<span>\(uiIcon("website"))\(path)</span></div>"
-            case .attachment, .worksheet: content = ""
-            }
-            let note = file.type == .md || file.type == .txt
-            let filename = escaped(file.displayName(title: node.title))
-            let download = escaped("/api/box-file" + (assetBase ?? noteBase ?? "") + "?id=" + encodeQuery(node.id))
-            let filenameLabel = file.showFilename != false ? "<span>\(filename)</span>" : ""
-            let packageIcon = uiIcon("package")
-            let footer = file.type == .web ? "" : noteBase == nil
-                ? (assetBase == nil ? filenameLabel : "<a href=\"\(download)\" aria-label=\"Letöltés · \(filename)\">\(packageIcon)\(filenameLabel)</a>")
-                :
-                "<button type=\"button\" class=\"node-download\" title=\"\(filename)\" aria-label=\"Letöltés · \(filename)\" data-download=\"\(download)\">\(packageIcon)\(filenameLabel)</button>"
-            let fold = node.resolvedBackgroundMode == .solid ? " with-fold" : ""
-            let body = note ? "<div class=\"node-note\(fold)\">\(content)</div>" : content
-            let image = file.type == .image
-            let above: Double = (image || note) && !title.isEmpty ? 22 : 0
-            let below: Double = image || note ? 22 : 0
-            let geometry = boxGeometry(node, graphics: graphics)
-            let chrome = elevationShadow(node, geometry: geometry, graphics: graphics) +
-                boxSurface(node, geometry: geometry, graphics: graphics, interactive: noteBase != nil)
-            let translated = chrome.isEmpty ? "" : "<g transform=\"translate(\(number(node.position.x)) \(number(node.position.y)))\">\(chrome)</g>"
-            graphic = """
-                \(translated)<foreignObject x="\(number(node.position.x-node.width/2))" y="\(number(node.position.y-node.height/2-above))" width="\(number(node.width))" height="\(number(node.height+above+below))"><div xmlns="http://www.w3.org/1999/xhtml" data-file-ink="\(escaped(node.textColor))" style="color:\(escaped(node.textColor))" class="\(image || note ? "node-image" : "node-file")">\(title)\(body)\(footer)</div></foreignObject>
-                """
-        } else { graphic = nodeSVG(drawing, siteHost: siteHost, graphics: graphics, interactive: noteBase != nil) }
-        guard let noteBase else { return "<g class=\"\(nodeClasses(node))\">\(graphic)</g>" }
-        let parts = noteBase.split(separator: "/").map { String($0).removingPercentEncoding ?? String($0) }
-        let path = try? WorksheetPath(parts)
-        let destination = webURL ?? node.link.flatMap(WorksheetLink.init).flatMap { link in path.flatMap { link.destination(from: $0) } }
+            graphic = fileBox(node, file: file, base: assetBase ?? noteBase ?? "", interactive: noteBase != nil, exported: assetBase != nil,
+                              text: node.isTextFile ? fileText(node) : nil, graphics: graphics, siteHost: siteHost)
+        } else {
+            graphic = nodeSVG(drawing, siteHost: siteHost, graphics: graphics, interactive: noteBase != nil, preview: destination?.preview)
+        }
+        let classes = nodeClasses(node, hasChildren: containers.contains(node.id))
+        guard noteBase != nil else { return "<g class=\"\(classes)\">\(graphic)</g>" }
         let tag = destination == nil ? "g" : "a"
-        var linked = destination.map { " data-link=\"true\" href=\"\(escaped($0))\"" } ?? ""
-        if webURL != nil {
+        var linked = destination.map { " data-link=\"true\" href=\"\(escaped($0.href))\"" } ?? ""
+        if node.link?.kind == .web {
             linked += " data-web-presentation=\"true\" target=\"_blank\" rel=\"noopener noreferrer\""
-        } else if let raw = node.link, let link = WorksheetLink(raw), link.isExternal(siteHost: siteHost) {
+        } else if node.link?.worksheetLink?.isExternal(siteHost: siteHost) == true {
             linked += " target=\"_blank\" rel=\"noopener noreferrer\""
         }
         let geometry = "data-x=\"\(node.position.x)\" data-y=\"\(node.position.y)\" data-width=\"\(node.width)\" data-height=\"\(node.height)\" data-shape=\"\(node.shape.rawValue)\" data-parent=\"\(node.parent ?? "")\""
-        return "<\(tag) id=\"object-\(node.id)\" class=\"\(nodeClasses(node))\" data-node=\"\(node.id)\" \(geometry)\(linked) aria-label=\"\(escaped(node.title))\">\(graphic)</\(tag)>"
+        return "<\(tag) id=\"object-\(node.id)\" class=\"\(classes)\" data-node=\"\(node.id)\" data-type=\"\(node.type)\" \(geometry)\(linked) aria-label=\"\(escaped(node.name))\">\(graphic)</\(tag)>"
     }
     let wiresByLayer = Dictionary(grouping: edges, by: \.layer)
     var scene: [String] = []
@@ -1134,13 +1198,17 @@ func worksheetMarkdown(_ worksheet: Worksheet) -> String {
     }
     var sections = ["# \(inline(worksheet.title))\n"]
     if let text = worksheet.text, !text.isEmpty { sections.append(text) }
-    for node in worksheet.nodes {
-        sections.append("## \(inline(node.title))\n")
-        if node.file?.type != .image && !node.text.isEmpty { sections.append(node.text) }
+    for node in worksheet.nodes where !node.isJunction {
+        if node.file != nil {
+            sections.append("## \(inline(node.name))\n")
+            if !node.text.isEmpty { sections.append(node.text) }
+        } else if !node.text.isEmpty {
+            sections.append(node.text)
+        }
     }
     if !worksheet.edges.isEmpty {
         sections.append("## Kapcsolatok\n")
-        let names = Dictionary(uniqueKeysWithValues: worksheet.nodes.map { ($0.id, inline($0.title)) })
+        let names = Dictionary(uniqueKeysWithValues: worksheet.nodes.map { ($0.id, inline($0.name)) })
         func endpoint(_ endpoint: ConnectionTarget) -> String {
             if let id = endpoint.node, let name = names[id] { return name }
             return endpoint.point.map { "(\(number($0.x)), \(number($0.y)))" } ?? ""

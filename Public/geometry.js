@@ -116,7 +116,7 @@ export function shapeDistance(node, point, padding = 0) {
   const w = node.width / 2 + padding, h = node.height / 2 + padding;
   const dx = point.x - node.position.x, dy = point.y - node.position.y;
   const x = dx / w, y = dy / h;
-  const shape = node.kind === "connectionPoint" ? currentGraphics().junction ?? "ellipse" : displayShape(node.shape);
+  const shape = node.type === "junction" ? currentGraphics().junction ?? "ellipse" : displayShape(node.shape);
   if (shape === "ellipse") return Math.hypot(x, y);
   const vertices = polygonVertices(shape, w, h);
   if (vertices) {
@@ -448,9 +448,10 @@ export function canvasBounds(board) {
   for (const node of board.nodes) {
     const padding = node.elevated === true ? 84 : 40;
     halfWidth = Math.max(halfWidth, Math.abs(node.position.x) + (node.extentX ?? node.width / 2) + padding);
-    if (node.kind === "connectionPoint" && node.title) {
-      const labelEnd = node.position.x + node.width / 2 + 4 + textWidth(node.title, 14);
-      halfWidth = Math.max(halfWidth, labelEnd + 40);
+    if (node.type === "junction" && node.text) {
+      const reach = node.width / 2 + 4 + textWidth(node.text, 14);
+      halfWidth = Math.max(halfWidth, Math.abs(node.position.x) + reach + 40);
+      halfHeight = Math.max(halfHeight, Math.abs(node.position.y) + reach + 40);
     }
     halfHeight = Math.max(halfHeight, Math.abs(node.position.y) + (node.extentY ?? node.height / 2) + padding);
   }
@@ -484,26 +485,6 @@ function textWidth(value, size) {
   return width * size;
 }
 
-
-function wrap(text, columns) {
-  const lines = [];
-  let line = [];
-  for (const word of text.trim().split(/\s+/).filter(Boolean)) {
-    let letters = Array.from(word);
-    if (line.length && line.length + letters.length + 1 > columns) {
-      lines.push(line.join(""));
-      line = [];
-    }
-    while (letters.length > columns) {
-      lines.push(letters.slice(0, columns).join(""));
-      letters = letters.slice(columns);
-    }
-    if (line.length) line.push(" ");
-    line.push(...letters);
-  }
-  if (line.length) lines.push(line.join(""));
-  return lines;
-}
 
 function wrapRuns(runs, columns, preformatted) {
   const rows = [];
@@ -581,144 +562,102 @@ function shortenLine(line, width) {
   return {...line, text: runs.map(run => run.text).join(""), runs: line.runs ? runs : undefined, wrapped: false};
 }
 
+// Címsor mérete az alapméret arányában (Rendering.swift headingScale).
+export const headingScale = level => ({1: 1.6, 2: 1.3}[level] ?? 1.15);
+
+// Doboz szövegének elrendezése; a Rendering.swift ideaDrawing/nodeSVG párja (docs/node-types.md, Text képesség).
 export function labelLayout(node, blocks = []) {
-  if (node.kind === "connectionPoint") return {width: node.width, height: node.height, lines: []};
+  if (node.type !== "box") return {width: node.width, height: node.height, lines: []};
   const [widthRatio, heightRatio] = shapeLabelRatios(node.shape);
-  const textStyle = node.textStyle ?? {};
-  const hiddenText = node.hideText && !!node.text?.trim();
-  if (hiddenText) blocks = [{kind: "body", runs: [{text: "•••"}]}];
-  const width = node.width;
+  const width = node.width, height = node.height;
   const labelWidth = Math.max(12, width * widthRatio - 16);
-  const iconSpace = node.link ? 18 : 0;
-  const height = node.height;
-  const labelHeight = height * heightRatio - 12 - iconSpace;
+  const iconSpace = node.link ? 20 : 0;
+  const previewSpace = node.link && node.link.kind !== "url" ? height * 0.5 : 0;
+  const labelHeight = height * heightRatio - 12 - iconSpace - previewSpace;
+  const strong = node.bold === true;
 
-  function makeLines(titleSize, bodySize) {
+  function makeLines(base) {
     const lines = [];
-
-    function add(value, size, weight, color, style, section) {
-      const text = value.trim().replace(/\s+/g, " ");
-      if (!text) return;
-      const wrapped = textWidth(text, size) <= labelWidth
-        ? [text] : wrap(text, Math.max(2, Math.floor(labelWidth / (size * 0.65))));
-      for (const text of wrapped) lines.push({section, text, size, weight, color, italic: style.italic, underline: style.underline, alignment: style.alignment, vertical: style.verticalAlignment, step: size * 1.25});
-    }
-
-    add(node.title, titleSize, node.bold ? 650 : 400, node.textColor, node, "title");
     blocks.forEach((block, index) => {
-      const size = block.kind === "heading" ? (node.fitText ? bodySize * 1.15 : Math.round(bodySize * 1.15)) : bodySize;
-      const weight = block.kind === "heading" || textStyle.bold ? 700 : 400;
+      const heading = block.kind === "heading";
+      let size = heading ? base * headingScale(block.level) * (strong ? 1.1 : 1) : base;
+      if (!node.fitText) size = Math.round(size);
+      const weight = heading ? (strong ? 900 : 700) : (strong ? 650 : 400);
+      const indent = Math.max(0, (block.indent ?? 0) - 1) * base * 1.2;
+      const columns = Math.max(2, Math.floor((labelWidth - indent) / (size * 0.65)));
       const runs = block.kind === "quote" ? [{text: "› "}, ...block.runs] : block.runs;
-      const columns = Math.max(hiddenText ? 3 : 2, Math.floor(labelWidth / (size * 0.65)));
       wrapRuns(runs, columns, block.kind === "code").forEach(({pieces, wrapped}, row) => {
-        const blockGap = index === 0 ? 8 : 3;
-        const gap = row === 0 ? (node.fitText ? Math.min(blockGap, bodySize * 0.4) : blockGap) : 0;
-        lines.push({section: "textStyle", justify: textStyle.justified && block.kind !== "code", wrapped, runs: pieces, text: pieces.map(piece => piece.text).join(""), size, weight,
-          color: textStyle.color ?? node.textColor, italic: textStyle.italic, underline: textStyle.underline, alignment: textStyle.alignment, vertical: textStyle.verticalAlignment, step: size * 1.25 + gap, gap});
+        const blockGap = index === 0 ? 0 : heading ? size * 0.35 : 3;
+        const gap = row === 0 ? (node.fitText ? Math.min(blockGap, base * 0.4) : blockGap) : 0;
+        lines.push({justify: node.justified && block.kind !== "code", wrapped, runs: pieces, text: pieces.map(piece => piece.text).join(""),
+          size, weight, indent, color: node.textColor, step: size * 1.25 + gap, gap});
       });
     });
-
+    if (node.hideText && lines.length > 1) {
+      const first = lines[0];
+      return [{...first, runs: [...first.runs, {text: " …"}], text: first.text + " …"}];
+    }
     return lines;
   }
 
   let lines;
   if (node.fitText) {
     let low = 1, high = Math.floor(labelHeight / 1.25);
-    lines = makeLines(1.4, 1);
+    lines = makeLines(1);
     while (low <= high) {
       const size = Math.floor((low + high) / 2);
-      const candidate = makeLines(size * 1.4, size);
-      let insideHeight = 0, outsideHeight = 0;
-      for (const line of candidate) {
-        if (node.titleOutside && line.section === "title") outsideHeight += line.step;
-        else insideHeight += line.step;
-      }
-      if (Math.max(insideHeight, outsideHeight) <= labelHeight &&
-          candidate.every(line => textWidth(line.text, line.size) <= labelWidth)) {
+      const candidate = makeLines(size);
+      if (candidate.reduce((sum, line) => sum + line.step, 0) <= labelHeight &&
+          candidate.every(line => textWidth(line.text, line.size) + line.indent <= labelWidth)) {
         lines = candidate;
         low = size + 1;
-      } else {
-        high = size - 1;
-      }
+      } else high = size - 1;
     }
-  } else {
-    lines = makeLines(node.fontSize, textStyle.size ?? 13);
-  }
+  } else lines = makeLines(node.fontSize ?? 16);
 
-  const external = new Map();
-  const inside = lines.filter(line => {
-    if (line.runs || !node.titleOutside) return true;
-    const horizontal = node.alignment;
-    let vertical = node.verticalAlignment ?? "middle";
-    if (vertical === "middle" && horizontal === "center") vertical = "top";
-    const key = horizontal + "/" + vertical;
-    if (!external.has(key)) external.set(key, {horizontal, vertical, rows: []});
-    external.get(key).rows.push(line);
-    return false;
-  });
   const available = Math.max(0, labelHeight);
   const visible = [];
   let remaining = available;
-  for (const line of inside) {
+  for (const line of lines) {
     if (remaining < line.step) break;
     visible.push(line);
     remaining -= line.step;
   }
-  const omitted = visible.length < inside.length;
-  if (omitted && !visible.length) {
-    visible.push(inside[0]);
-    remaining = available - inside[0].step;
-  }
-  let overflow = omitted;
-  {
-    for (let i = 0; i < visible.length; i++) {
-      const line = visible[i];
-      if (textWidth(line.text, line.size) > labelWidth || (omitted && i === visible.length - 1)) {
-        visible[i] = shortenLine(line, labelWidth);
-        overflow = true;
-      }
+  const omitted = visible.length < lines.length;
+  if (omitted && !visible.length) visible.push(lines[0]);
+  let overflow = omitted || (node.hideText && blocks.length > 1);
+  for (let i = 0; i < visible.length; i++) {
+    const line = visible[i];
+    if (textWidth(line.text, line.size) + line.indent > labelWidth || (omitted && i === visible.length - 1)) {
+      visible[i] = shortenLine(line, labelWidth - line.indent);
+      overflow = true;
     }
   }
-
-  if (hiddenText && !visible.some(line => line.runs)) {
-    const marker = inside.at(-1);
-    while (visible.length && remaining < marker.step) remaining += visible.pop().step;
-    visible.push(marker);
-    remaining -= marker.step;
-  }
-
-  const rank = line => ({top: 0, bottom: 1}[line.vertical] ?? 0.5);
-  visible.sort((a, b) => rank(a) - rank(b));
-  let offset = -(available + iconSpace) / 2;
-  let extentX = width / 2, extentY = Math.max(height, available + iconSpace) / 2;
+  const rank = {top: 0, bottom: 1}[node.verticalAlignment] ?? 0.5;
+  const extra = available - visible.reduce((sum, line) => sum + line.step, 0);
+  let offset = -(available + iconSpace + previewSpace) / 2 + previewSpace;
   const positioned = visible.map(line => {
-    const top = offset + remaining * rank(line);
+    const top = offset + extra * rank;
     const y = top + (line.gap ?? 0) + line.size * (1.25 / 2 + 0.33);
     offset += line.step;
-    const align = line.justify ? "left" : line.alignment ?? node.alignment;
-    const x = align === "left" ? -labelWidth / 2 : align === "right" ? labelWidth / 2 : 0;
+    const align = line.justify || line.indent > 0 ? "left" : node.alignment ?? "center";
+    const x = align === "left" ? -labelWidth / 2 + line.indent : align === "right" ? labelWidth / 2 : 0;
     let wordSpacing;
     if (line.justify && line.wrapped) {
       const spaces = line.text.split(" ").length - 1;
       const lineWidth = textWidth(line.text, line.size);
-      if (spaces && lineWidth < labelWidth) wordSpacing = (labelWidth - lineWidth) / spaces;
+      if (spaces && lineWidth < labelWidth - line.indent) wordSpacing = (labelWidth - line.indent - lineWidth) / spaces;
     }
     return {...line, x, y, anchor: {left: "start", center: "middle", right: "end"}[align], wordSpacing};
   });
-  for (const {horizontal, vertical, rows} of external.values()) {
-    const total = rows.reduce((sum, line) => sum + line.step, 0);
-    const side = horizontal === "left" ? -1 : horizontal === "right" ? 1 : 0;
-    const centerX = side * (width / 2 + 8 + labelWidth / 2);
-    let y = vertical === "top" ? -height/2-8-total : vertical === "bottom" ? height/2+8 : -total/2;
-    extentX = Math.max(extentX, Math.abs(centerX) + labelWidth/2 + 4);
-    extentY = Math.max(extentY, Math.abs(y), Math.abs(y + total));
-    for (const line of rows) {
-      const anchor = horizontal === "left" ? "end" : horizontal === "right" ? "start" : "middle";
-      const x = centerX - side * labelWidth/2;
-      extentX = Math.max(extentX, Math.abs(x) + textWidth(line.text, line.size) * 1.25 + line.size);
-      positioned.push({...line, anchor, x, y: y + (line.gap ?? 0) + line.size * .955});
-      y += line.step;
-    }
-  }
-  return {width, height, extentX, extentY, overflow, lines: positioned};
+  return {width, height, extentX: width / 2, extentY: height / 2, overflow, lines: positioned, labelWidth, iconSpace, previewSpace};
 }
+
+// A link rövid felirata a dobozon (Rendering.swift linkCaption).
+export function linkCaption(link) {
+  if (link.kind === "url") { try { return new URL(link.target).host; } catch { return link.target; } }
+  if (link.kind === "web") return link.target.split("/").at(-1).replace(/\.web$/, "");
+  return link.target;
+}
+
+export {textWidth};

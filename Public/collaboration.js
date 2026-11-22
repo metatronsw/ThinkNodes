@@ -57,7 +57,7 @@ export function rebaseWorksheet(base, local, remote) {
     const visited = new Set([node.id]);
     let parent = node.parent;
     while (parent) {
-      if (visited.has(parent) || present.get(parent)?.kind !== "container") {
+      if (visited.has(parent) || present.get(parent)?.type !== "box" || !present.get(parent).container) {
         delete node.parent;
         break;
       }
@@ -66,7 +66,7 @@ export function rebaseWorksheet(base, local, remote) {
     }
   }
   const attached = new Set(result.edges.flatMap(edge => [edge.source, edge.target.node]));
-  result.nodes = result.nodes.filter(n => n.kind !== "connectionPoint" || attached.has(n.id));
+  result.nodes = result.nodes.filter(n => n.type !== "junction" || attached.has(n.id));
   return result;
 }
 

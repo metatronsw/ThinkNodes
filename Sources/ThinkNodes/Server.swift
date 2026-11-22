@@ -460,12 +460,14 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
     app.get("export", ":format", "**") { req async throws -> Response in
         let path = try WorksheetPath(req.parameters.getCatchall())
         let identity = try session(req, store: store)
-        let worksheet = try await req.application.threadPool.runIfActive {
-            try store.load(path, user: identity.user, unlocks: identity.unlocks)
+        let (worksheet, texts) = try await req.application.threadPool.runIfActive {
+            let sheet = try store.load(path, user: identity.user, unlocks: identity.unlocks)
+            return (sheet, try store.fileTexts(path, sheet: sheet, user: identity.user, unlocks: identity.unlocks))
         }
         switch req.parameters.get("format") {
         case "svg":
-            return response("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + boardSVG(worksheet, siteHost: req.headers.first(name: .host), assetBase: "/" + path.url, mode: siteMode(req)),
+            return response("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + boardSVG(worksheet, siteHost: req.headers.first(name: .host), assetBase: "/" + path.url, mode: siteMode(req),
+                                                                            fileText: { $0.file.flatMap { texts[$0.asset] } }),
                             type: "image/svg+xml; charset=utf-8", filename: "\(path.name).svg")
         case "thnode", "json":
             return try worksheetResponse(worksheet, filename: "\(path.name).thnode")
@@ -675,10 +677,6 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
             result.headers.replaceOrAdd(name: "X-Content-Type-Options", value: "nosniff")
             result.headers.replaceOrAdd(name: .cacheControl, value: "no-store")
             return result
-        case .text(let text, let name):
-            let result = response(text, type: "application/octet-stream")
-            result.headers.replaceOrAdd(name: .contentDisposition, value: "attachment; filename*=UTF-8''" + encodeQuery(name))
-            return result
         }
     }
 
@@ -714,11 +712,12 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         }
         let access = try store.access(path, sheet: worksheet, user: identity.user, unlocks: identity.unlocks)
         let files = try store.contents(path, user: identity.user, unlocks: identity.unlocks)
+        let texts = try store.fileTexts(path, sheet: worksheet, user: identity.user, unlocks: identity.unlocks)
         let pages = try children.map { child in
             (child.path, child.worksheet, try store.access(child.path, sheet: child.worksheet, user: identity.user, unlocks: identity.unlocks))
         }
         do {
-            return try passivePage(req, path: path, worksheet: worksheet, session: identity, access: access, children: pages, files: files, updates: updates)
+            return try passivePage(req, path: path, worksheet: worksheet, session: identity, access: access, children: pages, files: files, texts: texts, updates: updates)
         } catch let error as Abort where error.status == .notFound {
             return missingPage(identity, updates: live.pages.subscribe(.index))
         }
@@ -894,7 +893,7 @@ private func siteMode(_ req: Request) -> String? {
     return value == "light" || value == "dark" ? value : nil
 }
 
-private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Worksheet, session: SessionInfo, access: DocumentAccess, children: [(path: WorksheetPath, worksheet: Worksheet, access: DocumentAccess)], files: [URL], updates: PageUpdates.Subscription) throws -> Response {
+private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Worksheet, session: SessionInfo, access: DocumentAccess, children: [(path: WorksheetPath, worksheet: Worksheet, access: DocumentAccess)], files: [URL], texts: [String: String] = [:], updates: PageUpdates.Subscription) throws -> Response {
     let previews = children.map { child in
         """
         <a class="sub-preview preview-link" data-scope="\(child.path.parts.count == 1 ? "project" : "sheet")" \(menuState(child.access.sheetRule)) data-manage="\(child.access.manageable)" href="/\(child.path.url)">
@@ -919,11 +918,11 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
     }.joined()
     let note: String
     if let noteID = req.query[String.self, at: "note"] {
-        guard let node = worksheet.nodes.first(where: { $0.id == noteID && $0.file?.type != .image }) else { throw Abort(.notFound) }
+        guard let node = worksheet.nodes.first(where: { $0.id == noteID && !$0.isJunction }) else { throw Abort(.notFound) }
         note = """
             <article class="panel passive-note"><a class="muted" href="\(base)">Vissza a munkalaphoz</a>
-              <h2>\(escaped(node.title))</h2>
-              <div class="formatted-text\(node.textStyle?.justified == true ? " justified-text" : "")">\(node.text.isEmpty ? "<p>Még nincs leírás.</p>" : markdownHTML(node.text))</div>
+              <h2>\(escaped(node.name))</h2>
+              <div class="formatted-text\(node.justified == true ? " justified-text" : "")">\(node.text.isEmpty ? "<p>Még nincs leírás.</p>" : markdownHTML(node.text))</div>
             </article>
             """
     } else {
@@ -935,18 +934,18 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
     let graphicsJSON = String(decoding: try JSONEncoder().encode(theme?.graphics), as: UTF8.self)
     let selectionSample = Worksheet(appearance: worksheet.appearance, title: "", background: "@\(theme?.graphics?.selection ?? 4)")
     let selectionColor = selectionSample.painted(mode: siteMode(req)).backgroundColor
-    let canvas = renderWorksheetCanvas(display, noteBase: base, siteHost: host)
+    let canvas = renderWorksheetCanvas(display, noteBase: base, siteHost: host, fileText: { $0.file.flatMap { texts[$0.asset] } })
     let tooltips = canvas.tooltipNodes.map {
-        let justification = $0.textStyle?.justified == true ? " data-justified" : ""
+        let justification = $0.justified == true ? " data-justified" : ""
         return "<template data-tooltip=\"\($0.id)\"\(justification)>\(markdownHTML($0.text))</template>"
     }.joined()
     let introduction = worksheet.text.map(markdownHTML) ?? ""
     let notes = introduction.isEmpty ? "" :
         "<section class=\"panel worksheet-notes\"><div class=\"formatted-text\(worksheet.textJustified == true ? " justified-text" : "")\">\(introduction)</div></section>"
     let external = worksheet.nodes.compactMap { node -> String? in
-        guard let raw = node.link, let link = WorksheetLink(raw), link.isExternal(siteHost: host),
+        guard let link = node.link?.worksheetLink, link.isExternal(siteHost: host),
               let href = link.destination(from: path) else { return nil }
-        return "<li><a href=\"\(escaped(href))\" target=\"_blank\" rel=\"noopener noreferrer\">\(uiIcon("link"))<span>\(escaped(node.title))</span></a></li>"
+        return "<li><a href=\"\(escaped(href))\" target=\"_blank\" rel=\"noopener noreferrer\">\(uiIcon("link"))<span>\(escaped(node.name.isEmpty ? href : node.name))</span></a></li>"
     }.joined()
     let attachments = files.map { file in
         let name = file.lastPathComponent
