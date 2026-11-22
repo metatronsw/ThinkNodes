@@ -176,7 +176,7 @@ import VaporTesting
         #expect(throws: Abort.self) { try withArchive.validate() }
         let preview = try await browser.sendRequest(.GET, "/api/preview/" + path + "/terv")
         #expect(preview.status == .ok && preview.body.string.contains("<svg"))
-        #expect(FileManager.default.fileExists(atPath: file.deletingLastPathComponent().appendingPathComponent("terv/.terv.preview-v10.svg").path))
+        #expect(FileManager.default.fileExists(atPath: file.deletingLastPathComponent().appendingPathComponent("terv/.terv.preview-v11.svg").path))
         try await checkPreviewAndPreferences(browser, path: path + "/terv", sheet: child, session: shared, png: png)
         let parent = try await browser.sendRequest(.GET, "/" + path)
         #expect(parent.body.string.contains("További munkalapok") && parent.body.string.contains("Létrehozó: shared"))
@@ -222,7 +222,8 @@ import VaporTesting
         let svg = try await browser.sendRequest(.GET, "/export/svg/\(path)")
         #expect(svg.status == .ok)
         #expect(svg.headers.first(name: .contentDisposition)?.contains(".svg") == true)
-        #expect(svg.body.string.contains("viewBox=\"-850.000 -240.000 1700.000 480.000\""))
+        // A kép kerete a tartalom széleihez igazodik (a szabad vonal -410…810 között fut), nem az origó köré szimmetrikus.
+        #expect(svg.body.string.contains("viewBox=\"-450.000 -285.000 1300.000 480.000\""))
         #expect(svg.body.string.contains("marker-start="))
         #expect(svg.body.string.contains("stroke-dasharray="))
         #expect(svg.body.string.contains("font-weight=\"700\">Szöveg</tspan>"))

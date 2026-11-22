@@ -853,7 +853,7 @@ final class WorksheetStore: @unchecked Sendable {
             if let name = sheet.previewImage,
                let file = try attachments(at: url, named: name, metadata: ctx.local).first,
                let mime = previewType(file) { return .image(file, mime) }
-            let suffix = mode == "dark" ? ".preview-v10-dark.svg" : ".preview-v10.svg"
+            let suffix = mode == "dark" ? ".preview-v11-dark.svg" : ".preview-v11.svg"
             let cache = url.deletingLastPathComponent().appendingPathComponent("." + path.name + suffix)
             try rejectLink(cache)
             let modified = try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate

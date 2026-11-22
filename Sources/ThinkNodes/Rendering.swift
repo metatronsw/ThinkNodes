@@ -842,8 +842,11 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
     let drawings = board.nodes.map(ideaDrawing)
     let renderedIdeas = drawings.map(\.node)
     let nodes = Dictionary(uniqueKeysWithValues: renderedIdeas.map { ($0.id, $0) })
-    var halfWidth = 360.0
-    var halfHeight = 240.0
+    // A kép kerete a tartalom tényleges széleihez igazodik (nem az origó köré szimmetrikus).
+    var bounds = (minX: Double.infinity, minY: Double.infinity, maxX: -Double.infinity, maxY: -Double.infinity)
+    func include(_ x: Double, _ y: Double, _ rx: Double, _ ry: Double) {
+        bounds = (min(bounds.minX, x - rx), min(bounds.minY, y - ry), max(bounds.maxX, x + rx), max(bounds.maxY, y + ry))
+    }
     for drawing in drawings {
         let node = drawing.node
         var extentX = max(node.width/2, drawing.extentX)
@@ -857,13 +860,20 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
             }
         }
         let padding: Double = node.elevated == true ? 84 : 40
-        halfWidth = max(halfWidth, abs(node.position.x) + extentX + padding)
+        include(node.position.x, node.position.y, extentX + padding, extentY + padding)
         if node.isJunction && !node.text.isEmpty {
             let reach = node.width / 2 + 4 + textWidth(node.text, size: 14)
-            halfWidth = max(halfWidth, abs(node.position.x) + reach + 40)
-            halfHeight = max(halfHeight, abs(node.position.y) + reach + 40)
+            include(node.position.x, node.position.y, reach + 40, reach + 40)
         }
-        halfHeight = max(halfHeight, abs(node.position.y) + extentY + padding)
+        if node.file != nil {
+            // A fájlnév a doboz felett, a link és a megjegyzés alatta áll.
+            include(node.position.x, node.position.y - node.height / 2 - 30, node.width / 2 + padding, padding)
+            if node.link != nil || !node.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                include(node.position.x, node.position.y + node.height / 2 + 60, node.width / 2 + padding, padding)
+            }
+        } else if node.link != nil {
+            include(node.position.x, node.position.y + node.height / 2 + 20, node.width / 2 + padding, padding)
+        }
     }
     var elevated = Set(renderedIdeas.filter { $0.elevated == true }.map(\.id))
     if !elevated.isEmpty {
@@ -945,10 +955,7 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
         let taper = custom == nil && (edge.type == .arc || rise > 0)
             && (edge.appearance == .plain || edge.appearance == .thick) && (edge.hasStartArrow || edge.hasEndArrow)
             ? taperedWireArc(edge, from: beginning, control: points.first ?? arcControl(beginning, ending), to: ending) : nil
-        for point in vertices {
-            halfWidth = max(halfWidth, abs(point.x) + 40)
-            halfHeight = max(halfHeight, abs(point.y) + 40)
-        }
+        for point in vertices { include(point.x, point.y, 40, 40) }
         let color = escaped(edge.strokeColor)
         let motion = wireAnimation(edge, from: beginning, to: ending)
         if !motion.gradient.isEmpty { definitions.append(motion.gradient) }
@@ -1083,8 +1090,8 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
         }
         let labelY = hasGap ? 0 : clearance - lineWidth / 2 - 10 - (fontSize - 14) / 4
         let padding = max(28, fontSize + 12)
-        halfWidth = max(halfWidth, abs(center.x - sine * labelY) + abs(cosine) * displayedRadius + padding)
-        halfHeight = max(halfHeight, abs(center.y + cosine * labelY) + abs(sine) * displayedRadius + padding)
+        include(center.x - sine * labelY, center.y + cosine * labelY,
+                abs(cosine) * displayedRadius + padding, abs(sine) * displayedRadius + padding)
         return (wireLayer, wirePath(gap: hasGap) + """
             <text class="wire-label" transform="\(transform)" y="\(number(labelY))"\(labelAttributes) font-family="system-ui, sans-serif" font-size="\(number(fontSize))" font-weight="\(fontWeight)" text-anchor="middle" stroke="none" fill="\(color)">\(escaped(label))</text>
             """)
@@ -1137,8 +1144,13 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
         scene.append(render(drawing))
     }
     scene.append(contentsOf: wiresByLayer[ordered.count, default: []].map(\.markup))
-    let width = number(halfWidth * 2)
-    let height = number(halfHeight * 2)
+    if bounds.minX > bounds.maxX { bounds = (-360, -240, 360, 240) }
+    // Legalább 720 × 480-as kép, a tartalom közepére igazítva.
+    let centerX = (bounds.minX + bounds.maxX) / 2, centerY = (bounds.minY + bounds.maxY) / 2
+    let spanX = max(720, bounds.maxX - bounds.minX), spanY = max(480, bounds.maxY - bounds.minY)
+    let originX = centerX - spanX / 2, originY = centerY - spanY / 2
+    let width = number(spanX)
+    let height = number(spanY)
     let step = board.gridSpacing ?? 32
     let glass = graphics?.glass == true
     let grid: String
@@ -1186,10 +1198,10 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
         </linearGradient>
         """ : ""
     func backdrop(_ fill: String) -> String {
-        "<rect x=\"\(number(-halfWidth))\" y=\"\(number(-halfHeight))\" width=\"\(width)\" height=\"\(height)\" fill=\"\(fill)\"/>"
+        "<rect x=\"\(number(originX))\" y=\"\(number(originY))\" width=\"\(width)\" height=\"\(height)\" fill=\"\(fill)\"/>"
     }
     let svg = """
-        <svg xmlns="http://www.w3.org/2000/svg" class="canvas passive-canvas" role="\(noteBase == nil ? "img" : "group")" aria-label="\(escaped(board.title))" width="\(width)" height="\(height)" viewBox="\(number(-halfWidth)) \(number(-halfHeight)) \(width) \(height)">
+        <svg xmlns="http://www.w3.org/2000/svg" class="canvas passive-canvas" role="\(noteBase == nil ? "img" : "group")" aria-label="\(escaped(board.title))" width="\(width)" height="\(height)" viewBox="\(number(originX)) \(number(originY)) \(width) \(height)">
           \(noteBase == nil ? "<title>\(escaped(board.title))</title>" : "")
           <defs>\(definitions.joined())\(grid)\(glassDefinitions)\(board.nodes.contains { $0.resolvedBackgroundMode == .blurred } ? "<filter id=\"box-background-blur\" x=\"-30%\" y=\"-30%\" width=\"160%\" height=\"160%\"><feGaussianBlur stdDeviation=\"2\"/></filter>" : "")</defs>
           \(backdrop(escaped(board.backgroundColor)))
