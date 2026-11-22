@@ -262,7 +262,7 @@ function elevationShadow(node) {
 function shape(node, linked, dropTarget = false) {
   if (isJunction(node)) {
     const [tag, attrs] = shapeGeometry(graphics.value.junction ?? "ellipse", node.width, node.height);
-    return h(tag, {...attrs, fill: paint(node.fill, 2)});
+    return h(tag, {...attrs, class: "junction-surface", fill: paint(node.fill, 2)});
   }
   const [tag, geometry] = shapeGeometry(node.shape, node.width, node.height);
   const image = isImage(node) ? node.file : null;
@@ -2562,6 +2562,10 @@ createApp({
       const position = displayPosition(node);
       const selectors = peers.value.filter(p => p.node === node.id && (!p.mine || (selected.value?.kind === "node" && selected.value.id === node.id)));
       const owner = selectors.find(p => !p.viewing) ?? selectors[0];
+      // Két eset: a saját kijelölés (világosabb doboz, vastagabb keret, glow nélkül) és a többi
+      // felhasználó kijelölése (az ő színükkel pulzáló glow, ahogy eddig).
+      const peerOwner = selectors.find(p => !p.mine && !p.viewing) ?? selectors.find(p => !p.mine);
+      const ownSelected = selectors.some(p => p.mine) || !!batch.value?.nodes.has(node.id) || !!marqueeHits.value?.nodes.has(node.id);
       const destination = linkDestination(node.link);
       const junction = isJunction(node);
 
@@ -2605,7 +2609,7 @@ createApp({
       return h("g", {key: node.id, "data-node": node.id, "data-type": node.type, "data-width": drawn.width, "data-height": drawn.height, tabindex: 0,
         role: rootType(node.type) === "audio" ? "group" : "button",
         "aria-label": nodeName(node), "data-link": destination ? "" : undefined,
-        class: [nodeClasses(node, containerIDs.value.has(node.id)), {"editing-object": editingObject.value === node.id, occupied: occupied(node.id), claimed: !!owner}],
+        class: [nodeClasses(node, containerIDs.value.has(node.id)), {"editing-object": editingObject.value === node.id, occupied: occupied(node.id), claimed: !!owner, "own-selected": ownSelected}],
         transform: "translate(" + position.x + " " + position.y + ")",
         onPointerenter: event => {
           if (!gesture.value && isBox(node) && layout.overflow && node.text) showTooltip(event, async signal => {
@@ -2625,8 +2629,11 @@ createApp({
           if (event.key === "Enter" && event.shiftKey) openProperties("node", node.id);
         },
       }, [
-        owner || snapTarget || batch.value?.nodes.has(node.id) || marqueeHits.value?.nodes.has(node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-glow", color: owner && !owner.mine ? owner.color : selectionTint(), fill: "none",
-          stroke: owner && !owner.mine ? owner.color : selectionTint(), "stroke-width": 3, "pointer-events": "none"}) : null,
+        peerOwner || snapTarget ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-glow", color: peerOwner ? peerOwner.color : selectionTint(), fill: "none",
+          stroke: peerOwner ? peerOwner.color : selectionTint(), "stroke-width": 3, "pointer-events": "none"}) : null,
+        // Saját kijelölés látható felület nélküli objektumon (Free doboz, átlátszó kép, csomópont): vékony, nyugodt körvonal.
+        ownSelected && !peerOwner && (junction || backgroundMode(node) === "free" || (isImage(node) && node.file.alphaBackground == null))
+          ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-own", fill: "none", stroke: selectionTint(), "stroke-width": 2.5, "pointer-events": "none"}) : null,
         candidates.value.has("node/" + node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "search-candidate", "stroke-width": 3}) : null,
         ...animateBox(isBox(node) ? node.animation : undefined, [
           elevationShadow(drawn),
@@ -2700,9 +2707,9 @@ createApp({
       const targets = mine ? activeHandles : handles;
       targets.push(endpointHandle(original, "source", from), endpointHandle(original, "target", to));
       const animatedArrows = edge.animated && edge.appearance === "thick";
+      // Saját kijelölés: világosabb és vastagabb vonal; más felhasználó kijelölése: az ő színű glow.
       const local = mine || batch.value?.edges.has(edge.id) || marqueeHits.value?.edges.has(edge.id);
-      const selectionColor = local ? selectionTint() :
-        peers.value.find(peer => !peer.mine && peer.edge === edge.id)?.color;
+      const selectionColor = peers.value.find(peer => !peer.mine && peer.edge === edge.id)?.color;
       // Kijelöléskor a vonal és a nyilak megőrzik az eredeti színüket; a felhasználó színű glow az eredeti alakot követi.
       const color = paint.color;
       const animation = animatedWire(edge, {...paint, color}, from, to, taper, stroke.d);
@@ -2765,7 +2772,9 @@ createApp({
           "pointer-events": "stroke", class: "wire-hit"}),
         selectionColor ? h("path", {class: "wire-glow", d, fill: "none", stroke: selectionColor,
           "stroke-width": paint.lineWidth + 10, "stroke-linecap": "round", "pointer-events": "none", "data-editor-only": ""}) : null,
-        h("g", {}, [
+        local ? h("path", {class: "wire-own-underlay", d, fill: "none", stroke: paint.color, "stroke-width": paint.lineWidth + 4,
+          "stroke-linecap": "round", "pointer-events": "none", "data-editor-only": ""}) : null,
+        h("g", {class: {"wire-own": local}}, [
           h("path", {class: "wire-line", ...stroke, ...(taper ? {fill: shaftColor} : {stroke: shaftColor}), "pointer-events": "none", "clip-path": clipPath}, animation.shaft ? [animation.shaft] : undefined),
           renderArrow(ends.source, color, animatedArrows),
           renderArrow(ends.target, color, animatedArrows),

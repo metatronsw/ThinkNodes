@@ -136,6 +136,9 @@ function find(test, rootNode = root) {
 }
 const prop = (key, value, scope) => find(n => n.props[key] === value, scope);
 const graphic = id => prop("data-node", id);
+// A saját kijelölés a doboz "own-selected" osztálya (világosabb, vastagabb keret); a glow a többi felhasználóé.
+const classList = c => typeof c === "string" ? c.split(/\s+/) : Array.isArray(c) ? c.flatMap(classList) : c && typeof c === "object" ? Object.keys(c).filter(k => c[k]) : [];
+const ownSelected = id => classList(graphic(id).props.class).includes("own-selected") && !prop("class", "selection-glow", graphic(id));
 const canvas = () => prop("aria-label", "Ötletvászon");
 const text = n => n.text ?? n.children.map(text).join("");
 const button = label => find(n => n.tag === "button" && (text(n) === label || n.props["aria-label"] === label));
@@ -905,7 +908,7 @@ rows()[0].props.onMouseenter(); await tick();
 assert.equal(selectedNode, beforeSearch);
 toggle("Enter", true); await tick();
 assert.ok(!candidate(first) && !candidate(second));
-assert.ok(prop("class", "selection-glow", graphic(first)) && prop("class", "selection-glow", graphic(second)));
+assert.ok(ownSelected(first) && ownSelected(second));
 toggle("Enter", true); await tick();
 prop("aria-label", "Keresés a munkalapon").props.onInput({target: {value: "törzs"}}); await tick();
 assert.ok(candidate("outside"));
@@ -920,14 +923,14 @@ listeners.keydown({key: "ArrowUp", shiftKey: true}); await tick();
 assert.ok(candidate("child") && candidate("outer"));
 listeners.keydown({key: "Enter", shiftKey: true}); await tick();
 assert.ok(prop("aria-label", "Keresés a munkalapon"));
-assert.ok(prop("class", "selection-glow", graphic("child")));
-assert.ok(!prop("class", "selection-glow", graphic("outer")));
+assert.ok(ownSelected("child"));
+assert.ok(!ownSelected("outer"));
 toggle("ArrowDown", true); await tick();
 listeners.keydown({key: "Enter", shiftKey: true}); await tick();
 assert.ok(prop("aria-label", "Keresés a munkalapon"));
 toggle("Escape", true); await tick();
 assert.ok(!candidate("child") && !candidate("outer"));
-assert.ok(prop("class", "selection-glow", graphic("child")) && prop("class", "selection-glow", graphic("outer")));
+assert.ok(ownSelected("child") && ownSelected("outer"));
 const mean = axis => (model("child").position[axis] + model("outer").position[axis]) / 2;
 assert.equal(requestedZoom.k, 2);
 assert.equal(requestedZoom.x, 600 - (600 + mean("x")) * 2);
@@ -1336,10 +1339,10 @@ assert.equal(prop("id", "editor-wire-gap-one", oneWire()), undefined);
 assert.equal(prop("attributeName", "stroke-width", oneWire()).props.values, "4;5.8;4");
 const arrow = find(n => n.props.d === "M0 0L-1 -.5V.5Z", oneWire());
 assert.equal(prop("attributeName", "transform", arrow).props.type, "scale");
-// A kijelölés a felhasználó színű glow; a vonal és a nyíl megtartja az eredeti színét.
-const selectionGlow = prop("class", "wire-glow", oneWire());
-assert.ok(selectionGlow);
-assert.equal(selectionGlow.props.stroke, "#365bd6", "the glow uses the user's own colour");
+// Saját kijelölés: glow nélkül, világosabb és vastagabb vonal (alátét); a nyíl megtartja az eredeti színét.
+assert.equal(prop("class", "wire-glow", oneWire()), undefined);
+const ownUnderlay = prop("class", "wire-own-underlay", oneWire());
+assert.ok(ownUnderlay && ownUnderlay.props["stroke-width"] > 4);
 assert.notEqual(arrow.props.fill, "#0090ff");
 assert.equal(prop("class", "wire-selected", oneWire()), undefined);
 assert.equal(prop("class", "selection-glow", oneWire()), undefined);
