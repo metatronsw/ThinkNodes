@@ -692,3 +692,8 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 .endpoint-tools { width: 100%; }
 .endpoint-tools .endpoint-actions { display: flex; gap: 4px; margin-left: auto; }
 .canvas-preview-thumbnail { display: block; width: 100%; max-height: 120px; object-fit: contain; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); }
+
+/* Névtér-azonosító kapcsoló (Public/ui-names.js), csak adminoknak. */
+.ui-names-toggle .ui-icon { color: #f2b200; }
+.ui-names-toggle[aria-pressed="true"] { background: #f2b200; border-color: #f2b200; }
+.ui-names-toggle[aria-pressed="true"] .ui-icon { color: #1b1f27; }

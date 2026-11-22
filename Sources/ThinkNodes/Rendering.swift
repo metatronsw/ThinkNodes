@@ -33,7 +33,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=14">
+          <link rel="stylesheet" href="/app.css?v=15">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -102,10 +102,14 @@ func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: 
     }
     let tag = path == nil ? "header" : "div"
     let admin = user?.role == .admin ? buttonLink("/admin", "Admin", symbol: "settings", classes: headerButtonClass) : ""
+    // Névtér-azonosító (Public/ui-names.js): csak bejelentkezett adminoknak.
+    let names = user?.role == .admin ? """
+        <button type="button" class="\(headerButtonClass) ui-names-toggle" data-ui-names aria-pressed="false" aria-label="Névtér-azonosító" title="Névtér-azonosító: az elemek neve és class-a">\(uiIcon("namespace"))</button><script defer src="/ui-names.js?v=2"></script>
+        """ : ""
     let appearanceActions = """
         <div class="header-appearance">
           <button type="button" class="\(headerButtonClass)" data-site-mode-picker data-mode="auto" aria-label="Megjelenés: automatikus">\(uiIcon("display-auto"))</button>
-          \(admin)
+          \(names)\(admin)
         </div>
         """
     let navigationClass = path == nil ? "site-header" : "worksheet-nav"
