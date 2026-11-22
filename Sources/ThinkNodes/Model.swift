@@ -13,14 +13,6 @@ struct Point: Codable, Equatable, Sendable {
     }
 }
 
-private struct WorksheetElement<Value: Decodable>: Decodable {
-    let value: Value?
-
-    init(from decoder: Decoder) throws {
-        value = try? Value(from: decoder)
-    }
-}
-
 private func automaticBorder(_ fill: String) -> String {
     guard let rgb = Int(fill.dropFirst(), radix: 16) else { return "#526982" }
     return String(format: "#%02x%02x%02x", (rgb >> 16) * 2 / 3, ((rgb >> 8) & 255) * 2 / 3, (rgb & 255) * 2 / 3)
@@ -1248,7 +1240,7 @@ final class WorksheetStore: @unchecked Sendable {
         try lock.withLock {
             guard bytes.count <= 12 * 1024 * 1024 else { throw Abort(.payloadTooLarge) }
             guard (name as NSString).pathExtension.lowercased() == "thnode",
-                  var sheet = try? JSONDecoder().decode(Worksheet.self, from: bytes) else {
+                  var sheet = try? Worksheet.decodeFile(bytes) else {
                 throw Abort(.unprocessableEntity, reason: "Érvénytelen ThinkNodes munkalapfájl.")
             }
             sheet.revision = 1
@@ -1539,7 +1531,7 @@ final class WorksheetStore: @unchecked Sendable {
 
     private func read(_ url: URL) throws -> Worksheet {
         guard files.fileExists(atPath: url.path) else { throw Abort(.notFound, reason: "A munkalap nem található.") }
-        let worksheet = try JSONDecoder().decode(Worksheet.self, from: Data(contentsOf: url))
+        let worksheet = try Worksheet.decodeFile(Data(contentsOf: url))
         guard worksheet.schemaVersion == Worksheet.currentSchema else {
             throw Abort(.unprocessableEntity, reason: "Régi formátumú munkalap (\(worksheet.schemaVersion). verzió). Az új objektumtípusok miatt nem tölthető be; törölhető.")
         }
@@ -1606,8 +1598,11 @@ extension Worksheet {
         background = try? fields.decode(StoredPaint.self, forKey: .background).wrappedValue
         gridSpacing = try? fields.decode(Double.self, forKey: .gridSpacing)
         creator = try? fields.decode(String.self, forKey: .creator)
-        nodes = (try? fields.decode([WorksheetElement<Idea>].self, forKey: .nodes))?.compactMap(\.value) ?? []
-        edges = (try? fields.decode([WorksheetElement<Connection>].self, forKey: .edges))?.compactMap(\.value) ?? []
+        if schemaVersion != Worksheet.currentSchema {
+            throw Abort(.unprocessableEntity, reason: "Régi formátumú vagy ismeretlen sémájú munkalap.")
+        }
+        nodes = try fields.decode([Idea].self, forKey: .nodes)
+        edges = fields.contains(.edges) ? try fields.decode([Connection].self, forKey: .edges) : []
     }
 }
 
@@ -1710,13 +1705,14 @@ extension WorksheetStore {
         return WebContext(directory: presentation, policy: policy, access: access, manageable: manageable)
     }
 
-    func webAsset(_ request: WebPresentationRequest, user: User?, unlocks: Set<String>) throws -> (asset: WebAsset, directory: Bool, publicRead: Bool)? {
+    func webAsset(_ request: WebPresentationRequest, user: User?, unlocks: Set<String>) throws -> (asset: WebAsset?, directory: Bool, publicRead: Bool)? {
         try lock.withLock {
             guard let context = try webContext(project: request.project, reference: request.reference, user: user, unlocks: unlocks) else { return nil }
             try context.access.authorize(user, unlocks: unlocks)
             let dirs = [request.project] + request.reference.folders + [request.reference.name + ".web"]
             if request.asset == ["_tn-preview"] {
-                guard !request.trailingSlash, let image = WebAsset.preview(in: root, folders: dirs) else { throw Abort(.notFound) }
+                guard !request.trailingSlash else { throw Abort(.notFound) }
+                let image = WebAsset.preview(in: root, folders: dirs)
                 return (image, false, context.access.publicRead)
             }
             let (asset, directory) = try WebAsset.open(in: root, folders: dirs, asset: request.asset, trailingSlash: request.trailingSlash)
@@ -1757,9 +1753,8 @@ extension WorksheetStore {
                               access.access.readable || access.manageable else { continue }
                         let url = reference.url(in: project)
                         let unlocked = access.access.readable && access.access.hashes.allSatisfy(unlocks.contains)
-                        let preview = unlocked && WebAsset.preview(in: root, folders: [project] + reference.folders + [reference.name + ".web"]) != nil
                         presentations.append(WebPresentationInfo(reference: reference.relativePath, title: String(reference.name.prefix(120)), url: url,
-                            preview: preview ? url + "_tn-preview" : nil, manageable: access.manageable,
+                            preview: unlocked ? url + "_tn-preview" : nil, manageable: access.manageable,
                             membersOnly: access.manageable ? access.policy.guestReadable == false : nil,
                             editors: access.manageable ? access.policy.editors : nil,
                             passwordProtected: access.manageable ? access.policy.passwordHash != nil : nil))

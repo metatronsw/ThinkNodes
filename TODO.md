@@ -1,19 +1,70 @@
 
 
+[ **HIBÁK** ]
+Sorkizárás nem működik, hibás és újra állítja a pozicionáló gombokat (ne tegye)
 
-[ **ÖTLET** ]
-+ lézer rajz
-+ szabadkézi rajz
-+ svg -nél beágyazható legyen mentéskor a kép
-+ A munkalapon automatikusan jelenjenek meg a képek és a file-ok amik a mappában vannak. 
-+ svg üres háttér kezelése
-+ markdown külön editorba is 
-+ elkerülő úton haladó kábel, sosem keresztezi a dobozokat
-+ project letöltése zip formtumba
-+ sitemap , gráf alapon mutassa a linkeket 
-+ javascript nélkül is működjön a statikus oldal megtekintés
-+ Animációk az SVG -be, futó vonal 
-+ chat a felhasználók között
+
+
+
+[ **DESIGN** ]
+
+Markdown szöveg formázó gombok törölhetőek mindenhol, feleslegesek! 
+
+dobozokon megjelenített markdown szöveg nem kezeli az üres sortöréseket, mindent egymás utáni sorba rak
+
+kép:
+ - a méretezése legyen a régi módszer szerint, mindig töltse ki a dobozát, akkor is ha emiatt levágódik.
+- megjelenés property -hez rakj egy nyilak 4 sarok irányba ikont, amit egyszer megnyomva beállítja a helyes képarányt.
+- kép megjegyzése soha ne lógjon ki a képen túl, most hibás az igazítás.
+- a kép sarka legyen 5px lekerekítve
+- svg kép külön kezelendő, és ne legyen lekerekítve ! 
+
+
+két gomb méret legyen, fejléc és tool ikon 
+egységesen minden gombnak valamelyik kategóriába kell tartoznia, csak a szöveg pozicio gombok térnek el ettől Azok mérete úgy legyen kialakítva hogy két sor tool gomb magassága pontosan egyezzen a 3 sor pozíció gombbal
+
+Bold Italic Underline gombok ezentúl csak betütípus váltást csináljanak, minden más korábbi funkciót törölj ami ehez kapcsolódott, nem kell felülírni a markdown-t 
+
+
+Összecsukás gomb ... A text első sorát hagyja láthatónak, a ... a következő sorban legyen 1 sorközzel.
+figyelembe veszi a pozicionlását
+összecsukott 
+
+megjegyzések a dobozon kívül legyenek, a doboz alatt
+file name a dobozon kívül legyenek, a doboz felett
+
+link a dobozon kívül legyen, a doboz alatt
+
+link törlése gomb a link megnyitás gomb mellett legyen, ne felette
+
+
+láthatósági módosító ikonok:
+ - free: marad így
+ - üres: csak a keret van, keret színe a háttér színe, most hibásan kikapcsol és sakktábla mintát mutat a szín választó. Háttér törlése gomb nem kell, csak színek legyenek
+ - új gomb: átlátszó, opacity 75%, keret opacity 100%
+ - elmosott: opacity 99%, keret  opacity 100%, keret NE legyen elmosott
+ - általánosan a Color választó legyen a sor első gombja
+ 
+ 
+ Rectangle kijelölés közben látszódjon hogy mik lesznek kijelölve, milyen.
+ A sarokpontok az egérhez közel ilyenkor hibásan megjelennek. Rectangle kijelölés - lenyomott és húzott egér közben nem kell
+
+nézd meg a kiemelés, árnyék miért olyan lassú - mozgatás közben nagyon érezhető a lassúsága. optimalizád! 
+a doboz kerete ne adjon árnyékot, csak a doboz. 
+ha nincs háttér (üres láthatóság) akkor viszont csak a keret adjon árnyékot
+
+hang lejátszó: 
+- időtaram kijelzés a csúszka alatt legyen
+
+Vonalak: 
+- kezdőpont lekötése, végpont leválasztása - Adj nekik új egységes nevet Végpont Kezdőpont leválasztása
+- mikor megnyomják a vonal vége távolodjon el a bekötés pontjától 
+- felirat a vonalban, miért változik meg a stílusa ? össze lesz nyomva, vagy más a betű ... legyen ugyan olyan mint kint.
+
+- vonal és csomópont kijelölése egy glow effekt legyen az eredeti vonal/nyilak/animációból létrehozva a felhasználó színével
+
+
+
 
 
 
@@ -29,24 +80,11 @@ SPACE INSERT:
 
 
 
-[ **HIBÁK** ]
-
-
 
 
 [ **FILE KEZELÉS** ]
 + Nagy szövegfájl szerkesztése külső szerkesztőben (docs/node-types.md, text típus). A mérethatárt is meg kell adni.
 + .thnode import: most új almunkalapot hoz létre, de nem keletkezik doboz a vásznon. Az új típusrendszerben (docs/node-types.md) a `sheet` típushoz kell kötni.
-
-
-
-[ **DESIGN** ]
-megtekintő módban is a canvason belüre kell helyezni a bejelentkezett felhasználókat, jobb oldalon alulra a sarokba, nem a canvason kívülre.
-
-
-
-
-
 
 
 ## KONTÉNER ÚJ működés
@@ -87,3 +125,17 @@ Első körben egy kapcsolható Rács elrendezés módot terveznék, amely:
 
 Ez reális és takarékos megoldás. A megvalósítás előtt tisztázandó tervezési pont, hogy az automatikus mód változtathatja-e a konténer külső méretét, vagy csak annak meglévő méretein belül rendezheti a tartalmát.
 
+
+[ **ÖTLET** ]
++ lézer rajz
++ szabadkézi rajz
++ svg -nél beágyazható legyen mentéskor a kép
++ A munkalapon automatikusan jelenjenek meg a képek és a file-ok amik a mappában vannak. 
++ svg üres háttér kezelése
++ markdown külön editorba is 
++ elkerülő úton haladó kábel, sosem keresztezi a dobozokat
++ project letöltése zip formtumba
++ sitemap , gráf alapon mutassa a linkeket 
++ javascript nélkül is működjön a statikus oldal megtekintés
++ Animációk az SVG -be, futó vonal 
++ chat a felhasználók között

@@ -768,6 +768,16 @@ private func serveWebPresentation(_ req: Request, candidates: [WebPresentationRe
                 try store.webAsset(candidate, user: viewer.user, unlocks: viewer.unlocks)
             }) else { continue }
 
+            guard let asset else {
+                let name = escaped(candidate.reference.name)
+                return response("""
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 100">
+                      <rect width="320" height="100" rx="8" fill="#233b53"/>
+                      <path d="M143 16h34v22h-34z M160 38v6 M150 45h20" stroke="#fff" fill="none" stroke-width="3"/>
+                      <text x="160" y="77" fill="white" text-anchor="middle" font-family="sans-serif" font-size="17">\(name)</text>
+                    </svg>
+                    """, type: "image/svg+xml")
+            }
             let query = req.url.query.map { "?" + $0 } ?? ""
             if directory && !candidate.trailingSlash { return redirect(candidate.url + "/" + query) }
             if asset.isHTML, candidate.lease != nil { return redirect(candidate.url + query) }

@@ -354,7 +354,8 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
             if block.kind == .quote { runs.insert(MarkdownRun(text: "› "), at: 0) }
             for (row, wrappedLine) in wrapMarkdown(runs, columns: columns, preformatted: block.kind == .code).enumerated() {
                 let pieces = wrappedLine.pieces
-                let blockGap: Double = index == 0 ? 0 : heading ? size * 0.35 : 3
+                // Bekezdések között az üres sor egy teljes sornyi térközt ad.
+                let blockGap: Double = index == 0 ? 0 : heading ? size * 0.35 : block.kind == .body ? size * 1.25 : 3
                 let gap = row == 0 ? (fitText ? min(blockGap, base * 0.4) : blockGap) : 0
                 lines.append(IdeaLabelLine(text: pieces.map(\.text).joined(), size: size, weight: weight,
                                            color: node.textColor, runs: pieces, gap: gap,
@@ -363,10 +364,10 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
             }
         }
         if node.hideText == true, lines.count > 1 {
-            var first = lines[0]
-            first.runs.append(MarkdownRun(text: " …"))
-            first.text += " …"
-            return [first]
+            // Összecsukott állapot: az első sor marad, alatta egy sorközzel az ellipszis.
+            let ellipsis = IdeaLabelLine(text: "…", size: lines[0].size, weight: lines[0].weight, color: node.textColor,
+                                         runs: [MarkdownRun(text: "…")], gap: 0, justify: false, wrapped: false, indent: 0)
+            return [lines[0], ellipsis]
         }
         return lines
     }
@@ -399,7 +400,6 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
         remaining -= line.step
     }
     let omitted = visible.count < lines.count
-    if omitted && visible.isEmpty { visible.append(lines[0]) }
     var overflow = omitted || (node.hideText == true && canvasMarkdown(node.text).count > 1)
     for index in visible.indices {
         let line = visible[index]
@@ -497,15 +497,17 @@ private func boxOutline(_ node: Idea, graphics: VisualTheme.Graphics?) -> String
 
 private func elevationShadow(_ node: Idea, geometry: String, graphics: VisualTheme.Graphics?) -> String {
     guard node.elevated == true, node.resolvedBackgroundMode != .free else { return "" }
-    let clip = "elevated-clip-" + node.id
-    let x = node.width / 2 + 24, y = node.height / 2 + 40
-    let outside = "M\(number(-x)) \(number(-y))H\(number(x))V\(number(y))H\(number(-x))Z" + boxOutline(node, graphics: graphics)
+    // Üres dobozon csak a keret vet árnyékot; kitöltött doboznál a kitöltés (nincs clipPath: gyorsabb mozgatás).
+    if node.resolvedBackgroundMode == .empty {
+        return """
+            <g class="node-shadow" pointer-events="none" aria-hidden="true">
+              <\(geometry) transform="translate(12 28)" fill="none" stroke="#11172b" stroke-opacity=".44" stroke-width="1.6"/>
+            </g>
+            """
+    }
     return """
         <g class="node-shadow" pointer-events="none" aria-hidden="true">
-          <clipPath id="\(clip)"><path d="\(outside)" clip-rule="evenodd"/></clipPath>
-          <g clip-path="url(#\(clip))">
-            <\(geometry) transform="translate(12 28)" fill="#11172b" fill-opacity=".44"/>
-          </g>
+          <\(geometry) transform="translate(12 28)" fill="#11172b" fill-opacity=".44"/>
         </g>
         """
 }
@@ -522,12 +524,17 @@ private func boxSurface(_ node: Idea, geometry: String, graphics: VisualTheme.Gr
     let locked = node.isBox && node.locked == true
     let glass = graphics?.glass == true && mode == .solid && !image
     let fill = image ? (node.file?.alphaEnabled == false ? "#ffffff" : node.file?.alphaBackground ?? node.fill) : node.fill
-    let stroke = image && !empty ? "none" : glass ? "url(#glass-rim)" : escaped(node.border)
+    // Üres doboz keretének színe a doboz színe; elmosottnál a háttér elmosódik, a keret nem.
+    let stroke = empty ? escaped(node.fill) : image ? "none" : glass ? "url(#glass-rim)" : escaped(node.border)
     let width = locked ? "6.4" : glass ? "3" : "1.6"
     let dash = node.isBox && node.link != nil ? " stroke-dasharray=\"7 4\"" : ""
     let closed = locked ? " data-locked-outline=\"\"" : ""
-    let effect = blurred ? " opacity=\".5\" filter=\"url(#box-background-blur)\"" : glass ? " fill-opacity=\".66\"" : ""
+    let effect = glass ? " fill-opacity=\".66\"" : ""
     let pointer = empty && interactive ? " pointer-events=\"fill\"" : ""
+    if blurred {
+        return "<\(geometry) class=\"node-surface\" fill=\"\(escaped(fill))\" opacity=\".99\" filter=\"url(#box-background-blur)\" stroke=\"none\"/>"
+            + "<\(geometry) class=\"node-frame\" fill=\"none\" stroke=\"\(escaped(node.border))\" stroke-width=\"\(width)\"\(closed)\(dash)/>"
+    }
     let surface = "<\(geometry) class=\"node-surface\" fill=\"\(empty ? "none" : escaped(fill))\" stroke=\"\(stroke)\" stroke-width=\"\(width)\"\(closed)\(dash)\(effect)\(pointer)/>"
     return surface + (glass ? "<\(geometry) fill=\"url(#glass-sheen)\" pointer-events=\"none\" aria-hidden=\"true\"/>" : "")
 }
@@ -605,7 +612,7 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
                 attributes += " font-weight=\"\(strong ? 900 : 700)\""
                 if strong { attributes += " font-size=\"\(number(line.size * 1.1))\"" }
             }
-            if format.italic { attributes += node.italic == true ? " font-style=\"normal\"" : " font-style=\"italic\"" }
+            if format.italic { attributes += " font-style=\"italic\"" }
             if format.code { attributes += " font-family=\"monospace\" xml:space=\"preserve\"" }
             if format.link { attributes += " text-decoration=\"underline\"" }
             return attributes.isEmpty ? escaped(run.text) : "<tspan\(attributes)>\(escaped(run.text))</tspan>"
@@ -623,7 +630,7 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
     let contents = """
         \(elevationShadow(node, geometry: geometry, graphics: graphics))
         \(boxSurface(node, geometry: geometry, graphics: graphics, interactive: interactive))
-        \(previewImage)<text class="node-text" font-family="system-ui, sans-serif" pointer-events="none">\(spans)</text>
+        \(previewImage)<svg x="\(number(-x))" y="\(number(-y))" width="\(number(width))" height="\(number(height))" viewBox="\(number(-x)) \(number(-y)) \(number(width)) \(number(height))" overflow="hidden" pointer-events="none"><text class="node-text" font-family="system-ui, sans-serif" pointer-events="none">\(spans)</text></svg>
         \(marker)
         """
     return """
@@ -788,11 +795,11 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
         }
         return exported ? "<a class=\"\(classes)\" href=\"\(download)\" aria-label=\"Letöltés · \(filename)\">\(packageIcon)\(label)</a>" : "<span class=\"\(classes)\">\(label)</span>"
     }
-    let header = file.showFilename != false ? "<header class=\"node-file-name\">\(downloadControl("<span>\(filename)</span>"))</header>" : ""
+    let header = file.showFilename != false ? "<div class=\"node-above\"><header class=\"node-file-name\">\(downloadControl("<span>\(filename)</span>"))</header></div>" : ""
     let content: String
     switch node.root {
     case "image":
-        content = "<img alt=\"\(filename)\" src=\"\(url)\"/>"
+        content = "<img alt=\"\(filename)\" src=\"\(url)\"\(file.asset.lowercased().hasSuffix(".svg") ? " class=\"is-svg\"" : "")/>"
     case "audio":
         content = """
             <div class="node-audio" data-audio-player="">
@@ -814,12 +821,14 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
     } ?? ""
     let comment = node.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || node.hideText == true ? "" :
         "<footer class=\"node-comment formatted-text align-\(node.alignment.rawValue)\">\(markdownHTML(node.text))</footer>"
+    let below = marker + comment
+    let belowBlock = below.isEmpty ? "" : "<div class=\"node-below\">\(below)</div>"
     let geometry = boxGeometry(node, graphics: graphics)
     let chrome = elevationShadow(node, geometry: geometry, graphics: graphics) +
         boxSurface(node, geometry: geometry, graphics: graphics, interactive: interactive)
     let translated = chrome.isEmpty ? "" : "<g transform=\"translate(\(number(node.position.x)) \(number(node.position.y)))\">\(chrome)</g>"
     return """
-        \(translated)<foreignObject x="\(number(node.position.x-node.width/2))" y="\(number(node.position.y-node.height/2))" width="\(number(node.width))" height="\(number(node.height))"><div xmlns="http://www.w3.org/1999/xhtml" data-file-ink="\(escaped(node.textColor))" style="color:\(escaped(node.textColor))" class="node-file node-\(node.root)">\(header)<div class="node-body">\(content)</div>\(marker)\(comment)</div></foreignObject>
+        \(translated)<foreignObject x="\(number(node.position.x-node.width/2))" y="\(number(node.position.y-node.height/2))" width="\(number(node.width))" height="\(number(node.height))" style="overflow:visible"><div xmlns="http://www.w3.org/1999/xhtml" data-file-ink="\(escaped(node.textColor))" style="color:\(escaped(node.textColor))" class="node-file node-\(node.root)">\(header)<div class="node-body">\(content)</div>\(belowBlock)</div></foreignObject>
         """
 }
 
@@ -1054,18 +1063,19 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
             abs((point.x - center.x) * cosine + (point.y - center.y) * sine)
         }
         let room = min(alongLabel(beginning), alongLabel(ending))
-        let hasGap = inlineLabel && room >= 2
+        // A felirat mindig eredeti betűmérettel és arányokkal látszik: ha a vonalba nem fér el, a vonal fölé kerül.
+        let gapPadding = min(8, room / 5)
+        let hasGap = inlineLabel && room >= 2 && labelRadius <= room - gapPadding - min(20, room / 3)
         var labelAttributes = ""
         var displayedRadius = labelRadius
         if hasGap {
-            let padding = min(8, room / 5)
-            displayedRadius = min(labelRadius, room - padding - min(20, room / 3))
+            let padding = gapPadding
             let gap = number(displayedRadius + padding), extent = number(
                 (vertices.map { hypot($0.x - center.x, $0.y - center.y) }.max() ?? 0) + 40 + 2 * lineWidth
             )
             let clip = "M -\(extent) -\(extent) H -\(gap) V \(extent) H -\(extent) Z M \(gap) -\(extent) H \(extent) V \(extent) H \(gap) Z"
             definitions.append("<clipPath id=\"\(gapID)\"><path d=\"\(clip)\" transform=\"\(transform)\"/></clipPath>")
-            labelAttributes = " textLength=\"\(number(displayedRadius * 2))\" lengthAdjust=\"spacingAndGlyphs\" dominant-baseline=\"central\""
+            labelAttributes = " dominant-baseline=\"central\""
         } else if inlineLabel && noteBase != nil {
             definitions.append("<clipPath id=\"\(gapID)\"><path/></clipPath>")
         }

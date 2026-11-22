@@ -420,7 +420,8 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .image-alpha-options input[type="color"]:disabled { opacity: .45; }
 .node-image > :is(strong, span) { flex: none; height: 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.alignment-picker { display: grid; grid-template-columns: repeat(3, 1.6rem); gap: 2px; }
+/* A 3 sor pozíciógomb magassága pontosan két sor eszközgomb (2 × 32px + 4px rés). */
+.alignment-picker { display: grid; grid-template-columns: repeat(3, 22px); grid-template-rows: repeat(3, 1fr); gap: 2px; height: 68px; }
 .alignment-picker button { height: 1.6rem; padding: 0; color: inherit; background: var(--panel, white); border: 1px solid #a8b7cb; border-radius: 4px; cursor: pointer; }
 .alignment-picker button[aria-pressed="true"] { color: white; background: #3659b9; }
 
@@ -437,6 +438,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .search-candidate { color: #cf8200; fill: none; stroke: currentColor; stroke-dasharray: 6 3; pointer-events: none; }
 
 .selection-glow, .search-candidate { filter: drop-shadow(0 0 6px currentColor); }
+.wire-glow { filter: drop-shadow(0 0 3px currentColor) drop-shadow(0 0 7px currentColor); opacity: .85; }
 .wire-selected { filter: drop-shadow(0 0 4px currentColor) drop-shadow(0 0 8px currentColor); }
 
 @keyframes container-drop-pulse {
@@ -530,8 +532,8 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
   .editor-root .worksheet-nav { pointer-events:auto; }
   .editor-root .worksheet-nav .header-left { min-width:max-content; }
 }
-.node-note { position:relative; flex:1; min-height:0; overflow:hidden; padding:8px 20px 8px 10px; text-align:left; border-radius:7px; clip-path:polygon(0 0,calc(100% - 16px) 0,100% 16px,100% 100%,0 100%); }
-.node-note.with-fold::after { content:""; position:absolute; top:0; right:0; width:16px; height:16px; background:#0003; }
+.node-note { flex:1; min-height:0; overflow:hidden; padding:8px 20px 8px 10px; text-align:left; border-radius:7px; }
+.node-note.with-fold { background: linear-gradient(45deg, transparent 50%, #0003 50%) top right / 16px 16px no-repeat; }
 .node-note pre { white-space:pre-wrap; margin:0; }
 
 
@@ -571,7 +573,7 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 }
 :root[data-display="dark"] :is(.button, .guide-nav a):hover { background-color: var(--control-hover); }
 :root[data-display="dark"] .inspector button[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: -2px; }
-:is(.editor-workspace, .canvas) :is(.selection-glow, .wire-selected) { filter: drop-shadow(0 0 var(--sheet-glow, 4px) currentColor); }
+:is(.editor-workspace, .canvas) :is(.selection-glow, .wire-glow) { filter: drop-shadow(0 0 var(--sheet-glow, 4px) currentColor); }
 .color-sample, .color-presets button { width: 32px; height: 32px; padding: 3px; border-radius: 7px; }
 .palette-tile { display: block; width: 100%; height: 100%; border-radius: 4px; }
 .transparent-swatch { background: conic-gradient(#c3cbd7 25%, #fff 0 50%, #c3cbd7 0 75%, #fff 0) 0 0 / 10px 10px; }
@@ -697,3 +699,15 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 .ui-names-toggle .ui-icon { color: #f2b200; }
 .ui-names-toggle[aria-pressed="true"] { background: #f2b200; border-color: #f2b200; }
 .ui-names-toggle[aria-pressed="true"] .ui-icon { color: #1b1f27; }
+
+/* Fájlt tároló doboz: a tartalom a doboz belsejében van, a fájlnév a doboz felett, a link és a megjegyzés alatta. */
+.node-file { position: relative; display: block; box-sizing: border-box; height: 100%; padding: 0; overflow: visible; }
+.node-file .node-body { position: absolute; inset: 8px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.node-file.node-image .node-body { inset: 0; }
+.node-file.node-image .node-body img { display: block; width: 100%; height: 100%; object-fit: cover; background: transparent; border-radius: 5px; }
+.node-file.node-image .node-body img.is-svg { border-radius: 0; }
+.node-above { position: absolute; inset-inline: 0; bottom: 100%; padding-bottom: 4px; display: flex; justify-content: center; }
+.node-below { position: absolute; inset-inline: 0; top: 100%; padding-top: 6px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.node-below .node-comment { position: static; max-height: none; overflow: visible; width: 100%; }
+/* Hangló: az idő a csúszka alatt, külön sorban. */
+.node-audio [data-audio-time] { flex-basis: 100%; text-align: center; }

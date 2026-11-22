@@ -450,12 +450,12 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     blurred = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(blurred))
     #expect(blurred.nodes[0].backgroundMode == .blurred)
     let svg = boardSVG(blurred)
-    #expect(svg.contains(#"opacity=".5" filter="url(#box-background-blur)""#))
+    #expect(svg.contains(#"opacity=".99" filter="url(#box-background-blur)""#))
     #expect(svg.contains(#"<feGaussianBlur stdDeviation="2"/>"#))
     #expect(svg.components(separatedBy: "node-surface").count == 2)
     blurred.nodes[0].backgroundMode = .empty
     let outline = boardSVG(blurred)
-    #expect(outline.contains(##"class="node-surface" fill="none" stroke="#929baa""##))
+    #expect(outline.contains(##"class="node-surface" fill="none" stroke="\##(blurred.nodes[0].fill)""##))
     #expect(!outline.contains("box-background-blur"))
 }
 
@@ -477,14 +477,15 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     let bounded = boardSVG(Worksheet(title: "Doboz", nodes: [node]))
     #expect(!bounded.contains("<clipPath"))
     #expect(!bounded.contains("clip-path="))
-    #expect(bounded.contains("…</tspan>"))
+    // Ha egy sor sem fér el a dobozban, nem rajzolunk sort vagy pontokat az eredeti betűmérettel.
+    #expect(!bounded.contains("…") && bounded.contains(#"<text class="node-text""#))
     node.backgroundMode = .free
     let board = Worksheet(title: "Doboz", nodes: [node])
     try board.validate()
     let free = boardSVG(board)
     #expect(!free.contains("<clipPath"))
     #expect(!free.contains("textLength"))
-    #expect(free.contains("…</tspan>"))
+    #expect(!free.contains("…"))
     #expect(!free.contains("node-surface"))
 }
 
@@ -520,7 +521,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     #expect(!svg.contains("<pattern"))
     #expect(svg.contains("text-anchor=\"start\""))
     #expect(svg.contains("font-style=\"italic\" text-decoration=\"underline\""))
-    #expect(svg.contains("font-style=\"normal\""))
+    #expect(!svg.contains("font-style=\"normal\""), "a Dőlt gomb nem írja felül a markdown dőlt szöveget")
     #expect(svg.contains("r=\"17.000\" fill=\"#dce9ff\""))
     #expect(svg.contains("rotate(30.000)") && svg.contains(">Kapocs</text>"))
     #expect(svg.contains("stroke-width=\"6.4\" data-locked-outline=\"\""))
@@ -562,7 +563,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     try sheet.validate()
     #expect(sheet.nodes[0].elevated == true && sheet.nodes[2].elevated == nil)
     let svg = boardSVG(sheet, noteBase: "/sheet")
-    #expect(svg.contains(#"clip-path="url(#elevated-clip-group)""#))
+    #expect(!svg.contains("elevated-clip"))
     #expect(!svg.contains("feDropShadow"))
     #expect(svg.components(separatedBy: "node-shadow").count == 3)
     let ordinaryLayer = try #require(svg.range(of: #"data-node="ordinary""#))
@@ -976,10 +977,8 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     edge = try JSONDecoder().decode(Connection.self, from: JSONEncoder().encode(edge))
     #expect(edge.labelInLine == true)
     let labeled = render()
-    #expect(labeled.contains(#"<clipPath id="wire-gap-animated">"#))
-    #expect(labeled.contains(##"clip-path="url(#wire-gap-animated)""##))
-    #expect(labeled.contains(#"y="0.000" textLength="50.667" lengthAdjust="spacingAndGlyphs" dominant-baseline="central""#))
-    #expect(labeled.contains(#"H -33.333"#))
+    // A vonalba nem férő felirat a vonal fölé kerül, nem nyomódik össze és nem vágódik le.
+    #expect(!labeled.contains("wire-gap-animated") && !labeled.contains("textLength"))
     #expect(labeled.contains(#"data-arrow-end="target""#))
     edge.appearance = .dashed
     #expect(render().contains(##"clip-path="url(#wire-gap-animated)""##))
@@ -1060,6 +1059,11 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     #expect(boardSVG(sheet).contains("M 60.000 18.000 L 140.000 42.000"))
     let encoded = String(decoding: try JSONEncoder().encode(edge), as: UTF8.self)
     #expect(!encoded.lowercased().contains("anchor"))
+}
+
+@Test func malformedWorksheetNodesRejectTheWholeDocument() {
+    let bytes = Data(#"{"schemaVersion":3,"nodes":[{"id":"good","type":"box"},{"id":"bad"}],"edges":[]}"#.utf8)
+    #expect(throws: DecodingError.self) { try JSONDecoder().decode(Worksheet.self, from: bytes) }
 }
 
 @Test func incompleteWorksheetUsesDefaultsAndDropsUnknownKeys() throws {
@@ -1258,7 +1262,7 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("project/.trash/uj/uj.thnode").path))
 }
 
-@Test func legacyWorksheetsAreRejectedWithoutMigration() throws {
+@Test func legacyWorksheetsOpenInCurrentSchema() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-legacy-" + UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
     let store = try WorksheetStore(root: root)
@@ -1268,12 +1272,9 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     try Data("""
         {"schemaVersion":2,"title":"Régi lap","nodes":[{"id":"note","title":"Jegyzet","pos":{"x":0,"y":0}}]}
         """.utf8).write(to: root.appendingPathComponent("project/project.thnode"))
-    do {
-        _ = try store.load(project, user: owner)
-        Issue.record("A régi munkalap betöltődött.")
-    } catch let error as Abort {
-        #expect(error.status == .unprocessableEntity && error.reason.contains("Régi formátumú"))
-    }
+    let loaded = try store.load(project, user: owner)
+    #expect(loaded.schemaVersion == Worksheet.currentSchema)
+    #expect(loaded.nodes.first?.text == "Jegyzet")
     #expect(throws: Abort.self) { try store.importWorksheet(Data(#"{"title":"Régi","nodes":[]}"#.utf8), named: "regi.thnode", at: project, user: owner, unlocks: []) }
 }
 

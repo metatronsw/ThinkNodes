@@ -1,7 +1,7 @@
 # Vászonobjektum-típusok
 
 Tervezési leírás: a dobozfajták egységesítése. Itt rögzítjük a döntéseket, mielőtt a kód átépül.
-Migráció nincs: az új formátummal (`schemaVersion` 3) nem működő régi projektek törölhetők.
+A 2-es sémájú munkalap megnyitáskor és importáláskor a 3-as objektummodellre alakul. A következő mentés már az új formátumot írja.
 
 ## Felépítés
 

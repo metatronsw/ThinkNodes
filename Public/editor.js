@@ -244,15 +244,13 @@ function backgroundMode(node) {
 function elevationShadow(node) {
   if (!node.elevated || backgroundMode(node) === "free") return null;
   const [tag, geometry] = shapeGeometry(node.shape, node.width, node.height);
-  const clip = "editor-shadow-clip-" + node.id;
-  const x = node.width / 2 + 24, y = node.height / 2 + 40;
-  const outline = shapeOutline(tag, geometry);
-  return h("g", {class: "node-shadow", "pointer-events": "none", "aria-hidden": "true"}, [
-    h("clipPath", {id: clip}, [h("path", {d: `M${-x} ${-y}H${x}V${y}H${-x}Z` + outline, "clip-rule": "evenodd"})]),
-    h("g", {"clip-path": `url(#${clip})`}, [
-      h(tag, {...geometry, transform: "translate(12 28)", fill: "#11172b", "fill-opacity": .44}),
-    ]),
-  ]);
+  // Üres dobozon csak a keret vet árnyékot; a kitöltött doboz árnyéka a doboz alatt marad (nincs clipPath: gyorsabb mozgatás).
+  if (backgroundMode(node) === "empty") {
+    return h("g", {class: "node-shadow", "pointer-events": "none", "aria-hidden": "true"},
+      [h(tag, {...geometry, transform: "translate(12 28)", fill: "none", stroke: "#11172b", "stroke-opacity": .44, "stroke-width": 1.6})]);
+  }
+  return h("g", {class: "node-shadow", "pointer-events": "none", "aria-hidden": "true"},
+    [h(tag, {...geometry, transform: "translate(12 28)", fill: "#11172b", "fill-opacity": .44})]);
 }
 
 function shape(node, linked, dropTarget = false) {
@@ -273,11 +271,17 @@ function shape(node, linked, dropTarget = false) {
   const locked = isBox(node) && node.locked;
   const glass = graphics.value.glass && mode === "solid" && !image;
   const fill = image?.alphaEnabled === false ? "#ffffff" : paint(image?.alphaBackground ?? node.fill, 2);
-  const style = {fill: empty ? "none" : fill, stroke: image && !empty ? "none" : glass ? "url(#glass-rim)" : automaticBorder(fill),
+  // Üres doboz: csak a keret látszik, a keret színe a doboz színe. Elmosottnál a háttér elmosódik, a keret nem.
+  const frame = empty ? paint(node.fill, 2) : image && !empty ? "none" : glass ? "url(#glass-rim)" : automaticBorder(fill);
+  const style = {fill: empty ? "none" : fill, stroke: frame,
     "pointer-events": empty ? "fill" : undefined, class: "node-surface",
     "stroke-width": locked ? 6.4 : glass ? 3 : 1.6,
     "data-locked-outline": locked ? "" : undefined, "stroke-dasharray": linked && isBox(node) ? "7 4" : undefined,
-    opacity: blurred ? .5 : undefined, filter: blurred ? "url(#box-background-blur)" : undefined};
+    opacity: blurred ? .99 : undefined, filter: blurred ? "url(#box-background-blur)" : undefined};
+  if (blurred) return [
+    h(tag, {...geometry, fill, opacity: .99, filter: "url(#box-background-blur)", stroke: "none", class: "node-surface"}),
+    h(tag, {...geometry, fill: "none", stroke: frame, "stroke-width": 1.6, class: "node-frame", "pointer-events": "none"}),
+  ];
   if (glass) return [
     h(tag, {...style, ...geometry, "fill-opacity": .66}),
     h(tag, {...geometry, fill: "url(#glass-sheen)", "pointer-events": "none", "aria-hidden": "true"}),
@@ -1176,10 +1180,18 @@ createApp({
       modified();
     }
 
+    // Leválasztáskor a vonalvég a kötési ponttól egy kicsit eltávolodik, hogy ne maradjon rajta a csomópont szélén.
     function detach(edge, end) {
-      if (!edgeEndpoint(edge, end).node) return;
+      const attachedNode = edgeEndpoint(edge, end).node;
+      if (!attachedNode) return;
       const {from, to} = wireGeometry(edge);
-      setEndpoint(edge, end, {point: gridPoint(end === "source" ? from : to)});
+      const at = end === "source" ? from : to;
+      const center = nodeMap.value.get(attachedNode);
+      let dx = center ? at.x - center.position.x : 0, dy = center ? at.y - center.position.y : 0;
+      const length = Math.hypot(dx, dy);
+      if (length < 1) { dx = 0; dy = 1; } else { dx /= length; dy /= length; }
+      const away = {x: at.x + dx * 32, y: at.y + dy * 32};
+      setEndpoint(edge, end, {point: gridPoint(away)});
       pruneJunctions();
       modified();
     }
@@ -1771,11 +1783,12 @@ createApp({
       }
     }
 
-    function selectRectangle(drag) {
+    // A téglalap által érintett (vagy teljesen tartalmazott) objektumok; a húzás közbeni kiemelés is ezt használja.
+    function rectangleMembers(drag) {
       const box = rectangle(drag.initial, drag.point);
       const right = box.x + box.width, bottom = box.y + box.height;
       const inside = p => p.x >= box.x && p.x <= right && p.y >= box.y && p.y <= bottom;
-      const group = drag.additive ? selectionMembers() : {nodes: new Set(), edges: new Set()};
+      const hits = {nodes: new Set(), edges: new Set()};
       for (const node of sceneNodes.value) {
         const closest = {x: limit(node.position.x, box.x, right), y: limit(node.position.y, box.y, bottom)};
         let touches = shapeDistance(node, closest) <= 1;
@@ -1791,11 +1804,27 @@ createApp({
           const dy = Math.max(0, Math.abs(closest.y-node.position.y)-node.height/2+12);
           touches = Math.hypot(dx,dy) <= 12;
         }
-        if (drag.touching ? touches : [-1,1].every(k => inside({x: node.position.x+k*node.width/2, y: node.position.y+k*node.height/2}))) group.nodes.add(node.id);
+        if (drag.touching ? touches : [-1,1].every(k => inside({x: node.position.x+k*node.width/2, y: node.position.y+k*node.height/2}))) hits.nodes.add(node.id);
       }
       for (const edge of board.value.edges) {
-        if (edgeInRectangle(wireGeometry(edge), box, drag.touching)) group.edges.add(edge.id);
+        if (edgeInRectangle(wireGeometry(edge), box, drag.touching)) hits.edges.add(edge.id);
       }
+      return hits;
+    }
+
+    // Húzás közben a téglalapba eső objektumok már kiemelve látszanak.
+    const marqueeHits = computed(() => gesture.value?.type === "rectangle" ? rectangleMembers(gesture.value) : null);
+
+    // A saját kijelölés színe: a felhasználó színe (ha a munkamenetben van), különben a témabeli kijelölési szín.
+    function selectionTint() {
+      return peers.value.find(p => p.mine)?.color ?? paint(graphics.value.selection ?? 4, 4);
+    }
+
+    function selectRectangle(drag) {
+      const group = drag.additive ? selectionMembers() : {nodes: new Set(), edges: new Set()};
+      const hits = rectangleMembers(drag);
+      for (const id of hits.nodes) group.nodes.add(id);
+      for (const id of hits.edges) group.edges.add(id);
       selectMembers(group);
     }
 
@@ -2004,7 +2033,7 @@ createApp({
           const submitted = copy(board.value);
           const result = await fetch(endpoint, {method: "PUT", headers: {"Content-Type": "application/json",
             "X-CSRF-Token": csrf, "X-Worksheet-Client": live.client, "If-Match": '"' + baseline.revision + '"'},
-            body: JSON.stringify(encodeWorksheet({...submitted, schemaVersion: 2}))});
+            body: JSON.stringify(encodeWorksheet(submitted))});
           if (result.status === 412) { await refresh(); continue; }
           if (result.status === 409 || result.status === 423) {
             const state = await live.snapshot();
@@ -2318,6 +2347,18 @@ createApp({
     }
 
     const imageAlpha = ref(new Map());
+    const imageSizes = ref(new Map());
+
+    // Eredeti képarány: a doboz magassága a kép méretarányát követi, a szélesség marad.
+    function fitImageAspect(node) {
+      const size = imageSizes.value.get(node.file.asset);
+      if (!size?.w || !size?.h) { problem.value = "A kép mérete még nem ismert."; return; }
+      setNodeHeight(node, Math.round(node.width * size.h / size.w));
+    }
+    function setNodeHeight(node, height) {
+      const current = nodeMap.value.get(node.id);
+      if (current && !occupied(current.id)) { current.height = height; modified(); }
+    }
 
     function detectImageAlpha(event, asset) {
       if (imageAlpha.value.has(asset)) return;
@@ -2410,7 +2451,11 @@ createApp({
       let content;
       if (root === "image") {
         content = h("img", {src: assetURL(path, file.asset), alt: nodeName(node), draggable: false,
-          onLoad: event => detectImageAlpha(event, file.asset)});
+          class: file.asset.toLowerCase().endsWith(".svg") ? "is-svg" : undefined,
+          onLoad: event => {
+            detectImageAlpha(event, file.asset);
+            imageSizes.value.set(file.asset, {w: event.target.naturalWidth, h: event.target.naturalHeight});
+          }});
       } else if (root === "audio") {
         content = h("div", {"data-audio-player": "", class: "node-audio",
           onPointerdown: e => e.stopPropagation(), onDblclick: e => e.stopPropagation()}, [
@@ -2437,12 +2482,12 @@ createApp({
         onPointerdown: e => { if (!e.altKey && !e.ctrlKey) e.stopPropagation(); },
         onClick: e => { e.stopPropagation(); if (destination) followBoxLink(destination); }},
         [icon(node.link.kind === "url" ? "website" : "link"), h("span", linkCaption(node.link))]) : null;
-      return h("foreignObject", {x: -node.width/2, y: -node.height/2, width: node.width, height: node.height}, [
+      // A doboz belsejében csak a tartalom van; a fájlnév a doboz felett, a link és a megjegyzés alatta áll.
+      return h("foreignObject", {x: -node.width/2, y: -node.height/2, width: node.width, height: node.height, style: {overflow: "visible"}}, [
         h("div", {class: ["node-file", "node-" + root], style: {color: paint(node.textColor, 1)}}, [
-          file.showFilename !== false ? h("header", {class: "node-file-name"}, [renderFileDownload(node)]) : null,
+          file.showFilename !== false ? h("div", {class: "node-above"}, [h("header", {class: "node-file-name"}, [renderFileDownload(node)])]) : null,
           h("div", {class: "node-body"}, [content]),
-          marker,
-          comment,
+          marker || comment ? h("div", {class: "node-below"}, [marker, comment]) : null,
         ]),
       ]);
     }
@@ -2505,7 +2550,7 @@ createApp({
             if (!format.bold && !format.italic && !format.code && !format.link) return run.text;
             return h("tspan", {"font-weight": format.bold ? (strong ? 900 : 700) : undefined,
               "font-size": format.bold && strong ? line.size * 1.1 : undefined,
-              "font-style": format.italic ? (node.italic ? "normal" : "italic") : undefined, "font-family": format.code ? "monospace" : undefined,
+              "font-style": format.italic ? "italic" : undefined, "font-family": format.code ? "monospace" : undefined,
               "xml:space": format.code ? "preserve" : undefined,
               "text-decoration": format.link ? "underline" : undefined}, run.text);
           })))) : null;
@@ -2538,8 +2583,8 @@ createApp({
           if (event.key === "Enter" && event.shiftKey) openProperties("node", node.id);
         },
       }, [
-        owner || snapTarget || batch.value?.nodes.has(node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-glow", color: owner && !owner.mine ? owner.color : paint(graphics.value.selection ?? 4, 4), fill: "none",
-          stroke: owner && !owner.mine ? owner.color : paint(graphics.value.selection ?? 4, 4), "stroke-width": 3, "pointer-events": "none"}) : null,
+        owner || snapTarget || batch.value?.nodes.has(node.id) || marqueeHits.value?.nodes.has(node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-glow", color: owner && !owner.mine ? owner.color : selectionTint(), fill: "none",
+          stroke: owner && !owner.mine ? owner.color : selectionTint(), "stroke-width": 3, "pointer-events": "none"}) : null,
         candidates.value.has("node/" + node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "search-candidate", "stroke-width": 3}) : null,
         ...animateBox(isBox(node) ? node.animation : undefined, [
           elevationShadow(drawn),
@@ -2547,13 +2592,15 @@ createApp({
           node.file ? renderFileBox(node, destination) : null,
           junctionLabel,
           linkPreview,
-          labels,
+          labels ? h("svg", {x: -drawn.width/2, y: -drawn.height/2, width: drawn.width, height: drawn.height,
+            viewBox: [-drawn.width/2, -drawn.height/2, drawn.width, drawn.height].join(" "), overflow: "hidden",
+            "pointer-events": "none"}, [labels]) : null,
           editingObject.value === node.id ? editOverlay(node, -drawn.width/2,
             junction ? -14 : (layout.lines[0]?.y ?? (node.file ? drawn.height/2 - 20 : 0)) - 18,
             drawn.width, editKey.value === "text" && !junction ? Math.max(34, drawn.height/2) : 28) : null,
           isBox(node) && node.link ? renderLinkMarker(drawn, destination) : null,
         ]),
-        ...(resizeTarget.value === node.id && !occupied(node.id) && !ancestors(node, nodeMap.value).some(n => n.locked)
+        ...(resizeTarget.value === node.id && gesture.value?.type !== "rectangle" && !occupied(node.id) && !ancestors(node, nodeMap.value).some(n => n.locked)
           ? [[-1,-1], [1,-1], [1,1], [-1,1]].map(([sx, sy]) => {
             const r = 5 / zoomScale.value;
             return h("rect", {"data-editor-only": "", class: "node-handle", x: sx*drawn.width/2-r, y: sy*drawn.height/2-r,
@@ -2613,9 +2660,10 @@ createApp({
       targets.push(endpointHandle(original, "source", from), endpointHandle(original, "target", to));
       const animatedArrows = edge.animated && edge.appearance === "thick";
       const local = mine || batch.value?.edges.has(edge.id);
-      const selectionColor = local ? resolveWireColor({color: graphics.value.selection ?? 4}) :
+      const selectionColor = local ? selectionTint() :
         peers.value.find(peer => !peer.mine && peer.edge === edge.id)?.color;
-      const color = selectionColor ?? paint.color;
+      // Kijelöléskor a vonal és a nyilak megőrzik az eredeti színüket; a felhasználó színű glow az eredeti alakot követi.
+      const color = paint.color;
       const animation = animatedWire(edge, {...paint, color}, from, to, taper, stroke.d);
       const shaftColor = animation.color ?? color;
       return h("g", {key: "edge/" + edge.id, class: "wire", "data-edge": edge.id, fill: "none", "stroke-linecap": "round",
@@ -2674,13 +2722,15 @@ createApp({
         animation.gradient ? h("defs", [animation.gradient]) : null,
         h("path", {"data-editor-only": "", d, stroke: "transparent", "stroke-width": Math.max(paint.lineWidth + 10, 14 / zoomScale.value),
           "pointer-events": "stroke", class: "wire-hit"}),
-        h("g", {class: {"wire-selected": !!selectionColor}, color: selectionColor}, [
+        selectionColor ? h("path", {class: "wire-glow", d, fill: "none", stroke: selectionColor,
+          "stroke-width": paint.lineWidth + 10, "stroke-linecap": "round", "pointer-events": "none", "data-editor-only": ""}) : null,
+        h("g", {}, [
           h("path", {class: "wire-line", ...stroke, ...(taper ? {fill: shaftColor} : {stroke: shaftColor}), "pointer-events": "none", "clip-path": clipPath}, animation.shaft ? [animation.shaft] : undefined),
           renderArrow(ends.source, color, animatedArrows),
           renderArrow(ends.target, color, animatedArrows),
         ]),
         label ? h("text", {transform: label.transform, y: label.y, textLength: label.textLength,
-          lengthAdjust: label.clip ? "spacingAndGlyphs" : undefined, "dominant-baseline": label.clip ? "central" : undefined,
+          "dominant-baseline": label.clip ? "central" : undefined,
           "font-family": "system-ui, sans-serif", "font-size": label.fontSize, "font-weight": label.fontWeight, "text-anchor": "middle",
           stroke: "none", fill: paint.color, class: "wire-label"}, edge.label) : null,
         editingObject.value === edge.id ? editOverlay(original, geometry.labelPosition.x-80, geometry.labelPosition.y-30,160,28) : null,
@@ -2937,7 +2987,7 @@ createApp({
     function endpointActions(edge, compact = false) {
       return [["source", "Kezdőpont"], ["target", "Végpont"]].map(([end, label]) => {
         const attached = !!edgeEndpoint(edge, end).node;
-        const name = label + (attached ? " leválasztása" : " újrakötése");
+        const name = label + (attached ? " leválasztása" : " lekötése");
         const action = attached ? () => { detach(edge, end); menu.value = null; } : () => retarget(edge, end);
         const symbol = compact ? "endpoint-" + end : attached ? "unlink" : "right";
         return compact ? iconToggle(name, attached, action, icon(symbol)) : button(name, action, {symbol});
@@ -3146,32 +3196,9 @@ createApp({
       ], true);
     }
 
-    // Markdown szerkesztő formázógombokkal: a gombok markdown-jeleket szúrnak be a kijelölt szöveg köré.
+    // Markdown szerkesztő: formázógombok nélkül, a szöveg közvetlenül szerkeszthető.
     function markdownEditor(value, change, rows = 6, label = "Text", primary = false) {
-      function format(event, before, after = before, linePrefix = false) {
-        const area = event.currentTarget.closest(".markdown-editor").querySelector("textarea");
-        const start = area.selectionStart, end = area.selectionEnd, text = area.value;
-        let next, caret;
-        if (linePrefix) {
-          const lineStart = text.lastIndexOf("\n", start - 1) + 1;
-          next = text.slice(0, lineStart) + before + text.slice(lineStart);
-          caret = end + before.length;
-        } else {
-          next = text.slice(0, start) + before + text.slice(start, end) + after + text.slice(end);
-          caret = end + before.length;
-        }
-        area.value = next;
-        change(next);
-        area.focus();
-        area.setSelectionRange(caret, caret);
-      }
-      const tool = (title, symbol, ...args) => h("button", {type: "button", class: "button option-icon", ...controlName(title),
-        onPointerdown: e => e.preventDefault(), onClick: e => format(e, ...args)}, [icon(symbol)]);
       return h("div", {class: "markdown-editor stack"}, [
-        h("div", {class: "property-options property-tools markdown-tools"}, [
-          tool("Címsor", "heading", "# ", "", true), tool("Félkövér (markdown)", "bold", "**"), tool("Dőlt (markdown)", "italic", "*"),
-          tool("Lista", "list", "- ", "", true), tool("Kód", "code", "`"), tool("Link (markdown)", "link", "[", "](https://)"),
-        ]),
         h("textarea", {"aria-label": label, value, maxlength: 100000, rows, "data-object-label": primary ? "" : undefined,
           onInput: event => change(event.target.value)}),
       ]);
@@ -3211,12 +3238,12 @@ createApp({
         modified();
       };
       const backgroundTools = () => [
+        nodes.some(isImage) ? null : colorPicker("Háttér", value("fill", 2),
+          v => setBackground(mode === "free" ? "solid" : mode, v), nodes.map(n => n.id).join(",") + "/fill", false, true, 2,
+          {transparent: mode === "free"}),
         iconToggle("Free", mode === "free", () => setBackground(mode === "free" ? "solid" : "free"), icon("box-free")),
         iconToggle("Üres", mode === "empty", () => setBackground(mode === "empty" ? "solid" : "empty"), icon("box-empty")),
         iconToggle("Elmosott", mode === "blurred", () => setBackground(mode === "blurred" ? "solid" : "blurred"), icon("box-blur")),
-        nodes.some(isImage) ? null : colorPicker("Háttér", value("fill", 2),
-          v => setBackground(mode === "free" || mode === "empty" ? "solid" : mode, v), nodes.map(n => n.id).join(",") + "/fill", false, true, 2,
-          {transparent: mode === "free" || mode === "empty", clear: () => setBackground("free")}),
       ];
       const elevation = () => single ? elevationButton(single) : iconToggle("Kiemelés", nodes.every(n => n.elevated === true), () => {
         const raise = !nodes.every(n => n.elevated === true);
@@ -3275,8 +3302,8 @@ createApp({
             h("div", {class: "alignment-picker", role: "group", "aria-label": "Igazítás"},
               alignmentPositions.map(([vertical, horizontal, label, symbol]) => h("button", {
                 type: "button", ...controlName(label),
-                "aria-pressed": vertical === value("verticalAlignment", "middle") && horizontal === (justified ? "left" : value("alignment", "center")),
-                onClick: () => { change("verticalAlignment", vertical); change("alignment", horizontal); change("justified", undefined); },
+                "aria-pressed": vertical === value("verticalAlignment", "middle") && horizontal === value("alignment", "center"),
+                onClick: () => { change("verticalAlignment", vertical); change("alignment", horizontal); },
               }, symbol))),
           ]),
         ]));
@@ -3327,6 +3354,8 @@ createApp({
         optionPicker("Animáció", boxAnimations, value("animation", "none") ?? "none", v => change("animation", v === "none" ? undefined : v), v => icon("box-" + v)),
         h("div", {class: "property-options property-tools box-effect-options"}, [
           ...backgroundTools(), elevation(),
+          single && isImage(single) ? button("", () => fitImageAspect(single), {symbol: "aspect", disabled: !online.value,
+            ...controlName("Eredeti képarány")}) : null,
           single && containerIDs.value.has(single.id) ? iconToggle("Tartalom rögzítése", !!single.locked,
             () => change("locked", single.locked ? undefined : true), icon(single.locked ? "lock" : "unlock")) : null,
           linkButton(),
@@ -3345,9 +3374,7 @@ createApp({
         const destination = linkDestination(single.link);
         const kindLabel = linkKinds.find(([kind]) => kind === single.link.kind)?.[1] ?? "Link";
         panels.push(h("fieldset", {class: "property-group stack link-group"}, [
-          h("legend", [h("span", "Link · " + kindLabel),
-            h("button", {type: "button", class: "button option-icon link-remove", ...controlName("Link törlése"),
-              onClick: () => removeLink(single)}, [icon("close")])]),
+          h("legend", [h("span", "Link · " + kindLabel)]),
           h("div", {class: "property-inline"}, [
             single.link.kind === "web" ? h("span", {class: "link-target"}, single.link.target) :
               h("input", {"aria-label": "Link célja", value: single.link.target, maxlength: 2048,
@@ -3360,6 +3387,8 @@ createApp({
             single.link.kind === "web" ? button("", () => transfer(() => openPresentationPicker(path, csrf, item => change("link", {kind: "web", target: item.reference}))),
               {symbol: "folder", ...controlName("Mappa kiválasztása"), disabled: !online.value}) : null,
             destination ? button("", () => followBoxLink(destination), {symbol: single.link.kind === "url" ? "website" : "right", ...controlName("Megnyitás")}) : null,
+            h("button", {type: "button", class: "button option-icon link-remove", ...controlName("Link törlése"),
+              onClick: () => removeLink(single)}, [icon("close")]),
           ]),
         ]));
       }

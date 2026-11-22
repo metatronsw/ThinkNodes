@@ -376,11 +376,12 @@ export function wireLabelLayout(geometry, label, paint, inline) {
   const room = Math.min(distanceAlongLabel(from), distanceAlongLabel(to));
   if (room < 2) return above();
   const padding = Math.min(8, room / 5);
-  const textLength = Math.min(naturalWidth, 2 * (room - padding - Math.min(20, room / 3)));
-  const gap = textLength / 2 + padding;
+  // Az eredeti betűarányokat nem nyomjuk össze: ha a vonalba nem fér el, a felirat a vonal fölé kerül.
+  if (naturalWidth > 2 * (room - padding - Math.min(20, room / 3))) return above();
+  const gap = naturalWidth / 2 + padding;
   const extent = Math.max(...boundsPoints.map(point => Math.hypot(point.x - center.x, point.y - center.y))) + 40 + 2 * paint.lineWidth;
   const clip = `M ${-extent} ${-extent} H ${-gap} V ${extent} H ${-extent} Z M ${gap} ${-extent} H ${extent} V ${extent} H ${gap} Z`;
-  return {transform, y: 0, fontSize, fontWeight, width: textLength, textLength, clip};
+  return {transform, y: 0, fontSize, fontWeight, width: naturalWidth, clip};
 }
 
 export function arrowLength(width) {
@@ -587,15 +588,18 @@ export function labelLayout(node, blocks = []) {
       const columns = Math.max(2, Math.floor((labelWidth - indent) / (size * 0.65)));
       const runs = block.kind === "quote" ? [{text: "› "}, ...block.runs] : block.runs;
       wrapRuns(runs, columns, block.kind === "code").forEach(({pieces, wrapped}, row) => {
-        const blockGap = index === 0 ? 0 : heading ? size * 0.35 : 3;
+        // Bekezdések között az üres sor egy teljes sornyi térközt ad.
+        const blockGap = index === 0 ? 0 : heading ? size * 0.35 : block.kind === "body" ? size * 1.25 : 3;
         const gap = row === 0 ? (node.fitText ? Math.min(blockGap, base * 0.4) : blockGap) : 0;
         lines.push({justify: node.justified && block.kind !== "code", wrapped, runs: pieces, text: pieces.map(piece => piece.text).join(""),
           size, weight, indent, color: node.textColor, step: size * 1.25 + gap, gap});
       });
     });
     if (node.hideText && lines.length > 1) {
+      // Összecsukott állapot: az első sor marad, alatta egy sorközzel az ellipszis.
       const first = lines[0];
-      return [{...first, runs: [...first.runs, {text: " …"}], text: first.text + " …"}];
+      return [first, {...first, runs: [{text: "…"}], text: "…", justify: false, wrapped: false, indent: 0, gap: 0,
+        step: first.size * 1.25}];
     }
     return lines;
   }
@@ -624,7 +628,6 @@ export function labelLayout(node, blocks = []) {
     remaining -= line.step;
   }
   const omitted = visible.length < lines.length;
-  if (omitted && !visible.length) visible.push(lines[0]);
   let overflow = omitted || (node.hideText && blocks.length > 1);
   for (let i = 0; i < visible.length; i++) {
     const line = visible[i];

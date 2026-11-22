@@ -69,6 +69,8 @@ import VaporTesting
         #expect(csp.contains("script-src") && csp.contains("frame-ancestors 'none'"))
         let export = try await browser.sendRequest(.GET, "/demoproject/web/export/")
         #expect(export.status == .ok && export.body.string.contains("Stitch export"))
+        let fallback = try await browser.sendRequest(.GET, "/demoproject/web/export/_tn-preview")
+        #expect(fallback.status == .ok && fallback.headers.first(name: .contentType) == "image/svg+xml")
         let slide = try await browser.sendRequest(.GET, base + "slides/")
         #expect(slide.status == .ok && slide.body.string.contains("Nested slide"))
         let preview = try await browser.sendRequest(.GET, base + "_tn-preview")
