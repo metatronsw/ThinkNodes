@@ -19,6 +19,20 @@
       "autoPort": false
     },
     {
+      "name": "thinknodes-test",
+      "runtimeExecutable": "/usr/bin/env",
+      "runtimeArgs": [
+        "THINKNODES_HOST=::",
+        "./run.sh",
+        "--local",
+        "--test",
+        "--port:8888"
+      ],
+      "port": 8888,
+      "url": "http://mtrn.local:8888",
+      "autoPort": false
+    },
+    {
       "name": "thinknodes-dev",
       "runtimeExecutable": "/usr/bin/env",
       "runtimeArgs": [
