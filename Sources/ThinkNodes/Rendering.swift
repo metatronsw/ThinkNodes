@@ -529,7 +529,7 @@ private func boxSurface(_ node: Idea, geometry: String, graphics: VisualTheme.Gr
     let width = locked ? "6.4" : glass ? "3" : "1.6"
     let dash = node.isBox && node.link != nil ? " stroke-dasharray=\"7 4\"" : ""
     let closed = locked ? " data-locked-outline=\"\"" : ""
-    let effect = glass ? " fill-opacity=\".66\"" : ""
+    let effect = glass ? " fill-opacity=\".66\"" : mode == .translucent ? " fill-opacity=\".75\"" : ""
     let pointer = empty && interactive ? " pointer-events=\"fill\"" : ""
     if blurred {
         return "<\(geometry) class=\"node-surface\" fill=\"\(escaped(fill))\" opacity=\".99\" filter=\"url(#box-background-blur)\" stroke=\"none\"/>"

@@ -4,11 +4,6 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 ## Nyitott
 
-- **A bal felső sarokban kódrészlet vagy hibás keret látható** (2026-11-22)
-  - Tünet: a felületen váratlan kódrészlet vagy keret jelenik meg.
-  - Állapot: a pontos forrás böngészős ellenőrzés híján nincs azonosítva. A Névtér-azonosító az egyik vizsgálandó komponens.
-  - Érintett kód: egyelőre nem meghatározott.
-
 ## Javítva
 
 - **Hibás munkalapelem csendben elveszhet mentéskor** (2026-11-22)
@@ -31,3 +26,6 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 - **Sorkizárás nem működik és újraállítja a pozicionáló gombokat** (2026-11-22)
   - Javítás: a pozicionáló gombok már nem törlik a sorkizárást; a gomb állapota csak az igazítástól függ (`Public/editor.js`).
   - Megjegyzés: a sorkizárás tényleges vizuális megjelenése böngészőben még nincs ellenőrizve.
+
+- **A bal felső sarokban kódrészlet vagy hibás keret látható** (2026-11-22)
+  - Javítva: a felhasználó szerint már nincs jelen; nem történt célzott javítás, a forrását nem azonosítottuk.

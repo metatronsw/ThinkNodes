@@ -273,7 +273,8 @@ function shape(node, linked, dropTarget = false) {
   const fill = image?.alphaEnabled === false ? "#ffffff" : paint(image?.alphaBackground ?? node.fill, 2);
   // Üres doboz: csak a keret látszik, a keret színe a doboz színe. Elmosottnál a háttér elmosódik, a keret nem.
   const frame = empty ? paint(node.fill, 2) : image && !empty ? "none" : glass ? "url(#glass-rim)" : automaticBorder(fill);
-  const style = {fill: empty ? "none" : fill, stroke: frame,
+  const translucent = mode === "translucent";
+  const style = {fill: empty ? "none" : fill, stroke: frame, "fill-opacity": translucent ? .75 : undefined,
     "pointer-events": empty ? "fill" : undefined, class: "node-surface",
     "stroke-width": locked ? 6.4 : glass ? 3 : 1.6,
     "data-locked-outline": locked ? "" : undefined, "stroke-dasharray": linked && isBox(node) ? "7 4" : undefined,
@@ -3244,6 +3245,7 @@ createApp({
         iconToggle("Free", mode === "free", () => setBackground(mode === "free" ? "solid" : "free"), icon("box-free")),
         iconToggle("Üres", mode === "empty", () => setBackground(mode === "empty" ? "solid" : "empty"), icon("box-empty")),
         iconToggle("Elmosott", mode === "blurred", () => setBackground(mode === "blurred" ? "solid" : "blurred"), icon("box-blur")),
+        iconToggle("Áttetsző", mode === "translucent", () => setBackground(mode === "translucent" ? "solid" : "translucent"), icon("box-background")),
       ];
       const elevation = () => single ? elevationButton(single) : iconToggle("Kiemelés", nodes.every(n => n.elevated === true), () => {
         const raise = !nodes.every(n => n.elevated === true);

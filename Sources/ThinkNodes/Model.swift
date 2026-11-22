@@ -155,7 +155,7 @@ enum BoxAnimation: String, Codable, Sendable {
 }
 
 enum BoxBackgroundMode: String, Codable, Sendable {
-    case solid, free, empty, blurred
+    case solid, free, empty, blurred, translucent
 }
 
 struct Idea: Codable, Equatable, Sendable {
