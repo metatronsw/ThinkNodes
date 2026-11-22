@@ -82,10 +82,13 @@ func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: 
     let crumb = parts.indices.map { i in
         let name = parts[i].removingPercentEncoding ?? parts[i]
         let separator = "<span class=\"crumb-sep\" aria-hidden=\"true\">›</span>"
+        // Szűk fejlécben (header-fit.js) a név helyett a sorszám látszik; a név a súgóban és az akadálymentes névben marad.
+        let label = "<span class=\"crumb-name\">\(escaped(name))</span><span class=\"crumb-number\" aria-hidden=\"true\">\(i + 1)</span>"
+        let named = "title=\"\(escaped(name))\" aria-label=\"\(escaped(name))\""
         if i == parts.count - 1 {
-            return separator + "<span class=\"\(headerButtonClass) crumb\" aria-current=\"page\">\(escaped(name))</span>"
+            return separator + "<span class=\"\(headerButtonClass) crumb\" aria-current=\"page\" \(named)>\(label)</span>"
         }
-        return separator + "<a class=\"\(headerButtonClass) crumb\" href=\"\(escaped(base + parts[...i].joined(separator: "/")))\">\(escaped(name))</a>"
+        return separator + "<a class=\"\(headerButtonClass) crumb\" \(named) href=\"\(escaped(base + parts[...i].joined(separator: "/")))\">\(label)</a>"
     }.joined()
     let parent = editing && parts.count > 1
         ? "<a class=\"\(headerButtonClass)\" aria-label=\"Szülő munkalap\" title=\"Szülő munkalap\" href=\"/edit/\(parts.dropLast().joined(separator: "/"))\">\(uiIcon("parent-up"))</a>"
@@ -120,7 +123,7 @@ func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: 
         <\(tag) class="\(navigationClass)"><div class="header-left"><nav aria-label="Fő navigáció" class="breadcrumbs">
           <a class="\(headerButtonClass) brand" href="/"><span class="brand-icon" aria-hidden="true"><span></span><span></span><span></span></span>ThinkNodes</a>
           \(crumb)\(parent)
-        </nav></div><div class="header-parent">\(centerAction)</div><div class="header-actions">\(actions)<div class="header-user">\(session)</div>\(editing ? "" : appearanceActions)</div>\(editing ? appearanceActions : "")</\(tag)>
+        </nav></div><div class="header-parent">\(centerAction)</div><div class="header-actions">\(actions)<div class="header-user">\(session)</div>\(editing ? "" : appearanceActions)</div>\(editing ? appearanceActions : "")</\(tag)>\(path == nil ? "" : "<script defer src=\"/header-fit.js?v=1\"></script>")
         """
 }
 
