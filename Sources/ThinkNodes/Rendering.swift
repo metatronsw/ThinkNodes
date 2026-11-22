@@ -123,7 +123,7 @@ func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: 
         <\(tag) class="\(navigationClass)"><div class="header-left"><nav aria-label="Fő navigáció" class="breadcrumbs">
           <a class="\(headerButtonClass) brand" href="/"><span class="brand-icon" aria-hidden="true"><span></span><span></span><span></span></span>ThinkNodes</a>
           \(crumb)\(parent)
-        </nav></div><div class="header-parent">\(centerAction)</div><div class="header-actions">\(actions)<div class="header-user">\(session)</div>\(editing ? "" : appearanceActions)</div>\(editing ? appearanceActions : "")</\(tag)>\(path == nil ? "" : "<script defer src=\"/header-fit.js?v=1\"></script>")
+        </nav></div><div class="header-parent">\(centerAction)</div><div class="header-actions">\(actions)<div class="header-user">\(session)</div>\(editing ? "" : appearanceActions)</div>\(editing ? appearanceActions : "")</\(tag)><script defer src="/header-fit.js?v=2"></script>
         """
 }
 

@@ -13,19 +13,31 @@ function singleLine(elements) {
   return !tops.length || Math.max(...tops) - Math.min(...tops) < 3;
 }
 
+// Az adott sorba tartozó gombok (a konténerek belsejében lévők is).
+function buttons(children) {
+  return children.flatMap(child => child.matches(".header-button, .button") ? [child] : [...child.querySelectorAll(".header-button, .button")]);
+}
+
 function overflowing(nav) {
   if (nav.scrollWidth > nav.clientWidth + 1) return true;
+  const site = nav.matches(".site-header");
+  // Egy soros módban minden gomb egy sorban van (a sortörés is túlcsordulásnak számít).
+  if (!nav.classList.contains("stacked")) {
+    const all = site ? [...nav.children] : [...nav.children].filter(child => !child.matches(".header-parent"));
+    if (!singleLine(buttons(all))) return true;
+  }
   if (nav.classList.contains("stacked")) {
-    const first = [...nav.children].filter(child => child.matches(firstRow));
-    const second = [...nav.children].filter(child => !child.matches(firstRow) && !child.matches(".header-parent"))
-      .flatMap(child => child.matches(".header-button, .button") ? [child] : [...child.querySelectorAll(".header-button, .button")]);
-    if (!singleLine(first) || !singleLine(second)) return true;
+    // Munkalap fejléce: felül menü, márka, útvonal, bezárás; a főoldalon felül márka és műveletek, alul a kereső.
+    const top = site ? ".header-left, .header-actions" : firstRow;
+    const first = [...nav.children].filter(child => child.matches(top));
+    const second = [...nav.children].filter(child => !child.matches(top) && (site || !child.matches(".header-parent")));
+    if (!singleLine(buttons(first)) || !singleLine(buttons(second))) return true;
   }
   const crumbs = nav.querySelector(".breadcrumbs");
   if (crumbs && crumbs.scrollWidth > crumbs.clientWidth + 1) return true;
   const right = nav.getBoundingClientRect().right + 1;
-  return [...nav.querySelectorAll(".header-button, .button")].some(button => {
-    const bounds = button.getBoundingClientRect();
+  return [...nav.querySelectorAll(".header-button, .button, input")].some(element => {
+    const bounds = element.getBoundingClientRect();
     return bounds.width > 0 && bounds.right > right;
   });
 }
@@ -52,4 +64,4 @@ function watch(nav) {
   schedule();
 }
 
-document.querySelectorAll(".worksheet-nav").forEach(watch);
+document.querySelectorAll(".worksheet-nav, .site-header").forEach(watch);

@@ -34,7 +34,7 @@ h2 { letter-spacing: -.02em; }
   justify-content: space-between;
   gap: 12px;
   padding: 7px clamp(16px, 3vw, 36px);
-  overflow-x: auto;
+  overflow: visible;
   color: #e9effb;
   background: #18253b;
 }
@@ -818,3 +818,16 @@ svg text { text-rendering: geometricPrecision; }
 .worksheet-nav.stacked > .sidebar-open:not(.sidebar-open-canvas) { width: 30px; height: 30px; min-height: 0; padding: 0; justify-content: center; }
 .worksheet-nav.stacked > :not(.header-left), .worksheet-nav.stacked .account { gap: 3px; }
 .worksheet-nav.stacked { column-gap: 3px; }
+/* Főoldal fejléce (header-fit.js): ikonos gombok, szükség esetén két sor —
+   felül a márka és a műveletek, alul a munkalap-kereső teljes szélességben. */
+.site-header.compact .header-actions .header-button { font-size: 0; gap: 0; width: 34px; padding: 0; justify-content: center; }
+.site-header.compact .header-button .ui-icon { width: 18px; height: 18px; }
+.site-header.compact .account span { display: none; }
+.site-header.stacked { display: flex; flex-wrap: wrap; row-gap: 8px; column-gap: 6px; padding-inline: 12px; }
+.site-header.stacked > .header-left { order: 0; flex: 0 1 auto; min-width: 0; }
+.site-header.stacked > .header-actions { order: 1; flex: 0 0 auto; flex-wrap: nowrap; gap: 4px; margin-inline-start: auto; }
+.site-header.stacked .header-actions > *, .site-header.stacked .header-appearance { display: flex; flex-wrap: nowrap; gap: 4px; margin: 0; }
+.site-header.stacked > .header-parent { order: 2; flex: 1 0 100%; display: flex; justify-content: center; }
+.site-header.stacked .header-open { width: 100%; max-width: 480px; }
+.site-header.stacked .header-open input { flex: 1; width: auto; min-width: 0; }
+/* A főoldalon a ThinkNodes gomb mindig teljes méretű marad. */
