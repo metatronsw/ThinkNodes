@@ -35,6 +35,8 @@ SPACE INSERT:
 
 
 [ **FILE KEZELÉS** ]
++ Nagy szövegfájl szerkesztése külső szerkesztőben (docs/node-types.md, text típus). A mérethatárt is meg kell adni.
++ .thnode import: most új almunkalapot hoz létre, de nem keletkezik doboz a vásznon. Az új típusrendszerben (docs/node-types.md) a `sheet` típushoz kell kötni.
 
 
 

@@ -35,7 +35,6 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
           \(live)
           <link rel="stylesheet" href="/app.css?v=13">
           <script defer src="/site-mode.js"></script>
-          <script defer src="/ui-names.js?v=1"></script>
           \(assets)
         </head>
         <body>\(body)</body>
