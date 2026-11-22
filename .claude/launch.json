@@ -1,0 +1,38 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "thinknodes",
+      "runtimeExecutable": "/usr/bin/env",
+      "runtimeArgs": [
+        "THINKNODES_DATA=Projects",
+        "THINKNODES_SECURE_COOKIES=0",
+        ".build/debug/ThinkNodes",
+        "serve",
+        "--hostname",
+        "::",
+        "--port",
+        "8888"
+      ],
+      "port": 8888,
+      "url": "http://mtrn.local:8888",
+      "autoPort": false
+    },
+    {
+      "name": "thinknodes-dev",
+      "runtimeExecutable": "/usr/bin/env",
+      "runtimeArgs": [
+        "THINKNODES_DATA=/private/tmp/claude-501/-Users-Metatron--claude-spares-spare-DSgbqn/4de29f07-0a78-4721-aeb7-a5f03353e680/scratchpad/data",
+        "THINKNODES_TEST_MODE=1",
+        "THINKNODES_SECURE_COOKIES=0",
+        ".build/debug/ThinkNodes",
+        "serve",
+        "--hostname",
+        "127.0.0.1",
+        "--port",
+        "8099"
+      ],
+      "port": 8099
+    }
+  ]
+}

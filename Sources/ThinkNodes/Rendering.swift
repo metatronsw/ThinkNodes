@@ -33,8 +33,9 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=12">
+          <link rel="stylesheet" href="/app.css?v=13">
           <script defer src="/site-mode.js"></script>
+          <script defer src="/ui-names.js?v=1"></script>
           \(assets)
         </head>
         <body>\(body)</body>
@@ -427,6 +428,22 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
                        overflow: overflow, lines: visible, extentX: extentX, extentY: extentY)
 }
 
+/// Egységes vászon-osztálynév: `node` + fajta szerinti módosító. Az editor.js `nodeClasses` ugyanezt adja.
+func nodeClasses(_ node: Idea) -> String {
+    let kind: String? = switch (node.kind, node.file?.type) {
+    case (.container?, _): "is-container"
+    case (.connectionPoint?, _): "is-point"
+    case (nil, .image?): "is-image"
+    case (nil, .txt?), (nil, .md?), (nil, .json?): "is-note"
+    case (nil, .mp3?): "is-audio"
+    case (nil, .web?): "is-web"
+    case (nil, .worksheet?): "is-worksheet"
+    case (nil, .attachment?): "is-file"
+    case (nil, nil): nil
+    }
+    return kind.map { "node " + $0 } ?? "node"
+}
+
 func needsTextTooltip(_ node: Idea, overflow: @autoclosure () -> Bool) -> Bool {
     !node.text.isEmpty && (node.file?.type == .image || node.hideText == true || overflow())
 }
@@ -460,7 +477,7 @@ private func animatedBox(_ contents: String, mode: BoxAnimation?, speed: Double)
         if type == "opacity" { return "<animate attributeName=\"opacity\" values=\"\(values)\" \(timing)/>" }
         return "<animateTransform attributeName=\"transform\" type=\"\(type)\" additive=\"sum\" values=\"\(values)\" \(timing)/>"
     }.joined()
-    return "<g data-box-animation=\"\(mode?.rawValue ?? "")\">\(animations)\(contents)</g>"
+    return "<g class=\"node-motion\" data-box-animation=\"\(mode?.rawValue ?? "")\">\(animations)\(contents)</g>"
 }
 
 private func boxGeometry(_ node: Idea, graphics: VisualTheme.Graphics?) -> String {
@@ -506,7 +523,7 @@ private func elevationShadow(_ node: Idea, geometry: String, graphics: VisualThe
     let x = node.width / 2 + 24, y = node.height / 2 + 40
     let outside = "M\(number(-x)) \(number(-y))H\(number(x))V\(number(y))H\(number(-x))Z" + boxOutline(node, graphics: graphics)
     return """
-        <g data-elevated-shadow="" pointer-events="none" aria-hidden="true">
+        <g class="node-shadow" pointer-events="none" aria-hidden="true">
           <clipPath id="\(clip)"><path d="\(outside)" clip-rule="evenodd"/></clipPath>
           <g clip-path="url(#\(clip))">
             <\(geometry) transform="translate(12 28)" fill="#11172b" fill-opacity=".44"/>
@@ -533,14 +550,14 @@ private func boxSurface(_ node: Idea, geometry: String, graphics: VisualTheme.Gr
     let closed = locked ? " data-locked-outline=\"\"" : ""
     let effect = blurred ? " opacity=\".5\" filter=\"url(#box-background-blur)\"" : glass ? " fill-opacity=\".66\"" : ""
     let pointer = empty && interactive ? " pointer-events=\"fill\"" : ""
-    let surface = "<\(geometry) data-box-surface=\"\" fill=\"\(empty ? "none" : escaped(fill))\" stroke=\"\(stroke)\" stroke-width=\"\(width)\"\(closed)\(dash)\(effect)\(pointer)/>"
+    let surface = "<\(geometry) class=\"node-surface\" fill=\"\(empty ? "none" : escaped(fill))\" stroke=\"\(stroke)\" stroke-width=\"\(width)\"\(closed)\(dash)\(effect)\(pointer)/>"
     return surface + (glass ? "<\(geometry) fill=\"url(#glass-sheen)\" pointer-events=\"none\" aria-hidden=\"true\"/>" : "")
 }
 
 private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: VisualTheme.Graphics?, interactive: Bool) -> String {
     let node = drawing.node
     if node.kind == .connectionPoint {
-        let label = node.title.isEmpty ? "" : "<text x=\"\(number(node.position.x + node.width/2 + 4))\" y=\"\(number(node.position.y + 4))\" font-size=\"14\" fill=\"\(node.textColor)\">\(escaped(node.title))</text>"
+        let label = node.title.isEmpty ? "" : "<text class=\"node-label\" x=\"\(number(node.position.x + node.width/2 + 4))\" y=\"\(number(node.position.y + 4))\" font-size=\"14\" fill=\"\(node.textColor)\">\(escaped(node.title))</text>"
         let r = node.width / 2
         let x = node.position.x, y = node.position.y
         if node.shape == .rectangle {
@@ -580,7 +597,7 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
         case .right: (textX, anchor) = (labelWidth / 2, "end")
         case .center: (textX, anchor) = (0, "middle")
         } }
-        var style = line.runs.isEmpty ? " class=\"link-label\"" : ""
+        var style = line.runs.isEmpty ? " class=\"node-link-label\"" : ""
         if line.justify && line.wrapped {
             let spaces = line.text.filter { $0 == " " }.count
             let width = textWidth(line.text, size: line.size)
@@ -610,13 +627,13 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
         let linkWidth = max(12, node.width * inset - 22)
         let fit = textWidth(node.link ?? "", size: 16) > linkWidth ? " textLength=\"\(number(linkWidth))\" lengthAdjust=\"spacingAndGlyphs\"" : ""
         return """
-            <text class="box-link"\(fit) x="\(number(x * inset - 19))" y="\(number(y * inset - 5))" text-anchor="end" font-size="16" fill="\(node.textColor)">\(escaped(node.link ?? ""))</text><svg x="\(number(x * inset - 15))" y="\(number(y * inset - 16))" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="\(node.textColor)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="\(link.iconPath(siteHost: siteHost))"/></svg>
+            <text class="node-link"\(fit) x="\(number(x * inset - 19))" y="\(number(y * inset - 5))" text-anchor="end" font-size="16" fill="\(node.textColor)">\(escaped(node.link ?? ""))</text><svg x="\(number(x * inset - 15))" y="\(number(y * inset - 16))" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="\(node.textColor)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="\(link.iconPath(siteHost: siteHost))"/></svg>
             """
     } ?? ""
     let contents = """
         \(elevationShadow(node, geometry: geometry, graphics: graphics))
         \(boxSurface(node, geometry: geometry, graphics: graphics, interactive: interactive))
-        <text font-family="system-ui, sans-serif" pointer-events="none">\(spans)</text>
+        <text class="node-label" font-family="system-ui, sans-serif" pointer-events="none">\(spans)</text>
         \(symbol)
         """
     return """
@@ -867,7 +884,7 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
                 ? "><animateTransform attributeName=\"transform\" type=\"scale\" additive=\"sum\" values=\"1;1.12;1\" dur=\"3s\" repeatCount=\"indefinite\"/></path>"
                 : "/>"
             return """
-                <path data-arrow-end="\(end)" d="M0 0L-1 -.5V.5Z" transform="translate(\(number(tip.x)) \(number(tip.y))) rotate(\(number(angle))) scale(\(number(length)))" fill="\(color)" stroke="none" pointer-events="none"\(animation)
+                <path class="wire-arrow" data-arrow-end="\(end)" d="M0 0L-1 -.5V.5Z" transform="translate(\(number(tip.x)) \(number(tip.y))) rotate(\(number(angle))) scale(\(number(length)))" fill="\(color)" stroke="none" pointer-events="none"\(animation)
                 """
         }
         if edge.hasStartArrow && (sourceNode == nil || !usesMarkers) {
@@ -884,11 +901,11 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
                 let animation = taper.expanded.map {
                     "><animate attributeName=\"d\" values=\"\(taper.outline);\($0);\(taper.outline)\" dur=\"3s\" repeatCount=\"indefinite\"/></path>"
                 } ?? "/>"
-                let fill = "<path\(wire) data-wire-taper=\"\" d=\"\(taper.outline)\" fill=\"\(motion.stroke)\" stroke=\"none\"\(clip)\(animation)"
-                return "<g data-wire-group=\"\" fill=\"none\">\(fill)\(heads)</g>"
+                let fill = "<path class=\"wire-line\"\(wire) data-wire-taper=\"\" d=\"\(taper.outline)\" fill=\"\(motion.stroke)\" stroke=\"none\"\(clip)\(animation)"
+                return "<g class=\"wire\" fill=\"none\">\(fill)\(heads)</g>"
             }
-            let stroke = "<path\(wire) d=\"\(drawing)\" stroke=\"\(motion.stroke)\" stroke-width=\"\(number(lineWidth))\"\(markers)\(clip)\(shaft)"
-            return "<g data-wire-group=\"\" fill=\"none\" stroke-linecap=\"round\">\(heads)\(stroke)</g>"
+            let stroke = "<path class=\"wire-line\"\(wire) d=\"\(drawing)\" stroke=\"\(motion.stroke)\" stroke-width=\"\(number(lineWidth))\"\(markers)\(clip)\(shaft)"
+            return "<g class=\"wire\" fill=\"none\" stroke-linecap=\"round\">\(heads)\(stroke)</g>"
         }
         let sourceLayer = edge.source.flatMap { nodeLayers[$0] }
         let targetLayer = edge.target.node.flatMap { nodeLayers[$0] }
@@ -964,7 +981,7 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
         halfWidth = max(halfWidth, abs(center.x - sine * labelY) + abs(cosine) * displayedRadius + padding)
         halfHeight = max(halfHeight, abs(center.y + cosine * labelY) + abs(sine) * displayedRadius + padding)
         return (wireLayer, wirePath(gap: hasGap) + """
-            <text transform="\(transform)" y="\(number(labelY))"\(labelAttributes) font-family="system-ui, sans-serif" font-size="\(number(fontSize))" font-weight="\(fontWeight)" text-anchor="middle" stroke="none" fill="\(color)">\(escaped(label))</text>
+            <text class="wire-label" transform="\(transform)" y="\(number(labelY))"\(labelAttributes) font-family="system-ui, sans-serif" font-size="\(number(fontSize))" font-weight="\(fontWeight)" text-anchor="middle" stroke="none" fill="\(color)">\(escaped(label))</text>
             """)
     }
     let base = assetBase ?? noteBase ?? ""
@@ -987,7 +1004,7 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
                 content = "<img alt=\"\(alt)\" src=\"\(url)\"/>"
             case .mp3:
                 content = """
-                    <div class="canvas-audio" data-audio-player="">
+                    <div class="node-audio" data-audio-player="">
                       <audio hidden="hidden" preload="metadata" src="\(url)"></audio>
                       <button type="button" class="button" data-audio-toggle="" aria-label="Lejátszás" title="Lejátszás">\(uiIcon("play"))</button>
                       <input type="range" min="0" max="0" step="any" disabled="disabled" data-audio-seek="" aria-label="Lejátszási pozíció"/>
@@ -997,9 +1014,9 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
             case .md: content = "<div class=\"formatted-text\(justification)\">\(markdownHTML(node.text))</div>"
             case .txt, .json: content = "<pre\(commentClass)>\(escaped(node.text))</pre>"
             case .web:
-                let preview = webURL.map { "<img class=\"web-preview\" alt=\"\" src=\"\(escaped($0 + "_tn-preview"))\"/>" } ?? ""
+                let preview = webURL.map { "<img class=\"node-web-preview\" alt=\"\" src=\"\(escaped($0 + "_tn-preview"))\"/>" } ?? ""
                 let path = escaped(file.webPath ?? "")
-                content = "<div class=\"web-box-body\">\(preview)<span>\(uiIcon("website"))\(path)</span></div>"
+                content = "<div class=\"node-web\">\(preview)<span>\(uiIcon("website"))\(path)</span></div>"
             case .attachment, .worksheet: content = ""
             }
             let note = file.type == .md || file.type == .txt
@@ -1010,9 +1027,9 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
             let footer = file.type == .web ? "" : noteBase == nil
                 ? (assetBase == nil ? filenameLabel : "<a href=\"\(download)\" aria-label=\"Letöltés · \(filename)\">\(packageIcon)\(filenameLabel)</a>")
                 :
-                "<button type=\"button\" class=\"file-download\" title=\"\(filename)\" aria-label=\"Letöltés · \(filename)\" data-download=\"\(download)\">\(packageIcon)\(filenameLabel)</button>"
+                "<button type=\"button\" class=\"node-download\" title=\"\(filename)\" aria-label=\"Letöltés · \(filename)\" data-download=\"\(download)\">\(packageIcon)\(filenameLabel)</button>"
             let fold = node.resolvedBackgroundMode == .solid ? " with-fold" : ""
-            let body = note ? "<div class=\"folded-note\(fold)\">\(content)</div>" : content
+            let body = note ? "<div class=\"node-note\(fold)\">\(content)</div>" : content
             let image = file.type == .image
             let above: Double = (image || note) && !title.isEmpty ? 22 : 0
             let below: Double = image || note ? 22 : 0
@@ -1021,10 +1038,10 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
                 boxSurface(node, geometry: geometry, graphics: graphics, interactive: noteBase != nil)
             let translated = chrome.isEmpty ? "" : "<g transform=\"translate(\(number(node.position.x)) \(number(node.position.y)))\">\(chrome)</g>"
             graphic = """
-                \(translated)<foreignObject x="\(number(node.position.x-node.width/2))" y="\(number(node.position.y-node.height/2-above))" width="\(number(node.width))" height="\(number(node.height+above+below))"><div xmlns="http://www.w3.org/1999/xhtml" data-file-ink="\(escaped(node.textColor))" style="color:\(escaped(node.textColor))" class="\(image || note ? "canvas-image" : "canvas-file")">\(title)\(body)\(footer)</div></foreignObject>
+                \(translated)<foreignObject x="\(number(node.position.x-node.width/2))" y="\(number(node.position.y-node.height/2-above))" width="\(number(node.width))" height="\(number(node.height+above+below))"><div xmlns="http://www.w3.org/1999/xhtml" data-file-ink="\(escaped(node.textColor))" style="color:\(escaped(node.textColor))" class="\(image || note ? "node-image" : "node-file")">\(title)\(body)\(footer)</div></foreignObject>
                 """
         } else { graphic = nodeSVG(drawing, siteHost: siteHost, graphics: graphics, interactive: noteBase != nil) }
-        guard let noteBase else { return graphic }
+        guard let noteBase else { return "<g class=\"\(nodeClasses(node))\">\(graphic)</g>" }
         let parts = noteBase.split(separator: "/").map { String($0).removingPercentEncoding ?? String($0) }
         let path = try? WorksheetPath(parts)
         let destination = webURL ?? node.link.flatMap(WorksheetLink.init).flatMap { link in path.flatMap { link.destination(from: $0) } }
@@ -1036,7 +1053,7 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
             linked += " target=\"_blank\" rel=\"noopener noreferrer\""
         }
         let geometry = "data-x=\"\(node.position.x)\" data-y=\"\(node.position.y)\" data-width=\"\(node.width)\" data-height=\"\(node.height)\" data-shape=\"\(node.shape.rawValue)\" data-parent=\"\(node.parent ?? "")\""
-        return "<\(tag) id=\"object-\(node.id)\" data-node=\"\(node.id)\" \(geometry)\(linked) aria-label=\"\(escaped(node.title))\">\(graphic)</\(tag)>"
+        return "<\(tag) id=\"object-\(node.id)\" class=\"\(nodeClasses(node))\" data-node=\"\(node.id)\" \(geometry)\(linked) aria-label=\"\(escaped(node.title))\">\(graphic)</\(tag)>"
     }
     let wiresByLayer = Dictionary(grouping: edges, by: \.layer)
     var scene: [String] = []
@@ -1097,7 +1114,7 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
         "<rect x=\"\(number(-halfWidth))\" y=\"\(number(-halfHeight))\" width=\"\(width)\" height=\"\(height)\" fill=\"\(fill)\"/>"
     }
     let svg = """
-        <svg xmlns="http://www.w3.org/2000/svg" class="passive-canvas" role="\(noteBase == nil ? "img" : "group")" aria-label="\(escaped(board.title))" width="\(width)" height="\(height)" viewBox="\(number(-halfWidth)) \(number(-halfHeight)) \(width) \(height)">
+        <svg xmlns="http://www.w3.org/2000/svg" class="canvas passive-canvas" role="\(noteBase == nil ? "img" : "group")" aria-label="\(escaped(board.title))" width="\(width)" height="\(height)" viewBox="\(number(-halfWidth)) \(number(-halfHeight)) \(width) \(height)">
           \(noteBase == nil ? "<title>\(escaped(board.title))</title>" : "")
           <defs>\(definitions.joined())\(grid)\(glassDefinitions)\(board.nodes.contains { $0.resolvedBackgroundMode == .blurred } ? "<filter id=\"box-background-blur\" x=\"-30%\" y=\"-30%\" width=\"160%\" height=\"160%\"><feGaussianBlur stdDeviation=\"2\"/></filter>" : "")</defs>
           \(backdrop(escaped(board.backgroundColor)))

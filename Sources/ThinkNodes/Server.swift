@@ -971,14 +971,14 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
           <a hidden data-current-document data-scope="\(path.parts.count == 1 ? "project" : "sheet")" \(editorMembership(access)) \(menuState(access.sheetRule)) data-manage="\(access.manageable)" href="\(base)">Munkalap</a>
           <div class="viewer-heading">\(parent)<h1><span aria-hidden="true">• </span>\(escaped(worksheet.title))</h1>\(mainIndicator)</div>
           <div class="passive-frame panel">
-            <svg class="passive-backdrop" aria-hidden="true"><rect width="100%" height="100%" fill="\(display.backgroundColor)"/></svg>
+            <svg class="canvas-background" aria-hidden="true"><rect width="100%" height="100%" fill="\(display.backgroundColor)"/></svg>
             \(canvas.svg)
             <div class="viewer-edit-slot">\(edit)</div>
             <button class="button fullscreen" type="button" aria-label="Teljes képernyő">\(uiIcon("fit"))</button>
+            <div class="participants" aria-label="Jelenlévők"></div>
           </div>
           <div class="viewer-meta">
             <div class="viewer-credits">\(manageEditors)\(managePresentations)<div>\(credits(worksheet, access))</div></div>
-            <div class="participants" aria-label="Jelenlévők"></div>
           </div>
           <div data-viewer-notes>\(tooltips)\(notes)\(note)</div>
           <nav class="viewer-downloads" aria-label="Letöltések">\(downloads)</nav>

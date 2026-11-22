@@ -194,6 +194,14 @@ const boxMotion = {
     translate: "0 0;0 1;0 -17;0 0;0 -4;0 0;0 0", scale: "1 1;1.03 .95;1.035 1.06;1.045 .96;.99 1.02;1 1;1 1"},
 };
 
+// Egységes vászon-osztálynév: `node` + fajta szerinti módosító. A Rendering.swift `nodeClasses` ugyanezt adja.
+const fileKinds = {image: "is-image", txt: "is-note", md: "is-note", json: "is-note", mp3: "is-audio",
+  web: "is-web", worksheet: "is-worksheet", attachment: "is-file"};
+function nodeClasses(node) {
+  const kind = node.kind === "container" ? "is-container" : node.kind === "connectionPoint" ? "is-point" : fileKinds[node.file?.type];
+  return kind ? "node " + kind : "node";
+}
+
 function animateBox(mode, contents) {
   const motion = Object.hasOwn(boxMotion, mode) ? boxMotion[mode] : null;
   if (!motion) return contents;
@@ -203,7 +211,7 @@ function animateBox(mode, contents) {
   const animations = Object.entries(tracks).map(([type, values]) => type === "opacity"
     ? h("animate", {...timing, attributeName: "opacity", values})
     : h("animateTransform", {...timing, attributeName: "transform", type, additive: "sum", values}));
-  return [h("g", {"data-box-animation": mode}, [...animations, ...contents])];
+  return [h("g", {class: "node-motion", "data-box-animation": mode}, [...animations, ...contents])];
 }
 
 function backgroundMode(node) {
@@ -216,7 +224,7 @@ function elevationShadow(node) {
   const clip = "editor-shadow-clip-" + node.id;
   const x = node.width / 2 + 24, y = node.height / 2 + 40;
   const outline = shapeOutline(tag, geometry);
-  return h("g", {"data-elevated-shadow": "", "pointer-events": "none", "aria-hidden": "true"}, [
+  return h("g", {class: "node-shadow", "pointer-events": "none", "aria-hidden": "true"}, [
     h("clipPath", {id: clip}, [h("path", {d: `M${-x} ${-y}H${x}V${y}H${-x}Z` + outline, "clip-rule": "evenodd"})]),
     h("g", {"clip-path": `url(#${clip})`}, [
       h(tag, {...geometry, transform: "translate(12 28)", fill: "#11172b", "fill-opacity": .44}),
@@ -234,7 +242,7 @@ function shape(node, linked, dropTarget = false) {
   const mode = backgroundMode(node);
   const blurred = mode === "blurred", empty = mode === "empty";
   const free = mode === "free" || (mode === "solid" && image && image.alphaEnabled !== false && image.alphaBackground == null);
-  if (dropTarget) return h(tag, {...geometry, class: "container-drop-target", "data-container-candidate": "",
+  if (dropTarget) return h(tag, {...geometry, class: "drop-target", "data-container-candidate": "",
     fill: empty || free ? "none" : paint(node.fill, 2), "pointer-events": "fill",
     stroke: "#08796c", "stroke-width": 5, "stroke-dasharray": "0 8", "stroke-linecap": "round",
     "vector-effect": "non-scaling-stroke"});
@@ -243,7 +251,7 @@ function shape(node, linked, dropTarget = false) {
   const glass = graphics.value.glass && mode === "solid" && !image;
   const fill = image?.alphaEnabled === false ? "#ffffff" : paint(image?.alphaBackground ?? node.fill, 2);
   const style = {fill: empty ? "none" : fill, stroke: image && !empty ? "none" : glass ? "url(#glass-rim)" : automaticBorder(fill),
-    "pointer-events": empty ? "fill" : undefined, "data-box-surface": "",
+    "pointer-events": empty ? "fill" : undefined, class: "node-surface",
     "stroke-width": locked ? 6.4 : glass ? 3 : 1.6,
     "data-locked-outline": locked ? "" : undefined, "stroke-dasharray": linked && !node.file ? "7 4" : undefined,
     opacity: blurred ? .5 : undefined, filter: blurred ? "url(#box-background-blur)" : undefined};
@@ -844,7 +852,7 @@ createApp({
     }
     function scrollsSelectedText(event) {
       if (event.ctrlKey || selected.value?.kind !== "node") return false;
-      const content = event.target.closest(".folded-note, .canvas-file pre, .inline-edit textarea");
+      const content = event.target.closest(".node-note, .node-file pre, .inline-edit textarea");
       return content?.closest("[data-node]")?.dataset.node === selected.value.id
         && content.scrollHeight > content.clientHeight;
     }
@@ -2290,7 +2298,7 @@ createApp({
       const filename = fileName(node.file, node.title);
       const href = "/api/box-file/" + path + "?id=" + encodeURIComponent(node.id);
       const download = () => transfer(async () => { await enqueue(commit); location.assign(href); });
-      return h("button", {type: "button", class: "file-download", title: filename,
+      return h("button", {type: "button", class: "node-download", title: filename,
         "aria-label": "Letöltés · " + filename,
         onPointerdown: event => event.stopPropagation(),
         onClick: event => { event.stopPropagation(); if (event.detail === 0) download(); },
@@ -2303,9 +2311,9 @@ createApp({
       const title = file.hideTitle ? "" : node.title;
       return h("foreignObject", {x: -node.width/2, y: -node.height/2 - (title ? 22 : 0),
         width: node.width, height: node.height + (title ? 22 : 0) + 22}, [
-        h("div", {class: "canvas-image", style: {color: paint(node.textColor, 1)}}, [
+        h("div", {class: "node-image", style: {color: paint(node.textColor, 1)}}, [
           title ? h("strong", title) : null,
-          isNote(file) ? h("div", {class: ["folded-note", {"with-fold": backgroundMode(node) === "solid"}], onPointerdown: e => {
+          isNote(file) ? h("div", {class: ["node-note", {"with-fold": backgroundMode(node) === "solid"}], onPointerdown: e => {
             const el = e.currentTarget;
             if (el.scrollHeight > el.clientHeight && e.clientX >= el.getBoundingClientRect().right - Math.max(16, el.offsetWidth - el.clientWidth) * view.value.k) e.stopPropagation();
           }},
@@ -2331,9 +2339,9 @@ createApp({
       const [, , inset] = shapeLabelRatios(node.shape);
       const [outline, dimensions] = selectionOutline(node.kind === "connectionPoint" ? graphics.value.junction ?? "ellipse" : drawn.shape, drawn.width, drawn.height);
       const snapTarget = (preview.value?.target ?? junctionTarget.value) === node.id;
-      const labels = layout.lines.length ? h("text", {"font-family": "system-ui, sans-serif", "pointer-events": "none"},
+      const labels = layout.lines.length ? h("text", {class: "node-label", "font-family": "system-ui, sans-serif", "pointer-events": "none"},
           layout.lines.map(line => h("tspan", {
-            class: destination && !line.runs ? "link-label" : undefined,
+            class: destination && !line.runs ? "node-link-label" : undefined,
             "data-body-row": line.section === "textStyle" ? "" : undefined,
             "pointer-events": "visiblePainted", cursor: alt.value && ctrl.value ? "text" : undefined,
             onPointerdown: e => {
@@ -2361,7 +2369,7 @@ createApp({
               "text-decoration": format.link ? "underline" : undefined}, run.text);
           }) : line.text))) : null;
       return h("g", {key: node.id, "data-node": node.id, "data-width": drawn.width, "data-height": drawn.height, tabindex: 0, role: node.file?.type === "mp3" ? "group" : "button",
-        "aria-label": node.title || (node.file?.type === "image" ? imageStem(node.file) : ""), "data-link": destination ? "" : undefined, class: ["idea", {"editing-object": editingObject.value === node.id, occupied: occupied(node.id), claimed: !!owner}],
+        "aria-label": node.title || (node.file?.type === "image" ? imageStem(node.file) : ""), "data-link": destination ? "" : undefined, class: [nodeClasses(node), {"editing-object": editingObject.value === node.id, occupied: occupied(node.id), claimed: !!owner}],
         transform: "translate(" + position.x + " " + position.y + ")",
         onPointerenter: event => {
           if (!gesture.value && (node.file?.type === "image" || node.hideText || layout.overflow) && node.text) showTooltip(event, async signal => {
@@ -2391,9 +2399,9 @@ createApp({
           shape(drawn, !!destination, containerDropTargets.value.has(node.id)),
           node.file?.type === "image" || isNote(node.file) ? renderCaptionedFile(node) : null,
           node.file && !isNote(node.file) && node.file.type !== "image" ? h("foreignObject", {x: -drawn.width/2, y: -drawn.height/2, width: drawn.width, height: drawn.height}, [
-            h("div", {class: "canvas-file", style: {color: paint(node.textColor, 1)}}, [
+            h("div", {class: "node-file", style: {color: paint(node.textColor, 1)}}, [
               !node.file.hideTitle ? h("strong",node.title) : null,
-              node.file.type === "mp3" ? h("div", {"data-audio-player": "", class: "canvas-audio",
+              node.file.type === "mp3" ? h("div", {"data-audio-player": "", class: "node-audio",
                   onPointerdown: e => e.stopPropagation(), onDblclick: e => e.stopPropagation()}, [
                   h("audio", {src: assetURL(path, node.file.asset), preload: "metadata", hidden: true}),
                   button("", null, {symbol: "play", "data-audio-toggle": "", "aria-label": "Lejátszás", title: "Lejátszás"}),
@@ -2402,14 +2410,14 @@ createApp({
                 ]) :
                 node.file.type === "json" ? h("pre", {class: {"justified-text": node.textStyle?.justified}}, node.text) : null,
               node.file.type === "mp3" && node.text ? h("small", {class: {"justified-text": node.textStyle?.justified}}, node.text) : null,
-              webURL ? h("div", {class: "web-box-body"}, [
-                h("img", {class: "web-preview", src: webURL + "_tn-preview", alt: "", draggable: false,
+              webURL ? h("div", {class: "node-web"}, [
+                h("img", {class: "node-web-preview", src: webURL + "_tn-preview", alt: "", draggable: false,
                   onLoad: event => { event.target.dataset.ready = ""; }}),
                 h("span", [icon("website"), node.file.webPath]),
               ]) : renderFileDownload(node),
             ]),
           ]) : null,
-          node.kind === "connectionPoint" && node.title ? h("text", {x: drawn.width/2 + 4, y: 4, fill: paint(node.textColor, 1), "font-size": 14}, node.title) : null,
+          node.kind === "connectionPoint" && node.title ? h("text", {class: "node-label", x: drawn.width/2 + 4, y: 4, fill: paint(node.textColor, 1), "font-size": 14}, node.title) : null,
           labels,
           editingObject.value === node.id ? editOverlay(node, -drawn.width/2,
             (layout.lines.find(line => (line.section === "textStyle") === (editKey.value === "text"))?.y ??
@@ -2422,13 +2430,13 @@ createApp({
             onPointerdown: e => { if (!e.altKey) e.stopPropagation(); }, onClick: e => e.stopPropagation(),
             onDblclick: e => { if (e.altKey) return; e.preventDefault(); e.stopPropagation(); followBoxLink(destination); },
             onKeydown: e => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); followBoxLink(destination); } }},
-            [h("text", {class: "box-link", x: -5, y: 19, fill: paint(node.textColor, 1), stroke: "none", "text-anchor": "end", "font-size": 28,
+            [h("text", {class: "node-link", x: -5, y: 19, fill: paint(node.textColor, 1), stroke: "none", "text-anchor": "end", "font-size": 28,
               textLength: node.link.length * 17 > (drawn.width*inset-22)*24/14 ? Math.max(12,drawn.width*inset-22)*24/14 : undefined, lengthAdjust: "spacingAndGlyphs"}, node.link), h("rect", {width: 24, height: 24, fill: "transparent", stroke: "none"}), h("path", {d: linkIcons[destination.kind]})]) : null,
         ]),
         ...(resizeTarget.value === node.id && !occupied(node.id) && !ancestors(node, nodeMap.value).some(n => n.locked)
           ? [[-1,-1], [1,-1], [1,1], [-1,1]].map(([sx, sy]) => {
             const r = 5 / zoomScale.value;
-            return h("rect", {"data-editor-only": "", x: sx*drawn.width/2-r, y: sy*drawn.height/2-r,
+            return h("rect", {"data-editor-only": "", class: "node-handle", x: sx*drawn.width/2-r, y: sy*drawn.height/2-r,
               width: 2*r, height: 2*r, fill: "#ffffff", stroke: "#4168e9", "stroke-width": 1 / zoomScale.value,
               cursor: sx === sy ? "nwse-resize" : "nesw-resize", onPointerdown: e => pressCorner(e, node, sx, sy)});
           }) : []),
@@ -2450,7 +2458,7 @@ createApp({
 
     function renderArrow(head, color, animated = false) {
       if (!head.visible) return null;
-      return h("path", {transform: head.transform, stroke: "none", fill: color, "pointer-events": "none", d: "M0 0L-1 -.5V.5Z"},
+      return h("path", {class: "wire-arrow", transform: head.transform, stroke: "none", fill: color, "pointer-events": "none", d: "M0 0L-1 -.5V.5Z"},
         animated ? [h("animateTransform", {attributeName: "transform", type: "scale", additive: "sum",
           values: "1;1.12;1", dur: "3s", repeatCount: "indefinite"})] : undefined);
     }
@@ -2458,7 +2466,7 @@ createApp({
     function endpointHandle(edge, end, point) {
       return h("circle", {key: end + "/" + edge.id, transform: "translate(" + point.x + " " + point.y + ")",
         r: 10 / zoomScale.value, fill: "transparent", tabindex: -1, "pointer-events": alt.value ? "none" : "all",
-        "data-edge": edge.id, "data-endpoint": end, class: edgeEndpoint(edge, end).node ? "detach-endpoint" : "edge-endpoint",
+        "data-edge": edge.id, "data-endpoint": end, class: edgeEndpoint(edge, end).node ? "wire-handle is-attached" : "wire-handle",
         onPointerdown: event => pressEndpoint(event, edge, end),
         onContextmenu: event => context(event, "edge", edge.id),
         onClick: event => event.stopPropagation(),
@@ -2490,14 +2498,14 @@ createApp({
       const color = selectionColor ?? paint.color;
       const animation = animatedWire(edge, {...paint, color}, from, to, taper, stroke.d);
       const shaftColor = animation.color ?? color;
-      return h("g", {key: "edge/" + edge.id, "data-edge": edge.id, fill: "none", "stroke-linecap": "round",
+      return h("g", {key: "edge/" + edge.id, class: "wire", "data-edge": edge.id, fill: "none", "stroke-linecap": "round",
         tabindex: 0, role: "button", "aria-label": edge.label || "Vonal",
         onPointerdown: event => {
           if (event.button !== 0) return;
           event.preventDefault();
           if (event.shiftKey || reconnect.value || !online.value) return;
           event.currentTarget.focus({preventScroll: true});
-          const pathElement = event.currentTarget.querySelector(".edge-hit");
+          const pathElement = event.currentTarget.querySelector(".wire-hit");
           const length = pathElement.getTotalLength();
           const point = world(event);
           const distance = t => {
@@ -2545,16 +2553,16 @@ createApp({
           "stroke-width": paint.lineWidth + 9 / zoomScale.value}) : null,
         animation.gradient ? h("defs", [animation.gradient]) : null,
         h("path", {"data-editor-only": "", d, stroke: "transparent", "stroke-width": Math.max(paint.lineWidth + 10, 14 / zoomScale.value),
-          "pointer-events": "stroke", class: "edge-hit"}),
+          "pointer-events": "stroke", class: "wire-hit"}),
         h("g", {class: {"wire-selected": !!selectionColor}, color: selectionColor}, [
-          h("path", {...stroke, ...(taper ? {fill: shaftColor} : {stroke: shaftColor}), "pointer-events": "none", "clip-path": clipPath}, animation.shaft ? [animation.shaft] : undefined),
+          h("path", {class: "wire-line", ...stroke, ...(taper ? {fill: shaftColor} : {stroke: shaftColor}), "pointer-events": "none", "clip-path": clipPath}, animation.shaft ? [animation.shaft] : undefined),
           renderArrow(ends.source, color, animatedArrows),
           renderArrow(ends.target, color, animatedArrows),
         ]),
         label ? h("text", {transform: label.transform, y: label.y, textLength: label.textLength,
           lengthAdjust: label.clip ? "spacingAndGlyphs" : undefined, "dominant-baseline": label.clip ? "central" : undefined,
           "font-family": "system-ui, sans-serif", "font-size": label.fontSize, "font-weight": label.fontWeight, "text-anchor": "middle",
-          stroke: "none", fill: paint.color, class: "edge-label"}, edge.label) : null,
+          stroke: "none", fill: paint.color, class: "wire-label"}, edge.label) : null,
         editingObject.value === edge.id ? editOverlay(original, geometry.labelPosition.x-80, geometry.labelPosition.y-30,160,28) : null,
       ]);
     }
@@ -2601,7 +2609,7 @@ createApp({
       const cable = preview.value?.edge;
       const shown = cable ? wireDrawing({...cable, color: "#4168e9"}, wireGeometry(cable)) : null;
       return h("div", {class: "canvas-area"}, [
-        h("svg", {ref: canvas, class: ["editor-canvas", {"ctrl-held": ctrl.value, "alt-held": alt.value}],
+        h("svg", {ref: canvas, class: ["canvas", "editor-canvas", {"ctrl-held": ctrl.value, "alt-held": alt.value}],
           "data-drag-cursor": dragCursor(), "aria-label": "Ötletvászon",
           onContextmenu: event => context(event),
           onClickCapture: event => { if (spacePan.value) { event.preventDefault(); event.stopPropagation(); } },
@@ -2660,9 +2668,9 @@ createApp({
               ]),
             ] : []),
           ]),
-          h("rect", {width: "100%", height: "100%", fill: paint(board.value.background, 0), "pointer-events": "none"}),
+          h("rect", {class: "canvas-background", width: "100%", height: "100%", fill: paint(board.value.background, 0), "pointer-events": "none"}),
           h("g", {transform: view.value + " translate(" + centerX + " " + centerY + ")"}, [
-            gridVisible.value ? h("rect", {"data-editor-only": "", x: left-centerX, y: top-centerY, width: size.value.width/view.value.k,
+            gridVisible.value ? h("rect", {"data-editor-only": "", class: "canvas-grid", x: left-centerX, y: top-centerY, width: size.value.width/view.value.k,
               height: size.value.height/view.value.k, fill: "url(#worksheet-grid)", "pointer-events": "none"}) : null,
             h("path", {"data-editor-only": "", "pointer-events": "none", stroke: "#aab9cf", "stroke-width": 1,
               d: "M -8 0 H 8 M 0 -8 V 8"}),
@@ -2671,9 +2679,9 @@ createApp({
               r: 9 / view.value.k, stroke: "#078469", fill: "#b9f3e1", "stroke-width": 2 / view.value.k, "pointer-events": "none"}) : null,
             shown ? h("g", {"pointer-events": "none"}, [h("path", shown.stroke),
               renderArrow(shown.ends.source, shown.paint.color), renderArrow(shown.ends.target, shown.paint.color)]) : null,
-            gesture.value?.type === "rectangle" ? h("rect", {...rectangle(gesture.value.initial,gesture.value.point),
+            gesture.value?.type === "rectangle" ? h("rect", {class: "marquee", ...rectangle(gesture.value.initial,gesture.value.point),
               fill: "#4168e922", stroke: "#4168e9", "vector-effect": "non-scaling-stroke", "pointer-events": "none"}) : null,
-            mouse ? h("g", {"data-mouse-layer": ""}) : null,
+            mouse ? h("g", {class: "peer-cursors", "data-mouse-layer": ""}) : null,
           ]),
           spacePan.value ? h("rect", {width: "100%", height: "100%", fill: "none",
             "pointer-events": "all", "aria-hidden": "true", "data-editor-only": ""}) : null,

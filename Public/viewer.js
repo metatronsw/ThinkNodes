@@ -31,7 +31,7 @@ function bindCanvas() {
   for (const element of svg.querySelectorAll("[data-file-ink]")) {
     element.style.color = element.dataset.fileInk;
   }
-  for (const preview of svg.querySelectorAll(".web-preview")) {
+  for (const preview of svg.querySelectorAll(".node-web-preview")) {
     if (preview.complete && preview.naturalWidth) preview.dataset.ready = "";
     else preview.addEventListener("load", () => { preview.dataset.ready = ""; }, {once: true});
   }
@@ -260,7 +260,7 @@ document.addEventListener("click", async event => {
     await openPresentationPicker(path, csrf);
     return;
   }
-  if (event.target.closest("audio, [data-audio-player], .canvas-file a")) return;
+  if (event.target.closest("audio, [data-audio-player], .node-file a")) return;
   const box = event.target.closest(".passive-canvas [data-node]");
   if (box && event.detail) {
     event.preventDefault();
@@ -275,18 +275,18 @@ document.addEventListener("click", async event => {
 
 });
 document.addEventListener("click", event => {
-  const download = event.target.closest(".file-download[data-download]");
+  const download = event.target.closest(".node-download[data-download]");
   if (download && event.detail === 0) location.assign(download.dataset.download);
 });
 document.addEventListener("dblclick", event => {
-  const download = event.target.closest(".file-download[data-download]");
+  const download = event.target.closest(".node-download[data-download]");
   if (download) {
     event.preventDefault();
     location.assign(download.dataset.download);
     return;
   }
   const box = event.target.closest(".passive-canvas a[data-link]");
-  if (event.target.closest("button, audio, [data-audio-player], .canvas-file a")) return;
+  if (event.target.closest("button, audio, [data-audio-player], .node-file a")) return;
   if (!box) {
     if (event.target.closest(".passive-frame") && !event.target.closest("a[href]")) {
       const edit = main.querySelector("a.viewer-edit");
@@ -303,7 +303,7 @@ document.addEventListener("contextmenu", event => {
   const canvas = event.target.closest(".passive-canvas");
   if (!canvas) return;
   const box = event.target.closest("[data-node]");
-  const copyLink = box?.querySelector(".canvas-file, .canvas-image") ? ["Link másolása", () => writeText(objectURL(path, box.dataset.node)).catch(error => alert(error.message)), "link"] : null;
+  const copyLink = box?.querySelector(".node-file, .node-image") ? ["Link másolása", () => writeText(objectURL(path, box.dataset.node)).catch(error => alert(error.message)), "link"] : null;
   if (main.dataset.member !== "true" && main.dataset.editable !== "true") {
     if (copyLink) contextMenu(event,[copyLink]);
     return;
@@ -337,7 +337,7 @@ function refreshPage(signal, incoming) {
     const updatedCanvas = next.dataset.revision !== main.dataset.revision || next.dataset.siteMode !== main.dataset.siteMode;
     const frame = main.querySelector(".passive-frame");
     const nextFrame = next.querySelector(".passive-frame");
-    for (const selector of updatedCanvas ? ["svg:not(.passive-backdrop)", ".passive-backdrop"] : []) {
+    for (const selector of updatedCanvas ? ["svg:not(.canvas-background)", ".canvas-background"] : []) {
       const previous = frame.querySelector(":scope > " + selector);
       const updated = nextFrame.querySelector(":scope > " + selector);
       if (!previous || !updated) continue;

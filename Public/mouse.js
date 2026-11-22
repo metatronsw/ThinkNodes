@@ -23,6 +23,7 @@ export function sharedMouse(send) {
     }
     if (!marker) {
       marker = document.createElementNS(ns, "path");
+      marker.setAttribute("class", "peer-cursor");
       marker.setAttribute("d", "M0 0L4 18L8 12L15 10Z");
       marker.setAttribute("fill", frame.color);
       marker.setAttribute("stroke", "white");

@@ -8,3 +8,5 @@
 
 
 
+
+# Vapor szerver indítása helyben: mindig a 8888-as porton, hogy a http://mtrn.local:8888 címről elérhető legyen (HTTPS esetén https://mtrn.local:8888). Kötés `::` címre (IPv4 + IPv6, a mtrn.local helyben csak IPv6-ra oldódik fel), pl.: `THINKNODES_DATA=Projects THINKNODES_SECURE_COOKIES=0 .build/debug/ThinkNodes serve --hostname :: --port 8888`, vagy `THINKNODES_HOST=:: ./run.sh --local --port:8888` (HTTPS-hez: `THINKNODES_HOST=:: ./run.sh --port:8888`). Egy adatkönyvtárhoz egyszerre csak egy szerverpéldány fusson, ezért HTTP és HTTPS közül egyszerre csak az egyik.

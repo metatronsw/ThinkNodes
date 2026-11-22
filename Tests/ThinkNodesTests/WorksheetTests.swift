@@ -209,13 +209,14 @@ import VaporTesting
         #expect(!page.body.string.contains("main-worksheet-indicator"))
         #expect(page.body.string.contains("/icons.svg#download"))
         #expect(!page.body.string.contains("worksheet-grid"))
-        #expect(page.body.string.contains("passive-backdrop"))
+        #expect(page.body.string.contains("canvas-background"))
         #expect(page.body.string.contains("viewer-downloads"))
         let html = page.body.string
         let fullscreen = try #require(html.range(of: #"class="button fullscreen""#))
         let meta = try #require(html.range(of: #"class="viewer-meta""#))
         let roster = try #require(html.range(of: #"aria-label="Jelenlévők""#))
-        #expect(fullscreen.lowerBound < meta.lowerBound && meta.lowerBound < roster.lowerBound)
+        // The roster sits inside the canvas frame (lower right), before the credits row below it.
+        #expect(fullscreen.lowerBound < roster.lowerBound && roster.lowerBound < meta.lowerBound)
 
         let svg = try await browser.sendRequest(.GET, "/export/svg/\(path)")
         #expect(svg.status == .ok)
@@ -425,7 +426,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     #expect(saved.nodes[0].fontSize == 16)
     let svg = boardSVG(saved)
     #expect(!svg.contains("rx=\"0\""))
-    #expect(!svg.contains("data-box-surface"))
+    #expect(!svg.contains("node-surface"))
     #expect(boardSVG(saved, noteBase: "/sheet").contains("rx=\"0\" fill=\"none\" pointer-events=\"fill\""))
     #expect(svg.contains("font-size=\"33.600\" font-weight=\"650\">Cím</tspan>"))
     #expect(svg.contains("font-size=\"24.000\" font-weight=\"400\">Törzs</tspan>"))
@@ -442,7 +443,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     try transparent.validate()
     let exported = boardSVG(transparent)
     #expect(exported.contains("Tartalom") && exported.contains("<img"))
-    #expect(!exported.contains("data-box-surface") && !exported.contains("pointer-events=\"fill\""))
+    #expect(!exported.contains("node-surface") && !exported.contains("pointer-events=\"fill\""))
     #expect(!exported.contains("background-color:") && !exported.contains("box-background-blur"))
     var blurred = transparent
     blurred.nodes[0].backgroundEnabled = true
@@ -451,10 +452,10 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     let svg = boardSVG(blurred)
     #expect(svg.contains(#"opacity=".5" filter="url(#box-background-blur)""#))
     #expect(svg.contains(#"<feGaussianBlur stdDeviation="2"/>"#))
-    #expect(svg.components(separatedBy: "data-box-surface").count == 2)
+    #expect(svg.components(separatedBy: "node-surface").count == 2)
     blurred.nodes[0].backgroundMode = .empty
     let outline = boardSVG(blurred)
-    #expect(outline.contains(##"data-box-surface="" fill="none" stroke="#929baa""##))
+    #expect(outline.contains(##"class="node-surface" fill="none" stroke="#929baa""##))
     #expect(!outline.contains("box-background-blur"))
 }
 
@@ -484,7 +485,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     #expect(!free.contains("<clipPath"))
     #expect(!free.contains("textLength"))
     #expect(free.contains("…</tspan>"))
-    #expect(!free.contains("data-box-surface"))
+    #expect(!free.contains("node-surface"))
 }
 
 @Test func containerStylesAndJunctionsSurviveRoundTrip() throws {
@@ -556,7 +557,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     let svg = boardSVG(sheet, noteBase: "/sheet")
     #expect(svg.contains(#"clip-path="url(#elevated-clip-group)""#))
     #expect(!svg.contains("feDropShadow"))
-    #expect(svg.components(separatedBy: "data-elevated-shadow").count == 3)
+    #expect(svg.components(separatedBy: "node-shadow").count == 3)
     let ordinaryLayer = try #require(svg.range(of: #"data-node="ordinary""#))
     let raisedLayer = try #require(svg.range(of: #"data-node="group""#))
     let childLayer = try #require(svg.range(of: #"data-node="child""#))
@@ -870,7 +871,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     #expect(saved.nodes[0].textStyle?.justified == true)
     let svg = boardSVG(saved)
     #expect(svg.contains("word-spacing="))
-    #expect(!svg.contains("class=\"link-label\" word-spacing="))
+    #expect(!svg.contains("class=\"node-link-label\" word-spacing="))
 }
 
 @Test func compactWorksheetKeysRoundTrip() throws {
@@ -1017,7 +1018,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     let edge = Connection(id: "wire", source: source.id, target: ConnectionTarget(node: target.id))
     let svg = boardSVG(Worksheet(title: "Rétegek", nodes: [source, target, container], edges: [edge]), noteBase: "/retegek")
     let containerOffset = try #require(svg.range(of: "id=\"object-container\"")).lowerBound
-    let wireOffset = try #require(svg.range(of: "data-wire-group=")).lowerBound
+    let wireOffset = try #require(svg.range(of: "class=\"wire\"")).lowerBound
     let sourceOffset = try #require(svg.range(of: "id=\"object-source\"")).lowerBound
     let targetOffset = try #require(svg.range(of: "id=\"object-target\"")).lowerBound
     #expect(containerOffset < wireOffset && wireOffset < sourceOffset && wireOffset < targetOffset)

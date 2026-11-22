@@ -114,14 +114,14 @@ input[type="color"] { height: 37px; padding: 3px; cursor: pointer; }
 body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-select: none; }
 
 .passive-canvas a[data-node]:hover { text-decoration: none; }
-:is(.passive-canvas, .editor-canvas) [data-link]:hover [stroke-dasharray="7 4"] { stroke-dasharray: none; }
-:is(.passive-canvas, .editor-canvas) [data-link]:hover [stroke-dasharray="7 4"]:not([data-locked-outline]) { stroke-width: 4; }
+.canvas [data-link]:hover [stroke-dasharray="7 4"] { stroke-dasharray: none; }
+.canvas [data-link]:hover [stroke-dasharray="7 4"]:not([data-locked-outline]) { stroke-width: 4; }
 .passive-note { margin-top: 18px; padding: 22px; }
 .passive-note h2 { margin: 14px 0; }
 .formatted-text { line-height: 1.6; overflow-wrap: anywhere; }
 .justified-text { text-align: justify; }
 .justified-text pre { text-align: start; }
-.canvas-file small.justified-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.node-file small.justified-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .formatted-text pre { overflow: auto; padding: 12px; background: var(--paper); border-radius: 7px; }
 .formatted-text img { max-width: 100%; }
 .empty, .editor-loading { padding: 22px; margin: 0; }
@@ -151,7 +151,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .editor-workspace { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); flex: 1; min-height: 260px; overflow: hidden; }
 .canvas-area { position: relative; min-width: 0; min-height: 0; background: var(--paper); }
 .editor-canvas { display: block; height: 100%; width: 100%; touch-action: none; -webkit-user-select: none; user-select: none; cursor: default; }
-.editor-canvas :is(.idea, .edge-endpoint, .detach-endpoint, .edge-label, .edge-hit, .junction-handle) { cursor: pointer; }
+.editor-canvas :is(.node, .wire-handle, .wire-label, .wire-hit, .junction-handle) { cursor: pointer; }
 .sidebar-open { position: absolute; top: 8px; right: 12px; z-index: 5; box-shadow: 0 4px 14px #1c31531b; }
 .sidebar-open-canvas { right: auto; left: 12px; }
 .sidebar-open-canvas[aria-expanded="false"] svg { transform: rotate(180deg); }
@@ -254,14 +254,14 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 }
 
 .editor-canvas:is(.alt-held, .ctrl-held) { cursor: crosshair; }
-.editor-canvas.alt-held:not(.ctrl-held, [data-drag-cursor]) .idea:not(.occupied) { cursor: copy; }
-.editor-canvas.ctrl-held:not([data-drag-cursor]) :is(.idea, .edge-hit) { cursor: crosshair; }
+.editor-canvas.alt-held:not(.ctrl-held, [data-drag-cursor]) .node:not(.occupied) { cursor: copy; }
+.editor-canvas.ctrl-held:not([data-drag-cursor]) :is(.node, .wire-hit) { cursor: crosshair; }
 .editor-canvas[data-drag-cursor="grabbing"] { cursor: grabbing; }
 .editor-canvas[data-drag-cursor="move"] { cursor: move; }
 .editor-canvas[data-drag-cursor="crosshair"] { cursor: crosshair; }
 .editor-canvas[data-drag-cursor="nwse-resize"] { cursor: nwse-resize; }
 .editor-canvas[data-drag-cursor="nesw-resize"] { cursor: nesw-resize; }
-.editor-canvas[data-drag-cursor] :is([data-node], [data-edge], [cursor], .edge-hit, .edge-label) { cursor: inherit; }
+.editor-canvas[data-drag-cursor] :is([data-node], [data-edge], [cursor], .wire-hit, .wire-label) { cursor: inherit; }
 .property-group { margin: 0; border: 1px solid var(--line); border-radius: 8px; padding: 9px; min-width: 0; }
 .property-options { display: flex; flex-wrap: wrap; gap: 4px; }
 .line-appearance-options { justify-content: space-between; }
@@ -290,7 +290,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 
 .participants { display: flex; align-items: center; gap: 12px; min-width: 0; overflow-x: auto; }
 .participants span { flex: none; display: inline-flex; align-items: center; gap: 5px; font-size: .83rem; font-weight: 650; }
-.idea.occupied { cursor: default; }
+.node.occupied { cursor: default; }
 @media (max-width: 680px) {
   .editor-header { flex-wrap: wrap; }
 }
@@ -319,7 +319,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .site-header .button.primary { color: white; background: var(--accent); }
 
 #editor { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.idea.claimed:focus { outline: none; }
+.node.claimed:focus { outline: none; }
 @media (max-width: 1100px) {
   .site-header { grid-template-columns: 1fr auto 1fr; }
   .header-left { grid-column: 1 / -1; flex-wrap: wrap; }
@@ -353,7 +353,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 
 .password-dialog { padding: 1rem; width: min(400px, 90vw); }
 
-.passive-backdrop { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.canvas-background { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .passive-canvas { position: relative; }
 .viewer-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .viewer-heading h1 { margin: 0; min-width: 0; overflow-wrap: anywhere; font-size: clamp(1.2rem, 3vw, 1.8rem); }
@@ -364,8 +364,6 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .viewer-edit { font-weight: 750; }
 .viewer-meta, .viewer-credits { display: flex; align-items: center; gap: 6px 12px; }
 .viewer-meta { justify-content: space-between; margin-top: 8px; }
-.viewer-meta .participants { margin-inline-start: auto; white-space: nowrap; }
-.viewer-meta:has(.participants:not(:empty)) .viewer-credits { max-width: 70%; }
 .viewer-credits { flex-wrap: wrap; min-width: 0; overflow-wrap: anywhere; }
 .viewer-credits .card-meta { margin: 0; }
 .viewer-new-worksheet { margin-top: 20px; }
@@ -387,7 +385,11 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .preview-link img { display: block; object-fit: cover; }
 .preview-link small { color: var(--muted); }
 .connection-lost, .participants.connection-lost { background: #a62739; color: white; border-radius: 5px; padding: 4px 7px; }
-.passive-frame > .mouse-share { position: absolute; bottom: 6px; left: 52px; z-index: 2; }
+/* Viewer canvas controls match the editor: 6px inset, 4px gap, compact buttons; users in the lower right corner. */
+.passive-frame > :is(.fullscreen, .mouse-share) { position: absolute; bottom: 6px; left: 6px; right: auto; z-index: 2; min-height: 31px; padding: 4px 9px; }
+.passive-frame:has(> .mouse-share) > .fullscreen { left: 46px; }
+.passive-frame > .participants { position: absolute; right: 12px; bottom: 8px; z-index: 2; max-width: min(47%, calc(100% - 110px)); padding: 4px 7px; border-radius: 5px; background: #fffffff0; white-space: nowrap; }
+.passive-frame > .participants:empty { display: none; }
 .mouse-share[aria-pressed="true"] { background: var(--accent); color: white; }
 
 [data-current-sheet] .new-worksheet { justify-self: start; }
@@ -398,25 +400,25 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .project-summary h2 { font-size: 1.35rem; line-height: 1.2; margin-bottom: .5rem; }
 .project-summary .card-meta { margin-top: .35rem; }
 .project-summary .project-badges { margin-top: .6rem; }
-[data-node]:hover .box-link, a:hover .box-link { text-decoration: underline; }
+[data-node]:hover .node-link, a:hover .node-link { text-decoration: underline; }
 
-.canvas-file { box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; height: 100%; padding: 10px; overflow: hidden; font: 14px/1.4 system-ui, sans-serif; color: #182335; }
-.canvas-file strong, .canvas-file small { flex: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.canvas-file pre, .canvas-file .formatted-text { margin: 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
-.canvas-audio { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
-.canvas-audio .button { flex: none; width: 34px; height: 34px; padding: 4px; justify-content: center; }
-.canvas-audio input { flex: 1; width: auto; padding: 0; cursor: pointer; accent-color: var(--accent); }
-.canvas-audio [data-audio-status] { flex-basis: 100%; color: #9e2230; }
-.canvas-audio [data-audio-status]:empty { display: none; }
-.passive-canvas [data-node]:target .canvas-file { border: 3px solid #4168e9; }
-.passive-canvas [data-node]:target .canvas-image img { outline: 3px solid #4168e9; outline-offset: -3px; }
+.node-file { box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; height: 100%; padding: 10px; overflow: hidden; font: 14px/1.4 system-ui, sans-serif; color: #182335; }
+.node-file strong, .node-file small { flex: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.node-file pre, .node-file .formatted-text { margin: 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.node-audio { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.node-audio .button { flex: none; width: 34px; height: 34px; padding: 4px; justify-content: center; }
+.node-audio input { flex: 1; width: auto; padding: 0; cursor: pointer; accent-color: var(--accent); }
+.node-audio [data-audio-status] { flex-basis: 100%; color: #9e2230; }
+.node-audio [data-audio-status]:empty { display: none; }
+.passive-canvas [data-node]:target .node-file { border: 3px solid #4168e9; }
+.passive-canvas [data-node]:target .node-image img { outline: 3px solid #4168e9; outline-offset: -3px; }
 
-.canvas-image { display: flex; flex-direction: column; height: 100%; color: var(--ink); text-align: center; font: 14px/22px system-ui, sans-serif; }
-.canvas-image img { display: block; flex: 1; width: 100%; min-height: 0; object-fit: contain; background: transparent; }
-.canvas-image img:not([src$=".svg"]) { border-radius: 6px; }
+.node-image { display: flex; flex-direction: column; height: 100%; color: var(--ink); text-align: center; font: 14px/22px system-ui, sans-serif; }
+.node-image img { display: block; flex: 1; width: 100%; min-height: 0; object-fit: contain; background: transparent; }
+.node-image img:not([src$=".svg"]) { border-radius: 6px; }
 .image-alpha-options input[type="color"] { width: 32px; height: 32px; padding: 3px; }
 .image-alpha-options input[type="color"]:disabled { opacity: .45; }
-.canvas-image > :is(strong, span) { flex: none; height: 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node-image > :is(strong, span) { flex: none; height: 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .alignment-picker { display: grid; grid-template-columns: repeat(3, 1.6rem); gap: 2px; }
 .alignment-picker button { height: 1.6rem; padding: 0; color: inherit; background: var(--panel, white); border: 1px solid #a8b7cb; border-radius: 4px; cursor: pointer; }
@@ -452,7 +454,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
   50% { opacity: .45; filter: drop-shadow(0 0 calc(var(--sheet-glow, 6px) * 2) currentColor); }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .container-drop-target {
+  .drop-target {
     animation: container-drop-pulse 1.25s ease-in-out infinite,
       container-drop-orbit 2s linear infinite;
   }
@@ -473,7 +475,6 @@ body:has(#worksheet-view) .worksheet-nav .header-left { flex:1; min-width:0; }
 body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 .worksheet-nav .header-parent:empty { display:none; }
 .editor-root .worksheet-nav .header-parent { order:4; }
-.passive-frame > .fullscreen { right: auto; left: 6px; bottom: 6px; }
 .editor-canvas[data-drag-cursor="grab"] { cursor:grab; }
 .current-avatar { align-self: center; }
 .avatar-dialog { max-width: calc(100% - 24px); padding: 16px; color: var(--ink); }
@@ -529,16 +530,16 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
   .editor-root .worksheet-nav { pointer-events:auto; }
   .editor-root .worksheet-nav .header-left { min-width:max-content; }
 }
-.folded-note { position:relative; flex:1; min-height:0; overflow:hidden; padding:8px 20px 8px 10px; text-align:left; border-radius:7px; clip-path:polygon(0 0,calc(100% - 16px) 0,100% 16px,100% 100%,0 100%); }
-.folded-note.with-fold::after { content:""; position:absolute; top:0; right:0; width:16px; height:16px; background:#0003; }
-.folded-note pre { white-space:pre-wrap; margin:0; }
+.node-note { position:relative; flex:1; min-height:0; overflow:hidden; padding:8px 20px 8px 10px; text-align:left; border-radius:7px; clip-path:polygon(0 0,calc(100% - 16px) 0,100% 16px,100% 100%,0 100%); }
+.node-note.with-fold::after { content:""; position:absolute; top:0; right:0; width:16px; height:16px; background:#0003; }
+.node-note pre { white-space:pre-wrap; margin:0; }
 
 
 
 .inline-edit :is(input,textarea) { width:100%; height:100%; border:0; border-radius:6px; padding:2px 5px; text-align:center; outline:0; }
-.folded-note { overflow:auto; overscroll-behavior:contain; }
-.folded-note pre { overflow:visible; }
-.editor-canvas :is(.canvas-file pre, .inline-edit textarea) { overscroll-behavior: contain; }
+.node-note { overflow:auto; overscroll-behavior:contain; }
+.node-note pre { overflow:visible; }
+.editor-canvas :is(.node-file pre, .inline-edit textarea) { overscroll-behavior: contain; }
 .editor-root .sidebar-open:not(.sidebar-open-canvas) { order:3; }
 .file-actions > button { flex:1; }
 
@@ -559,7 +560,7 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
   --panel-surface: #253140;
   --control-hover: #303e50;
 }
-:root[data-display="dark"] :is(.panel, .passive-note, .inspector-content > fieldset, .inspector-content > fieldset > legend, .context-menu, .canvas-status, .canvas-tooltip, .canvas-empty, .canvas-people > :is(.participants, .canvas-creator), .guide-nav a, .guide kbd) {
+:root[data-display="dark"] :is(.panel, .passive-note, .inspector-content > fieldset, .inspector-content > fieldset > legend, .context-menu, .canvas-status, .canvas-tooltip, .canvas-empty, .canvas-people > :is(.participants, .canvas-creator), .passive-frame > .participants, .guide-nav a, .guide kbd) {
   background-color: var(--panel-surface);
   color: var(--ink);
 }
@@ -570,7 +571,7 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 }
 :root[data-display="dark"] :is(.button, .guide-nav a):hover { background-color: var(--control-hover); }
 :root[data-display="dark"] .inspector button[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: -2px; }
-:is(.editor-workspace, .passive-canvas) :is(.selection-glow, .wire-selected) { filter: drop-shadow(0 0 var(--sheet-glow, 4px) currentColor); }
+:is(.editor-workspace, .canvas) :is(.selection-glow, .wire-selected) { filter: drop-shadow(0 0 var(--sheet-glow, 4px) currentColor); }
 .color-sample, .color-presets button { width: 32px; height: 32px; padding: 3px; border-radius: 7px; }
 .palette-tile { display: block; width: 100%; height: 100%; border-radius: 4px; }
 .transparent-swatch { background: conic-gradient(#c3cbd7 25%, #fff 0 50%, #c3cbd7 0 75%, #fff 0) 0 0 / 10px 10px; }
@@ -618,7 +619,7 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 }
 
 .file-name-field > .muted { align-self: center; white-space: nowrap; }
-.file-download {
+.node-download {
   display: flex;
   align-items: center;
   align-self: flex-end;
@@ -635,19 +636,20 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
   font: 13px/22px system-ui, sans-serif;
   cursor: pointer;
 }
-.file-download span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-download:hover span { text-decoration: underline; }
-.canvas-file pre { min-height: 0; }
+.node-download span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node-download:hover span { text-decoration: underline; }
+.node-file pre { min-height: 0; }
 
 .editor-membership { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .editor-membership span { overflow-wrap: anywhere; }
 .password-dialog > div.stack { max-height: 60vh; overflow-y: auto; margin-block: 12px; }
 
-.web-box-body { flex: 1; display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; gap: 4px; }
-.web-box-body > span { display: flex; align-items: center; justify-content: center; gap: 6px; overflow-wrap: anywhere; }
-.web-preview { visibility: hidden; width: 100%; height: 100%; min-height: 0; object-fit: contain; }
-.web-preview[data-ready] { visibility: visible; }
+.node-web { flex: 1; display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; gap: 4px; }
+.node-web > span { display: flex; align-items: center; justify-content: center; gap: 6px; overflow-wrap: anywhere; }
+.node-web-preview { visibility: hidden; width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+.node-web-preview[data-ready] { visibility: visible; }
 .web-presentations-dialog { width: min(620px, 92vw); max-height: 85vh; padding: 16px; color: var(--ink); }
 .web-presentations-dialog > .stack { margin-block: 12px; }
 .web-presentation-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .web-presentation-row strong { flex: 1 1 12rem; overflow-wrap: anywhere; }
+:root .passive-frame > .participants.connection-lost { background-color: #a62739; color: white; }
