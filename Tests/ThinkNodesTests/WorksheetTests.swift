@@ -215,8 +215,9 @@ import VaporTesting
         let fullscreen = try #require(html.range(of: #"class="button fullscreen""#))
         let meta = try #require(html.range(of: #"class="viewer-meta""#))
         let roster = try #require(html.range(of: #"aria-label="Jelenlévők""#))
-        // The roster sits inside the canvas frame (lower right), before the credits row below it.
-        #expect(fullscreen.lowerBound < roster.lowerBound && roster.lowerBound < meta.lowerBound)
+        let notes = try #require(html.range(of: "data-viewer-notes"))
+        // The roster sits inside the canvas frame (lower right); the credits row follows the worksheet text.
+        #expect(fullscreen.lowerBound < roster.lowerBound && roster.lowerBound < notes.lowerBound && notes.lowerBound < meta.lowerBound)
 
         let svg = try await browser.sendRequest(.GET, "/export/svg/\(path)")
         #expect(svg.status == .ok)

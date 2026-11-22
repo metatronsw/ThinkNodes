@@ -986,10 +986,10 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
             <button class="button fullscreen" type="button" aria-label="Teljes képernyő">\(uiIcon("fit"))</button>
             <div class="participants" aria-label="Jelenlévők"></div>
           </div>
+          <div data-viewer-notes>\(tooltips)\(notes)\(note)</div>
           <div class="viewer-meta">
             <div class="viewer-credits">\(manageEditors)\(managePresentations)<div>\(credits(worksheet, access))</div></div>
           </div>
-          <div data-viewer-notes>\(tooltips)\(notes)\(note)</div>
           <nav class="viewer-downloads" aria-label="Letöltések">\(downloads)</nav>
           <div data-viewer-sections>
             \(childSection)\(attachmentSection)\(linkSection)
