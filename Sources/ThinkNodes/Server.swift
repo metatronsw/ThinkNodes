@@ -989,8 +989,8 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
           <div data-viewer-notes>\(tooltips)\(notes)\(note)</div>
           <div class="viewer-meta">
             <div class="viewer-credits">\(manageEditors)\(managePresentations)<div>\(credits(worksheet, access))</div></div>
+            <nav class="viewer-downloads" aria-label="Letöltések">\(downloads)</nav>
           </div>
-          <nav class="viewer-downloads" aria-label="Letöltések">\(downloads)</nav>
           <div data-viewer-sections>
             \(childSection)\(attachmentSection)\(linkSection)
           </div>

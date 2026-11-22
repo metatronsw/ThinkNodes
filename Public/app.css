@@ -363,7 +363,8 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .viewer-edit-slot { position: absolute; inset: 8px 8px auto auto; }
 .viewer-edit { font-weight: 750; }
 .viewer-meta, .viewer-credits { display: flex; align-items: center; gap: 6px 12px; }
-.viewer-meta { justify-content: space-between; margin-top: 8px; }
+.viewer-meta { justify-content: space-between; flex-wrap: wrap; margin-top: 8px; }
+.viewer-meta .viewer-downloads { margin-top: 0; margin-inline-start: auto; }
 .viewer-credits { flex-wrap: wrap; min-width: 0; overflow-wrap: anywhere; }
 .viewer-credits .card-meta { margin: 0; }
 .viewer-new-worksheet { margin-top: 20px; }
