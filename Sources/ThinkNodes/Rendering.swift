@@ -77,12 +77,14 @@ func buttonLink(_ url: String, _ label: String, symbol: String, classes: String)
 func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: String?, actions: String = "", centerAction: String = "", canEdit: Bool = false, editing: Bool = false, showAdminLogout: Bool = false) -> String {
     let parts = path?.split(separator: "/").map(String.init) ?? []
     let base = editing ? "/edit/" : "/"
+    // Útvonal: munkalaponként egy gomb a mappa (könyvtár) nevével; a gombok ugyanabban a módban
+    // (szerkesztő vagy megtekintő) nyitják meg a munkalapot. Az aktuális munkalap nem link.
     let crumb = parts.indices.map { i in
-        let last = i == parts.count - 1
-        let prefix = last && editing ? "/" : last && canEdit ? "/edit/" : base
-        let url = prefix + parts[...i].joined(separator: "/")
-        let label = last ? (project ?? parts[i]) : (parts[i].removingPercentEncoding ?? parts[i])
-        return "<span class=\"slash\" aria-hidden=\"true\">/</span><a \(last ? "aria-current='page'" : "") href=\"\(escaped(url))\">\(escaped(label))</a>"
+        let name = parts[i].removingPercentEncoding ?? parts[i]
+        if i == parts.count - 1 {
+            return "<span class=\"\(headerButtonClass) crumb\" aria-current=\"page\">\(escaped(name))</span>"
+        }
+        return "<a class=\"\(headerButtonClass) crumb\" href=\"\(escaped(base + parts[...i].joined(separator: "/")))\">\(escaped(name))</a>"
     }.joined()
     let parent = editing && parts.count > 1
         ? "<a class=\"\(headerButtonClass)\" aria-label=\"Szülő munkalap\" title=\"Szülő munkalap\" href=\"/edit/\(parts.dropLast().joined(separator: "/"))\">\(uiIcon("parent-up"))</a>"

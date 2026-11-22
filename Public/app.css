@@ -357,7 +357,9 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .passive-canvas { position: relative; }
 .viewer-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .viewer-heading h1 { margin: 0; min-width: 0; overflow-wrap: anywhere; font-size: clamp(1.2rem, 3vw, 1.8rem); }
-.main-worksheet-indicator { margin-inline-start: auto; flex: none; color: var(--accent-ink); }
+/* A létrehozó és a szerkesztők névsora a cím sorában, a vászon jobb felső sarka felett. */
+.viewer-heading-credits { margin-inline-start: auto; flex: none; max-width: 50%; text-align: end; font-size: .85rem; line-height: 1.35; overflow-wrap: anywhere; }
+.viewer-heading-credits .card-meta { margin: 0; }
 #worksheet-view.shell { width: min(90%, 4096px); padding-inline: 0; }
 .viewer-downloads { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 12px; }
 .viewer-edit-slot { position: absolute; inset: 8px 8px auto auto; }
@@ -736,3 +738,17 @@ svg text { text-rendering: geometricPrecision; }
 .own-selected .junction-surface { filter: brightness(1.3); }
 .wire-own, .wire-own-underlay { filter: brightness(1.3); }
 .wire-own-underlay { opacity: .55; }
+/* Útvonal gombok: munkalaponként a mappa neve; az aktuális kiemelve, nem kattintható. */
+.breadcrumbs .crumb { max-width: 14em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.breadcrumbs .crumb[aria-current="page"] { background: #e7ecff; color: var(--accent-ink); border-color: #bbc9f5; cursor: default; }
+:root[data-display="dark"] .breadcrumbs .crumb[aria-current="page"] { background: #2b3a63; color: #dfe7ff; border-color: #4a5c92; }
+/* Mobilon a vászon teljes szélességű marad, a többi elem 90%-os szélességben, középre igazítva. */
+@media (max-width: 740px) {
+  #worksheet-view.shell > :not(.passive-frame) { width: 90%; margin-inline: auto; box-sizing: border-box; }
+  /* Megtekintő fejléce mobilon két sorban: felül az útvonal gombjai (vízszintesen görgethető), alatta a műveletek. */
+  body:has(#worksheet-view) > .worksheet-nav { display: flex; flex-wrap: wrap; gap: 6px; }
+  body:has(#worksheet-view) > .worksheet-nav > .header-left { flex: 1 1 100%; min-width: 0; }
+  body:has(#worksheet-view) > .worksheet-nav > .header-left .breadcrumbs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  body:has(#worksheet-view) > .worksheet-nav > .header-left .breadcrumbs > * { flex: none; }
+  body:has(#worksheet-view) > .worksheet-nav > .header-actions { margin-inline-start: auto; }
+}

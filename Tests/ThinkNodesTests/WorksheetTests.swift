@@ -41,7 +41,8 @@ import VaporTesting
         let editor = try await login(browser, name: "editor", password: password, path: path)
         let newParent = try await browser.sendRequest(.GET, "/gondolatok", headers: ["Cookie": editor.cookie])
         #expect(newParent.status == .ok)
-        #expect(newParent.body.string.contains("main-worksheet-indicator"))
+        // A fő munkalap mappa-ikonja megszűnt; a cím sorában a létrehozó és a szerkesztők névsora áll.
+        #expect(!newParent.body.string.contains("main-worksheet-indicator") && newParent.body.string.contains("viewer-heading-credits"))
         #expect(FileManager.default.fileExists(atPath: file.path))
         #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("gondolatok/gondolatok.thnode").path))
         let index = try await browser.sendRequest(.GET, "/")

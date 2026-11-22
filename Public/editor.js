@@ -2241,12 +2241,13 @@ createApp({
       clearModifiers();
     }
 
-    const currentCrumb = document.querySelector(".breadcrumbs a[aria-current=page]");
+    // A szerkesztő bezárása: mentetlen változásnál előbb ment, utána nyitja a megtekintőt.
     async function switchToViewer(event) {
       if (!dirty.value || event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
       event.preventDefault();
+      const target = event.currentTarget.href;
       await save();
-      if (!dirty.value) location.assign(currentCrumb.href);
+      if (!dirty.value) location.assign(target);
     }
 
     function beforeUnload(event) {
@@ -2257,7 +2258,6 @@ createApp({
 
     let audioControls;
     onMounted(async () => {
-      currentCrumb?.addEventListener?.("click", switchToViewer);
       window.addEventListener("copy", onCopy);
       window.addEventListener("paste", onPaste);
       window.addEventListener("keydown", keyboard);
@@ -2305,7 +2305,6 @@ createApp({
 
     onUnmounted(() => {
       audioControls?.abort();
-      currentCrumb?.removeEventListener?.("click", switchToViewer);
       mouse?.stop();
       live.stop();
       window.removeEventListener("pagehide", live.stop);
@@ -3500,10 +3499,6 @@ createApp({
       if (!node || held.value !== node.id || occupied(node.id)) return null;
       return sidebar(isJunction(node) ? typeLabel(node.type) : typeLabel(node.type) + " szerkesztése", nodePanels([node]));
     }
-
-    watch(() => board.value?.title, title => {
-      if (currentCrumb && title) currentCrumb.textContent = title;
-    });
 
     const topRow = mount.closest?.(".editor-root")?.querySelector(".worksheet-nav");
     function renderHeader() {
