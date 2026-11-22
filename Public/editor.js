@@ -1,3 +1,4 @@
+import {openPresentation, openPresentationPicker, webPresentationURL} from "./web-presentations.js";
 import {fetchPage, updateSection, watchPageUpdates} from "./page-updates.js";
 import {bindAudioPlayers} from "./audio-player.js";
 import {assetURL, attachmentURL, checkText, fileName, fileNameParts, fileReference, imageStem, importFile, objectURL, pngForClipboard, validImageStem, writeText} from "./canvas-files.js";
@@ -218,7 +219,6 @@ function elevationShadow(node) {
   return h("g", {"data-elevated-shadow": "", "pointer-events": "none", "aria-hidden": "true"}, [
     h("clipPath", {id: clip}, [h("path", {d: `M${-x} ${-y}H${x}V${y}H${-x}Z` + outline, "clip-rule": "evenodd"})]),
     h("g", {"clip-path": `url(#${clip})`}, [
-      h(tag, {...geometry, transform: "translate(12 28)", fill: "none", stroke: "#11172b", "stroke-width": 5, "stroke-linejoin": "round", "stroke-opacity": .12}),
       h(tag, {...geometry, transform: "translate(12 28)", fill: "#11172b", "fill-opacity": .44}),
     ]),
   ]);
@@ -923,6 +923,9 @@ createApp({
         const item = sheet.nodes.find(n => n.id === source.hash.slice(8));
         if (item?.file) {
           const file = {...item.file};
+          if (file.type === "web" && sourcePath.split("/")[0] !== path.split("/")[0]) {
+            throw Error("A prezentáció doboza a saját projektjén belül másolható.");
+          }
           if (file.asset && sourcePath !== path) {
             const url = ["image","mp3"].includes(file.type) ? assetURL(sourcePath, file.asset) : "/api/box-file/" + sourcePath + "?id=" + encodeURIComponent(item.id);
             const blob = await (await checked(await fetch(url))).blob();
@@ -938,7 +941,7 @@ createApp({
       checkText(text);
       const box = selectedBox();
       if (box && !box.file && !box.kind && held.value === box.id && !occupied(box.id)) updateItem(box, "text", checkText([box.text,text].filter(Boolean).join("\n")));
-      else addNode(position, {text, title: "Szöveg", file: {type: "txt"}, width: 340, height: 220});
+      else addNode(position, {text, title: "Szöveg", file: {type: "txt", showFilename: false}, width: 340, height: 220});
     }
 
     async function importFiles(files, position, belowButton = false) {
@@ -1674,7 +1677,9 @@ createApp({
         if (lastClick?.id === id && lastClick.kind === kind && time-lastClick.time < 450 &&
             Math.hypot(x-lastClick.x,y-lastClick.y) < 10) {
           lastClick = null;
-          editObject(kind,id,event.altKey && kind === "node" ? "text" : true);
+          if (kind !== "node" || nodeMap.value.get(id)?.file?.type !== "web") {
+            editObject(kind,id,event.altKey && kind === "node" ? "text" : true);
+          }
         } else {
           lastClick = {id,kind,time,x,y};
         }
@@ -2208,7 +2213,10 @@ createApp({
         await nextTick();
         initializeZoom();
         if (canvas.value.addEventListener) audioControls = bindAudioPlayers(canvas.value);
-        if (canvas.value.querySelector) mouse.bind(canvas.value, canvas.value.querySelector("[data-mouse-layer]"), mount.querySelector(".canvas-controls"));
+        if (canvas.value.querySelector) {
+          const controls = mount.querySelector(".canvas-controls");
+          mouse.bind(canvas.value, canvas.value.querySelector("[data-mouse-layer]"), controls, controls?.querySelector("[data-canvas-fullscreen]"));
+        }
       } catch (error) {
         problem.value = error.message;
       }
@@ -2287,7 +2295,7 @@ createApp({
         onPointerdown: event => event.stopPropagation(),
         onClick: event => { event.stopPropagation(); if (event.detail === 0) download(); },
         onDblclick: event => { event.stopPropagation(); download(); },
-      }, [icon("package"), h("span", filename)]);
+      }, [icon("package"), node.file.showFilename !== false ? h("span", filename) : null]);
     }
 
     function renderCaptionedFile(node) {
@@ -2316,7 +2324,8 @@ createApp({
       const position = displayPosition(node);
       const selectors = peers.value.filter(p => p.node === node.id && (!p.mine || (selected.value?.kind === "node" && selected.value.id === node.id)));
       const owner = selectors.find(p => !p.viewing) ?? selectors[0];
-      const destination = node.kind === "connectionPoint" ? null : worksheetLink(node.link, path);
+      const webURL = node.file?.type === "web" ? webPresentationURL(path, node.file.webPath) : null;
+      const destination = node.kind === "connectionPoint" || webURL ? null : worksheetLink(node.link, path);
 
       const textDrag = gesture.value?.type === "text" && gesture.value.nodeID === node.id ? gesture.value : null;
       const [, , inset] = shapeLabelRatios(node.shape);
@@ -2363,10 +2372,15 @@ createApp({
         },
         onPointerleave: hideTooltip,
         onPointerdown: event => { hideTooltip(); pressNode(event, node); },
-        onDblclick: event => { event.stopPropagation(); editObject("node",node.id,event.altKey ? "text" : true); },
+        onDblclick: event => {
+          event.stopPropagation();
+          if (webURL && !event.altKey) openPresentation(webURL);
+          else editObject("node", node.id, event.altKey ? "text" : true);
+        },
         onContextmenu: event => context(event, "node", node.id),
         onKeydown: event => {
           if (event.key === "Enter" && event.shiftKey) openProperties("node", node.id);
+          else if (event.key === "Enter" && webURL) { event.preventDefault(); event.stopPropagation(); openPresentation(webURL); }
         },
       }, [
         owner || snapTarget || batch.value?.nodes.has(node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-glow", color: owner && !owner.mine ? owner.color : paint(graphics.value.selection ?? 4, 4), fill: "none",
@@ -2388,7 +2402,11 @@ createApp({
                 ]) :
                 node.file.type === "json" ? h("pre", {class: {"justified-text": node.textStyle?.justified}}, node.text) : null,
               node.file.type === "mp3" && node.text ? h("small", {class: {"justified-text": node.textStyle?.justified}}, node.text) : null,
-              renderFileDownload(node),
+              webURL ? h("div", {class: "web-box-body"}, [
+                h("img", {class: "web-preview", src: webURL + "preview.png", alt: "", draggable: false,
+                  onLoad: event => { event.target.dataset.ready = ""; }}),
+                h("span", [icon("website"), node.file.webPath]),
+              ]) : renderFileDownload(node),
             ]),
           ]) : null,
           node.kind === "connectionPoint" && node.title ? h("text", {x: drawn.width/2 + 4, y: 4, fill: paint(node.textColor, 1), "font-size": 14}, node.title) : null,
@@ -2661,7 +2679,8 @@ createApp({
             "pointer-events": "all", "aria-hidden": "true", "data-editor-only": ""}) : null,
         ]),
         h("div", {class: "canvas-people"}, [
-          h("span", {class: "canvas-creator"}, "Létrehozó: " + (board.value.creator ?? "ismeretlen")),
+          user && board.value.creator === user ? null :
+            h("span", {class: "canvas-creator"}, "Létrehozó: " + (board.value.creator ?? "ismeretlen")),
           h("div", {class: "participants", "aria-label": "Jelenlévők"},
             !online.value && problem.value ? h("span", {class: "connection-lost", role: "status"}, "Kapcsolat megszakadt") : peers.value.map((p, index) =>
               h("span", {key: index}, [p.avatar ? h("img", {class: "peer-avatar", src: "/icons/avatar-" + p.avatar + ".svg", alt: ""}) : null, p.name]))),
@@ -2679,7 +2698,7 @@ createApp({
           button("", () => transfer(async () => {
             if (document.fullscreenElement) await document.exitFullscreen();
             else await document.documentElement.requestFullscreen();
-          }), {symbol: "fit", title: "Teljes képernyő", "aria-label": "Teljes képernyő"}),
+          }), {symbol: "fit", title: "Teljes képernyő", "aria-label": "Teljes képernyő", "data-canvas-fullscreen": ""}),
         ]),
         board.value && !board.value.nodes.length ? h("p", {class: "canvas-empty"}, "Új dobozhoz kattints duplán az üres vászonra.") : null,
       ]);
@@ -2702,7 +2721,7 @@ createApp({
         node.file ? button("Link másolása", () => { menu.value = null; transfer(() => writeText(objectURL(path,node.id))); }, {symbol: "link"}) : null,
         button("Ping", () => ping({node: node.id}), {symbol: "center", disabled: !online.value}),
         node.kind !== "connectionPoint" ? elevationButton(node, true) : null,
-        node.kind !== "connectionPoint" ? button(node.link ? "Link feloldása" : "Link", async () => {
+        node.kind !== "connectionPoint" && node.file?.type !== "web" ? button(node.link ? "Link feloldása" : "Link", async () => {
           menu.value = null;
           if (!await selectNode(node.id)) return;
           const current = nodeMap.value.get(node.id);
@@ -2726,6 +2745,12 @@ createApp({
           menu.value = null;
           addNode(open.position);
         }, {disabled: !board.value, symbol: "plus"}),
+        button("Prezentáció beszúrása", () => {
+          menu.value = null;
+          transfer(() => openPresentationPicker(path, csrf, item => addNode(open.position, {
+            title: item.title, file: {type: "web", webPath: item.reference}, width: 290, height: 180,
+          })));
+        }, {symbol: "website", disabled: !online.value}),
         button("Új munkalap", addSubworksheet, {symbol: "plus", disabled: !online.value}),
         button("Középre állítás", () => { menu.value = null; centerOrigin(); }, {symbol: "center"}),
       ];
@@ -3030,6 +3055,11 @@ createApp({
       const appearanceTools = (...extra) => h("div", {class: "property-options property-tools box-effect-options"}, [
         ...backgroundControls(), elevationButton(node), ...extra, backgroundColor(),
       ]);
+      const filenameToggle = () => {
+        const visible = node.file.showFilename !== false;
+        return iconToggle(visible ? "Fájlnév elrejtése" : "Fájlnév megjelenítése", visible,
+          () => change("file", {...node.file, showFilename: !visible}), icon(visible ? "eye" : "eye-off"));
+      };
       const filenameField = () => {
         const {stem, extension} = fileNameParts(node.file, node.title);
         return group("Fájlnév", [h("div", {class: "property-inline file-name-field"}, [
@@ -3047,6 +3077,15 @@ createApp({
           extension ? h("span", {class: "muted"}, "." + extension) : null,
         ])]);
       };
+      if (node.file?.type === "web") return sidebar("Prezentáció", [
+        group("Cím", [title]),
+        group("Prezentációs mappa", [h("p", node.file.webPath),
+          button("Kiválasztás", () => transfer(() => openPresentationPicker(path, csrf, item => {
+            const current = nodeMap.value.get(node.id);
+            if (current && held.value === node.id && online.value) updateItem(current, "file", {...current.file, webPath: item.reference});
+          })), {symbol: "website", disabled: !online.value})]),
+        group("Megjelenés", [appearanceTools()]),
+      ]);
       if (node.file?.type === "image") return sidebar("Kép szerkesztése", [
         group("Átlátszóság", [h("div", {class: "property-options image-alpha-options"}, [
           iconToggle("Alpha csatorna", node.file.alphaEnabled !== false,
@@ -3061,7 +3100,7 @@ createApp({
         ])]),
         group("Cím", [title]),
         filenameField(),
-        group("Megjelenés", [appearanceTools()]),
+        group("Megjelenés", [appearanceTools(filenameToggle())]),
         group("Megjegyzés", [bodyEditor(), propertyTools(justify())]),
       ]);
       if (isNote(node.file)) {
@@ -3085,7 +3124,7 @@ createApp({
         }
         return sidebar("Szövegfájl", [group("Cím", [h("div", {class: "property-inline"}, [title,
           iconToggle("Cím megjelenítése", !node.file.hideTitle, () => change("file", {...node.file, hideTitle: !node.file.hideTitle}),
-            icon(node.file.hideTitle ? "eye-off" : "eye"))])]), filenameField(), group("Megjelenés", [appearanceTools()]),
+            icon(node.file.hideTitle ? "eye-off" : "eye"))])]), filenameField(), group("Megjelenés", [appearanceTools(filenameToggle())]),
           group("Szöveg", [bodyEditor(), propertyTools(justify(),
             ...[[true,"save","Szöveg mentése"], [false,"restore","Szöveg újratöltése"]].map(([write,symbol,label]) =>
               button("", () => transfer(() => syncText(write)), {symbol,title:label,"aria-label":label,disabled:(!name && !write) || !online.value})))])]);
@@ -3093,7 +3132,7 @@ createApp({
       if (node.file) return sidebar("Fájl szerkesztése", [
         group("Cím", [title]),
         filenameField(),
-        group("Megjelenés", [appearanceTools()]),
+        group("Megjelenés", [appearanceTools(filenameToggle())]),
         node.file.type === "attachment" ? null : group(node.file.type === "mp3" ? "Megjegyzés" : "Szöveg", [bodyEditor(), propertyTools(justify())]),
       ]);
       if (node.kind === "connectionPoint") return sidebar("Csomópont", [

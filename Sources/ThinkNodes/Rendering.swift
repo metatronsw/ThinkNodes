@@ -22,7 +22,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
     let assets = scripts ? """
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
-        <script type="module" src="/editor.js?v=26"></script>
+        <script type="module" src="/editor.js?v=28"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -33,7 +33,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=9">
+          <link rel="stylesheet" href="/app.css?v=11">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -509,7 +509,6 @@ private func elevationShadow(_ node: Idea, geometry: String, graphics: VisualThe
         <g data-elevated-shadow="" pointer-events="none" aria-hidden="true">
           <clipPath id="\(clip)"><path d="\(outside)" clip-rule="evenodd"/></clipPath>
           <g clip-path="url(#\(clip))">
-            <\(geometry) transform="translate(12 28)" fill="none" stroke="#11172b" stroke-width="5" stroke-linejoin="round" stroke-opacity=".12"/>
             <\(geometry) transform="translate(12 28)" fill="#11172b" fill-opacity=".44"/>
           </g>
         </g>
@@ -968,8 +967,13 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
             <text transform="\(transform)" y="\(number(labelY))"\(labelAttributes) font-family="system-ui, sans-serif" font-size="\(number(fontSize))" font-weight="\(fontWeight)" text-anchor="middle" stroke="none" fill="\(color)">\(escaped(label))</text>
             """)
     }
+    let base = assetBase ?? noteBase ?? ""
+    let project = base.split(separator: "/").first.flatMap { $0.removingPercentEncoding }
     func render(_ drawing: IdeaDrawing) -> String {
         let node = drawing.node
+        let webURL = node.file?.webPath.flatMap { reference in
+            project.flatMap { name in (try? WebPresentationReference(reference))?.url(in: name) }
+        }
         let graphic: String
         if let file = node.file {
             let url = escaped("/api/attachment" + (assetBase ?? noteBase ?? "") + "?inline=1&name=" + encodeQuery(file.asset ?? ""))
@@ -992,15 +996,21 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
                     """
             case .md: content = "<div class=\"formatted-text\(justification)\">\(markdownHTML(node.text))</div>"
             case .txt, .json: content = "<pre\(commentClass)>\(escaped(node.text))</pre>"
+            case .web:
+                let preview = webURL.map { "<img class=\"web-preview\" alt=\"\" src=\"\(escaped($0 + "preview.png"))\"/>" } ?? ""
+                let path = escaped(file.webPath ?? "")
+                content = "<div class=\"web-box-body\">\(preview)<span>\(uiIcon("website"))\(path)</span></div>"
             case .attachment, .worksheet: content = ""
             }
             let note = file.type == .md || file.type == .txt
             let filename = escaped(file.displayName(title: node.title))
             let download = escaped("/api/box-file" + (assetBase ?? noteBase ?? "") + "?id=" + encodeQuery(node.id))
-            let footer = noteBase == nil
-                ? (assetBase == nil ? "<span>\(filename)</span>" : "<a href=\"\(download)\">\(filename)</a>")
+            let filenameLabel = file.showFilename != false ? "<span>\(filename)</span>" : ""
+            let packageIcon = uiIcon("package")
+            let footer = file.type == .web ? "" : noteBase == nil
+                ? (assetBase == nil ? filenameLabel : "<a href=\"\(download)\" aria-label=\"Letöltés · \(filename)\">\(packageIcon)\(filenameLabel)</a>")
                 :
-                "<button type=\"button\" class=\"file-download\" title=\"\(filename)\" aria-label=\"Letöltés · \(filename)\" data-download=\"\(download)\">\(uiIcon("package"))<span>\(filename)</span></button>"
+                "<button type=\"button\" class=\"file-download\" title=\"\(filename)\" aria-label=\"Letöltés · \(filename)\" data-download=\"\(download)\">\(packageIcon)\(filenameLabel)</button>"
             let fold = node.resolvedBackgroundMode == .solid ? " with-fold" : ""
             let body = note ? "<div class=\"folded-note\(fold)\">\(content)</div>" : content
             let image = file.type == .image
@@ -1017,10 +1027,12 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
         guard let noteBase else { return graphic }
         let parts = noteBase.split(separator: "/").map { String($0).removingPercentEncoding ?? String($0) }
         let path = try? WorksheetPath(parts)
-        let destination = node.link.flatMap(WorksheetLink.init).flatMap { link in path.flatMap { link.destination(from: $0) } }
+        let destination = webURL ?? node.link.flatMap(WorksheetLink.init).flatMap { link in path.flatMap { link.destination(from: $0) } }
         let tag = destination == nil ? "g" : "a"
         var linked = destination.map { " data-link=\"true\" href=\"\(escaped($0))\"" } ?? ""
-        if let raw = node.link, let link = WorksheetLink(raw), link.isExternal(siteHost: siteHost) {
+        if webURL != nil {
+            linked += " data-web-presentation=\"true\" target=\"_blank\" rel=\"noopener noreferrer\""
+        } else if let raw = node.link, let link = WorksheetLink(raw), link.isExternal(siteHost: siteHost) {
             linked += " target=\"_blank\" rel=\"noopener noreferrer\""
         }
         let geometry = "data-x=\"\(node.position.x)\" data-y=\"\(node.position.y)\" data-width=\"\(node.width)\" data-height=\"\(node.height)\" data-shape=\"\(node.shape.rawValue)\" data-parent=\"\(node.parent ?? "")\""

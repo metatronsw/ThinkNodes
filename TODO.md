@@ -39,6 +39,20 @@ SPACE INSERT:
 
 
 [ **DESIGN** ]
+megtekinktő módban a szerkesztők kezelése a canvas alá kerüljön ne bele ! A Bal alsó sarok alatt legyen a gomb. 
+Ugyan így egy sorba vele a felhasználók felsorolása
+
+a toolbaron a fullscreen és a cursor ikon cseréjen helyet
+
+a kiemelés árnyéknál az árnyék layernek ne legyen kerete
+
+csatolt file -ok nál a property panelnél rakd vissza a file név mutatása/elrejtése ikont a megjelenés gombok mellé.
+alapból legyen rejtett a beállítása az új file -oknak
+
+ha a létrehozó felhasználó a bejelentkezett felhasználó, akkor nem kell kiírni a létrehozó nevét a canvason editor módban (saját magát ne írja ki) 
+
+
+
 
 
 

@@ -31,7 +31,7 @@ export function sharedMouse(send) {
     }
     marker.setAttribute("transform", 'translate(' + frame.point.x + ' ' + frame.point.y + ')');
   }
-  function bind(svg, parent, controls) {
+  function bind(svg, parent, controls, before = null) {
     listeners?.abort();
     hide();
     listeners = new AbortController();
@@ -51,7 +51,7 @@ export function sharedMouse(send) {
     button.setAttribute("aria-label", button.title);
     button.setAttribute("aria-pressed", String(enabled));
     button.innerHTML = '<svg class="ui-icon" aria-hidden="true" viewBox="0 0 24 24"><path fill="currentColor" d="M4 2l4 19 4-7 8-3z"/></svg>';
-    controls.append(button);
+    controls.insertBefore(button, before);
     button.addEventListener("click", () => {
       enabled = !enabled;
       button.setAttribute("aria-pressed", String(enabled));

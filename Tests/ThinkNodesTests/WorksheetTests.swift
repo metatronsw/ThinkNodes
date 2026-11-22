@@ -167,12 +167,16 @@ import VaporTesting
         try withArchive.validate()
         let archiveSVG = boardSVG(withArchive, assetBase: "/" + path + "/terv")
         #expect(archiveSVG.contains("/api/box-file/" + path + "/terv?id=archive"))
-        #expect(archiveSVG.contains("Ötletek.zip"))
+        #expect(archiveSVG.contains("<span>Ötletek.zip</span>"))
+        withArchive.nodes[0].file?.showFilename = false
+        let iconOnly = boardSVG(withArchive, assetBase: "/" + path + "/terv")
+        #expect(iconOnly.contains("/api/box-file/" + path + "/terv?id=archive"))
+        #expect(!iconOnly.contains("<span>Ötletek.zip</span>"))
         withArchive.nodes[0].file?.asset = "../Ötletek.zip"
         #expect(throws: Abort.self) { try withArchive.validate() }
         let preview = try await browser.sendRequest(.GET, "/api/preview/" + path + "/terv")
         #expect(preview.status == .ok && preview.body.string.contains("<svg"))
-        #expect(FileManager.default.fileExists(atPath: file.deletingLastPathComponent().appendingPathComponent("terv/.terv.preview-v9.svg").path))
+        #expect(FileManager.default.fileExists(atPath: file.deletingLastPathComponent().appendingPathComponent("terv/.terv.preview-v10.svg").path))
         try await checkPreviewAndPreferences(browser, path: path + "/terv", sheet: child, session: shared, png: png)
         let parent = try await browser.sendRequest(.GET, "/" + path)
         #expect(parent.body.string.contains("További munkalapok") && parent.body.string.contains("Létrehozó: shared"))
@@ -207,6 +211,11 @@ import VaporTesting
         #expect(!page.body.string.contains("worksheet-grid"))
         #expect(page.body.string.contains("passive-backdrop"))
         #expect(page.body.string.contains("viewer-downloads"))
+        let html = page.body.string
+        let fullscreen = try #require(html.range(of: #"class="button fullscreen""#))
+        let meta = try #require(html.range(of: #"class="viewer-meta""#))
+        let roster = try #require(html.range(of: #"aria-label="Jelenlévők""#))
+        #expect(fullscreen.lowerBound < meta.lowerBound && meta.lowerBound < roster.lowerBound)
 
         let svg = try await browser.sendRequest(.GET, "/export/svg/\(path)")
         #expect(svg.status == .ok)

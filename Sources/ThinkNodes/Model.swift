@@ -61,13 +61,14 @@ struct TextStyle: Codable, Equatable, Sendable {
     }
 }
 
-enum CanvasFileType: String, Codable, Sendable { case image, mp3, txt, md, json, attachment, worksheet }
+enum CanvasFileType: String, Codable, Sendable { case image, mp3, txt, md, json, attachment, worksheet, web }
 
 struct CanvasFile: Codable, Equatable, Sendable {
     var type: CanvasFileType
     var asset: String?
     var hideTitle: Bool?
     var filename: String?
+    var webPath: String?
     var showFilename: Bool?
     var fileExtension: String?
     var alphaEnabled: Bool?
@@ -89,7 +90,8 @@ struct CanvasFile: Codable, Equatable, Sendable {
     }
 
     func reference(title: String) -> String? {
-        asset ?? filename ?? (["txt", "md", "json"].contains(type.rawValue)
+        if type == .web { return nil }
+        return asset ?? filename ?? (["txt", "md", "json"].contains(type.rawValue)
             && (title as NSString).pathExtension.lowercased() == type.rawValue ? title : nil)
     }
 
@@ -236,6 +238,9 @@ struct Idea: Codable, Equatable, Sendable {
             case .mp3: guard file.asset.flatMap(canvasAssetType) == "audio/mpeg" else { return false }
             case .txt, .json, .md: break
             case .worksheet: return false
+            case .web:
+                guard file.asset == nil, file.filename == nil, let reference = file.webPath,
+                      (try? WebPresentationReference(reference)) != nil else { return false }
             case .attachment:
                 guard let name = file.asset, validImageStem(name),
                       (name as NSString).pathExtension.lowercased() != "thnode" else { return false }
@@ -525,14 +530,16 @@ struct WorksheetPath: Sendable {
         else { throw Abort(.notFound, reason: "Érvénytelen munkalapútvonal.") }
         self.parts = parts
         self.name = name
-        self.url = parts.map { part in
-            part.utf8.map { byte in
-                switch byte {
-                case 48...57, 65...90, 97...122, 45, 95: String(UnicodeScalar(byte))
-                default: String(format: "%%%02X", byte)
-                }
-            }.joined()
-        }.joined(separator: "/")
+        self.url = parts.map(Self.encodeSegment).joined(separator: "/")
+    }
+
+    static func encodeSegment(_ segment: String) -> String {
+        segment.utf8.map { byte in
+            switch byte {
+            case 48...57, 65...90, 97...122, 45, 95: String(UnicodeScalar(byte))
+            default: String(format: "%%%02X", byte)
+            }
+        }.joined()
     }
 }
 
@@ -864,7 +871,7 @@ final class WorksheetStore: @unchecked Sendable {
             if let name = sheet.previewImage,
                let file = try attachments(at: url, named: name, metadata: ctx.local).first,
                let mime = previewType(file) { return .image(file, mime) }
-            let suffix = mode == "dark" ? ".preview-v9-dark.svg" : ".preview-v9.svg"
+            let suffix = mode == "dark" ? ".preview-v10-dark.svg" : ".preview-v10.svg"
             let cache = url.deletingLastPathComponent().appendingPathComponent("." + path.name + suffix)
             try rejectLink(cache)
             let modified = try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
@@ -1257,7 +1264,7 @@ final class WorksheetStore: @unchecked Sendable {
             let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize
             let candidates = media.filter { $0.value == name }.keys.sorted()
             let existing = candidates.first { archived[$0] == nil }
-            var canvasFile = CanvasFile(type: .attachment, asset: existing ?? ("file-" + UUID().uuidString.lowercased()), filename: name, showFilename: true)
+            var canvasFile = CanvasFile(type: .attachment, asset: existing ?? ("file-" + UUID().uuidString.lowercased()), filename: name, showFilename: false)
             var text = ""
             var height = 100.0
             if let mime, let size, size <= 12 * 1024 * 1024,
@@ -1678,5 +1685,178 @@ extension Point {
         let fields = try decoder.container(keyedBy: CodingKeys.self)
         x = (try? fields.decode(Double.self, forKey: .x)) ?? 0
         y = (try? fields.decode(Double.self, forKey: .y)) ?? 0
+    }
+}
+
+extension WorksheetStore {
+    private struct WebAccess {
+        let admin: Bool
+        let projectMember: Bool
+        let projectOwner: Bool
+        var readable: Bool
+        var publicRead: Bool
+        var hashes: [String] = []
+
+        mutating func restrict(_ policy: DocumentPolicy, user: User?) {
+            if policy.guestReadable == false || policy.editors != nil { publicRead = false }
+            protect(policy.passwordHash)
+            guard !admin else { return }
+            if policy.guestReadable == false { readable = readable && projectMember }
+            if let editors = policy.editors {
+                let allowed = editors + [policy.owner].compactMap { $0 }
+                readable = readable && (user.map { allowed.contains($0.name) } == true)
+            }
+        }
+
+        mutating func protect(_ hash: String?) {
+            if let hash {
+                publicRead = false
+                if !admin && !projectOwner { hashes.append(hash) }
+            }
+        }
+
+        func authorize(_ user: User?, unlocks: Set<String>) throws {
+            guard readable else { throw Abort(user == nil ? .unauthorized : .forbidden) }
+            guard hashes.allSatisfy(unlocks.contains) else { throw Abort(.locked) }
+        }
+
+        func canManage(unlocks: Set<String>) -> Bool {
+            readable && (admin || projectMember) && hashes.allSatisfy(unlocks.contains)
+        }
+    }
+
+    private struct WebContext {
+        let directory: URL
+        let policy: DocumentPolicy
+        let access: WebAccess
+        let manageable: Bool
+    }
+
+    private func webPolicy(at directory: URL) throws -> DocumentPolicy? {
+        let url = try settingsURL(directory)
+        guard files.fileExists(atPath: url.path) else { return nil }
+        let info = try url.resourceValues(forKeys: [.isRegularFileKey])
+        guard info.isRegularFile == true else { throw Abort(.notFound) }
+        return try JSONDecoder().decode(DocumentPolicy.self, from: Data(contentsOf: url))
+    }
+
+    private func webDirectory(_ name: String, in parent: URL) throws -> URL? {
+        let url = parent.appendingPathComponent(name)
+        try checkName(url)
+        guard files.fileExists(atPath: url.path),
+              try url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else { return nil }
+        return url
+    }
+
+    private func webContext(project: String, reference: WebPresentationReference, user: User?, unlocks: Set<String>) throws -> WebContext? {
+        let requiresLogin = try readSettings().requireLogin
+        if requiresLogin && user == nil { throw Abort(.unauthorized) }
+        guard var directory = try webDirectory(project, in: root), let rootRule = try webPolicy(at: directory) else { return nil }
+        let member = user.map { user in
+            user.role == .editor && (user.name == rootRule.owner || rootRule.editors?.contains(user.name) == true)
+        } == true
+        let admin = user?.role == .admin
+        var access = WebAccess(admin: admin, projectMember: member, projectOwner: member && user?.name == rootRule.owner,
+            readable: admin || member || rootRule.guestReadable == true,
+            publicRead: !requiresLogin && rootRule.guestReadable == true)
+        access.protect(rootRule.passwordHash)
+        var parts: [String] = []
+        access.protect(rootRule.worksheets?[project + ".thnode"]?.passwordHash)
+        for folder in reference.folders {
+            guard access.readable else { throw Abort(user == nil ? .unauthorized : .forbidden) }
+            guard let next = try webDirectory(folder, in: directory) else { return nil }
+            directory = next
+            parts.append(folder)
+            if let rule = try webPolicy(at: directory) { access.restrict(rule, user: user) }
+            let key = (parts + [folder + ".thnode"]).joined(separator: "/")
+            access.protect(rootRule.worksheets?[key]?.passwordHash)
+        }
+        guard access.readable else { throw Abort(user == nil ? .unauthorized : .forbidden) }
+        guard let presentation = try webDirectory(reference.name + ".web", in: directory) else { return nil }
+        let policy = try webPolicy(at: presentation) ?? DocumentPolicy()
+        let manageable = access.canManage(unlocks: unlocks)
+        access.restrict(policy, user: user)
+        return WebContext(directory: presentation, policy: policy, access: access, manageable: manageable)
+    }
+
+    func webAsset(_ request: WebPresentationRequest, user: User?, unlocks: Set<String>) throws -> (asset: WebAsset, directory: Bool, publicRead: Bool)? {
+        try lock.withLock {
+            guard let context = try webContext(project: request.project, reference: request.reference, user: user, unlocks: unlocks) else { return nil }
+            try context.access.authorize(user, unlocks: unlocks)
+            let dirs = [request.project] + request.reference.folders + [request.reference.name + ".web"]
+            let (asset, directory) = try WebAsset.open(in: root, folders: dirs, asset: request.asset, trailingSlash: request.trailingSlash)
+            return (asset, directory, context.access.publicRead)
+        }
+    }
+
+    func unlockWeb(_ requests: [WebPresentationRequest], password: String, user: User?, unlocks: Set<String>) throws -> (WebPresentationRequest, [String]) {
+        try lock.withLock {
+            for request in requests {
+                guard let context = try webContext(project: request.project, reference: request.reference, user: user, unlocks: unlocks) else { continue }
+                guard context.access.readable else { throw Abort(.forbidden) }
+                let required = Set(context.access.hashes).subtracting(unlocks)
+                let matches = try required.filter { try Bcrypt.verify(password, created: $0) }
+                guard !matches.isEmpty else { throw Abort(.forbidden) }
+                return (request, Array(matches))
+            }
+            throw Abort(.notFound)
+        }
+    }
+
+    func webPresentations(in path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> [WebPresentationInfo] {
+        try lock.withLock {
+            if try readSettings().requireLogin && user == nil { throw Abort(.unauthorized) }
+            let ctx = try context(path)
+            try authorize(accessLocked(ctx, user: user, unlocks: unlocks), user: user)
+            let project = path.parts[0]
+            var presentations: [WebPresentationInfo] = []
+            func visit(_ dir: URL, folders: [String]) throws {
+                let entries = try files.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey], options: [.skipsHiddenFiles])
+                for entry in entries {
+                    let info = try entry.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+                    guard info.isDirectory == true, info.isSymbolicLink != true else { continue }
+                    let relative = folders + [entry.lastPathComponent]
+                    if entry.pathExtension == "web" {
+                        guard let reference = try? WebPresentationReference(relative.joined(separator: "/")),
+                              let access = try? webContext(project: project, reference: reference, user: user, unlocks: unlocks),
+                              access.access.readable || access.manageable else { continue }
+                        let url = reference.url(in: project)
+                        let preview = entry.appendingPathComponent("preview.png")
+                        let previewExists = (try? rejectLink(preview)) != nil &&
+                            (try? preview.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+                        let unlocked = access.access.readable && access.access.hashes.allSatisfy(unlocks.contains)
+                        presentations.append(WebPresentationInfo(reference: reference.relativePath, title: String(reference.name.prefix(120)), url: url,
+                            preview: unlocked && previewExists ? url + "preview.png" : nil, manageable: access.manageable,
+                            membersOnly: access.manageable ? access.policy.guestReadable == false : nil,
+                            editors: access.manageable ? access.policy.editors : nil,
+                            passwordProtected: access.manageable ? access.policy.passwordHash != nil : nil))
+                    } else if relative.count < 11, (try? WorksheetPath([project] + relative)) != nil {
+                        try visit(entry, folders: relative)
+                    }
+                }
+            }
+            try visit(ctx.project, folders: [])
+            return presentations.sorted { $0.reference.localizedStandardCompare($1.reference) == .orderedAscending }
+        }
+    }
+
+    func setWebPresentation(_ settings: WebPresentationSettings, in path: WorksheetPath, user: User, unlocks: Set<String>) throws {
+        try lock.withLock {
+            let worksheet = try context(path)
+            try authorize(accessLocked(worksheet, user: user, unlocks: unlocks), user: user)
+            let reference = try WebPresentationReference(settings.reference)
+            guard let context = try webContext(project: path.parts[0], reference: reference, user: user, unlocks: unlocks),
+                  context.manageable else { throw Abort(.forbidden) }
+            guard settings.editors.map({ $0.count <= 500 && $0.allSatisfy(validSlug) }) ?? true,
+                  settings.password.map({ (1...72).contains($0.utf8.count) && !settings.removePassword }) ?? true else {
+                throw Abort(.badRequest)
+            }
+            var policy = context.policy
+            policy.guestReadable = settings.membersOnly ? false : nil
+            policy.editors = settings.editors.map { Set($0).sorted() }
+            if settings.removePassword { policy.passwordHash = nil }
+            if let password = settings.password { policy.passwordHash = try Bcrypt.hash(password) }
+            try write(policy, to: settingsURL(context.directory))
+        }
     }
 }

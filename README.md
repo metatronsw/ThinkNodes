@@ -98,13 +98,29 @@ A munkalap JSON-formátumban tárolja a vásznat, a címét, a létrehozóját �
 
 A **Projects/.settings.json** tartalmazza az alkalmazás beállításait, a fiókokat és a bcrypt-jelszóhasheket. A beállításfájlokat és a munkalapokat a mellékletlista kihagyja. A munkalap saját letöltési gombja **.thnode** fájlt ad.
 
-A fájldoboz alján a csomagikon melletti teljes fájlnévre dupla kattintással lehet letölteni a fájlt. A tulajdonságpanelen a név a kiterjesztés előtt szerkeszthető. A jóváhagyott törlés a projekt **.trash/** mappájába helyezi a fájlt az eredeti projektbeli alkönyvtárral együtt.
+A fájldoboz alján a csomagikonra duplán kattintva lehet letölteni a fájlt. Új fájloknál a név alapból rejtett. A tulajdonságpanel **Megjelenés** részében kapcsolható be, a **Fájlnév** mezőben pedig a kiterjesztés előtti rész szerkeszthető. A jóváhagyott törlés a projekt **.trash/** mappájába helyezi a fájlt az eredeti projektbeli alkönyvtárral együtt.
 
 A mentés atomi fájlcserét és revízióellenőrzést használ. Egy adatkönyvtárhoz egy futó szerverpéldány tartozik.
 
+## Statikus prezentációk
+
+Másold a teljes prezentációt a projektbe egy `NAME.web` mappába. Az alapértelmezett belépő az `index.html`. A prezentáció saját CSS-, JavaScript-, kép-, font- és egyéb fájljai a mappában maradnak. A prezentációhoz vezető útvonalban a `web` szegmens az URL-elválasztó.
+
+| Fájl a projektben | ThinkNodes-útvonal |
+|---|---|
+| `demoproject/prezi.web/index.html` | `/demoproject/web/prezi/` |
+| `demoproject/prezi.web/css/main.css` | `/demoproject/web/prezi/css/main.css` |
+| `demoproject/anyagok/masik.web/index.html` | `/demoproject/anyagok/web/masik/` |
+
+A szerkesztő vásznának helyi menüjében a **Prezentáció beszúrása** parancs hozzáadja a dobozt. A doboz dupla kattintásra új fülön nyitja meg a prezentációt. A mappába tett `preview.png` a doboz előnézete. A doboz törlésekor a mappa a lemezen marad.
+
+A megtekintő **Prezentációk** gombjánál projektjogosultsággal szűkíthető az olvasók köre és beállítható a prezentáció jelszava. Minden fájlra külön érvényes a projekt, az útvonalon lévő mappák és a prezentáció szabálya. Egy helyi beállítás csak szűkítheti az örökölt hozzáférést.
+
+A böngésző elkülönített környezetben futtatja a prezentációt. A relatív CSS, klasszikus JavaScript és médiafájlok támogatottak. A prezentáció nem fér hozzá a ThinkNodes sütijeihez vagy böngészőtárhelyéhez. A védett prezentációk relatív erőforrásaihoz HTTPS-en vagy helyi loopback címen engedélyezni kell a prezentációra korlátozott biztonságos sütit. A beágyazott keretek, a modulbetöltés és a programból indított hálózati kérések ezen a kiszolgáláson nem támogatottak.
+
 ## Közös szerkesztés
 
-A vászon bal alsó sarkában, csatlakozási sorrendben megjelenő névsor mutatja, kik vannak a munkalapon. A név melletti szín a kijelölt doboz körüli keret színe is. A kijelölés a szerkesztő böngészőfülhöz tartozik. Másik szerkesztő közben kábelt köthet a dobozhoz és le is választhat róla kábelt. Üres területre kattintás, az Escape vagy másik elem kiválasztása elengedi a kijelölést. Lapváltáskor és a fül bezárásakor is felszabadul a doboz. Megszakadt kapcsolat esetén a szerver időkorláttal oldja fel a zárolást.
+A jelenlévők névsora a szerkesztőben a vászon jobb alsó sarkában, a megtekintőben a vászon alatt látszik. A kijelölés a szerkesztő böngészőfülhöz tartozik. Másik szerkesztő közben kábelt köthet a dobozhoz és le is választhat róla kábelt. Üres területre kattintás, az Escape vagy másik elem kiválasztása elengedi a kijelölést. Lapváltáskor és a fül bezárásakor is felszabadul a doboz. Megszakadt kapcsolat esetén a szerver időkorláttal oldja fel a zárolást.
 
 A vászon módosításai automatikusan szinkronizálódnak. Húzáskor a saját doboz folyamatosan követi az egeret. A többi résztvevő egy WebSocket-kapcsolaton, alapból legfeljebb 100 milliszekundumonként kap pozíció-előnézetet. Az elengedés egy munkalapírást indít, az Escape megszakítja a húzást. A végleges hely WebSocket nélkül is megjelenik a többi résztvevőnél.
 

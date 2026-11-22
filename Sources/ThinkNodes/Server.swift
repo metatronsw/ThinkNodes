@@ -146,6 +146,7 @@ private func worksheetPath(_ raw: String) throws -> WorksheetPath {
 private func safeNext(_ value: String?) -> String {
     guard let value, value.hasPrefix("/") else { return "/" }
     if value == "/admin" { return value }
+    if let presentation = (try? WebPresentationRequest.candidates(value))?.first { return presentation.url }
     if value.hasPrefix("/edit/"), let path = try? worksheetPath(String(value.dropFirst(6))) {
         return "/edit/" + path.url
     }
@@ -216,6 +217,7 @@ private func accessDeniedPage(_ identity: SessionInfo, updates: PageUpdates.Subs
 
 func configure(_ application: Application, store: WorksheetStore) {
     let live = Collaboration(store: store)
+    let webSessions = WebPresentationSessions()
     let assets = application.directory.publicDirectory
     let themeJSON = String(decoding: (try? JSONEncoder().encode(Themes.catalog)) ?? Data(), as: UTF8.self)
     let defaultMotionRate = 33
@@ -233,7 +235,7 @@ func configure(_ application: Application, store: WorksheetStore) {
     }
     application.middleware = middlewares
     #endif
-    application.middleware.use(FileMiddleware(publicDirectory: assets, cachePolicy: .noCache))
+    application.middleware.use(ThinkNodesPublicFiles(directory: assets))
     let app = application.grouped(application.sessions.middleware)
     application.routes.defaultMaxBodySize = "16mb"
 
@@ -506,6 +508,41 @@ func configure(_ application: Application, store: WorksheetStore) {
 
     }
 
+    app.get("api", "web-presentations", "**") { req async throws -> [WebPresentationInfo] in
+        let identity = try session(req, store: store)
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        return try await req.application.threadPool.runIfActive {
+            try store.webPresentations(in: path, user: identity.user, unlocks: identity.unlocks)
+        }
+    }
+
+    app.patch("api", "web-presentations", "**") { req async throws -> HTTPStatus in
+        let identity = try session(req, store: store)
+        let user = try identity.editor()
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        let settings = try req.content.decode(WebPresentationSettings.self)
+        try await req.application.threadPool.runIfActive {
+            try store.setWebPresentation(settings, in: path, user: user, unlocks: identity.unlocks)
+        }
+        live.pages.publish(.structure, at: try WorksheetPath([path.parts[0]]))
+        return .noContent
+    }
+
+    app.post("api", "web-unlock") { req async throws -> Response in
+        struct Form: Content { let password: String; let csrf: String; let target: String }
+        let form = try req.content.decode(Form.self)
+        try verify(req, token: form.csrf)
+        guard (1...72).contains(form.password.utf8.count) else { throw Abort(.badRequest) }
+        let candidates = try WebPresentationRequest.candidates(form.target)
+        let identity = try session(req, store: store)
+        let (request, hashes) = try await req.application.threadPool.runIfActive {
+            try store.unlockWeb(candidates, password: form.password, user: identity.user, unlocks: identity.unlocks)
+        }
+        req.session.data["document-unlocks"] = identity.unlocks.union(hashes).sorted().joined(separator: "\n")
+        return redirect(request.url)
+    }
+
     app.post("api", "unlock", "**") { req async throws -> Response in
         struct Form: Content { let password: String; let csrf: String; let edit: String?; let attachment: String? }
         let form = try req.content.decode(Form.self)
@@ -644,9 +681,13 @@ func configure(_ application: Application, store: WorksheetStore) {
         }
     }
 
-    app.get("**") { req async throws -> Response in
-        let raw = req.parameters.getCatchall()
+    @Sendable func worksheetOrPresentation(_ req: Request) async throws -> Response {
         let identity = try session(req, store: store)
+        let candidates = try WebPresentationRequest.candidates(req.url.path)
+        if !candidates.isEmpty, let result = try await serveWebPresentation(req, candidates: candidates, identity: identity, store: store, webSessions: webSessions) {
+            return result
+        }
+        let raw = req.url.path.split(separator: "/").map { $0.removingPercentEncoding ?? String($0) }
         guard let path = try? WorksheetPath(raw) else {
             if ["api", "export"].contains(raw.first?.lowercased() ?? "") { throw Abort(.notFound) }
             return missingPage(identity, updates: live.pages.subscribe(.index))
@@ -681,6 +722,84 @@ func configure(_ application: Application, store: WorksheetStore) {
             return missingPage(identity, updates: live.pages.subscribe(.index))
         }
     }
+    for depth in 1...11 {
+        let prefix = (0..<depth).map { PathComponent.parameter("web-parent-\($0)") }
+        let presentation = prefix + [.constant("web"), .parameter("web-name")]
+        app.on(.GET, presentation, use: worksheetOrPresentation)
+        app.on(.GET, presentation + [.catchall], use: worksheetOrPresentation)
+    }
+    app.get("**", use: worksheetOrPresentation)
+
+}
+
+private struct ThinkNodesPublicFiles: AsyncMiddleware {
+    let files: FileMiddleware
+
+    init(directory: String) { files = FileMiddleware(publicDirectory: directory, cachePolicy: .noCache) }
+
+    func respond(to request: Request, chainingTo next: any AsyncResponder) async throws -> Response {
+        let path = request.url.path
+        let decoded = path.removingPercentEncoding ?? path
+        if WebPresentationRequest.matches(path) || WebPresentationRequest.matches(decoded) ||
+            decoded.split(separator: "/").contains(where: { $0.hasSuffix(".web") }) {
+            return try await next.respond(to: request)
+        }
+        return try await files.respond(to: request, chainingTo: next)
+    }
+}
+
+private func serveWebPresentation(_ req: Request, candidates: [WebPresentationRequest], identity: SessionInfo, store: WorksheetStore,
+                                  webSessions: WebPresentationSessions) async throws -> Response? {
+    let sessions = req.application.sessions
+    for candidate in candidates {
+        do {
+            let viewer: SessionInfo
+            if let lease = candidate.lease {
+                guard let session = webSessions.session(lease: lease, scope: candidate.scope,
+                    cookie: req.cookies[WebPresentationSessions.cookieName]?.string),
+                    let data = try await sessions.driver.readSession(session, for: req).get() else { throw Abort(.notFound) }
+                let user = try authenticatedUser(data, store: store)
+                if data["user"] != nil && user == nil { throw Abort(.notFound) }
+                viewer = SessionInfo(user: user, unlocks: documentUnlocks(data))
+            } else {
+                viewer = identity
+            }
+            guard let (asset, directory, publicRead) = try await req.application.threadPool.runIfActive({
+                try store.webAsset(candidate, user: viewer.user, unlocks: viewer.unlocks)
+            }) else { continue }
+
+            let query = req.url.query.map { "?" + $0 } ?? ""
+            if directory && !candidate.trailingSlash { return redirect(candidate.url + "/" + query) }
+            if asset.isHTML, candidate.lease != nil { return redirect(candidate.url + query) }
+            guard asset.isHTML, !publicRead, let cookie = req.cookies[sessions.configuration.cookieName] else {
+                return try await asset.response(to: req)
+            }
+            let grant = webSessions.issue(session: .init(string: cookie.string), scope: candidate.scope)
+            let scope = candidate.assetScope(grant.id)
+            let folders = directory ? candidate.asset : Array(candidate.asset.dropLast())
+            let base = scope + (folders.isEmpty ? "" : folders.map(WebPresentationRequest.encodeAsset).joined(separator: "/") + "/")
+            let result = try await asset.response(to: req, baseURL: base)
+            result.cookies[WebPresentationSessions.cookieName] = .init(string: grant.secret, expires: grant.expires,
+                path: scope, isSecure: true, isHTTPOnly: true, sameSite: HTTPCookies.SameSitePolicy.none)
+            return result
+        } catch let error as Abort where error.status == .unauthorized && candidate.lease == nil {
+            return redirect("/login?next=" + encodeQuery(candidate.url))
+        } catch let error as Abort where error.status == .locked && candidate.lease == nil {
+            let page = htmlPage(title: "Prezentáció feloldása", body: """
+                \(siteHeader(user: identity.user, csrf: identity.csrf))
+                <main class="shell narrow"><h1>Prezentáció feloldása</h1>
+                  <form class="stack panel" method="post" action="/api/web-unlock">
+                    \(csrfInput(token(req)))<input type="hidden" name="target" value="\(escaped(candidate.url))">
+                    <label>Prezentáció jelszava<input type="password" name="password" required></label>
+                    <button class="button primary">Megnyitás</button>
+                  </form>
+                </main>
+                """)
+            page.status = .locked
+            return page
+        }
+    }
+    return nil
 }
 
 func encodeQuery(_ value: String) -> String {
@@ -788,6 +907,8 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
         : "<button type=\"button\" class=\"button small viewer-edit\" disabled>\(uiIcon("edit"))Szerkesztés</button>"
     let manageEditors = path.parts.count == 1 && access.manageable
         ? "<button type=\"button\" class=\"button small\" data-manage-editors>Szerkesztők kezelése</button>" : ""
+    let managePresentations = access.manageable
+        ? "<button type=\"button\" class=\"button small\" data-web-presentations>\(uiIcon("website"))Prezentációk</button>" : ""
     let downloads = [
         ("svg", "SVG"), ("thnode", "ThinkNodes"), ("text", "Text"),
     ].map { format, title in
@@ -842,7 +963,7 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
         ? "<span class=\"main-worksheet-indicator\" role=\"img\" aria-label=\"Fő munkalap\" title=\"Fő munkalap\">\(uiIcon("folder"))</span>" : ""
     return htmlPage(title: worksheet.title, body: """
         \(siteHeader(path: path.url, project: worksheet.title, user: session.user, csrf: session.csrf, canEdit: access.editable))
-        <script type="module" src="/viewer.js?v=16"></script>
+        <script type="module" src="/viewer.js?v=18"></script>
         <main class="shell" id="worksheet-view" data-graphics="\(escaped(graphicsJSON))" data-selection="\(selectionColor)" data-site-mode="\(siteMode(req) ?? "light")" data-path="\(path.url)" data-csrf="\(token(req))" data-revision="\(worksheet.revision)" data-editable="\(access.editable)" data-member="\(session.user != nil)">
           <a hidden data-current-document data-scope="\(path.parts.count == 1 ? "project" : "sheet")" \(editorMembership(access)) \(menuState(access.sheetRule)) data-manage="\(access.manageable)" href="\(base)">Munkalap</a>
           <div class="viewer-heading">\(parent)<h1><span aria-hidden="true">• </span>\(escaped(worksheet.title))</h1>\(mainIndicator)</div>
@@ -850,9 +971,11 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
             <svg class="passive-backdrop" aria-hidden="true"><rect width="100%" height="100%" fill="\(display.backgroundColor)"/></svg>
             \(canvas.svg)
             <div class="viewer-edit-slot">\(edit)</div>
-            <div class="viewer-credits">\(manageEditors)\(credits(worksheet, access))</div>
-            <div class="canvas-people"><div class="participants" aria-label="Jelenlévők"></div></div>
             <button class="button fullscreen" type="button" aria-label="Teljes képernyő">\(uiIcon("fit"))</button>
+          </div>
+          <div class="viewer-meta">
+            <div class="viewer-credits">\(manageEditors)\(managePresentations)<div>\(credits(worksheet, access))</div></div>
+            <div class="participants" aria-label="Jelenlévők"></div>
           </div>
           <div data-viewer-notes>\(tooltips)\(notes)\(note)</div>
           <nav class="viewer-downloads" aria-label="Letöltések">\(downloads)</nav>

@@ -36,6 +36,7 @@ export function fileName(file, title) {
 }
 
 export function fileReference(file, title) {
+  if (file.type === "web") return undefined;
   return file.asset ?? file.filename ?? (["md","txt","json"].includes(file.type)
     && title.toLowerCase().endsWith("." + file.type) ? title : undefined);
 }
@@ -145,7 +146,7 @@ export async function importFile(blob, path, csrf) {
       throw Error(detail.reason || "A fájl feltöltése sikertelen (" + response.status + ").");
     }
     const {asset} = await response.json();
-    const file = {type: media[mime], asset};
+    const file = {type: media[mime], asset, showFilename: false};
     if (image) {
       file.filename = filename;
       file.fileExtension = mediaName.split(".").at(-1);
@@ -154,7 +155,7 @@ export async function importFile(blob, path, csrf) {
   }
   if (!textExtensions.includes(ext) || blob.size > 100000) {
     const asset = await storeAttachment(blob, path, csrf, name);
-    return {title, file: {type: "attachment", asset, filename: name}, width: 260, height: 100};
+    return {title, file: {type: "attachment", asset, filename: name, showFilename: false}, width: 260, height: 100};
   }
   let text = await blob.text();
   if (ext === "json") {
@@ -162,7 +163,7 @@ export async function importFile(blob, path, csrf) {
   }
   checkText(text);
   const asset = await storeAttachment(blob, path, csrf, name);
-  return {title, text, file: {type: ext, asset, filename: name}, width: 340, height: 220};
+  return {title, text, file: {type: ext, asset, filename: name, showFilename: false}, width: 340, height: 220};
 }
 
 export async function pngForClipboard(url) {

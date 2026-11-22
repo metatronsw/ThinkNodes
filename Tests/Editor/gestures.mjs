@@ -157,6 +157,7 @@ async function press(label) { button(label).props.onClick(); await tick(); }
 async function save() { await button("Mentés").props.onClick(); await tick(); }
 const model = id => sheet.nodes.find(n => n.id === id);
 const edge = id => sheet.edges.find(e => e.id === id);
+assert.equal(prop("class", "canvas-creator"), undefined, "the editor omits its own creator name");
 const toggle = (key, down) => listeners[down ? "keydown" : "keyup"]({key, ctrlKey: down && key === "Control", altKey: down && key === "Alt"});
 async function detachDrag(id, end, x, y, cancel = false) {
   toggle("Control", true); await tick();
@@ -519,7 +520,9 @@ assert.equal(model("outside").elevated, true);
 assert.equal(model("outside").parent, undefined);
 assert.deepEqual(model("outside").position, {x: 180, y: 30});
 assert.equal(button("Kiemelés").props["aria-pressed"], true);
-assert.ok(prop("data-elevated-shadow", "", graphic("outside")));
+const shadow = prop("data-elevated-shadow", "", graphic("outside"));
+assert.ok(shadow);
+assert.equal(find(n => n.props.stroke !== undefined, shadow), undefined);
 assert.equal(text(button("Kiemelés")), "");
 assert.equal(prop("id", "elevated-box-shadow"), undefined);
 assert.ok(graphic("outside").parent.children.indexOf(graphic("outside")) > graphic("outer").parent.children.indexOf(graphic("outer")));
@@ -998,8 +1001,14 @@ assert.deepEqual(attachmentUploads, [
 assert.ok(sheet.nodes.some(n => n.file?.type === "md" && n.text === "# Leírás"));
 const archiveNode = sheet.nodes.find(n => n.file?.asset === archive.name);
 assert.equal(archiveNode.file.type, "attachment");
-assert.ok(prop("aria-label", "Letöltés · anyag.zip", graphic(archiveNode.id)));
+assert.equal(archiveNode.file.showFilename, false);
+const archiveDownload = () => prop("aria-label", "Letöltés · anyag.zip", graphic(archiveNode.id));
+assert.equal(text(archiveDownload()), "");
 await properties(archiveNode.id);
+await press("Fájlnév megjelenítése"); await save();
+assert.equal(text(archiveDownload()), "anyag.zip");
+await press("Fájlnév elrejtése"); await save();
+assert.equal(text(archiveDownload()), "");
 assert.equal(button("Free").props["aria-pressed"], false);
 await press("Free"); await save();
 assert.equal(prop("data-box-surface", "", graphic(archiveNode.id)), undefined);

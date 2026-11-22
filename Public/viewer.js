@@ -1,3 +1,4 @@
+import {openPresentation, openPresentationPicker} from "./web-presentations.js";
 import {fetchPage, updateSection, watchPageUpdates} from "./page-updates.js";
 import {bindAudioPlayers, syncAudioPlayers} from "./audio-player.js";
 import {objectURL, writeText} from "./canvas-files.js";
@@ -29,6 +30,10 @@ function bindCanvas() {
   mouse?.bind(svg, svg, main.dataset.member === "true" ? main.querySelector(".passive-frame") : null);
   for (const element of svg.querySelectorAll("[data-file-ink]")) {
     element.style.color = element.dataset.fileInk;
+  }
+  for (const preview of svg.querySelectorAll(".web-preview")) {
+    if (preview.complete && preview.naturalWidth) preview.dataset.ready = "";
+    else preview.addEventListener("load", () => { preview.dataset.ready = ""; }, {once: true});
   }
   hideTooltip();
   bindTooltips(svg);
@@ -251,6 +256,10 @@ function selectBox(box, broadcast = false) {
 }
 
 document.addEventListener("click", async event => {
+  if (event.target.closest("[data-web-presentations]")) {
+    await openPresentationPicker(path, csrf);
+    return;
+  }
   if (event.target.closest("audio, [data-audio-player], .canvas-file a")) return;
   const box = event.target.closest(".passive-canvas [data-node]");
   if (box && event.detail) {
@@ -286,7 +295,8 @@ document.addEventListener("dblclick", event => {
     return;
   }
   event.preventDefault();
-  if (box.getAttribute("target") === "_blank") openExternalLink(box.getAttribute("href"));
+  if (box.hasAttribute("data-web-presentation")) openPresentation(box.getAttribute("href"));
+  else if (box.getAttribute("target") === "_blank") openExternalLink(box.getAttribute("href"));
   else location.assign(box.getAttribute("href"));
 });
 document.addEventListener("contextmenu", event => {
