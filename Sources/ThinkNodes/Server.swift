@@ -908,7 +908,7 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
         """
         <a class="sub-preview preview-link" data-scope="\(child.path.parts.count == 1 ? "project" : "sheet")" \(menuState(child.access.sheetRule)) data-manage="\(child.access.manageable)" href="/\(child.path.url)">
           <strong><span aria-hidden="true">• </span>\(escaped(child.worksheet.title))</strong>
-          \(child.access.locked ? "<div class=\"locked-preview\">Jelszó szükséges</div>" : "<img loading=\"lazy\" alt=\"\" src=\"/api/preview/\(child.path.url)?v=\(child.worksheet.revision)\">")
+          <span class="preview-frame">\(child.access.locked ? "<span class=\"locked-preview\">Jelszó szükséges</span>" : "<img loading=\"lazy\" alt=\"\" src=\"/api/preview/\(child.path.url)?v=\(child.worksheet.revision)\">")</span>
           <small>Létrehozó: \(escaped(child.worksheet.creator ?? "ismeretlen"))</small>
         </a>
         """
@@ -962,7 +962,7 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
         return "<li><a data-scope=\"attachment\" data-manage=\"\(access.manageable)\" data-document=\"\(path.url)\" data-filename=\"\(escaped(name))\" href=\"/api/attachment/\(path.url)?name=\(encodeQuery(name))\">\(uiIcon("download"))<span>\(escaped(name))</span></a></li>"
     }.joined()
     // Az „Új munkalap” ugyanolyan kártya, mint a további munkalapoké: cím, előnézet helye, alsó sor.
-    let newPage = access.editable ? "<button type=\"button\" class=\"sub-preview preview-link new-worksheet new-sheet-card\"><strong><span aria-hidden=\"true\">• </span>Új munkalap</strong><span class=\"new-sheet-preview\">\(uiIcon("plus"))</span><small>&#160;</small></button>" : ""
+    let newPage = access.editable ? "<button type=\"button\" class=\"sub-preview preview-link new-worksheet new-sheet-card\"><strong><span aria-hidden=\"true\">• </span>Új munkalap</strong><span class=\"preview-frame new-sheet-preview\">\(uiIcon("plus"))</span><small>&#160;</small></button>" : ""
     let childList = "<div class=\"project-list\" data-current-sheet=\"\(path.url)\">\(previews)\(newPage)</div>"
     let childSection = previews.isEmpty ? (newPage.isEmpty ? "" : "<div class=\"viewer-new-worksheet\">\(childList)</div>")
         : "<section class=\"worksheet-section\"><h2>További munkalapok</h2>\(childList)</section>"
