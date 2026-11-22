@@ -331,7 +331,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 
 .card-meta { display: flex; gap: 1em; font-size: .85rem; }
 .sub-preview { display: grid; gap: .4rem; padding: .8rem; }
-.sub-preview.preview-link { grid-template-rows: auto minmax(0, 1fr) auto; text-align: start; }
+.sub-preview.preview-link { grid-template-rows: auto auto auto; align-content: start; text-align: start; }
 .sub-preview img { width: 100%; height: 140px; object-fit: contain; }
 
 .project-card { position: relative; background: var(--sheet-color, var(--paper)); }
@@ -358,7 +358,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .viewer-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .viewer-heading h1 { margin: 0; min-width: 0; overflow-wrap: anywhere; font-size: clamp(1.2rem, 3vw, 1.8rem); }
 /* A létrehozó és a szerkesztők névsora a cím sorában, a vászon jobb felső sarka felett. */
-.viewer-heading-credits { margin-inline-start: auto; flex: none; max-width: 50%; text-align: end; font-size: .85rem; line-height: 1.35; overflow-wrap: anywhere; }
+.viewer-heading-credits { margin-inline-start: auto; max-width: 60%; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0 1em; font-size: .85rem; line-height: 1.35; overflow-wrap: anywhere; }
 .viewer-heading-credits .card-meta { margin: 0; }
 #worksheet-view.shell { width: min(90%, 4096px); padding-inline: 0; }
 .viewer-downloads { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 12px; }
@@ -517,8 +517,9 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 .editor-root .header-left { min-width:0; }
 .editor-root .worksheet-nav > :is(.sidebar-open,.worksheet-history,.worksheet-close) { position:static; flex:none; }
 .editor-root .sidebar-open-canvas { order:-3; }
-.editor-root .worksheet-close { order:-2; }
-.editor-root .header-left { order:-1; flex:1; }
+/* A szerkesztő bezárása (X) az útvonal gombjai (és a szülő munkalap gomb) után áll. */
+.editor-root .worksheet-close { order:-1; }
+.editor-root .header-left { order:-1; flex:0 1 auto; }
 .editor-root .header-actions { flex:1; }
 .editor-root .worksheet-history { order:1; }
 .editor-root .sidebar-open:not(.sidebar-open-canvas) { order:2; }
@@ -766,3 +767,9 @@ svg text { text-rendering: geometricPrecision; }
   #worksheet-view .viewer-meta :is(.viewer-credits, .viewer-downloads) .button { width: 100%; min-width: 0; justify-content: center; padding-inline: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #worksheet-view .viewer-credits:empty { display: none; }
 }
+/* További munkalapok: az „Új munkalap” kártya azonos méretű és stílusú, mint a munkalapkártyák. */
+[data-current-sheet] .new-sheet-card { justify-self: stretch; place-items: stretch; align-content: start; text-align: start; width: 100%; min-height: 0; margin: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; }
+[data-current-sheet] .new-sheet-card:disabled { cursor: default; opacity: .5; }
+.new-sheet-preview { display: grid; place-items: center; width: 100%; aspect-ratio: 16 / 9; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); }
+.new-sheet-card:hover .new-sheet-preview { border-color: #8c9adc; color: var(--accent-ink); }
+.new-sheet-preview .ui-icon { width: 34px; height: 34px; }
