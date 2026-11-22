@@ -2565,9 +2565,9 @@ createApp({
           h("defs", [
             sceneNodes.value.some(node => node.backgroundBlur && node.backgroundEnabled !== false)
               ? h("filter", {id: "box-background-blur", x: "-30%", y: "-30%", width: "160%", height: "160%"}, [h("feGaussianBlur", {stdDeviation: 2})]) : null,
-            elevatedNodes.value.size ? h("filter", {id: "elevated-box-shadow", x: "-110%", y: "-140%", width: "320%",
-              height: "380%", "color-interpolation-filters": "sRGB"}, [
-              h("feDropShadow", {dx: 12, dy: 28, stdDeviation: 16, "flood-color": "#11172b", "flood-opacity": .66}),
+            elevatedNodes.value.size ? h("filter", {id: "elevated-box-shadow", x: "-15%", y: "-15%", width: "145%",
+              height: "200%", "color-interpolation-filters": "sRGB"}, [
+              h("feDropShadow", {dx: 12, dy: 28, stdDeviation: 2, "flood-color": "#11172b", "flood-opacity": .5}),
               h("feComposite", {in2: "SourceAlpha", operator: "out"}),
             ]) : null,
             h("pattern", {id: "worksheet-grid", patternUnits: "userSpaceOnUse", x: -spacing/2, y: -spacing/2, width: gridSize, height: gridSize}, [

@@ -4,5 +4,7 @@
 
 # ha azt mondom ez a funkció kísérleti, akkor előtte csinálj meg mindent ami normális feladat, utána csinálj git commit -ot mielőtt elkezdenéd a kísérletit
 
+# A helyi fejlesztés és az éles működés külön kezelendő. A helyi `Projects` mappa nem azonos az éles szerver adatkönyvtárával (jelenleg `/var/lib/thinknodes/Projects`). Minden feladatnál tisztázd vagy állapítsd meg, melyik környezetre vonatkozik; a helyi fájlmódosítás nem jelenik meg automatikusan élesben. Éles szerverhez ne csatlakozz és ott ne módosíts adatot, hacsak a felhasználó ezt kifejezetten nem kéri.
+
 
 

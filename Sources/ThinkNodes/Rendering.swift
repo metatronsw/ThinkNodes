@@ -469,8 +469,8 @@ private func animatedBox(_ contents: String, mode: BoxAnimation?, speed: Double)
 }
 
 private let elevationFilter = """
-    <filter id="elevated-box-shadow" x="-110%" y="-140%" width="320%" height="380%" color-interpolation-filters="sRGB">
-      <feDropShadow dx="12" dy="28" stdDeviation="16" flood-color="#11172b" flood-opacity=".66"/>
+    <filter id="elevated-box-shadow" x="-15%" y="-15%" width="145%" height="200%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="12" dy="28" stdDeviation="2" flood-color="#11172b" flood-opacity=".5"/>
       <feComposite in2="SourceAlpha" operator="out"/>
     </filter>
     """

@@ -55,8 +55,8 @@ enum ThinkNodes {
 
     private static func addUser(_ arguments: [String], store: WorksheetStore) throws {
         guard arguments.count == 3, validSlug(arguments[1]), let role = Role(rawValue: arguments[2]),
-              let password = readLine(), (10...72).contains(password.utf8.count) else {
-            throw Abort(.badRequest, reason: "Használat: ./run.sh user név admin|editor. A jelszó 10–72 bájt legyen.")
+              let password = readLine(), (8...72).contains(password.utf8.count) else {
+            throw Abort(.badRequest, reason: "Használat: ./run.sh user név admin|editor. A jelszó 8–72 bájt legyen.")
         }
         let hash = try Bcrypt.hash(password)
         try store.setUser(name: arguments[1], role: role, passwordHash: hash)

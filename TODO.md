@@ -13,6 +13,8 @@
 + sitemap , gráf alapon mutassa a linkeket 
 + javascript nélkül is működjön a statikus oldal megtekintés
 + Animációk az SVG -be, futó vonal 
++ chat a felhasználók között
+
 
 
 [ **KÍSÉRLETI** ]
@@ -31,13 +33,42 @@ SPACE INSERT:
 
 nyilak húzása belül - konténerből befelé (hibás)
 
+admin oldalon az avatar képek egy sorban vannak és rálógnak a többi buttonra. csináld meg úgy hogy csak baloldalon legyen 1 aktuális látható, ha rákattintok akkor egy popup ablakban lehessen kiválasztani a többi közül az újat
+
+canvas megtekintő / szerkesztő részen a bejelentkezett felhasználók neve mellett baloldalt van egy pont, ez már nem kell, csak az avatar ikon. 
+tedd a felhasználókat baloldalt alulra, egy sorba, egymás mellé. jobboldalt a szélén legyen a legyen mindig az oldal létrehozója
+
+
 
 
 [ **DESIGN** ]
 
+megtekintő módban: 
+a canvas felett baloldalra igazítva legyen kiírva a munkalap címe.
+
+a létrehozókat tedd baloldalt a szöveg box alá
+letöltés gombokat jobboldalra 
+(cseréld fel)
+
+további munkalapok: 
+a cím itt is a box bal felső sarkában legyen, létrehozó bal oldalt alul
+
+
+ doboz színek, effektek:
+ - átlátszóság kapcsoló, szűntets meg, legyen helyette egy új aminek a neve: Free. Nincs látható keret, nincs háttér. Szöveg tördelésnél az elméleti keretet vegye figyelembe
+ - új mód: Üres, nincs háttér, keret marad látható.
+ - elmosott: marad a jelenlegi viselkedés
+ 
+ ez a három mód csak külön alkalmazható
+ kiemelés gomb ikon-szöveg nélkül
+ szín választo jobboldalra igazítva
+ 
 
 
 ## KONTÉNER ÚJ működés
+
+konténer tartalma mindig kitakarva legyen egy felete lévő másik doboztól ami nem a konténer része csak rálóg
+
 
 A konténer kapjon egy Automatikus elrendezés beállítást. Bekapcsolásakor a konténer saját címe és szövege a tartalomterület felett jelenik meg, az alatta lévő gyermekdobozok pedig rácsban rendeződnek. Keskeny konténernél a rács egy oszlopra vált, és a szöveg sorokra törik.
 
