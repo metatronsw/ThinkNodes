@@ -83,16 +83,18 @@ A `./run.sh --test` indításkor minden új böngésző-munkamenet automatikusan
 
 ## Munkalapok és fájlok
 
-A főoldalon minden kártya egy projektmappát nyit meg. A mappával azonos nevű **.thnode** a fő munkalap. A többi **.thnode** melléklap. A mappába kívülről másolt fájlok indításkor vagy a főlap megnyitásakor egymás alá kerülnek a vásznon. A támogatott fájlok előnézetet kapnak, a többi letölthető fájldobozként jelenik meg. Minden almappának saját főlapja és beállításfájlja van. Új munkalapot a felület **Új projekt** vagy **Új munkalap** műveletével lehet létrehozni.
+A főoldal kártyái projektmappákat nyitnak meg. Minden munkalap a saját mappájában, a mappával azonos nevű **.thnode** fájlban található. Az **Új projekt** projektmappát, az **Új munkalap** almappát hoz létre. A szerkesztőbe feltöltött **.thnode** szintén külön almappába kerül. A szerver indításkor és a lap megnyitásakor ellenőrzi a mappába másolt képeket és egyéb csatolmányokat. A támogatott fájlok előnézetet kapnak, a többiek letölthető fájldobozként jelennek meg.
+
+Az első indításkor a szerver a régi, közös mappában tárolt munkalapokat saját almappába rendezi. Átviszi a lapbeállításokat, átmásolja a használt csatolmányokat, és az eredeti lapfájlokat a projekt **.trash/** mappájába menti.
 
 | Útvonal | Adatfájl |
 |---|---|
 | /VisualDemo | Projects/VisualDemo/VisualDemo.thnode |
-| /VisualDemo/Jelmagyarazat | Projects/VisualDemo/Jelmagyarazat.thnode |
+| /VisualDemo/Jelmagyarazat | Projects/VisualDemo/Jelmagyarazat/Jelmagyarazat.thnode |
 | /Thinking | Projects/Thinking/Thinking.thnode |
-| /Thinking/Proba | Projects/Thinking/Proba.thnode |
+| /Thinking/Proba | Projects/Thinking/Proba/Proba.thnode |
 
-A munkalap JSON-formátumban tárolja a vásznat, a címét, a létrehozóját és a mentési revíziót. A projekt **.settings.json** fájljában vannak a tagság és a lapok láthatóságának beállításai. A rejtett lap közvetlen hivatkozással elérhető a jogosultaknak. Az új almappa átveszi a szülő aktuális jogosultságait. A hozzáféréshez minden szülőmappán is át kell jutni. A nyilvános mód olvasást enged, szerkeszteni a jogosult tagok tudnak. A rendszergazda kezeli az összes projektet.
+A munkalap JSON-formátumban tárolja a vásznat, a címét, a létrehozóját és a mentési revíziót. A projekt **.settings.json** fájljában vannak a tagság és a lapok láthatóságának beállításai. A rejtett lap közvetlen hivatkozással elérhető a jogosultaknak. A projekt főlapján beállított hozzáférést az összes allap örökli. A hozzáadott szerkesztők és az adminisztrátor kezelhetik a projektet. A vendégek nyilvános projektben szerkeszthetnek.
 
 A **Projects/.settings.json** tartalmazza az alkalmazás beállításait, a fiókokat és a bcrypt-jelszóhasheket. A beállításfájlokat és a munkalapokat a mellékletlista kihagyja. A munkalap saját letöltési gombja **.thnode** fájlt ad.
 
@@ -120,7 +122,7 @@ A doboz **Link** mezőjében a relatív út kiindulópontja maga a munkalap. A b
 | `/archiv/otletek` | `/archiv/otletek` |
 | `https://example.com/` | A megadott weboldal |
 
-A vászon jobb kattintásos menüjében az **Új munkalap** létrehozza az allapot és a rá mutató dobozt. Az allap örökli a szülő háttérszínét, egyedi rácsközét, mappájának hozzáférési szabályait. Létrehozás után a szülőlapon rögtön szerkeszthető az új doboz címe, és a doboz hivatkozása megnyitja az allapot. A munkalapkártyán a létrehozó és a látható közvetlen allapok száma szerepel. Megtekintéskor az allapok mentett SVG-előnézete a vászon alatt található. A fejléc útvonala kattintható, a felfelé mutató nyíl a szülőlapra visz.
+Az **Új munkalap** a megtekintőből és a vászon helyi menüjéből is elérhető. Az új lap örökli a szülő megjelenését és a projekt hozzáférési szabályait. Megtekintéskor az allapok a vászon alatti **További munkalapok** részben jelennek meg. A cím melletti nyíl a szülőlapra visz.
 
 ## Vászon és útmutató
 

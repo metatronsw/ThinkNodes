@@ -87,6 +87,17 @@ export function shapeGeometry(shape, width, height, padding = 0) {
   return ["rect", {x: -x, y: -y, width: 2*x, height: 2*y, rx: shape === "rounded" ? 12 + padding : 0}];
 }
 
+export function shapeOutline(tag, geometry) {
+  if (tag === "polygon") return "M" + geometry.points + "Z";
+  if (tag === "ellipse") {
+    const {rx, ry} = geometry;
+    return `M${-rx} 0A${rx} ${ry} 0 1 0 ${rx} 0A${rx} ${ry} 0 1 0 ${-rx} 0Z`;
+  }
+  const {x, y, width, height, rx: r} = geometry;
+  const right = x + width, bottom = y + height;
+  return `M${x+r} ${y}H${right-r}Q${right} ${y} ${right} ${y+r}V${bottom-r}Q${right} ${bottom} ${right-r} ${bottom}H${x+r}Q${x} ${bottom} ${x} ${bottom-r}V${y+r}Q${x} ${y} ${x+r} ${y}Z`;
+}
+
 export function selectionOutline(shape, width, height) {
   const padding = 10;
   const vertices = polygonVertices(shape, width / 2, height / 2);
@@ -215,7 +226,7 @@ function roundedCorners(start, bends, end, wide) {
   });
 }
 
-export function edgeGeometry(edge, findNode) {
+export function edgeGeometry(edge, findNode, nested = 0) {
   const sourceNode = findNode(edge.source);
   const targetNode = findNode(edge.target.node);
   const source = sourceNode?.position ?? edge.sourcePoint;
@@ -229,8 +240,19 @@ export function edgeGeometry(edge, findNode) {
     ? {command: "L", points: graphics.linePoints.map(p => ({x: source.x+dx*p.x-dy*p.y, y: source.y+dy*p.x+dx*p.y}))}
     : rise && (dx || dy) ? {command: "Q", points: [arcControl(source, target, rise)]} : route(type, source, target);
   const multiBend = type === "lightning" && !custom;
-  const from = sourceNode ? borderPoint(sourceNode, multiBend ? target : routed[0] ?? target) : source;
-  const to = targetNode ? borderPoint(targetNode, multiBend ? source : routed.at(-1) ?? source) : target;
+  let from = source, to = target;
+  const centered = source.x === target.x && source.y === target.y;
+  const centeredDirection = {x: source.x + 1, y: source.y};
+  if (nested > 0) {
+    from = borderPoint(sourceNode, centered ? centeredDirection : target);
+    to = borderPoint(targetNode, from);
+  } else if (nested < 0) {
+    to = borderPoint(targetNode, centered ? centeredDirection : source);
+    from = borderPoint(sourceNode, to);
+  } else {
+    if (sourceNode) from = borderPoint(sourceNode, multiBend ? target : routed[0] ?? target);
+    if (targetNode) to = borderPoint(targetNode, multiBend ? source : routed.at(-1) ?? source);
+  }
   const points = multiBend ? route(type, from, to).points : routed;
   if (command === "Q" && rise) points[0] = arcControl(from, to, rise);
   const sourceToward = points[0] ?? to;
@@ -562,8 +584,6 @@ function shortenLine(line, width) {
 export function labelLayout(node, blocks = []) {
   if (node.kind === "connectionPoint") return {width: node.width, height: node.height, lines: []};
   const [widthRatio, heightRatio] = shapeLabelRatios(node.shape);
-  const bounded = node.backgroundEnabled !== false;
-  const wrapToBox = bounded || node.fitText;
   const textStyle = node.textStyle ?? {};
   const hiddenText = node.hideText && !!node.text?.trim();
   if (hiddenText) blocks = [{kind: "body", runs: [{text: "•••"}]}];
@@ -579,7 +599,7 @@ export function labelLayout(node, blocks = []) {
     function add(value, size, weight, color, style, section) {
       const text = value.trim().replace(/\s+/g, " ");
       if (!text) return;
-      const wrapped = !wrapToBox || textWidth(text, size) <= labelWidth
+      const wrapped = textWidth(text, size) <= labelWidth
         ? [text] : wrap(text, Math.max(2, Math.floor(labelWidth / (size * 0.65))));
       for (const text of wrapped) lines.push({section, text, size, weight, color, italic: style.italic, underline: style.underline, alignment: style.alignment, vertical: style.verticalAlignment, step: size * 1.25});
     }
@@ -589,7 +609,7 @@ export function labelLayout(node, blocks = []) {
       const size = block.kind === "heading" ? (node.fitText ? bodySize * 1.15 : Math.round(bodySize * 1.15)) : bodySize;
       const weight = block.kind === "heading" || textStyle.bold ? 700 : 400;
       const runs = block.kind === "quote" ? [{text: "› "}, ...block.runs] : block.runs;
-      const columns = wrapToBox || textStyle.justified ? Math.max(hiddenText ? 3 : 2, Math.floor(labelWidth / (size * 0.65))) : Infinity;
+      const columns = Math.max(hiddenText ? 3 : 2, Math.floor(labelWidth / (size * 0.65)));
       wrapRuns(runs, columns, block.kind === "code").forEach(({pieces, wrapped}, row) => {
         const blockGap = index === 0 ? 8 : 3;
         const gap = row === 0 ? (node.fitText ? Math.min(blockGap, bodySize * 0.4) : blockGap) : 0;
@@ -636,22 +656,21 @@ export function labelLayout(node, blocks = []) {
     external.get(key).rows.push(line);
     return false;
   });
-  const available = bounded ? Math.max(0, labelHeight) :
-    Math.max(0, labelHeight, inside.reduce((sum, line) => sum + line.step, 0));
+  const available = Math.max(0, labelHeight);
   const visible = [];
   let remaining = available;
   for (const line of inside) {
-    if (bounded && remaining < line.step) break;
+    if (remaining < line.step) break;
     visible.push(line);
     remaining -= line.step;
   }
   const omitted = visible.length < inside.length;
-  if (bounded && omitted && !visible.length) {
+  if (omitted && !visible.length) {
     visible.push(inside[0]);
     remaining = available - inside[0].step;
   }
   let overflow = omitted;
-  if (bounded) {
+  {
     for (let i = 0; i < visible.length; i++) {
       const line = visible[i];
       if (textWidth(line.text, line.size) > labelWidth || (omitted && i === visible.length - 1)) {
@@ -684,7 +703,6 @@ export function labelLayout(node, blocks = []) {
       const lineWidth = textWidth(line.text, line.size);
       if (spaces && lineWidth < labelWidth) wordSpacing = (labelWidth - lineWidth) / spaces;
     }
-    if (!bounded) extentX = Math.max(extentX, Math.abs(x) + textWidth(line.text, line.size) * 1.25 + line.size);
     return {...line, x, y, anchor: {left: "start", center: "middle", right: "end"}[align], wordSpacing};
   });
   for (const {horizontal, vertical, rows} of external.values()) {

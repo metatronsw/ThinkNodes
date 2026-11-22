@@ -210,7 +210,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .color-field > .color-tools { grid-column: 1 / -1; }
 .color-field input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
 .color-field input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 4px; }
-.canvas-status { position: absolute; inset: auto auto 62px 12px; max-width: calc(100% - 28px); padding: 6px 9px; margin: 0; border-radius: 5px; background: #fff; color: var(--muted); font-size: .85rem; pointer-events: none; }
+.canvas-status { position: absolute; inset: auto auto 90px 12px; max-width: calc(100% - 28px); padding: 6px 9px; margin: 0; border-radius: 5px; background: #fff; color: var(--muted); font-size: .85rem; pointer-events: none; }
 .canvas-status.error { color: #9e2230; }
 .worksheet-notes { margin-top: 18px; padding: 22px; }
 .context-menu { position: fixed; z-index: 8; width: 228px; padding: 7px; display: grid; gap: 3px; box-shadow: 0 10px 25px #1c315326; }
@@ -240,14 +240,16 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .admin-panel h2 { margin-bottom: 14px; }
 .admin-panel .stack > button { justify-self: start; }
 .admin-path { display: block; overflow-wrap: anywhere; }
-.account-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.account-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: end; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .account-fields { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(125px, 1fr) minmax(130px, 1.2fr) auto; gap: 10px; align-items: end; }
 .account-fields strong { align-self: center; overflow-wrap: anywhere; }
 .new-account { margin-top: 15px; }
 .new-account form { margin-top: 10px; }
 
-@media (max-width: 660px) {
-  .account-row, .account-fields { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 760px) {
+  .account-row { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
+  .account-fields { grid-template-columns: minmax(0, 1fr); }
+  .account-row > form:last-child { grid-column: 2; }
   .account-fields button, .account-row button { justify-self: start; }
 }
 
@@ -286,13 +288,11 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .color-presets { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; }
 .color-tools input[type="range"] { padding: 0; }
 
-.participants { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-left: auto; max-width: 32vw; }
-.participants span { display: inline-flex; align-items: center; gap: 5px; font-size: .83rem; font-weight: 650; }
-.participants span::before { content: ""; width: .72em; height: .72em; border-radius: 50%; background: var(--peer); }
+.participants { display: flex; align-items: center; gap: 12px; min-width: 0; overflow-x: auto; }
+.participants span { flex: none; display: inline-flex; align-items: center; gap: 5px; font-size: .83rem; font-weight: 650; }
 .idea.occupied { cursor: default; }
 @media (max-width: 680px) {
   .editor-header { flex-wrap: wrap; }
-  .editor-header .participants { order: -1; max-width: 100%; width: 100%; justify-content: flex-end; }
 }
 
 .quick-search { grid-template-columns: minmax(0, 1fr); position: absolute; z-index: 6; top: 48px; left: 50%; transform: translateX(-50%); width: min(360px, 92%); max-height: 65%; overflow: auto; padding: 12px; }
@@ -302,7 +302,12 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .canvas-controls { left: 12px; max-width: calc(100% - 76px); overflow-x: auto; scrollbar-width: none; }
 .canvas-controls::-webkit-scrollbar { display: none; }
 .passive-frame { position: relative; }
-.canvas-area > .participants, .passive-frame > .participants { position: absolute; bottom: 56px; left: 12px; flex-direction: column; align-items: flex-start; gap: 3px; background: #fffffff0; padding: 4px 7px; border-radius: 5px; max-height: 40%; flex-wrap: nowrap; overflow-y: auto; }
+.canvas-people { position: absolute; bottom: 8px; inset-inline: 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px; pointer-events: none; }
+.canvas-people > :is(.participants, .canvas-creator) { background: #fffffff0; padding: 4px 7px; border-radius: 5px; }
+.canvas-people .participants { margin-inline-start: auto; max-width: 47%; pointer-events: auto; white-space: nowrap; }
+.canvas-area .canvas-creator { position: absolute; bottom: 34px; right: 0; }
+.canvas-people .participants:empty { visibility: hidden; }
+.canvas-creator { flex: none; max-width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .83rem; font-weight: 650; }
 .canvas-tooltip { position: fixed; z-index: 20; pointer-events: none; padding: 10px 14px; background: white; border: 1px solid var(--line); border-radius: 7px; max-width: min(360px, 90vw); max-height: 45vh; overflow: hidden; box-shadow: 0 4px 16px #18233524; }
 .canvas-tooltip > :last-child { margin-bottom: 0; }
 
@@ -326,6 +331,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 
 .card-meta { display: flex; gap: 1em; font-size: .85rem; }
 .sub-preview { display: grid; gap: .4rem; padding: .8rem; }
+.sub-preview.preview-link { grid-template-rows: auto minmax(0, 1fr) auto; text-align: start; }
 .sub-preview img { width: 100%; height: 140px; object-fit: contain; }
 
 .project-card { position: relative; background: var(--sheet-color, var(--paper)); }
@@ -344,14 +350,31 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .fullscreen { position: absolute; bottom: 8px; right: 8px; }
 .passive-frame:fullscreen { display: grid; place-items: center; }
 .passive-frame:fullscreen .passive-canvas { max-height: 100vh; }
-.participants .guest::before { display: none; }
 
 .password-dialog { padding: 1rem; width: min(400px, 90vw); }
 
 .passive-backdrop { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .passive-canvas { position: relative; }
-.viewer-downloads { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.viewer-downloads .card-meta { display: inline-flex; align-items: center; margin: 0; padding: 4px 10px; border: 1px solid var(--line); border-radius: 7px; background: white; }
+.viewer-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.viewer-heading h1 { margin: 0; min-width: 0; overflow-wrap: anywhere; font-size: clamp(1.2rem, 3vw, 1.8rem); }
+.main-worksheet-indicator { margin-inline-start: auto; flex: none; color: var(--accent-ink); }
+#worksheet-view.shell { width: min(90%, 4096px); padding-inline: 0; }
+.viewer-downloads { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+.viewer-edit-slot { position: absolute; inset: 8px 8px auto auto; }
+.viewer-edit { font-weight: 750; }
+.viewer-credits { position: absolute; bottom: 46px; left: 8px; max-width: min(60%, 30rem); padding: 5px 8px;
+  border-radius: 5px; background: #fffffff0; overflow-wrap: anywhere; }
+.viewer-credits > button { margin-bottom: 4px; }
+.viewer-credits .card-meta { margin: 0; }
+.viewer-new-worksheet { margin-top: 20px; }
+.worksheet-links { list-style: none; padding: 0; }
+.worksheet-links a { display: inline-flex; align-items: center; gap: 8px; padding-block: 3px; font-size: 1.1rem; overflow-wrap: anywhere; }
+.worksheet-links .ui-icon { flex: none; }
+:is(.box-effect-options, .image-alpha-options) > :is(.color-sample, .color-tools) { margin-inline-start: auto; }
+@media (max-width: 740px) {
+  #worksheet-view.shell { width: 99%; }
+  .canvas-area:has(.canvas-controls[data-open="true"]) .canvas-people { bottom: 46px; }
+}
 .project-badges { display: flex; gap: .5rem; }
 .project-badges:not(:empty) { margin-top: .5rem; }
 .project-list[data-current-sheet] { gap: 2rem; align-items: start; }
@@ -365,7 +388,6 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .passive-frame > .mouse-share { position: absolute; bottom: 12px; left: 12px; z-index: 2; }
 .mouse-share[aria-pressed="true"] { background: var(--accent); color: white; }
 
-.viewer-downloads .card-meta:first-of-type { margin-left: auto; }
 [data-current-sheet] .new-worksheet { justify-self: start; }
 [data-node][data-link]:hover svg { stroke-width: 3; }
 
@@ -444,7 +466,6 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .worksheet-history, .worksheet-close { position:absolute; top:8px; z-index:5; }
 .worksheet-history { right:58px; }
 .worksheet-close { left:58px; }
-.viewer-edit-row { display:flex; }
 body:has(#worksheet-view) .worksheet-nav { display:flex; }
 body:has(#worksheet-view) .worksheet-nav .header-left { flex:1; min-width:0; }
 body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
@@ -452,10 +473,14 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 .editor-root .worksheet-nav .header-parent { order:4; }
 .passive-frame > .fullscreen { right:auto; left:58px; bottom:12px; }
 .editor-canvas[data-drag-cursor="grab"] { cursor:grab; }
-.avatar-picker { flex-wrap:wrap; }
+.current-avatar { align-self: center; }
+.avatar-dialog { max-width: calc(100% - 24px); padding: 16px; color: var(--ink); }
+.avatar-dialog::backdrop { background: #18233580; }
+.avatar-picker { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 12px 0; }
+.avatar-picker img, .current-avatar img { width: 28px; height: 28px; display: block; }
 .avatar-picker button { padding:3px; border:1px solid var(--line); background:white; border-radius:4px; }
 .avatar-picker button[aria-pressed=true] { outline:2px solid var(--accent); }
-.avatar-picker img,.peer-avatar { width:20px; height:20px; vertical-align:middle; }
+.peer-avatar { width:20px; height:20px; vertical-align:middle; }
 
 @media (max-width:1100px) {
   .site-header:has(.header-open) .header-left { grid-column:1; }
@@ -534,7 +559,7 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
   --panel-surface: #253140;
   --control-hover: #303e50;
 }
-:root[data-display="dark"] :is(.panel, .viewer-downloads .card-meta, .passive-note, .inspector-content > fieldset, .inspector-content > fieldset > legend, .context-menu, .canvas-status, .canvas-tooltip, .canvas-empty, .canvas-area > .participants, .passive-frame > .participants, .guide-nav a, .guide kbd) {
+:root[data-display="dark"] :is(.panel, .passive-note, .inspector-content > fieldset, .inspector-content > fieldset > legend, .context-menu, .canvas-status, .canvas-tooltip, .canvas-empty, .canvas-people > :is(.participants, .canvas-creator), .viewer-credits, .guide-nav a, .guide kbd) {
   background-color: var(--panel-surface);
   color: var(--ink);
 }
@@ -613,3 +638,7 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 .file-download span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-download:hover span { text-decoration: underline; }
 .canvas-file pre { min-height: 0; }
+
+.editor-membership { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.editor-membership span { overflow-wrap: anywhere; }
+.password-dialog > div.stack { max-height: 60vh; overflow-y: auto; margin-block: 12px; }

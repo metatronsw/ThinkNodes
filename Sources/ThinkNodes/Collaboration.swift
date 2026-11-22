@@ -83,7 +83,7 @@ final class Collaboration: @unchecked Sendable {
         }
 
         func color(for name: String?) -> String {
-            if let peer = peers.values.first(where: { $0.name == name }) { return peer.color }
+            if let name, let peer = peers.values.first(where: { $0.name == name }) { return peer.color }
             let used = Set(peers.values.map(\.color))
             let palette = ["#365bd6", "#bd4359", "#078469", "#9452ba", "#b35a14", "#167eae", "#a23878"]
             if let color = palette.first(where: { !used.contains($0) }) { return color }
@@ -93,6 +93,7 @@ final class Collaboration: @unchecked Sendable {
         }
     }
 
+    let pages = PageUpdates()
     private let store: WorksheetStore
     private let lock = NSLock()
     private var rooms: [String: Room] = [:]
@@ -133,7 +134,7 @@ final class Collaboration: @unchecked Sendable {
                 room.changed()
             } else {
                 if action == "checkpoint" || action == "resign" {
-                    guard let user, access.editable, room.peers[client]?.editing == true,
+                    guard access.editable, room.peers[client]?.editing == true,
                           var checkpoint = room.checkpoint else { throw Abort(.forbidden) }
                     guard revision == board.revision, checkpointRevision == checkpoint.revision else {
                         throw Abort(.preconditionFailed, reason: "A munkalap vagy a visszaállítási pont megváltozott. Ellenőrizd, majd próbáld újra.")
@@ -142,6 +143,7 @@ final class Collaboration: @unchecked Sendable {
                         checkpoint.revision = board.revision
                         board = try store.update(path, worksheet: checkpoint, user: user, restoring: true, unlocks: unlocks)
                         room.revision = board.revision
+                        pages.publish(.content, at: path)
                         for id in Array(room.peers.keys) {
                             room.peers[id]?.node = nil
                             room.peers[id]?.edge = nil
@@ -151,7 +153,7 @@ final class Collaboration: @unchecked Sendable {
                     room.changed()
                 }
                 if room.peers[client] == nil {
-                    room.peers[client] = Peer(name: user?.name, role: user?.role, color: user == nil ? "" : room.color(for: user?.name))
+                    room.peers[client] = Peer(name: user?.name, role: user?.role, color: user == nil && !access.editable ? "" : room.color(for: user?.name))
                     room.changed()
                 }
                 if room.peers[client]?.avatar != user?.avatar {
@@ -165,7 +167,7 @@ final class Collaboration: @unchecked Sendable {
                 }
                 room.peers[client]?.seen = .now
                 if action == "ping" {
-                    guard user != nil, let peer = room.peers[client], peer.seen.duration(to: .now) < .seconds(45),
+                    guard user != nil || access.editable, let peer = room.peers[client], peer.seen.duration(to: .now) < .seconds(45),
                           node.map({ id in board.nodes.contains { $0.id == id } }) ?? (point?.isValid == true) else { throw Abort(.forbidden) }
                     struct Ping: Encodable {
                         let ping = true
@@ -218,19 +220,21 @@ final class Collaboration: @unchecked Sendable {
                 if adminA != adminB { return adminA }
                 return a.value.joined == b.value.joined ? a.key < b.key : a.value.joined < b.value.joined
             }.map {
-                Participant(name: $0.value.name ?? "Vendég", color: $0.value.color, node: $0.value.node, edge: $0.value.edge, avatar: $0.value.avatar, mine: $0.key == client, viewing: $0.value.viewing)
+                Participant(name: $0.value.name ?? "Vendég", color: $0.value.color, node: $0.value.node, edge: $0.value.edge, avatar: $0.value.avatar ?? ($0.value.name == nil ? nil : 1), mine: $0.key == client, viewing: $0.value.viewing)
             })
             rooms[path.url] = room.peers.isEmpty ? nil : room
             return (state, wait)
         }
     }
 
-    func update(_ path: WorksheetPath, sheet: Worksheet, user: User, client: String?, unlocks: Set<String> = []) throws -> Worksheet {
+    func update(_ path: WorksheetPath, sheet: Worksheet, user: User?, client: String?, unlocks: Set<String> = []) throws -> Worksheet {
         try lock.withLock {
             rooms[path.url]?.expire()
             let saved = try store.update(path, worksheet: sheet, user: user, unlocks: unlocks) { current in
-                if let client, rooms[path.url]?.peers[client]?.name != user.name {
-                    throw Abort(.conflict, reason: "Kapcsolódj újra a munkalaphoz.")
+                if let client {
+                    guard let peer = rooms[path.url]?.peers[client], peer.name == user?.name else {
+                        throw Abort(.conflict, reason: "Kapcsolódj újra a munkalaphoz.")
+                    }
                 }
                 guard let room = rooms[path.url] else { return }
                 let locked = Set(room.peers.filter { $0.key != client && !$0.value.viewing }.values.compactMap(\.node))
@@ -254,6 +258,7 @@ final class Collaboration: @unchecked Sendable {
                 room.changed()
                 rooms[path.url] = room
             }
+            pages.publish(.content, at: path)
             return saved
         }
     }
@@ -318,10 +323,19 @@ final class Collaboration: @unchecked Sendable {
         }
     }
 
+    func accountChanged() {
+        lock.withLock {
+            for key in Array(rooms.keys) { rooms[key]?.changed() }
+            pages.publishAccountChange()
+        }
+    }
+
     func manage(_ path: WorksheetPath, operation: DocumentAction, user: User, unlocks: Set<String>) throws -> WorksheetPath? {
         try lock.withLock {
             let result = try store.manage(path, operation: operation, user: user, unlocks: unlocks)
             invalidate(path)
+            pages.publish(.structure, at: path)
+            if let result, result.url != path.url { pages.publish(.structure, at: result) }
             return result
         }
     }
@@ -339,6 +353,7 @@ final class Collaboration: @unchecked Sendable {
         try lock.withLock {
             try store.archive(path, expected: expected)
             invalidate(path)
+            pages.publish(.structure, at: path)
         }
     }
 }

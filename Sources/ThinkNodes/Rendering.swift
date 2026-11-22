@@ -18,12 +18,13 @@ func markdownHTML(_ source: String) -> String {
     }
 }
 
-func htmlPage(title: String, body: String, scripts: Bool = false) -> Response {
+func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageUpdates.Subscription? = nil) -> Response {
     let assets = scripts ? """
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
-        <script type="module" src="/editor.js?v=23"></script>
+        <script type="module" src="/editor.js?v=26"></script>
         """ : ""
+    let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
         <!doctype html>
         <html lang="hu">
@@ -31,7 +32,8 @@ func htmlPage(title: String, body: String, scripts: Bool = false) -> Response {
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
-          <link rel="stylesheet" href="/app.css?v=6">
+          \(live)
+          <link rel="stylesheet" href="/app.css?v=9">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -72,7 +74,7 @@ func buttonLink(_ url: String, _ label: String, symbol: String, classes: String)
     "<a class=\"\(classes)\" href=\"\(escaped(url))\">\(uiIcon(symbol))\(escaped(label))</a>"
 }
 
-func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: String?, actions: String = "", centerAction: String = "", canEdit: Bool = false, editing: Bool = false, showAdminLogout: Bool = false, folder: String? = nil) -> String {
+func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: String?, actions: String = "", centerAction: String = "", canEdit: Bool = false, editing: Bool = false, showAdminLogout: Bool = false) -> String {
     let parts = path?.split(separator: "/").map(String.init) ?? []
     let base = editing ? "/edit/" : "/"
     let crumb = parts.indices.map { i in
@@ -82,7 +84,9 @@ func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: 
         let label = last ? (project ?? parts[i]) : (parts[i].removingPercentEncoding ?? parts[i])
         return "<span class=\"slash\" aria-hidden=\"true\">/</span><a \(last ? "aria-current='page'" : "") href=\"\(escaped(url))\">\(escaped(label))</a>"
     }.joined()
-    let parent = parts.count > 1 ? "<a class=\"\(headerButtonClass)\" aria-label=\"Szülő munkalap\" href=\"\(escaped(base + parts.dropLast().joined(separator: "/")))\">\(uiIcon(path == folder ? "parent-up" : "parent-left"))</a>" : ""
+    let parent = editing && parts.count > 1
+        ? "<a class=\"\(headerButtonClass)\" aria-label=\"Szülő munkalap\" title=\"Szülő munkalap\" href=\"/edit/\(parts.dropLast().joined(separator: "/"))\">\(uiIcon("parent-up"))</a>"
+        : ""
     let session: String
     if let user, let csrf {
         let logout = (user.role != .admin || showAdminLogout) ? "<button class=\"\(headerButtonClass)\" type=\"submit\" aria-label=\"Kijelentkezés\" title=\"Kijelentkezés\">\(uiIcon("logout"))</button>" : ""
@@ -108,8 +112,8 @@ func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: 
     return """
         <\(tag) class="\(navigationClass)"><div class="header-left"><nav aria-label="Fő navigáció" class="breadcrumbs">
           <a class="\(headerButtonClass) brand" href="/"><span class="brand-icon" aria-hidden="true"><span></span><span></span><span></span></span>ThinkNodes</a>
-          \(crumb)
-        </nav></div><div class="header-parent">\(parent)\(centerAction)</div><div class="header-actions">\(actions)<div class="header-user">\(session)</div>\(editing ? "" : appearanceActions)</div>\(editing ? appearanceActions : "")</\(tag)>
+          \(crumb)\(parent)
+        </nav></div><div class="header-parent">\(centerAction)</div><div class="header-actions">\(actions)<div class="header-user">\(session)</div>\(editing ? "" : appearanceActions)</div>\(editing ? appearanceActions : "")</\(tag)>
         """
 }
 
@@ -307,9 +311,7 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
         return IdeaDrawing(node: node, labelWidth: 0, lines: [])
     }
     let (widthRatio, heightRatio, _) = node.shape.labelRatios
-    let bounded = node.backgroundEnabled != false
     let fitText = node.fitText == true && node.file == nil
-    let wrapToBox = bounded || fitText
     let text = node.hideText != true ? canvasMarkdown(node.text) :
         (node.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? [] : [MarkdownBlock(kind: .body, runs: [MarkdownRun(text: "•••")])])
     let labelWidth = max(12, node.width * widthRatio - 16)
@@ -322,14 +324,14 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
             let text = value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
             guard !text.isEmpty else { return }
             let columns = max(2, Int(labelWidth / (size * 0.65)))
-            let rendered = !wrapToBox || textWidth(text, size: size) <= labelWidth ? [text] : wrap(text, columns: columns)
+            let rendered = textWidth(text, size: size) <= labelWidth ? [text] : wrap(text, columns: columns)
             lines.append(contentsOf: rendered.map { IdeaLabelLine(text: $0, size: size, weight: weight, color: color, style: style) })
         }
         add(node.title, size: titleSize, weight: node.bold ? 650 : 400, color: node.textColor,
             style: TextStyle(italic: node.italic, underline: node.underline, verticalAlignment: node.verticalAlignment))
         for (index, block) in text.enumerated() {
             let size = block.kind == .heading ? (fitText ? bodySize * 1.15 : (bodySize * 1.15).rounded()) : bodySize
-            let columns = wrapToBox || node.textStyle?.justified == true ? max(node.hideText == true ? 3 : 2, Int(labelWidth / (size * 0.65))) : Int.max
+            let columns = max(node.hideText == true ? 3 : 2, Int(labelWidth / (size * 0.65)))
             var runs = block.runs
             if block.kind == .quote { runs.insert(MarkdownRun(text: "› "), at: 0) }
             for (row, wrappedLine) in wrapMarkdown(runs, columns: columns, preformatted: block.kind == .code).enumerated() {
@@ -381,24 +383,22 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
         groups[horizontal.rawValue + "/" + vertical.rawValue, default: []].append(line)
         return true
     }
-    let available = bounded ? max(0, labelHeight) : max(0, labelHeight, lines.reduce(0) { $0 + $1.step })
+    let available = max(0, labelHeight)
     var visible: [IdeaLabelLine] = []
     var remaining = available
     for line in lines {
-        if bounded && remaining < line.step { break }
+        if remaining < line.step { break }
         visible.append(line)
         remaining -= line.step
     }
     let omitted = visible.count < lines.count
-    if bounded && omitted && visible.isEmpty { visible.append(lines[0]); remaining -= lines[0].step }
+    if omitted && visible.isEmpty { visible.append(lines[0]); remaining -= lines[0].step }
     var overflow = omitted
-    if bounded {
-        for index in visible.indices {
-            let line = visible[index]
-            if textWidth(line.text, size: line.size) > labelWidth || (omitted && index == visible.count - 1) {
-                visible[index] = shortenLine(line, width: labelWidth)
-                overflow = true
-            }
+    for index in visible.indices {
+        let line = visible[index]
+        if textWidth(line.text, size: line.size) > labelWidth || (omitted && index == visible.count - 1) {
+            visible[index] = shortenLine(line, width: labelWidth)
+            overflow = true
         }
     }
     if node.hideText == true,
@@ -407,11 +407,6 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
         visible.append(marker)
     }
     var extentX = node.width / 2, extentY = max(node.height, available + iconSpace) / 2
-    if !bounded {
-        for line in visible {
-            extentX = max(extentX, labelWidth/2 + textWidth(line.text, size: line.size) * 1.25 + line.size)
-        }
-    }
     for key in groups.keys.sorted() {
         let rows = groups[key] ?? []
         let total = rows.reduce(0) { $0 + $1.step }
@@ -468,13 +463,6 @@ private func animatedBox(_ contents: String, mode: BoxAnimation?, speed: Double)
     return "<g data-box-animation=\"\(mode?.rawValue ?? "")\">\(animations)\(contents)</g>"
 }
 
-private let elevationFilter = """
-    <filter id="elevated-box-shadow" x="-15%" y="-15%" width="145%" height="200%" color-interpolation-filters="sRGB">
-      <feDropShadow dx="12" dy="28" stdDeviation="2" flood-color="#11172b" flood-opacity=".5"/>
-      <feComposite in2="SourceAlpha" operator="out"/>
-    </filter>
-    """
-
 private func boxGeometry(_ node: Idea, graphics: VisualTheme.Graphics?) -> String {
     let x = node.width / 2, y = node.height / 2
     if let chamfer = chamferedBox(node, graphics) {
@@ -491,26 +479,62 @@ private func boxGeometry(_ node: Idea, graphics: VisualTheme.Graphics?) -> Strin
     }
 }
 
-private func elevationShadow(_ geometry: String) -> String {
-    "<\(geometry) data-elevated-shadow=\"\" filter=\"url(#elevated-box-shadow)\" fill=\"black\" pointer-events=\"none\" aria-hidden=\"true\"/>"
+private func boxOutline(_ node: Idea, graphics: VisualTheme.Graphics?) -> String {
+    let x = node.width / 2, y = node.height / 2
+    if let chamfer = chamferedBox(node, graphics) {
+        return "M" + chamfer.map { "\(number($0.x)) \(number($0.y))" }.joined(separator: " L") + "Z"
+    }
+    switch node.shape {
+    case .rectangle, .rounded:
+        let r: Double = node.shape == .rounded ? 12 : 0
+        return "M\(number(-x+r)) \(number(-y))H\(number(x-r))Q\(number(x)) \(number(-y)) \(number(x)) \(number(-y+r))"
+            + "V\(number(y-r))Q\(number(x)) \(number(y)) \(number(x-r)) \(number(y))"
+            + "H\(number(-x+r))Q\(number(-x)) \(number(y)) \(number(-x)) \(number(y-r))"
+            + "V\(number(-y+r))Q\(number(-x)) \(number(-y)) \(number(-x+r)) \(number(-y))Z"
+    case .ellipse:
+        let arc = "A\(number(x)) \(number(y)) 0 1 0 "
+        return "M\(number(-x)) 0" + arc + "\(number(x)) 0" + arc + "\(number(-x)) 0Z"
+    case .diamond, .triangle, .pentagon, .hexagon, .parallelogram:
+        let points = vertices(node.shape, graphics).map { "\(number($0.x*x)) \(number($0.y*y))" }
+        return "M" + points.joined(separator: " L") + "Z"
+    }
+}
+
+private func elevationShadow(_ node: Idea, geometry: String, graphics: VisualTheme.Graphics?) -> String {
+    guard node.elevated == true, node.resolvedBackgroundMode != .free else { return "" }
+    let clip = "elevated-clip-" + node.id
+    let x = node.width / 2 + 24, y = node.height / 2 + 40
+    let outside = "M\(number(-x)) \(number(-y))H\(number(x))V\(number(y))H\(number(-x))Z" + boxOutline(node, graphics: graphics)
+    return """
+        <g data-elevated-shadow="" pointer-events="none" aria-hidden="true">
+          <clipPath id="\(clip)"><path d="\(outside)" clip-rule="evenodd"/></clipPath>
+          <g clip-path="url(#\(clip))">
+            <\(geometry) transform="translate(12 28)" fill="none" stroke="#11172b" stroke-width="5" stroke-linejoin="round" stroke-opacity=".12"/>
+            <\(geometry) transform="translate(12 28)" fill="#11172b" fill-opacity=".44"/>
+          </g>
+        </g>
+        """
 }
 
 private func boxSurface(_ node: Idea, geometry: String, graphics: VisualTheme.Graphics?, interactive: Bool) -> String {
-    guard node.backgroundEnabled != false else {
+    let mode = node.resolvedBackgroundMode
+    guard mode != .free else {
         return interactive ? "<\(geometry) fill=\"none\" pointer-events=\"fill\"/>" : ""
     }
-    let blurred = node.backgroundBlur == true
-    if node.file?.type == .image && !blurred && node.file?.alphaEnabled != false && node.file?.alphaBackground == nil { return "" }
+    let blurred = mode == .blurred
+    let empty = mode == .empty
+    if node.file?.type == .image && mode == .solid && node.file?.alphaEnabled != false && node.file?.alphaBackground == nil { return "" }
     let image = node.file?.type == .image
     let locked = node.kind == .container && node.locked == true
-    let glass = graphics?.glass == true && !blurred && !image
+    let glass = graphics?.glass == true && mode == .solid && !image
     let fill = image ? (node.file?.alphaEnabled == false ? "#ffffff" : node.file?.alphaBackground ?? node.fill) : node.fill
-    let stroke = image ? "none" : glass ? "url(#glass-rim)" : escaped(node.border)
+    let stroke = image && !empty ? "none" : glass ? "url(#glass-rim)" : escaped(node.border)
     let width = locked ? "6.4" : glass ? "3" : "1.6"
     let dash = node.file == nil && node.link.flatMap(WorksheetLink.init) != nil ? " stroke-dasharray=\"7 4\"" : ""
     let closed = locked ? " data-locked-outline=\"\"" : ""
     let effect = blurred ? " opacity=\".5\" filter=\"url(#box-background-blur)\"" : glass ? " fill-opacity=\".66\"" : ""
-    let surface = "<\(geometry) data-box-surface=\"\" fill=\"\(escaped(fill))\" stroke=\"\(stroke)\" stroke-width=\"\(width)\"\(closed)\(dash)\(effect)/>"
+    let pointer = empty && interactive ? " pointer-events=\"fill\"" : ""
+    let surface = "<\(geometry) data-box-surface=\"\" fill=\"\(empty ? "none" : escaped(fill))\" stroke=\"\(stroke)\" stroke-width=\"\(width)\"\(closed)\(dash)\(effect)\(pointer)/>"
     return surface + (glass ? "<\(geometry) fill=\"url(#glass-sheen)\" pointer-events=\"none\" aria-hidden=\"true\"/>" : "")
 }
 
@@ -591,7 +615,7 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
             """
     } ?? ""
     let contents = """
-        \(node.elevated == true ? elevationShadow(geometry) : "")
+        \(elevationShadow(node, geometry: geometry, graphics: graphics))
         \(boxSurface(node, geometry: geometry, graphics: graphics, interactive: interactive))
         <text font-family="system-ui, sans-serif" pointer-events="none">\(spans)</text>
         \(symbol)
@@ -741,6 +765,15 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
     }
     let nodeLayers = Dictionary(uniqueKeysWithValues: ordered.enumerated().map { ($0.element.node.id, $0.offset) })
     let freeWireLayer = ordered.firstIndex { elevated.contains($0.node.id) } ?? ordered.count
+    func isInside(_ node: Idea?, _ outer: Idea?) -> Bool {
+        guard let outer else { return false }
+        var parent = node?.parent
+        while let id = parent {
+            if id == outer.id { return true }
+            parent = nodes[id]?.parent
+        }
+        return false
+    }
     var definitions: [String] = []
     let edges = board.edges.compactMap { edge -> (layer: Int, markup: String)? in
         let sourceNode = edge.source.flatMap { nodes[$0] }
@@ -764,8 +797,21 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
             points = [arcControl(source, target)]
         } else { (command, points) = edgeRoute(edge.type, from: source, to: target) }
         let multiBend = edge.type == .lightning && custom == nil
-        let beginning = sourceNode.map { borderPoint($0, toward: multiBend ? target : points.first ?? target, graphics: graphics) } ?? source
-        let ending = targetNode.map { borderPoint($0, toward: multiBend ? source : points.last ?? source, graphics: graphics) } ?? target
+        let targetInside = isInside(targetNode, sourceNode)
+        let sourceInside = isInside(sourceNode, targetNode)
+        let centeredDirection = Point(x: source.x + 1, y: source.y)
+        let beginning: Point
+        let ending: Point
+        if targetInside, let sourceNode, let targetNode {
+            beginning = borderPoint(sourceNode, toward: source == target ? centeredDirection : target, graphics: graphics)
+            ending = borderPoint(targetNode, toward: beginning, graphics: graphics)
+        } else if sourceInside, let sourceNode, let targetNode {
+            ending = borderPoint(targetNode, toward: source == target ? centeredDirection : source, graphics: graphics)
+            beginning = borderPoint(sourceNode, toward: ending, graphics: graphics)
+        } else {
+            beginning = sourceNode.map { borderPoint($0, toward: multiBend ? target : points.first ?? target, graphics: graphics) } ?? source
+            ending = targetNode.map { borderPoint($0, toward: multiBend ? source : points.last ?? source, graphics: graphics) } ?? target
+        }
         if multiBend { points = edgeRoute(edge.type, from: beginning, to: ending).points }
         if command == "Q", rise > 0 { points[0] = arcControl(beginning, ending) }
         let vertices = [beginning] + points + [ending]
@@ -847,7 +893,9 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
         }
         let sourceLayer = edge.source.flatMap { nodeLayers[$0] }
         let targetLayer = edge.target.node.flatMap { nodeLayers[$0] }
-        let layer = min(sourceLayer ?? ordered.count, targetLayer ?? ordered.count)
+        let sourceIndex = sourceLayer ?? ordered.count
+        let targetIndex = targetLayer ?? ordered.count
+        let layer = targetInside || sourceInside ? max(sourceIndex, targetIndex) : min(sourceIndex, targetIndex)
         let wireLayer = layer == ordered.count ? freeWireLayer : layer
         guard let label else { return (wireLayer, wirePath()) }
         let samples: [Point]
@@ -953,13 +1001,13 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
                 ? (assetBase == nil ? "<span>\(filename)</span>" : "<a href=\"\(download)\">\(filename)</a>")
                 :
                 "<button type=\"button\" class=\"file-download\" title=\"\(filename)\" aria-label=\"Letöltés · \(filename)\" data-download=\"\(download)\">\(uiIcon("package"))<span>\(filename)</span></button>"
-            let fold = node.backgroundEnabled != false && node.backgroundBlur != true ? " with-fold" : ""
+            let fold = node.resolvedBackgroundMode == .solid ? " with-fold" : ""
             let body = note ? "<div class=\"folded-note\(fold)\">\(content)</div>" : content
             let image = file.type == .image
             let above: Double = (image || note) && !title.isEmpty ? 22 : 0
             let below: Double = image || note ? 22 : 0
             let geometry = boxGeometry(node, graphics: graphics)
-            let chrome = (node.elevated == true ? elevationShadow(geometry) : "") +
+            let chrome = elevationShadow(node, geometry: geometry, graphics: graphics) +
                 boxSurface(node, geometry: geometry, graphics: graphics, interactive: noteBase != nil)
             let translated = chrome.isEmpty ? "" : "<g transform=\"translate(\(number(node.position.x)) \(number(node.position.y)))\">\(chrome)</g>"
             graphic = """
@@ -1039,7 +1087,7 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
     let svg = """
         <svg xmlns="http://www.w3.org/2000/svg" class="passive-canvas" role="\(noteBase == nil ? "img" : "group")" aria-label="\(escaped(board.title))" width="\(width)" height="\(height)" viewBox="\(number(-halfWidth)) \(number(-halfHeight)) \(width) \(height)">
           \(noteBase == nil ? "<title>\(escaped(board.title))</title>" : "")
-          <defs>\(definitions.joined())\(grid)\(glassDefinitions)\(elevated.isEmpty ? "" : elevationFilter)\(board.nodes.contains { $0.backgroundBlur == true && $0.backgroundEnabled != false } ? "<filter id=\"box-background-blur\" x=\"-30%\" y=\"-30%\" width=\"160%\" height=\"160%\"><feGaussianBlur stdDeviation=\"2\"/></filter>" : "")</defs>
+          <defs>\(definitions.joined())\(grid)\(glassDefinitions)\(board.nodes.contains { $0.resolvedBackgroundMode == .blurred } ? "<filter id=\"box-background-blur\" x=\"-30%\" y=\"-30%\" width=\"160%\" height=\"160%\"><feGaussianBlur stdDeviation=\"2\"/></filter>" : "")</defs>
           \(backdrop(escaped(board.backgroundColor)))
           \(grid.isEmpty ? "" : backdrop("url(#draft-grid)"))
           \(scene.joined(separator: "\n"))

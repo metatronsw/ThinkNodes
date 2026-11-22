@@ -17,8 +17,7 @@ import VaporTesting
     sheet.gridSpacing = 24
     sheet.edges = [Connection(id: "wire", sourcePoint: Point(x: 0, y: 80),
                               target: ConnectionTarget(point: Point(x: 120, y: 80)))]
-    #expect(throws: Abort.self) { try store.update(path, worksheet: sheet, user: other) }
-    let saved = try store.update(path, worksheet: sheet, user: creator)
+    let saved = try store.update(path, worksheet: sheet, user: other)
     #expect(saved.creator == creator.name)
     let reopened = try store.load(path, user: creator)
     #expect(reopened == saved)

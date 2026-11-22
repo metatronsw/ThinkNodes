@@ -1,6 +1,5 @@
 (() => {
   const media = window.matchMedia("(prefers-color-scheme: dark)");
-  const picker = document.querySelector("[data-site-mode-picker]");
   const modes = ["auto", "light", "dark"];
   const names = {auto: "Automatikus", light: "Világos", dark: "Sötét"};
   const settingKey = "thinknodes.siteMode";
@@ -11,6 +10,7 @@
     const mode = setting === "auto" ? (media.matches ? "dark" : "light") : setting;
     document.documentElement.dataset.display = mode;
     document.cookie = "tn_display=" + mode + "; Path=/; SameSite=Lax";
+    const picker = document.querySelector("[data-site-mode-picker]");
     if (picker) {
       const label = "Megjelenés: " + names[setting];
       picker.dataset.mode = setting;
@@ -33,15 +33,18 @@
     for (const img of document.querySelectorAll('img[src^="/api/preview/"]')) {
       const url = new URL(img.src);
       url.searchParams.set("mode", mode);
-      img.setAttribute("src", url.pathname + url.search);
+      const source = url.pathname + url.search;
+      if (img.getAttribute("src") !== source) img.setAttribute("src", source);
     }
     window.dispatchEvent(new Event("thinknodes-display"));
   }
-  picker?.addEventListener("click", () => {
+  document.addEventListener("click", event => {
+    if (!event.target.closest?.("[data-site-mode-picker]")) return;
     localStorage.setItem(settingKey, modes[(modes.indexOf(setting) + 1) % modes.length]);
     apply();
   });
   media.addEventListener("change", apply);
   window.addEventListener("storage", apply);
+  window.addEventListener("thinknodes-page-updated", apply);
   apply();
 })();

@@ -1,12 +1,25 @@
-const projectCards = document.querySelectorAll(".project-card");
+import {fetchPage, updateSection, watchPageUpdates} from "./page-updates.js";
 function updateCardColors() {
   const dark = document.documentElement.dataset.display === "dark";
-  for (const card of projectCards) {
+  for (const card of document.querySelectorAll(".project-card")) {
     card.style.setProperty("--sheet-color", dark ? card.dataset.colorDark : card.dataset.colorLight);
   }
 }
 window.addEventListener("thinknodes-display", updateCardColors);
 updateCardColors();
+
+if (document.querySelector("#worksheet-cards")) {
+  watchPageUpdates(async (signal, incoming) => {
+    const {page, response} = incoming ?? await fetchPage(signal);
+    if (signal.aborted) return;
+    if (response.status >= 500) throw Error("Az oldal nem érhető el.");
+    if (response.redirected || !page.querySelector("#worksheet-cards")) { location.reload(); return; }
+    if (!response.ok) throw Error("A projektlista nem érhető el.");
+    updateSection(document, page, "#worksheet-cards");
+    updateSection(document, page, ".site-header .header-actions");
+    updateCardColors();
+  });
+}
 
 export function contextMenu(event, entries) {
   event.preventDefault();
@@ -73,6 +86,45 @@ function passwordDialog(card) {
   dialog.showModal();
 }
 
+async function editorsDialog(card) {
+  try {
+    const response = await fetch("/api/worksheet-users" + card.pathname);
+    if (!response.ok) throw Error("A szerkesztőfiókok listája nem érhető el.");
+    const accounts = await response.json();
+    const members = new Set(card.dataset.editors.split(" ").filter(Boolean));
+    const dialog = document.createElement("dialog");
+    dialog.className = "panel password-dialog";
+    dialog.setAttribute("aria-label", "Szerkesztők kezelése");
+    const heading = document.createElement("h3");
+    heading.textContent = "Szerkesztők kezelése";
+    const rows = document.createElement("div");
+    rows.className = "stack";
+    for (const name of new Set([...members, ...accounts])) {
+      if (name === card.dataset.owner) continue;
+      const row = document.createElement("div");
+      row.className = "editor-membership";
+      const label = document.createElement("span");
+      label.textContent = name;
+      const button = document.createElement("button");
+      button.className = "button small";
+      button.textContent = members.has(name) ? "Eltávolítás" : "Hozzáadás";
+      button.setAttribute("aria-label", button.textContent + " · " + name);
+      button.onclick = () => change(card, members.has(name) ? "revoke" : "grant", name);
+      row.append(label, button);
+      rows.append(row);
+    }
+    if (!rows.childElementCount) rows.textContent = "Nincs hozzáadható szerkesztőfiók.";
+    const close = document.createElement("button");
+    close.className = "button";
+    close.textContent = "Bezárás";
+    close.onclick = () => dialog.close();
+    dialog.append(heading, rows, close);
+    dialog.addEventListener("close", () => dialog.remove(), {once: true});
+    document.body.append(dialog);
+    dialog.showModal();
+  } catch (error) { alert(error.message); }
+}
+
 export function documentEntries(card) {
   const entries = [["Megnyitás", () => location.assign(card.href), "folder"]];
   if (card.dataset.manage !== "true") return entries;
@@ -80,10 +132,6 @@ export function documentEntries(card) {
     const value = window.prompt(question);
     if (value != null) change(card, action, value.trim());
   }, icon];
-  const people = [
-    input("Felhasználó hozzáadása", "grant", "Felhasználónév", "plus"),
-    input("Felhasználó eltávolítása", "revoke", "Felhasználónév", "minus"),
-  ];
   if (card.dataset.scope === "attachment") return entries;
   entries.push(
     ["Törlés", () => { if (confirm("Lomtárba helyezed?")) change(card, "delete"); }, "trash"],
@@ -91,9 +139,9 @@ export function documentEntries(card) {
     card.dataset.password === "true" ? ["Jelszár feloldása", () => change(card, "password", ""), "unlock"] : ["Jelszár beállítása", () => passwordDialog(card), "lock"],
     [card.dataset.frozen === "true" ? "Szerkesztés feloldása" : "Szerkesztés zárolása", () => change(card, "freeze"), "hand"],
     input("Átnevezés", "rename", "Új útvonalnév", "edit"),
-    ...(card.dataset.scope === "project" ? people : []),
   );
   if (card.dataset.scope === "project") entries.push(
+    ["Szerkesztők kezelése", () => editorsDialog(card), "plus"],
     card.dataset.public === "true" ? ["Belső mód", () => change(card, "mode", "internal"), "folder"] : ["Nyilvános mód", () => change(card, "mode", "public"), "butterfly"],
   );
   return entries;
@@ -107,10 +155,15 @@ document.addEventListener("pointerdown", event => { if (menu && !menu.contains(e
 document.addEventListener("keydown", event => { if (event.key === "Escape") close(); });
 
 document.addEventListener("click", async event => {
+  if (event.target.closest("[data-manage-editors]")) {
+    const card = document.querySelector("[data-current-document][data-scope=project][data-manage=true]");
+    if (card) await editorsDialog(card);
+    return;
+  }
   const button = event.target.closest(".new-worksheet");
   if (!button) return;
   const parent = button.closest("[data-current-sheet]")?.dataset.currentSheet;
-  const name = window.prompt(button.dataset.folder ? "Új almappa neve" : parent ? "Új munkalap útvonalneve" : "Új projekt útvonalneve")?.trim();
+  const name = window.prompt(parent ? "Új munkalap útvonalneve" : "Új projekt útvonalneve")?.trim();
   if (!name) return;
   if (!/^[\p{L}\p{M}\p{Nd}_-]+$/u.test(name)) {
     alert("Az útvonalnév betűket, számokat, kötőjelet és aláhúzást tartalmazhat.");
@@ -118,7 +171,7 @@ document.addEventListener("click", async event => {
   }
   const path = (parent ? parent + "/" : "") + encodeURIComponent(name);
   try {
-    const response = await fetch("/api/subworksheet/" + path + (button.dataset.folder ? "?folder=1" : ""), {method: "POST", headers: {
+    const response = await fetch("/api/subworksheet/" + path, {method: "POST", headers: {
       "X-CSRF-Token": button.closest("[data-csrf]").dataset.csrf,
     }});
     if (!response.ok) throw Error((await response.json()).reason || "A létrehozás sikertelen.");

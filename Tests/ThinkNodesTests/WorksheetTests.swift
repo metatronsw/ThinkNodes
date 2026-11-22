@@ -37,10 +37,11 @@ import VaporTesting
         for (action, value) in [("mode", "public"), ("grant", "shared")] {
             _ = try store.manage(project, operation: DocumentAction(scope: "project", action: action, value: value), user: creator, unlocks: [])
         }
-        _ = try store.open(route, user: creator, directory: true)
+        _ = try store.open(route, user: creator)
         let editor = try await login(browser, name: "editor", password: password, path: path)
         let newParent = try await browser.sendRequest(.GET, "/gondolatok", headers: ["Cookie": editor.cookie])
         #expect(newParent.status == .ok)
+        #expect(newParent.body.string.contains("main-worksheet-indicator"))
         #expect(FileManager.default.fileExists(atPath: file.path))
         #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("gondolatok/gondolatok.thnode").path))
         let index = try await browser.sendRequest(.GET, "/")
@@ -113,10 +114,10 @@ import VaporTesting
         #expect(downloaded.status == .ok && downloaded.body.string == source)
         #expect(downloaded.headers.first(name: .contentDisposition)?.hasPrefix("attachment;") == true)
         #expect(try await browser.sendRequest(.GET, "/api/worksheet/" + path + "/terv/adat").status == .notFound)
-        let flatDocument = file.deletingLastPathComponent().appendingPathComponent("adat.json")
+        let flatDocument = file.deletingLastPathComponent().appendingPathComponent("terv/adat.json")
         #expect(try String(contentsOf: flatDocument, encoding: .utf8) == source)
         #expect(!FileManager.default.fileExists(atPath: flatDocument.deletingLastPathComponent().appendingPathComponent(".attachments").path))
-        #expect(try await browser.sendRequest(.POST, "/api/subworksheet/" + path + "/terv/adat", headers: headers).status == .conflict)
+        #expect(try await browser.sendRequest(.POST, "/api/subworksheet/" + path + "/terv/adat", headers: headers).status == .ok)
         let childView = try await browser.sendRequest(.GET, "/" + path + "/terv")
         #expect(childView.body.string.contains("adat.json"))
         let png = try #require(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jWZkAAAAASUVORK5CYII="))
@@ -171,10 +172,10 @@ import VaporTesting
         #expect(throws: Abort.self) { try withArchive.validate() }
         let preview = try await browser.sendRequest(.GET, "/api/preview/" + path + "/terv")
         #expect(preview.status == .ok && preview.body.string.contains("<svg"))
-        #expect(FileManager.default.fileExists(atPath: file.deletingLastPathComponent().appendingPathComponent(".terv.preview-v8.svg").path))
+        #expect(FileManager.default.fileExists(atPath: file.deletingLastPathComponent().appendingPathComponent("terv/.terv.preview-v9.svg").path))
         try await checkPreviewAndPreferences(browser, path: path + "/terv", sheet: child, session: shared, png: png)
         let parent = try await browser.sendRequest(.GET, "/" + path)
-        #expect(parent.body.string.contains("További oldalak:") && parent.body.string.contains("Létrehozó: shared"))
+        #expect(parent.body.string.contains("További munkalapok") && parent.body.string.contains("Létrehozó: shared"))
         #expect(try await browser.sendRequest(.POST, childURL, headers: headers).status == .conflict)
         for cookie in [editor.cookie, admin.cookie, shared.cookie] {
             let home = try await browser.sendRequest(.GET, "/", headers: ["Cookie": cookie])
@@ -185,7 +186,7 @@ import VaporTesting
         #expect(!outsidersView.body.string.contains("aria-label=\"Szerkesztés\""))
         let tampered = try await save(browser, path: path, worksheet: worksheet, session: outsider)
         #expect(tampered.status == .forbidden)
-        let accounts = try await browser.sendRequest(.GET, "/api/worksheet-users/\(path)", headers: ["Cookie": editor.cookie])
+        let accounts = try await browser.sendRequest(.GET, "/api/worksheet-users/" + project.url, headers: ["Cookie": shared.cookie])
         #expect(accounts.status == .ok)
         #expect(try accounts.content.decode([String].self).contains("shared"))
         let blockedAccounts = try await browser.sendRequest(.GET, "/api/worksheet-users/\(path)", headers: ["Cookie": shared.cookie])
@@ -199,7 +200,9 @@ import VaporTesting
         #expect(page.body.string.contains("<strong>A munkalap bevezetője</strong>"))
         #expect(page.body.string.contains("/viewer.js"))
         #expect(page.body.string.contains(#"class="button header-button brand" href="/""#))
-        #expect(!page.body.string.contains("<h1>"))
+        #expect(page.body.string.contains("• </span>mégnincsilyen</h1>"))
+        #expect(page.body.string.contains(#"title="Szülő munkalap" href="/gondolatok""#))
+        #expect(!page.body.string.contains("main-worksheet-indicator"))
         #expect(page.body.string.contains("/icons.svg#download"))
         #expect(!page.body.string.contains("worksheet-grid"))
         #expect(page.body.string.contains("passive-backdrop"))
@@ -274,13 +277,13 @@ import VaporTesting
         #expect(privatePage.status == .seeOther)
         let blockedCreate = try await browser.sendRequest(.GET, "/gondolatok/masik")
         #expect(blockedCreate.status == .notFound)
-        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("gondolatok/masik.thnode").path))
+        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("gondolatok/masik/masik.thnode").path))
         let missingAuthenticated = try await browser.sendRequest(.GET, "/gondolatok/masik", headers: ["Cookie": editor.cookie])
         #expect(missingAuthenticated.status == .notFound)
         let authenticatedCreate = try await browser.sendRequest(.POST, "/api/subworksheet/gondolatok/masik",
             headers: ["Cookie": editor.cookie, "X-CSRF-Token": editor.csrf])
         #expect(authenticatedCreate.status == .ok)
-        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("gondolatok/masik.thnode").path))
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("gondolatok/masik/masik.thnode").path))
 
         let adminDelete = try await remove(browser, path: path, session: admin)
         #expect(adminDelete.status == .noContent)
@@ -440,6 +443,10 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     #expect(svg.contains(#"opacity=".5" filter="url(#box-background-blur)""#))
     #expect(svg.contains(#"<feGaussianBlur stdDeviation="2"/>"#))
     #expect(svg.components(separatedBy: "data-box-surface").count == 2)
+    blurred.nodes[0].backgroundMode = .empty
+    let outline = boardSVG(blurred)
+    #expect(outline.contains(##"data-box-surface="" fill="none" stroke="#929baa""##))
+    #expect(!outline.contains("box-background-blur"))
 }
 
 @Test func maximumWireThicknessIncludesDottedAndAnimatedStrokes() throws {
@@ -467,8 +474,8 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     let free = boardSVG(board)
     #expect(!free.contains("<clipPath"))
     #expect(!free.contains("textLength"))
-    #expect(free.contains(">Hosszú cím</tspan>"))
-    #expect(free.contains(">Nagy</tspan> <tspan font-weight=\"700\">szöveg</tspan>"))
+    #expect(free.contains("…</tspan>"))
+    #expect(!free.contains("data-box-surface"))
 }
 
 @Test func containerStylesAndJunctionsSurviveRoundTrip() throws {
@@ -538,7 +545,8 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     try sheet.validate()
     #expect(sheet.nodes[0].elevated == true && sheet.nodes[2].elevated == nil)
     let svg = boardSVG(sheet, noteBase: "/sheet")
-    #expect(svg.contains(#"<feDropShadow dx="12" dy="28" stdDeviation="16""#))
+    #expect(svg.contains(#"clip-path="url(#elevated-clip-group)""#))
+    #expect(!svg.contains("feDropShadow"))
     #expect(svg.components(separatedBy: "data-elevated-shadow").count == 3)
     let ordinaryLayer = try #require(svg.range(of: #"data-node="ordinary""#))
     let raisedLayer = try #require(svg.range(of: #"data-node="group""#))
@@ -663,6 +671,103 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     }
 }
 
+@Test func publishedProjectsAndViewerChangesWakeOpenPages() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-live-pages-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    let password = UUID().uuidString
+    let hash = try Bcrypt.hash(password, cost: 4)
+    try store.setUser(name: "admin", role: .admin, passwordHash: hash)
+    try store.setUser(name: "member", role: .editor, passwordHash: hash)
+    let admin = try #require(try store.user(named: "admin"))
+    let project = try WorksheetPath(["live-project"])
+    let child = try WorksheetPath(["live-project", "child"])
+    _ = try store.open(child, user: admin)
+
+    func watchURL(_ page: TestingHTTPResponse) throws -> String {
+        let html = page.body.string
+        let id = try attribute(#"name="thinknodes-updates" data-id=""#, in: html)
+        let version = try attribute(#"data-id=""# + id + #"" content=""#, in: html)
+        return "/api/page-changes/" + id + "?since=" + version
+    }
+
+    try await withApp(configure: { app in configure(app, store: store) }) { app in
+        let browser = try app.testing()
+        let administrator = try await login(browser, name: "admin", password: password, path: project.url)
+        let loginForm = try await browser.sendRequest(.GET, "/login")
+        let loginCookie = try cookie(loginForm)
+        let loginToken = try attribute(#"name="csrf" value=""#, in: loginForm.body.string)
+        let memberLogin = try await browser.sendRequest(.POST, "/login", headers: ["Cookie": loginCookie]) { request in
+            try request.content.encode(Credentials(name: "member", password: password, csrf: loginToken), as: .urlEncodedForm)
+        }
+        let memberCookie = try cookie(memberLogin)
+        let guestHome = try await browser.sendRequest(.GET, "/")
+        let memberHome = try await browser.sendRequest(.GET, "/", headers: ["Cookie": memberCookie])
+        #expect(!guestHome.body.string.contains("href=\"/live-project\""))
+        #expect(!memberHome.body.string.contains("href=\"/live-project\""))
+
+        let homeWatch = try watchURL(guestHome)
+        async let homeEvent = browser.sendRequest(.GET, homeWatch)
+        let published = try await browser.sendRequest(.POST, "/api/document/" + project.url, headers: [
+            "Cookie": administrator.cookie, "X-CSRF-Token": administrator.csrf,
+        ]) { request in
+            try request.content.encode(DocumentAction(scope: "project", action: "mode", value: "public"))
+        }
+        #expect(published.status == .ok)
+        let notice = try await homeEvent
+        #expect(notice.status == .ok && !homeWatch.hasSuffix(notice.body.string))
+        let freshGuest = try await browser.sendRequest(.GET, "/")
+        let freshMember = try await browser.sendRequest(.GET, "/", headers: ["Cookie": memberCookie])
+        #expect(freshGuest.body.string.contains("href=\"/live-project\""))
+        #expect(freshMember.body.string.contains("href=\"/live-project\""))
+
+        let childPage = try await browser.sendRequest(.GET, "/" + child.url)
+        let html = childPage.body.string
+        #expect(!html.contains("<h2>További munkalapok</h2>"))
+        #expect(!html.contains("<h2>Mappa tartalma</h2>"))
+        #expect(!html.contains("<h2>Külső hivatkozások</h2>"))
+        #expect(html.contains("viewer-edit-slot"))
+        let projectPage = try await browser.sendRequest(.GET, "/" + project.url)
+        let projectWatch = try watchURL(projectPage)
+        async let projectEvent = browser.sendRequest(.GET, projectWatch)
+        var changed = try store.load(child, user: admin)
+        changed.title = "Élő előnézet"
+        #expect(try await save(browser, path: child.url, worksheet: changed, session: administrator).status == .ok)
+        let parentNotice = try await projectEvent
+        #expect(parentNotice.status == .ok && !projectWatch.hasSuffix(parentNotice.body.string))
+        #expect(try await browser.sendRequest(.GET, "/" + project.url).body.string.contains("Élő előnézet"))
+    }
+}
+
+@Test func publicGuestCanEditWithoutProjectManagement() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-guest-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    let admin = User(name: "admin", role: .admin, passwordHash: "")
+    let project = try WorksheetPath(["project"])
+    let folder = try WorksheetPath(["project", "folder"])
+    let draft = try store.open(folder, user: admin)
+    _ = try store.manage(project, operation: DocumentAction(scope: "project", action: "mode", value: "public"), user: admin, unlocks: [])
+
+    try await withApp(configure: { app in configure(app, store: store) }) { app in
+        let browser = try app.testing()
+        let page = try await browser.sendRequest(.GET, "/edit/" + folder.url)
+        #expect(page.status == .ok)
+        let session = (cookie: try cookie(page), csrf: try attribute("data-csrf=\"", in: page.body.string))
+        let headers: HTTPHeaders = ["Cookie": session.cookie, "X-CSRF-Token": session.csrf]
+        var edited = draft
+        edited.title = "Vendég szerkesztése"
+        #expect(try await save(browser, path: folder.url, worksheet: edited, session: session).status == .ok)
+        #expect(try await browser.sendRequest(.POST, "/api/subworksheet/" + folder.url + "/new-page", headers: headers).status == .ok)
+        #expect(try await browser.sendRequest(.POST, "/api/subworksheet/new-project", headers: headers).status == .unauthorized)
+        #expect(try await remove(browser, path: project.url, session: session).status == .unauthorized)
+
+        _ = try store.manage(project, operation: DocumentAction(scope: "project", action: "mode", value: "internal"), user: admin, unlocks: [])
+        edited.revision += 1
+        #expect(try await save(browser, path: folder.url, worksheet: edited, session: session).status == .forbidden)
+    }
+}
+
 @Test func projectPoliciesFollowDirectory() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-policy-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -694,8 +799,20 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     #expect(try !listed(for: editor))
     #expect(try !listed(for: creator))
     #expect(throws: Abort.self) { try store.load(child, user: editor) }
+    let subfolder = try WorksheetPath(["main", "subfolder"])
+    let nested = try WorksheetPath(["main", "subfolder", "nested"])
+    _ = try store.open(subfolder, user: creator)
+    let nestedSheet = try store.open(nested, user: creator)
     try action("grant", editor.name)
     #expect(try !listed(for: editor))
+    #expect(try store.access(nested, sheet: nestedSheet, user: editor).editable)
+    #expect(try store.list(user: editor, childrenOf: subfolder).map(\.path.url) == [nested.url])
+    #expect(throws: Abort.self) {
+        try store.manage(subfolder, operation: DocumentAction(scope: "sheet", action: "revoke", value: editor.name), user: editor, unlocks: [])
+    }
+    try action("revoke", editor.name)
+    #expect(throws: Abort.self) { try store.load(nested, user: editor) }
+    try action("grant", editor.name)
     try action("password", "abcdefgh")
     #expect(throws: Abort.self) { try store.load(memberChild, user: editor) }
     #expect(throws: Abort.self) { try store.load(child, user: editor) }
@@ -709,7 +826,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     try action("rename", "uj")
     let renamed = try WorksheetPath(["uj", "child"])
     #expect(try store.load(renamed, user: editor, unlocks: keys).creator == creator.name)
-    #expect(!((try String(contentsOf: root.appendingPathComponent("uj/child.thnode"), encoding: .utf8)).contains("\"owner\":")))
+    #expect(!((try String(contentsOf: root.appendingPathComponent("uj/child/child.thnode"), encoding: .utf8)).contains("\"owner\":")))
 }
 
 @Test func virtualPreviewAndRecreatedLeaf() throws {
@@ -1027,11 +1144,12 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     }
     _ = try store.open(project, user: admin)
     try change(project, "grant", editor.name)
-    _ = try store.open(folder, user: admin, directory: true)
+    _ = try store.open(folder, user: admin)
     _ = try store.open(side, user: editor)
     let payload = Data(#"{"title":"this is still an attachment","nodes":[]}"#.utf8)
     try store.storeAttachment(payload, named: "Draft.json", at: side, user: editor, unlocks: [])
-    #expect(try store.contents(folder, user: editor, unlocks: []).map(\.lastPathComponent) == ["Draft.json"])
+    #expect(try store.contents(folder, user: editor, unlocks: []).isEmpty)
+    #expect(try store.contents(side, user: editor, unlocks: []).map(\.lastPathComponent) == ["Draft.json"])
     for name in [".settings.json", "Draft.thnode", "../.settings.json"] {
         #expect(try store.contents(side, user: editor, unlocks: [], named: name).isEmpty)
     }
@@ -1039,20 +1157,20 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     #expect(try store.list(user: editor, childrenOf: folder).isEmpty)
     #expect(try store.load(side, user: editor).creator == editor.name)
     let settings = try String(contentsOf: root.appendingPathComponent("Team/.settings.json"), encoding: .utf8)
-    #expect(settings.contains("Sub/Draft.thnode"))
-    try change(folder, "revoke", editor.name)
+    #expect(settings.contains("Sub/Draft/Draft.thnode"))
+    #expect(throws: Abort.self) { try change(folder, "revoke", editor.name) }
+    #expect(!(try store.contents(side, user: editor, unlocks: [], named: "Draft.json")).isEmpty)
+    try change(project, "revoke", editor.name)
     #expect(throws: Abort.self) { try store.preview(side, user: editor) }
     #expect(throws: Abort.self) { try store.contents(side, user: editor, unlocks: [], named: "Draft.json") }
-    try change(folder, "grant", editor.name)
-    try change(project, "revoke", editor.name)
-    #expect(throws: Abort.self) { try store.load(side, user: editor) }
     #expect(throws: Abort.self) { try change(folder, "grant", editor.name) }
     #expect(throws: Abort.self) { try store.open(WorksheetPath(["Team","Sub","Other"]), user: editor) }
     try change(project, "grant", editor.name)
     try store.removeUser(named: editor.name)
     try store.setUser(name: editor.name, role: .editor, passwordHash: "new")
-    try change(project, "grant", editor.name)
     #expect(throws: Abort.self) { try store.load(side, user: editor) }
+    try change(project, "grant", editor.name)
+    #expect(try store.load(side, user: editor).creator == editor.name)
 }
 
 @Test func externalFilesAreListedRenamedTrashedAndRestored() throws {
@@ -1061,7 +1179,7 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     let store = try WorksheetStore(root: root)
     let owner = User(name: "owner", role: .admin, passwordHash: "")
     let folder = try WorksheetPath(["project", "folder"])
-    _ = try store.open(folder, user: owner, directory: true)
+    _ = try store.open(folder, user: owner)
     let directory = root.appendingPathComponent("project/folder")
     let original = directory.appendingPathComponent("adat.bin")
     try Data([1, 2, 3]).write(to: original)
@@ -1076,9 +1194,8 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     try FileManager.default.createDirectory(at: externalFolder, withIntermediateDirectories: false)
     try Data([7]).write(to: externalFolder.appendingPathComponent("kulso.dat"))
     sheet = try store.load(folder, user: owner)
-    #expect(sheet.nodes.contains { $0.link == "ujmappa" })
-    let nested = try store.load(WorksheetPath(["project", "folder", "ujmappa"]), user: owner)
-    #expect(nested.nodes.first?.file?.filename == "kulso.dat")
+    #expect(sheet.nodes.allSatisfy { $0.link == nil })
+    #expect(throws: Abort.self) { try store.load(WorksheetPath(["project", "folder", "ujmappa"]), user: owner) }
     let id = sheet.nodes[0].id
     sheet.nodes[0].file?.filename = "rossz.txt"
     #expect(throws: Abort.self) { try store.update(folder, worksheet: sheet, user: owner) }
@@ -1095,40 +1212,58 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     #expect(!FileManager.default.fileExists(atPath: renamed.path))
     let archived = root.appendingPathComponent("project/.trash/folder/új.bin")
     #expect(try Data(contentsOf: archived) == Data([1, 2, 3]))
-    #expect(try store.load(folder, user: owner).nodes.count == 2)
+    #expect(try store.load(folder, user: owner).nodes.count == 1)
     sheet.nodes.insert(removed, at: 0)
     _ = try store.update(folder, worksheet: sheet, user: owner, restoring: true)
     #expect(try Data(contentsOf: renamed) == Data([1, 2, 3]))
     #expect(!FileManager.default.fileExists(atPath: archived.path))
 }
 
-@Test func uploadedWorksheetsAreManagedAsFileBoxes() throws {
+@Test func uploadedWorksheetsUseTheirOwnFolder() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-import-" + UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
     let store = try WorksheetStore(root: root)
     let owner = User(name: "owner", role: .editor, passwordHash: "")
     let project = try WorksheetPath(["project"])
-    var sheet = try store.open(project, user: owner)
-    let imported = try store.importWorksheet(Data(#"{"title":"Importált"}"#.utf8), named: "lap.thnode",
-                                             at: project, user: owner, unlocks: [])
-    #expect(imported.link == "/project/lap")
+    _ = try store.open(project, user: owner)
+    let attachment = try store.storeAttachment(Data("peldaszoveg".utf8), named: "note.txt", at: project, user: owner, unlocks: [])
+    let note = Idea(id: "note", title: "Jegyzet", file: CanvasFile(type: .txt, asset: attachment, filename: "note.txt"),
+                    position: Point(x: 0, y: 0))
+    let source = try JSONEncoder().encode(Worksheet(title: "Importált", nodes: [note]))
+    let imported = try store.importWorksheet(source, named: "lap.thnode", at: project, user: owner, unlocks: [])
+    #expect(imported.url == "project/lap")
+    #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("project/lap/lap.thnode").path))
     #expect(try store.load(project, user: owner).nodes.isEmpty)
-    sheet.nodes = [Idea(id: "import", title: imported.title,
-                        file: CanvasFile(type: .worksheet, asset: imported.asset, filename: "lap.thnode"),
-                        position: Point(x: 0, y: 0), link: imported.link)]
-    sheet = try store.update(project, worksheet: sheet, user: owner)
-    sheet.nodes[0].file?.filename = "uj.thnode"
-    sheet = try store.update(project, worksheet: sheet, user: owner)
-    #expect(sheet.nodes[0].link == "/project/uj")
-    #expect(try store.load(WorksheetPath(["project","uj"]), user: owner).title == "Importált")
-    if case .disk(let file) = try store.boxFile(project, id: "import", user: owner, unlocks: []) {
-        #expect(file.lastPathComponent == "uj.thnode")
-    } else { Issue.record("A munkalapfájl nem tölthető le.") }
-    let box = sheet.nodes.removeFirst()
-    sheet = try store.update(project, worksheet: sheet, user: owner)
-    let trash = root.appendingPathComponent("project/.trash/uj.thnode")
-    #expect(FileManager.default.fileExists(atPath: trash.path))
-    sheet.nodes = [box]
-    _ = try store.update(project, worksheet: sheet, user: owner, restoring: true)
-    #expect(try store.load(WorksheetPath(["project","uj"]), user: owner).title == "Importált")
+    #expect(try store.list(user: owner, childrenOf: project).map(\.path.url) == [imported.url])
+    #expect(try store.contents(imported, user: owner, unlocks: [], named: attachment).first?.lastPathComponent == "note.txt")
+    let renamed = try #require(try store.manage(imported, operation: DocumentAction(scope: "sheet", action: "rename", value: "uj"), user: owner, unlocks: []))
+    #expect(try store.load(renamed, user: owner).title == "Importált")
+    #expect(try store.load(project, user: owner).nodes.isEmpty)
+    try store.archive(renamed, expected: 1)
+    #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("project/.trash/uj/uj.thnode").path))
+}
+
+@Test func legacyWorksheetsMoveWithAttachmentsAndPageSettings() throws {
+    let files = FileManager.default
+    let root = files.temporaryDirectory.appendingPathComponent("thinknodes-legacy-" + UUID().uuidString)
+    defer { try? files.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    let owner = User(name: "owner", role: .admin, passwordHash: "")
+    let project = try WorksheetPath(["project"])
+    let child = try WorksheetPath(["project", "child"])
+    _ = try store.open(project, user: owner)
+    try Data("""
+        {"title":"Régi lap","nodes":[{"id":"note","title":"Jegyzet","pos":{"x":0,"y":0},"file":{"type":"txt","asset":"file-note","filename":"note.txt"}}]}
+        """.utf8).write(to: root.appendingPathComponent("project/child.thnode"))
+    try Data(#"{"owner":"owner","mediaFiles":{"file-note":"note.txt"},"worksheets":{"child.thnode":{"hidden":true}}}"#.utf8)
+        .write(to: root.appendingPathComponent("project/.settings.json"))
+    try Data("Jegyzet".utf8).write(to: root.appendingPathComponent("project/note.txt"))
+    store.reconcileAtStartup()
+    store.reconcileAtStartup()
+    #expect(!files.fileExists(atPath: root.appendingPathComponent("project/child.thnode").path))
+    #expect(files.fileExists(atPath: root.appendingPathComponent("project/.trash/child.thnode").path))
+    #expect(try store.load(child, user: owner).title == "Régi lap")
+    #expect(try store.contents(child, user: owner, unlocks: [], named: "file-note").first?.lastPathComponent == "note.txt")
+    #expect(try store.list(user: owner, childrenOf: project).isEmpty)
+    #expect(try store.load(project, user: owner).nodes.allSatisfy { $0.file?.type != .worksheet && $0.link == nil })
 }

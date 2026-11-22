@@ -56,7 +56,7 @@ enum ThinkNodes {
     private static func addUser(_ arguments: [String], store: WorksheetStore) throws {
         guard arguments.count == 3, validSlug(arguments[1]), let role = Role(rawValue: arguments[2]),
               let password = readLine(), (8...72).contains(password.utf8.count) else {
-            throw Abort(.badRequest, reason: "Használat: ./run.sh user név admin|editor. A jelszó 8–72 bájt legyen.")
+            throw Abort(.badRequest, reason: "Használat: ./run.sh user név admin|editor|guest. A jelszó 8–72 bájt legyen.")
         }
         let hash = try Bcrypt.hash(password)
         try store.setUser(name: arguments[1], role: role, passwordHash: hash)
@@ -107,6 +107,7 @@ private func documentUnlocks(_ data: SessionData) -> Set<String> {
 
 private func session(_ req: Request, store: WorksheetStore) throws -> SessionInfo {
     guard req.hasSession, let user = try authenticatedUser(req.session.data, store: store) else {
+        if req.hasSession && req.session.data["user"] != nil { req.session.data = .init() }
         if store.testMode {
             let name = store.nextTester()
             req.session.data["tester"] = name
@@ -163,11 +164,13 @@ private func signIn(_ req: Request, user: User) async throws {
     _ = token(req)
 }
 
-private func loginPage(_ req: Request, next: String, message: String? = nil) -> Response {
+private let statusUpdatesScript = #"<script type="module" src="/status-updates.js"></script>"#
+
+private func loginPage(_ req: Request, next: String, message: String? = nil, updates: PageUpdates.Subscription? = nil) -> Response {
     let problem = message.map { "<p class=\"error\" role=\"alert\">\(escaped($0))</p>" } ?? ""
     return htmlPage(title: "Bejelentkezés", body: """
         \(siteHeader(user: nil, csrf: nil))
-        <main class="shell narrow">
+        <main class="shell narrow" data-page-status="login" data-watch-next="\(escaped(next))">
           <h1>Bejelentkezés</h1>
           \(problem)
           <form method="post" action="/login" class="stack panel">
@@ -178,21 +181,36 @@ private func loginPage(_ req: Request, next: String, message: String? = nil) -> 
             <button class="button primary" type="submit">\(uiIcon("login"))Belépés</button>
           </form>
         </main>
-        """)
+        \(updates == nil ? "" : statusUpdatesScript)
+        """, updates: updates)
 }
 
-private func missingPage(_ identity: SessionInfo) -> Response {
-    let account = identity.user == nil
-        ? "<p><a href=\"/login\">Jelentkezz be</a> új oldal létrehozásához. Ha még nincs fiókod, kérj regisztrációt az adminisztrátortól.</p>"
+private func missingPage(_ identity: SessionInfo, updates: PageUpdates.Subscription? = nil) -> Response {
+    let account = identity.user?.role == .guest ? ""
+        : identity.user == nil ? "<p><a href=\"/login\">Jelentkezz be</a> új oldal létrehozásához. Ha még nincs fiókod, kérj regisztrációt az adminisztrátortól.</p>"
         : "<p>A főoldalon az Új projekt gombbal hozhatsz létre oldalt.</p>"
     let page = htmlPage(title: "Az oldal nem létezik", body: """
-        <main class="shell narrow">
+        <main class="shell narrow" data-page-status="missing">
           <h1>Ez az oldal nem létezik</h1>
           <p><a href="/">Vissza a főoldalra</a></p>
           \(account)
         </main>
-        """)
+        \(updates == nil ? "" : statusUpdatesScript)
+        """, updates: updates)
     page.status = .notFound
+    return page
+}
+
+private func accessDeniedPage(_ identity: SessionInfo, updates: PageUpdates.Subscription) -> Response {
+    let page = htmlPage(title: "Hozzáférés szükséges", body: """
+        \(siteHeader(user: identity.user, csrf: identity.csrf))
+        <main class="shell narrow" data-page-status="denied">
+          <h1>Hozzáférés szükséges</h1>
+          <p><a href="/">Vissza a főoldalra</a></p>
+        </main>
+        \(statusUpdatesScript)
+        """, updates: updates)
+    page.status = .forbidden
     return page
 }
 
@@ -221,8 +239,17 @@ func configure(_ application: Application, store: WorksheetStore) {
 
     app.get("health") { _ in "ok" }
 
+    application.get("api", "page-changes", ":id") { req async throws -> Response in
+        guard let id = req.parameters.get("id").flatMap(UUID.init(uuidString:)),
+              let since = req.query[String.self, at: "since"].flatMap(UUID.init(uuidString:)) else { throw Abort(.badRequest) }
+        let version = try await live.pages.wait(id, since: since, on: req.eventLoop)
+        return response(version.uuidString, type: "text/plain; charset=utf-8")
+    }
+
     app.get("login") { req -> Response in
-        loginPage(req, next: safeNext(req.query[String.self, at: "next"]))
+        let next = safeNext(req.query[String.self, at: "next"])
+        let updates = next == "/" || next == "/admin" ? nil : live.pages.subscribe(.index)
+        return loginPage(req, next: next, updates: updates)
     }
 
     app.post("login") { req async throws -> Response in
@@ -254,6 +281,7 @@ func configure(_ application: Application, store: WorksheetStore) {
     app.get { req async throws -> Response in
         let identity = try session(req, store: store)
         if try store.settings().requireLogin && identity.user == nil { return redirect("/login") }
+        let updates = live.pages.subscribe(.index)
         let projects = try await req.application.threadPool.runIfActive {
             try store.list(user: identity.user, rootsOnly: true, unlocks: identity.unlocks).map { item -> ProjectCard in
                 let access = try store.access(item.path, sheet: item.worksheet, user: identity.user, unlocks: identity.unlocks)
@@ -261,7 +289,7 @@ func configure(_ application: Application, store: WorksheetStore) {
                                    count: access.readable ? try store.list(user: identity.user, childrenOf: item.path, recursive: true, unlocks: identity.unlocks).count : 0)
             }
         }
-        return indexPage(projects, session: identity)
+        return indexPage(projects, session: identity, updates: updates)
     }
 
     app.get("open") { req -> Response in
@@ -276,33 +304,37 @@ func configure(_ application: Application, store: WorksheetStore) {
 
     app.get("edit", "**") { req async throws -> Response in
         let identity = try session(req, store: store)
-        guard let path = try? WorksheetPath(req.parameters.getCatchall()) else { return missingPage(identity) }
-        guard try await req.application.threadPool.runIfActive({ store.pageExists(path) }) else { return missingPage(identity) }
-        guard let user = identity.user, let csrf = identity.csrf else {
-            return redirect("/login?next=/edit/" + path.url)
-        }
+        guard let path = try? WorksheetPath(req.parameters.getCatchall()) else { return missingPage(identity, updates: live.pages.subscribe(.index)) }
+        guard try await req.application.threadPool.runIfActive({ store.pageExists(path) }) else { return missingPage(identity, updates: live.pages.subscribe(.index)) }
+        let updates = live.pages.subscribe(.editor(path.url))
+        let user = identity.user
         let worksheet: Worksheet
         do {
             worksheet = try await req.application.threadPool.runIfActive { try store.load(path, user: user, unlocks: identity.unlocks) }
         } catch let error as Abort where error.status == .notFound {
-            return missingPage(identity)
+            return missingPage(identity, updates: live.pages.subscribe(.index))
+        } catch let error as Abort where error.status == .unauthorized {
+            return redirect("/login?next=/edit/" + path.url)
+        } catch let error as Abort where error.status == .forbidden {
+            return accessDeniedPage(identity, updates: live.pages.subscribe(.index))
         } catch let error as Abort where error.status == .locked {
-            return unlockPage(req, path: path, identity: identity, editing: true)
+            return unlockPage(req, path: path, identity: identity, editing: true, updates: live.pages.subscribe(.index))
         }
         let access = try store.access(path, sheet: worksheet, user: user, unlocks: identity.unlocks)
-        guard access.editable else { throw Abort(.forbidden) }
+        guard access.editable else { return accessDeniedPage(identity, updates: live.pages.subscribe(.index)) }
         let local = [assets + "vendor/vue.js", assets + "vendor/d3.js"].allSatisfy { FileManager.default.fileExists(atPath: $0) }
         let loading = local ? "Szerkesztő betöltése…" : "A szerkesztőhöz futtasd a teljes ./build.sh parancsot."
-        let prefs = try store.settings().preferences?[user.name] ?? UserPreferences()
+        let csrf = token(req)
+        let prefs = try user.flatMap { try store.settings().preferences?[$0.name] } ?? UserPreferences()
         let preferences = String(decoding: try JSONEncoder().encode(prefs), as: UTF8.self)
         return htmlPage(title: worksheet.title, body: """
             <div class="editor-root">
-            \(siteHeader(path: path.url, project: worksheet.title, user: user, csrf: csrf, editing: true, folder: access.folderPath))
-            <main id="editor" data-themes="\(escaped(themeJSON))" data-preferences="\(escaped(preferences))" data-folder="\(access.folderPath)" data-path="\(path.url)" data-csrf="\(csrf)" data-motion-rate="\(motionRate)" data-role="\(user.role.rawValue)" data-user="\(escaped(user.name))">
+            \(siteHeader(path: path.url, project: worksheet.title, user: user, csrf: csrf, editing: true))
+            <main id="editor" data-themes="\(escaped(themeJSON))" data-preferences="\(escaped(preferences))" data-path="\(path.url)" data-csrf="\(csrf)" data-motion-rate="\(motionRate)" data-role="\(user?.role.rawValue ?? "guest")" data-user="\(escaped(user?.name ?? ""))">
               <p class="editor-loading">\(loading)</p>
               <noscript><p>A szerkesztőhöz JavaScript szükséges.</p><a href="/\(path.url)">Megtekintés</a></noscript>
             </main></div>
-            """, scripts: local)
+            """, scripts: local, updates: updates)
     }
 
     app.get("api", "worksheet", "**") { req async throws -> Response in
@@ -319,9 +351,10 @@ func configure(_ application: Application, store: WorksheetStore) {
         let user = try identity.editor()
         let path = try WorksheetPath(req.parameters.getCatchall())
         return try await req.application.threadPool.runIfActive {
+            guard path.parts.count == 1 else { throw Abort(.forbidden) }
             let worksheet = try store.load(path, user: user, unlocks: identity.unlocks)
             guard try store.access(path, sheet: worksheet, user: user, unlocks: identity.unlocks).manageable else { throw Abort(.forbidden) }
-            return try store.allUsers().map(\.name)
+            return try store.allUsers().filter { $0.role == .editor }.map(\.name)
         }
     }
 
@@ -375,18 +408,20 @@ func configure(_ application: Application, store: WorksheetStore) {
 
     app.post("api", "subworksheet", "**") { req async throws -> Response in
         let identity = try session(req, store: store)
-        guard let user = identity.user else { throw Abort(.unauthorized) }
+        let user = identity.user
         try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
         let path = try WorksheetPath(req.parameters.getCatchall())
         let sheet = try await req.application.threadPool.runIfActive {
-            try store.open(path, user: user, createOnly: true, unlocks: identity.unlocks, directory: req.query[String.self, at: "folder"] == "1")
+            try store.open(path, user: user, createOnly: true, unlocks: identity.unlocks)
         }
+        live.pages.publish(.structure, at: path)
         return try worksheetResponse(sheet)
     }
 
     app.put("api", "worksheet", "**") { req async throws -> Response in
         let identity = try session(req, store: store)
-        let user = try identity.editor()
+        let user = identity.user
+        guard user != nil || req.hasSession else { throw Abort(.unauthorized) }
         try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
         let submitted = try req.content.decode(Worksheet.self)
         guard let match = req.headers.first(name: .ifMatch) else {
@@ -402,7 +437,6 @@ func configure(_ application: Application, store: WorksheetStore) {
     }
 
     app.post("api", "text") { req -> Response in
-        _ = try session(req, store: store).editor()
         try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
         let source = try req.content.decode(MarkdownForm.self).text
         guard source.utf8.count <= 100_000 else { throw Abort(.payloadTooLarge) }
@@ -410,7 +444,6 @@ func configure(_ application: Application, store: WorksheetStore) {
     }
 
     app.post("api", "text", "canvas") { req async throws -> CanvasMarkdownResponse in
-        _ = try session(req, store: store).editor()
         try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
         let sources = try req.content.decode(CanvasMarkdownRequest.self).sources
         guard sources.count <= 2_000, sources.allSatisfy({ $0.utf8.count <= 100_000 }) else {
@@ -450,7 +483,7 @@ func configure(_ application: Application, store: WorksheetStore) {
 
     app.get("api", "preview-images", "**") { req async throws -> [String] in
         let identity = try session(req, store: store)
-        _ = try identity.editor()
+        if identity.user == nil, try store.settings().requireLogin { throw Abort(.unauthorized) }
         let path = try WorksheetPath(req.parameters.getCatchall())
         return try await req.application.threadPool.runIfActive {
             try store.contents(path, user: identity.user, unlocks: identity.unlocks)
@@ -500,7 +533,8 @@ func configure(_ application: Application, store: WorksheetStore) {
 
     app.post("api", "media", "**") { req async throws -> [String: String] in
         let identity = try session(req, store: store)
-        let user = try identity.editor()
+        let user = identity.user
+        guard user != nil || req.hasSession else { throw Abort(.unauthorized) }
         try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
         let path = try WorksheetPath(req.parameters.getCatchall())
         guard let body = req.body.data, let type = req.headers.first(name: .contentType) else { throw Abort(.badRequest) }
@@ -510,12 +544,14 @@ func configure(_ application: Application, store: WorksheetStore) {
         let name = try await req.application.threadPool.runIfActive {
             try store.storeMedia(bytes, type: type, imageName: imageName, filename: filename, at: path, user: user, unlocks: identity.unlocks)
         }
+        live.pages.publish(.attachments, at: path)
         return ["asset": name]
     }
 
     app.post("api", "worksheet-file", "**") { req async throws -> [String: String] in
         let identity = try session(req, store: store)
-        let user = try identity.editor()
+        let user = identity.user
+        guard user != nil || req.hasSession else { throw Abort(.unauthorized) }
         try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
         let path = try WorksheetPath(req.parameters.getCatchall())
         guard let name = req.query[String.self, at: "name"], let body = req.body.data else { throw Abort(.badRequest) }
@@ -523,12 +559,14 @@ func configure(_ application: Application, store: WorksheetStore) {
         let file = try await req.application.threadPool.runIfActive {
             try store.importWorksheet(bytes, named: name, at: path, user: user, unlocks: identity.unlocks)
         }
-        return ["asset": file.asset, "link": file.link, "title": file.title]
+        live.pages.publish(.structure, at: file)
+        return ["path": file.url]
     }
 
     app.post("api", "attachment", "**") { req async throws -> Response in
         let identity = try session(req, store: store)
-        let user = try identity.editor()
+        let user = identity.user
+        guard user != nil || req.hasSession else { throw Abort(.unauthorized) }
         try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
         let path = try WorksheetPath(req.parameters.getCatchall())
         guard let name = req.query[String.self, at: "name"] else { throw Abort(.badRequest) }
@@ -536,12 +574,14 @@ func configure(_ application: Application, store: WorksheetStore) {
         let asset = try await req.application.threadPool.runIfActive {
             try store.storeAttachment(bytes, named: name, at: path, user: user, unlocks: identity.unlocks)
         }
+        live.pages.publish(.attachments, at: path)
         return Response(status: .created, headers: ["X-ThinkNodes-Asset": asset])
     }
 
     app.put("api", "attachment", "**") { req async throws -> HTTPStatus in
         let identity = try session(req, store: store)
-        let user = try identity.editor()
+        let user = identity.user
+        guard user != nil || req.hasSession else { throw Abort(.unauthorized) }
         try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
         let path = try WorksheetPath(req.parameters.getCatchall())
         guard let name = req.query[String.self, at: "name"] else { throw Abort(.badRequest) }
@@ -549,6 +589,7 @@ func configure(_ application: Application, store: WorksheetStore) {
         _ = try await req.application.threadPool.runIfActive {
             try store.storeAttachment(bytes, named: name, at: path, user: user, unlocks: identity.unlocks, replaceText: true)
         }
+        live.pages.publish(.attachments, at: path)
         return .noContent
     }
 
@@ -608,20 +649,23 @@ func configure(_ application: Application, store: WorksheetStore) {
         let identity = try session(req, store: store)
         guard let path = try? WorksheetPath(raw) else {
             if ["api", "export"].contains(raw.first?.lowercased() ?? "") { throw Abort(.notFound) }
-            return missingPage(identity)
+            return missingPage(identity, updates: live.pages.subscribe(.index))
         }
-        guard try await req.application.threadPool.runIfActive({ store.pageExists(path) }) else { return missingPage(identity) }
+        guard try await req.application.threadPool.runIfActive({ store.pageExists(path) }) else { return missingPage(identity, updates: live.pages.subscribe(.index)) }
+        let updates = live.pages.subscribe(.viewer(path.url))
         let worksheet: Worksheet
         do {
             worksheet = try await req.application.threadPool.runIfActive {
                 try store.load(path, user: identity.user, unlocks: identity.unlocks)
             }
         } catch let error as Abort where error.status == .notFound {
-            return missingPage(identity)
+            return missingPage(identity, updates: live.pages.subscribe(.index))
         } catch let error as Abort where error.status == .unauthorized {
             return redirect("/login?next=/" + path.url)
+        } catch let error as Abort where error.status == .forbidden {
+            return accessDeniedPage(identity, updates: live.pages.subscribe(.index))
         } catch let error as Abort where error.status == .locked {
-            return unlockPage(req, path: path, identity: identity)
+            return unlockPage(req, path: path, identity: identity, updates: live.pages.subscribe(.index))
         }
         let children = try await req.application.threadPool.runIfActive {
             try store.list(user: identity.user, childrenOf: path, unlocks: identity.unlocks)
@@ -632,9 +676,9 @@ func configure(_ application: Application, store: WorksheetStore) {
             (child.path, child.worksheet, try store.access(child.path, sheet: child.worksheet, user: identity.user, unlocks: identity.unlocks))
         }
         do {
-            return try passivePage(req, path: path, worksheet: worksheet, session: identity, access: access, children: pages, files: files)
+            return try passivePage(req, path: path, worksheet: worksheet, session: identity, access: access, children: pages, files: files, updates: updates)
         } catch let error as Abort where error.status == .notFound {
-            return missingPage(identity)
+            return missingPage(identity, updates: live.pages.subscribe(.index))
         }
     }
 }
@@ -643,10 +687,10 @@ func encodeQuery(_ value: String) -> String {
     value.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
 }
 
-private func unlockPage(_ req: Request, path: WorksheetPath, identity: SessionInfo, editing: Bool = false, attachment: String? = nil) -> Response {
+private func unlockPage(_ req: Request, path: WorksheetPath, identity: SessionInfo, editing: Bool = false, attachment: String? = nil, updates: PageUpdates.Subscription? = nil) -> Response {
     htmlPage(title: "Jelszó szükséges", body: """
         \(siteHeader(user: identity.user, csrf: identity.csrf))
-        <main class="shell narrow"><h1>Jelszó szükséges</h1>
+        <main class="shell narrow" data-page-status="locked"><h1>Jelszó szükséges</h1>
           <form class="stack panel" method="post" action="/api/unlock/\(path.url)">
             \(csrfInput(token(req)))<input type="hidden" name="edit" value="\(editing ? "1" : "0")">
             \(attachment.map { "<input type=\"hidden\" name=\"attachment\" value=\"\(escaped($0))\">" } ?? "")
@@ -654,7 +698,8 @@ private func unlockPage(_ req: Request, path: WorksheetPath, identity: SessionIn
             <button class="button primary">Megnyitás</button>
           </form>
         </main>
-        """)
+        \(updates == nil ? "" : statusUpdatesScript)
+        """, updates: updates)
 }
 
 private func etag(_ revision: Int) -> String { "\"\(revision)\"" }
@@ -679,6 +724,11 @@ private func menuState(_ rule: DocumentPolicy) -> String {
     "data-hidden=\"\(rule.hidden == true)\" data-frozen=\"\(rule.frozen == true)\" data-password=\"\(rule.passwordHash != nil)\" data-public=\"\(rule.guestReadable == true)\""
 }
 
+private func editorMembership(_ access: DocumentAccess) -> String {
+    let editors = access.editorNames.filter { $0 != access.sheetRule.owner }
+    return "data-editors=\"\(escaped(editors.joined(separator: " ")))\" data-owner=\"\(escaped(access.sheetRule.owner ?? ""))\""
+}
+
 private func credits(_ sheet: Worksheet, _ access: DocumentAccess) -> String {
     let names = access.editorNames.filter { $0 != access.sheetRule.owner }.map(escaped).joined(separator: ", ")
     return "<div class=\"card-meta\">Létrehozó: \(escaped(sheet.creator ?? "ismeretlen"))</div><div class=\"card-meta\">Szerkesztők: \(names.isEmpty ? "—" : names)</div>"
@@ -692,18 +742,18 @@ private func projectBadges(_ access: DocumentAccess) -> String {
     }.joined()
 }
 
-private func indexPage(_ items: [ProjectCard], session: SessionInfo) -> Response {
+private func indexPage(_ items: [ProjectCard], session: SessionInfo, updates: PageUpdates.Subscription) -> Response {
     let cards = items.map { item in
         let count = item.count
         return """
-        <a class="project-card panel layers-\(min(count, 2))" data-scope="project" \(menuState(item.access.projectRule)) data-manage="\(item.access.manageable)" data-color-light="\(escaped(item.worksheet.resolvedBackground(mode: "light")))" data-color-dark="\(escaped(item.worksheet.resolvedBackground(mode: "dark")))" data-revision="\(item.worksheet.revision)" href="/\(item.path.url)">
+        <a class="project-card panel layers-\(min(count, 2))" data-scope="project" \(editorMembership(item.access)) \(menuState(item.access.projectRule)) data-manage="\(item.access.manageable)" data-color-light="\(escaped(item.worksheet.resolvedBackground(mode: "light")))" data-color-dark="\(escaped(item.worksheet.resolvedBackground(mode: "dark")))" data-revision="\(item.worksheet.revision)" href="/\(item.path.url)">
           \(item.access.readable ? "<img class=\"project-background\" loading=\"lazy\" alt=\"\" src=\"/api/preview/\(item.path.url)?v=\(item.worksheet.revision)\">" : "")
           <div class="project-summary"><h2>\(escaped(item.worksheet.title))</h2>
           <span class="muted">/\(escaped(item.path.parts.joined(separator: "/")))</span> · \(count + 1) munkalap\(credits(item.worksheet, item.access))<div class="project-badges">\(projectBadges(item.access))</div></div>
         </a>
         """
     }.joined()
-    let create = session.user == nil ? "" : "<button type=\"button\" class=\"panel sub-preview new-worksheet\">\(uiIcon("plus"))Új projekt</button>"
+    let create = session.user == nil || session.user?.role == .guest ? "" : "<button type=\"button\" class=\"panel sub-preview new-worksheet\">\(uiIcon("plus"))Új projekt</button>"
     let openProject = """
         <form class="header-open" method="get" action="/open"><input aria-label="Munkalap útvonala" name="path" placeholder="Munkalap útvonala" required><button class="\(headerButtonClass)" aria-label="Megnyitás">\(uiIcon("folder"))</button></form>
         """
@@ -714,7 +764,7 @@ private func indexPage(_ items: [ProjectCard], session: SessionInfo) -> Response
           <div class="page-heading"><h1>Munkalapok</h1></div>
           <div class="project-list" id="worksheet-cards" data-delete="\(session.user?.role == .admin)" data-csrf="\(session.csrf ?? "")">\(cards.isEmpty && create.isEmpty ? "<p class=\"muted\">Még nincs munkalap.</p>" : cards)\(create)</div>
         </main>
-        """)
+        """, updates: updates)
 }
 
 private func siteMode(_ req: Request) -> String? {
@@ -722,12 +772,12 @@ private func siteMode(_ req: Request) -> String? {
     return value == "light" || value == "dark" ? value : nil
 }
 
-private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Worksheet, session: SessionInfo, access: DocumentAccess, children: [(path: WorksheetPath, worksheet: Worksheet, access: DocumentAccess)], files: [URL]) throws -> Response {
+private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Worksheet, session: SessionInfo, access: DocumentAccess, children: [(path: WorksheetPath, worksheet: Worksheet, access: DocumentAccess)], files: [URL], updates: PageUpdates.Subscription) throws -> Response {
     let previews = children.map { child in
         """
-        <a class="sub-preview preview-link" data-scope="\(child.path.url == child.access.folderPath ? "project" : "sheet")" \(menuState(child.access.sheetRule)) data-manage="\(child.access.manageable)" href="/\(child.path.url)">
-          \(child.access.locked ? "<div class=\"locked-preview\">Jelszó szükséges</div>" : "<img loading=\"lazy\" alt=\"\" src=\"/api/preview/\(child.path.url)?v=\(child.worksheet.revision)\">")
+        <a class="sub-preview preview-link" data-scope="\(child.path.parts.count == 1 ? "project" : "sheet")" \(menuState(child.access.sheetRule)) data-manage="\(child.access.manageable)" href="/\(child.path.url)">
           <strong>\(escaped(child.worksheet.title))</strong>
+          \(child.access.locked ? "<div class=\"locked-preview\">Jelszó szükséges</div>" : "<img loading=\"lazy\" alt=\"\" src=\"/api/preview/\(child.path.url)?v=\(child.worksheet.revision)\">")
           <small>Létrehozó: \(escaped(child.worksheet.creator ?? "ismeretlen"))</small>
         </a>
         """
@@ -736,6 +786,8 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
     let edit = access.editable
         ? "<a class=\"button small viewer-edit\" href=\"/edit/\(path.url)\" aria-label=\"Szerkesztés\" title=\"Szerkesztés\">\(uiIcon("edit"))Szerkesztés</a>"
         : "<button type=\"button\" class=\"button small viewer-edit\" disabled>\(uiIcon("edit"))Szerkesztés</button>"
+    let manageEditors = path.parts.count == 1 && access.manageable
+        ? "<button type=\"button\" class=\"button small\" data-manage-editors>Szerkesztők kezelése</button>" : ""
     let downloads = [
         ("svg", "SVG"), ("thnode", "ThinkNodes"), ("text", "Text"),
     ].map { format, title in
@@ -770,32 +822,45 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
     let external = worksheet.nodes.compactMap { node -> String? in
         guard let raw = node.link, let link = WorksheetLink(raw), link.isExternal(siteHost: host),
               let href = link.destination(from: path) else { return nil }
-        return "<li><a href=\"\(escaped(href))\" target=\"_blank\" rel=\"noopener noreferrer\">\(escaped(node.title))</a></li>"
+        return "<li><a href=\"\(escaped(href))\" target=\"_blank\" rel=\"noopener noreferrer\">\(uiIcon("link"))<span>\(escaped(node.title))</span></a></li>"
     }.joined()
     let attachments = files.map { file in
         let name = file.lastPathComponent
-        return "<li><a data-scope=\"attachment\" data-manage=\"\(access.manageable)\" data-document=\"\(path.url)\" data-filename=\"\(escaped(name))\" href=\"/api/attachment/\(path.url)?name=\(encodeQuery(name))\">\(escaped(file.lastPathComponent))</a></li>"
+        return "<li><a data-scope=\"attachment\" data-manage=\"\(access.manageable)\" data-document=\"\(path.url)\" data-filename=\"\(escaped(name))\" href=\"/api/attachment/\(path.url)?name=\(encodeQuery(name))\">\(uiIcon("download"))<span>\(escaped(name))</span></a></li>"
     }.joined()
-    let newPage = access.editable ? "<button type=\"button\" class=\"button new-worksheet\">\(uiIcon("plus"))Új munkalap</button><button type=\"button\" class=\"button new-worksheet\" data-folder=\"1\">Új almappa</button>" : ""
+    let newPage = access.editable ? "<button type=\"button\" class=\"button new-worksheet\">\(uiIcon("plus"))Új munkalap</button>" : ""
+    let childList = "<div class=\"project-list\" data-current-sheet=\"\(path.url)\">\(previews)\(newPage)</div>"
+    let childSection = previews.isEmpty ? (newPage.isEmpty ? "" : "<div class=\"viewer-new-worksheet\">\(childList)</div>")
+        : "<section class=\"worksheet-section\"><h2>További munkalapok</h2>\(childList)</section>"
+    let attachmentSection = attachments.isEmpty ? "" :
+        "<section class=\"worksheet-section\"><h2>Mappa tartalma</h2><ul class=\"worksheet-links\">\(attachments)</ul></section>"
+    let linkSection = external.isEmpty ? "" :
+        "<section class=\"worksheet-section\"><h2>Külső hivatkozások</h2><ul class=\"worksheet-links\">\(external)</ul></section>"
+    let parent = path.parts.count > 1
+        ? "<a class=\"button small\" aria-label=\"Szülő munkalap\" title=\"Szülő munkalap\" href=\"/\(path.url.split(separator: "/").dropLast().joined(separator: "/"))\">\(uiIcon("parent-up"))</a>" : ""
+    let mainIndicator = path.parts.count == 1
+        ? "<span class=\"main-worksheet-indicator\" role=\"img\" aria-label=\"Fő munkalap\" title=\"Fő munkalap\">\(uiIcon("folder"))</span>" : ""
     return htmlPage(title: worksheet.title, body: """
-        \(siteHeader(path: path.url, project: worksheet.title, user: session.user, csrf: session.csrf, canEdit: access.editable, folder: access.folderPath))
-        <script type="module" src="/viewer.js?v=13"></script>
+        \(siteHeader(path: path.url, project: worksheet.title, user: session.user, csrf: session.csrf, canEdit: access.editable))
+        <script type="module" src="/viewer.js?v=16"></script>
         <main class="shell" id="worksheet-view" data-graphics="\(escaped(graphicsJSON))" data-selection="\(selectionColor)" data-site-mode="\(siteMode(req) ?? "light")" data-path="\(path.url)" data-csrf="\(token(req))" data-revision="\(worksheet.revision)" data-editable="\(access.editable)" data-member="\(session.user != nil)">
-          <a hidden data-current-document data-scope="\(access.folderPath == path.url ? "project" : "sheet")" \(menuState(access.sheetRule)) data-manage="\(access.manageable)" href="\(base)">Munkalap</a>
+          <a hidden data-current-document data-scope="\(path.parts.count == 1 ? "project" : "sheet")" \(editorMembership(access)) \(menuState(access.sheetRule)) data-manage="\(access.manageable)" href="\(base)">Munkalap</a>
+          <div class="viewer-heading">\(parent)<h1><span aria-hidden="true">• </span>\(escaped(worksheet.title))</h1>\(mainIndicator)</div>
           <div class="passive-frame panel">
             <svg class="passive-backdrop" aria-hidden="true"><rect width="100%" height="100%" fill="\(display.backgroundColor)"/></svg>
             \(canvas.svg)
+            <div class="viewer-edit-slot">\(edit)</div>
+            <div class="viewer-credits">\(manageEditors)\(credits(worksheet, access))</div>
+            <div class="canvas-people"><div class="participants" aria-label="Jelenlévők"></div></div>
             <button class="button fullscreen" type="button" aria-label="Teljes képernyő">\(uiIcon("fit"))</button>
           </div>
           <div data-viewer-notes>\(tooltips)\(notes)\(note)</div>
-          <nav class="viewer-downloads" aria-label="Letöltések és szerzők">\(downloads)\(credits(worksheet, access))<div class="viewer-edit-row">\(edit)</div></nav>
+          <nav class="viewer-downloads" aria-label="Letöltések">\(downloads)</nav>
           <div data-viewer-sections>
-          <section class="worksheet-section"><h2>További oldalak:</h2><div class="project-list" data-current-sheet="\(access.folderPath)">\(previews)\(newPage)</div></section>
-          <section class="worksheet-section"><h2>Külső hivatkozások</h2>\(external.isEmpty ? "<p>Nincs külső hivatkozás.</p>" : "<ul>\(external)</ul>")</section>
-          <section class="worksheet-section"><h2>Mappa tartalma</h2>\(attachments.isEmpty ? "<p>Nincs csatolt fájl.</p>" : "<ul>\(attachments)</ul>")</section>
+            \(childSection)\(attachmentSection)\(linkSection)
           </div>
         </main>
-        """)
+        """, updates: updates)
 }
 
 private func requireAdmin(_ req: Request, store: WorksheetStore) throws -> SessionInfo {
@@ -828,6 +893,7 @@ private func hashPassword(_ input: String?) throws -> String? {
 private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, live: Collaboration) {
     app.get("admin") { req async throws -> Response in
         let identity = try session(req, store: store)
+        let updates = live.pages.subscribe(.admin)
         let users = try store.allUsers()
         if users.isEmpty && !store.testMode {
             let form = localSetup(req) ? """
@@ -847,7 +913,7 @@ private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, liv
         guard user.role == .admin else { throw Abort(.forbidden) }
         let settings = try store.settings()
         return adminPage(users: users, settings: settings, user: user, csrf: csrf,
-                         dataDirectoryPath: store.dataDirectoryPath)
+                         dataDirectoryPath: store.dataDirectoryPath, updates: updates)
     }
 
     app.post("admin", "setup") { req async throws -> Response in
@@ -860,6 +926,7 @@ private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, liv
             return User(name: form.name, role: .admin, passwordHash: hash)
         }
         try await signIn(req, user: user)
+        live.accountChanged()
         return redirect("/admin")
     }
 
@@ -869,6 +936,7 @@ private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, liv
         let form = try req.content.decode(Form.self)
         try verify(req, token: form.csrf)
         try store.setSettings(SiteSettings(requireLogin: form.requireLogin == "on"))
+        live.accountChanged()
         return redirect("/admin")
     }
 
@@ -878,6 +946,7 @@ private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, liv
         let form = try req.content.decode(Form.self)
         try verify(req, token: form.csrf)
         try store.assignAvatar(form.avatar, to: form.name)
+        live.accountChanged()
         return redirect("/admin")
     }
 
@@ -889,6 +958,7 @@ private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, liv
         try await req.application.threadPool.runIfActive {
             try store.setUser(name: form.name, role: role, passwordHash: hashPassword(form.password))
         }
+        live.accountChanged()
         return redirect("/admin")
     }
 
@@ -898,6 +968,7 @@ private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, liv
         try verify(req, token: form.csrf)
         guard form.name != identity.user?.name else { throw Abort(.forbidden, reason: "A saját fiókodat nem törölheted.") }
         try store.removeUser(named: form.name)
+        live.accountChanged()
         return redirect("/admin")
     }
 
@@ -913,16 +984,20 @@ private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, liv
 }
 
 private func adminPage(users: [User], settings: SiteSettings, user: User, csrf: String,
-                       dataDirectoryPath: String) -> Response {
+                       dataDirectoryPath: String, updates: PageUpdates.Subscription) -> Response {
     func roles(_ current: Role) -> String {
         """
         <select name="role"><option value="editor"\(current == .editor ? " selected" : "")>Szerkesztő</option>
-        <option value="admin"\(current == .admin ? " selected" : "")>Adminisztrátor</option></select>
+        <option value="admin"\(current == .admin ? " selected" : "")>Adminisztrátor</option>
+        <option value="guest"\(current == .guest ? " selected" : "")>Vendég</option></select>
         """
     }
     let accountRows = users.map { account in
+        let currentAvatar = settings.preferences?[account.name]?.avatar ?? 1
+        let avatarIcon = "<img src='/icons/avatar-\(currentAvatar).svg' alt=''>"
+        let dialogID = "avatar-" + escaped(account.name)
         let avatars = (1...12).map { number in
-            "<button name='avatar' value='\(number)' aria-label='Avatar \(number)' aria-pressed='\(settings.preferences?[account.name]?.avatar == number)'><img src='/icons/avatar-\(number).svg' alt=''></button>"
+            "<button name='avatar' value='\(number)' aria-label='Avatar \(number)' aria-pressed='\(currentAvatar == number)'><img src='/icons/avatar-\(number).svg' alt=''></button>"
         }.joined()
         let delete = user.name == account.name ? "" : """
             <form method="post" action="/admin/users/delete">
@@ -932,6 +1007,12 @@ private func adminPage(users: [User], settings: SiteSettings, user: User, csrf: 
             """
         return """
             <div class="account-row">
+              <button type="button" class="button current-avatar" data-avatar-dialog="\(dialogID)" aria-haspopup="dialog" aria-label="Avatar kiválasztása · \(escaped(account.name))">\(avatarIcon)</button>
+              <dialog id="\(dialogID)" class="panel avatar-dialog" aria-labelledby="\(dialogID)-title">
+                <h3 id="\(dialogID)-title">Avatar · \(escaped(account.name))</h3>
+                <form class="avatar-picker" method="post" action="/admin/avatar">\(csrfInput(csrf))<input type="hidden" name="name" value="\(escaped(account.name))">\(avatars)</form>
+                <form method="dialog"><button class="button">Mégse</button></form>
+              </dialog>
               <form method="post" action="/admin/users" class="account-fields">
                 \(csrfInput(csrf))<input type="hidden" name="name" value="\(escaped(account.name))">
                 <strong>\(escaped(account.name))</strong>
@@ -939,13 +1020,13 @@ private func adminPage(users: [User], settings: SiteSettings, user: User, csrf: 
                 <label>Új jelszó<input name="password" type="password" autocomplete="new-password" minlength="10" placeholder="Változatlan"></label>
                 <button class="button" type="submit">\(uiIcon("save"))Mentés</button>
               </form>
-              <form class="avatar-picker" method="post" action="/admin/avatar">\(csrfInput(csrf))<input type="hidden" name="name" value="\(escaped(account.name))">\(avatars)</form>
               \(delete)
             </div>
             """
     }.joined()
     return htmlPage(title: "Beállítások", body: """
         \(siteHeader(user: user, csrf: csrf, showAdminLogout: true))
+        <script type="module" src="/admin-avatars.js"></script>
         <main class="shell admin-shell">
           <h1>Beállítások</h1>
           <section class="panel admin-panel">
@@ -976,5 +1057,5 @@ private func adminPage(users: [User], settings: SiteSettings, user: User, csrf: 
             </details>
           </section>
         </main>
-        """)
+        """, updates: updates)
 }

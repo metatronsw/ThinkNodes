@@ -1,3 +1,4 @@
+import {fetchPage, updateSection, watchPageUpdates} from "./page-updates.js";
 import {bindAudioPlayers, syncAudioPlayers} from "./audio-player.js";
 import {objectURL, writeText} from "./canvas-files.js";
 import {decodeConnection} from "./worksheet-json.js";
@@ -19,9 +20,7 @@ const {path, csrf} = main.dataset;
 let graphics = JSON.parse(main.dataset.graphics || "null") ?? {};
 useWorksheetGeometry(() => graphics);
 const ns = "http://www.w3.org/2000/svg";
-const roster = document.createElement("div");
-roster.className = "participants";
-roster.setAttribute("aria-label", "Jelenlévők");
+const roster = main.querySelector(".participants");
 const mouse = sharedMouse(point => live.cursor(point));
 function bindCanvas() {
   const svg = main.querySelector(".passive-canvas");
@@ -32,14 +31,25 @@ function bindCanvas() {
     element.style.color = element.dataset.fileInk;
   }
   hideTooltip();
-  main.querySelector(".passive-frame").append(roster);
+  bindTooltips(svg);
+}
+
+const tooltipBoxes = new WeakSet();
+function bindTooltips(svg) {
   for (const template of main.querySelectorAll("template[data-tooltip]")) {
-    const box = main.querySelector('[data-node="' + CSS.escape(template.dataset.tooltip) + '"]');
-    box?.addEventListener("pointerenter", event => showTooltip(event, () => template.innerHTML, template.hasAttribute("data-justified")));
-    box?.addEventListener("pointerleave", hideTooltip);
-    box?.addEventListener("pointerdown", hideTooltip);
+    const id = template.dataset.tooltip;
+    const box = svg.querySelector('[data-node="' + CSS.escape(id) + '"]');
+    if (!box || tooltipBoxes.has(box)) continue;
+    tooltipBoxes.add(box);
+    box.addEventListener("pointerenter", event => {
+      const current = main.querySelector('template[data-tooltip="' + CSS.escape(id) + '"]');
+      if (current) showTooltip(event, () => current.innerHTML, current.hasAttribute("data-justified"));
+    });
+    box.addEventListener("pointerleave", hideTooltip);
+    box.addEventListener("pointerdown", hideTooltip);
   }
 }
+
 bindCanvas();
 bindAudioPlayers(main);
 
@@ -91,7 +101,9 @@ function previewScene() {
       else node.anchor.removeAttribute("transform");
     }
     for (const {path, edge, gradient, sweep, paint, arrows, label, clip, taper, pulse} of affectedWires) {
-      const geometry = edgeGeometry(edge, id => nodes.get(id));
+      const source = nodes.get(edge.source), target = nodes.get(edge.target.node);
+      const nested = source && target && (target.movers.includes(source.id) ? 1 : source.movers.includes(target.id) ? -1 : 0);
+      const geometry = edgeGeometry(edge, id => nodes.get(id), nested || 0);
       const {d, from, to, sourceToward, targetToward} = geometry;
       const profile = taper ? taperedArc(geometry, paint) : null;
       const outline = profile?.outline();
@@ -181,13 +193,11 @@ let rosterSignature;
 let paintedWireOwners = new Map();
 function paint(peers) {
   roster.classList.remove("connection-lost");
-  const signature = JSON.stringify(peers.map(({name, color, avatar}) => [name, color, avatar]));
+  const signature = JSON.stringify(peers.map(({name, avatar}) => [name, avatar]));
   if (signature !== rosterSignature) {
     rosterSignature = signature;
     roster.replaceChildren(...peers.map(peer => {
       const label = document.createElement("span");
-      if (peer.color) label.style.setProperty("--peer", peer.color);
-      else label.className = "guest";
       label.textContent = peer.name;
       if (peer.avatar) {
         const img = document.createElement("img");
@@ -284,7 +294,7 @@ document.addEventListener("contextmenu", event => {
   if (!canvas) return;
   const box = event.target.closest("[data-node]");
   const copyLink = box?.querySelector(".canvas-file, .canvas-image") ? ["Link másolása", () => writeText(objectURL(path, box.dataset.node)).catch(error => alert(error.message)), "link"] : null;
-  if (main.dataset.member !== "true") {
+  if (main.dataset.member !== "true" && main.dataset.editable !== "true") {
     if (copyLink) contextMenu(event,[copyLink]);
     return;
   }
@@ -304,22 +314,20 @@ document.addEventListener("contextmenu", event => {
   if (documentLink) entries.push(...documentEntries(documentLink).slice(1));
   contextMenu(event, entries);
 });
-function updateSection(current, incoming, selector) {
-  const existing = current.querySelector(selector);
-  const replacement = incoming.querySelector(selector);
-  if (existing && replacement && existing.outerHTML !== replacement.outerHTML) existing.replaceWith(replacement);
-}
-
-const live = liveConnection(path, csrf, async state => {
-  if (Number(main.dataset.revision) < state.revision) {
-    const response = await fetch(location.href, {cache: "no-store"});
-    if (!response.ok) throw new Error("A munkalap nem érhető el.");
-    const page = new DOMParser().parseFromString(await response.text(), "text/html");
+let pageRequest = Promise.resolve();
+let presenceStopped = false;
+function refreshPage(signal, incoming) {
+  const nextRequest = pageRequest.then(async () => {
+    const {response, page} = incoming ?? await fetchPage(signal);
+    if (signal?.aborted) return;
     const next = page.querySelector("#worksheet-view");
-    if (!next) { location.reload(); return; }
+    if (response.status >= 500) throw new Error("A munkalap nem érhető el.");
+    if (response.redirected || !next || next.dataset.csrf !== csrf) { location.reload(); return; }
+    if (Number(next.dataset.revision) < Number(main.dataset.revision)) return;
+    const updatedCanvas = next.dataset.revision !== main.dataset.revision || next.dataset.siteMode !== main.dataset.siteMode;
     const frame = main.querySelector(".passive-frame");
     const nextFrame = next.querySelector(".passive-frame");
-    for (const selector of ["svg:not(.passive-backdrop)", ".passive-backdrop"]) {
+    for (const selector of updatedCanvas ? ["svg:not(.passive-backdrop)", ".passive-backdrop"] : []) {
       const previous = frame.querySelector(":scope > " + selector);
       const updated = nextFrame.querySelector(":scope > " + selector);
       if (!previous || !updated) continue;
@@ -345,30 +353,38 @@ const live = liveConnection(path, csrf, async state => {
     for (const selector of ["[data-current-document]", "[data-viewer-notes]", "[data-viewer-sections]"]) {
       updateSection(main, next, selector);
     }
-    const downloadBar = ".viewer-downloads";
-    const oldCredits = main.querySelectorAll(downloadBar + " .card-meta");
-    const newCredits = next.querySelectorAll(downloadBar + " .card-meta");
-    oldCredits.forEach((credit, index) => {
-      const replacement = newCredits[index];
-      if (replacement && !credit.isEqualNode(replacement)) credit.replaceWith(replacement);
-    });
-    updateSection(main, next, ".viewer-edit-row");
+    for (const selector of [".viewer-heading", ".viewer-credits", ".viewer-edit-slot"]) {
+      updateSection(main, next, selector);
+    }
     Object.assign(main.dataset, next.dataset);
     graphics = JSON.parse(main.dataset.graphics || "null") ?? {};
-    motions.clear();
-    changedMovers.clear();
-    scene = previewScene();
-    paintedWireOwners.clear();
+    if (updatedCanvas) {
+      motions.clear();
+      changedMovers.clear();
+      scene = previewScene();
+      paintedWireOwners.clear();
+    }
     if (document.title !== page.title) document.title = page.title;
     const header = document.querySelector(".worksheet-nav");
     const nextHeader = page.querySelector(".worksheet-nav");
     for (const selector of [".header-left", ".header-parent", ".header-actions"]) {
       updateSection(header, nextHeader, selector);
     }
-    bindCanvas();
-    syncAudioPlayers(main);
-    if (selection) selectBox(main.querySelector('[data-node="' + CSS.escape(selection) + '"]'));
-  }
+    if (updatedCanvas) {
+      bindCanvas();
+      syncAudioPlayers(main);
+      if (selection) selectBox(main.querySelector('[data-node="' + CSS.escape(selection) + '"]'));
+    } else {
+      bindTooltips(main.querySelector(".passive-canvas"));
+    }
+    paint(peers);
+  });
+  pageRequest = nextRequest.catch(() => {});
+  return nextRequest;
+}
+
+const live = liveConnection(path, csrf, async state => {
+  if (Number(main.dataset.revision) < state.revision) await refreshPage();
   for (const id of motions.keys()) {
     if (peers.some(p => !p.viewing && p.node === id) &&
         !state.participants.some(p => !p.viewing && p.node === id)) {
@@ -385,7 +401,10 @@ const live = liveConnection(path, csrf, async state => {
   }
   paint(peers);
 }, error => {
-  if ([401, 403, 404, 423].includes(error.status)) main.textContent = error.message;
+  if ([401, 403, 404, 410, 423].includes(error.status)) {
+    presenceStopped = true;
+    refreshPage().catch(() => {});
+  }
   roster.classList.add("connection-lost");
   roster.textContent = "Kapcsolat megszakadt";
   rosterSignature = undefined;
@@ -395,3 +414,11 @@ const live = liveConnection(path, csrf, async state => {
 window.addEventListener("pagehide", live.stop);
 window.addEventListener("pageshow", event => { if (event.persisted) live.start(); });
 live.start();
+
+watchPageUpdates(async (signal, incoming) => {
+  await refreshPage(signal, incoming);
+  if (presenceStopped && !signal.aborted) {
+    presenceStopped = false;
+    live.start();
+  }
+});

@@ -109,8 +109,7 @@ export async function importFile(blob, path, csrf) {
       const detail = await response.json().catch(() => ({}));
       throw Error(detail.reason || "A munkalap feltöltése sikertelen.");
     }
-    const item = await response.json();
-    return {title: item.title, link: item.link, file: {type: "worksheet", asset: item.asset, filename: name}, width: 260, height: 80};
+    return null;
   }
   const mime = media[blob.type] ? blob.type : extensions[ext];
   if (mime) {
