@@ -745,10 +745,22 @@ svg text { text-rendering: geometricPrecision; }
 /* Mobilon a vászon teljes szélességű marad, a többi elem 90%-os szélességben, középre igazítva. */
 @media (max-width: 740px) {
   #worksheet-view.shell > :not(.passive-frame) { width: 90%; margin-inline: auto; box-sizing: border-box; }
-  /* Megtekintő fejléce mobilon két sorban: felül az útvonal gombjai (vízszintesen görgethető), alatta a műveletek. */
-  body:has(#worksheet-view) > .worksheet-nav { display: flex; flex-wrap: wrap; gap: 6px; }
-  body:has(#worksheet-view) > .worksheet-nav > .header-left { flex: 1 1 100%; min-width: 0; }
-  body:has(#worksheet-view) > .worksheet-nav > .header-left .breadcrumbs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-  body:has(#worksheet-view) > .worksheet-nav > .header-left .breadcrumbs > * { flex: none; }
-  body:has(#worksheet-view) > .worksheet-nav > .header-actions { margin-inline-start: auto; }
+  /* Megtekintő fejléce mobilon egy sorban: ikonos gombok (a felirat rejtve, az akadálymentes név marad),
+     az útvonal gombjai kitöltik a maradék helyet és vízszintesen görgethetők. */
+  body:has(#worksheet-view) > .worksheet-nav { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; padding-inline: 5%; }
+  body:has(#worksheet-view) > .worksheet-nav > .header-left { flex: 1 1 auto; min-width: 0; }
+  body:has(#worksheet-view) > .worksheet-nav > .header-parent { display: none; }
+  body:has(#worksheet-view) > .worksheet-nav .breadcrumbs { gap: 6px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  body:has(#worksheet-view) > .worksheet-nav .breadcrumbs > * { flex: none; }
+  body:has(#worksheet-view) > .worksheet-nav :is(.header-actions, .header-user, .header-appearance, .account) { flex: none; gap: 6px; margin: 0; }
+  body:has(#worksheet-view) > .worksheet-nav .header-button { height: 34px; padding: 0 8px; }
+  body:has(#worksheet-view) > .worksheet-nav :is(.brand, .header-actions .header-button) { font-size: 0; gap: 0; width: 34px; padding: 0; justify-content: center; }
+  body:has(#worksheet-view) > .worksheet-nav .header-button .ui-icon { width: 18px; height: 18px; }
+  /* Gombsorok: egyforma szélességű gombok rácsban, a szerkesztő/prezentáció és a letöltés külön sorban. */
+  #worksheet-view .viewer-meta { flex-direction: column; align-items: stretch; gap: 8px; }
+  #worksheet-view .viewer-meta > * { width: 100%; }
+  #worksheet-view .viewer-credits { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; }
+  #worksheet-view .viewer-meta .viewer-downloads { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
+  #worksheet-view .viewer-meta :is(.viewer-credits, .viewer-downloads) .button { width: 100%; min-width: 0; justify-content: center; padding-inline: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #worksheet-view .viewer-credits:empty { display: none; }
 }
