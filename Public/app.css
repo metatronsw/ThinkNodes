@@ -422,7 +422,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 
 /* A 3 sor pozíciógomb magassága pontosan két sor eszközgomb (2 × 32px + 4px rés). */
 .alignment-picker { display: grid; grid-template-columns: repeat(3, 22px); grid-template-rows: repeat(3, 1fr); gap: 2px; height: 68px; }
-.alignment-picker button { height: 1.6rem; padding: 0; color: inherit; background: var(--panel, white); border: 1px solid #a8b7cb; border-radius: 4px; cursor: pointer; }
+.alignment-picker button { height: auto; min-height: 0; padding: 0; color: inherit; background: var(--panel, white); border: 1px solid #a8b7cb; border-radius: 4px; cursor: pointer; }
 .alignment-picker button[aria-pressed="true"] { color: white; background: #3659b9; }
 
 .quick-search > input { position: sticky; top: 0; z-index: 1; }

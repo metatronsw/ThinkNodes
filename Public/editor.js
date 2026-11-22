@@ -1999,7 +1999,8 @@ createApp({
         const elevated = current.elevated !== true;
         if (elevated) current.parent = undefined;
         updateItem(current, "elevated", elevated ? true : undefined);
-      }, {symbol: "box-elevated", ...controlName("Kiemelés"), "aria-pressed": node.elevated === true, disabled: !!blocked(node)});
+      }, {symbol: "box-elevated", ...controlName("Kiemelés"), "aria-pressed": node.elevated === true, disabled: !!blocked(node),
+        class: inMenu ? "button" : "button option-icon"});
     }
 
     function renameFile(node, stem) {
@@ -3356,7 +3357,7 @@ createApp({
         optionPicker("Animáció", boxAnimations, value("animation", "none") ?? "none", v => change("animation", v === "none" ? undefined : v), v => icon("box-" + v)),
         h("div", {class: "property-options property-tools box-effect-options"}, [
           ...backgroundTools(), elevation(),
-          single && isImage(single) ? button("", () => fitImageAspect(single), {symbol: "aspect", disabled: !online.value,
+          single && isImage(single) ? button("", () => fitImageAspect(single), {symbol: "aspect", class: "button option-icon", disabled: !online.value,
             ...controlName("Eredeti képarány")}) : null,
           single && containerIDs.value.has(single.id) ? iconToggle("Tartalom rögzítése", !!single.locked,
             () => change("locked", single.locked ? undefined : true), icon(single.locked ? "lock" : "unlock")) : null,
