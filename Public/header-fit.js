@@ -26,6 +26,7 @@ function overflowing(nav) {
     const all = site ? [...nav.children] : [...nav.children].filter(child => !child.matches(".header-parent"));
     if (!singleLine(buttons(all))) return true;
   }
+  if (nav.classList.contains("stacked") && site) return false;  // a főoldal két soros elrendezése mindig elfér
   if (nav.classList.contains("stacked")) {
     // Munkalap fejléce: felül menü, márka, útvonal, bezárás; a főoldalon felül márka és műveletek, alul a kereső.
     const top = site ? ".header-left, .header-actions" : firstRow;
