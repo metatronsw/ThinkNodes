@@ -79,6 +79,8 @@ struct VisualTheme: Content, Equatable {
         var glass: Bool?
         var junctionSize: Double?
         var motionSpeed: Double?
+        /// Három betűtípus (CSS font-family): alap, valamint két jól eltérő választható.
+        var fonts: [String]?
     }
     var version: Int
     var id: Int
@@ -104,6 +106,16 @@ struct VisualTheme: Content, Equatable {
         && (0...0.25).contains(graphics?.lineArc ?? 0)
         && [.rectangle, .ellipse, .diamond].contains(graphics?.junction ?? .ellipse)
         && (0.1...5).contains(graphics?.motionSpeed ?? 1)
+        && (graphics?.fonts.map { $0.count == 3 && $0.allSatisfy { !$0.isEmpty && $0.count <= 200 && !$0.contains(where: { "<>\";{}".contains($0) }) } } ?? true)
+    }
+}
+
+extension VisualTheme.Graphics {
+    static let defaultFonts = ["system-ui, sans-serif", "Georgia, 'Times New Roman', serif", "'Chalkboard SE', 'Comic Sans MS', cursive"]
+    /// A doboz betűtípusa a téma három betűtípusa közül (1-től számozva).
+    func fontFamily(_ index: Int?) -> String {
+        let list = fonts ?? Self.defaultFonts
+        return list[min(max((index ?? 1) - 1, 0), list.count - 1)]
     }
 }
 

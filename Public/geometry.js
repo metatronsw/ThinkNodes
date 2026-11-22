@@ -572,10 +572,10 @@ export function labelLayout(node, blocks = []) {
   const [widthRatio, heightRatio] = shapeLabelRatios(node.shape);
   const width = node.width, height = node.height;
   const labelWidth = Math.max(12, width * widthRatio - 16);
-  const iconSpace = node.link ? 20 : 0;
+  const iconSpace = 0;  // a link felirata a doboz alatt, a dobozon kívül áll
   const previewSpace = node.link && node.link.kind !== "url" ? height * 0.5 : 0;
   const labelHeight = height * heightRatio - 12 - iconSpace - previewSpace;
-  const strong = node.bold === true;
+  const strong = false;  // a Félkövér gomb megszűnt
 
   function makeLines(base) {
     const lines = [];
@@ -588,9 +588,8 @@ export function labelLayout(node, blocks = []) {
       const columns = Math.max(2, Math.floor((labelWidth - indent) / (size * 0.65)));
       const runs = block.kind === "quote" ? [{text: "› "}, ...block.runs] : block.runs;
       wrapRuns(runs, columns, block.kind === "code").forEach(({pieces, wrapped}, row) => {
-        // Bekezdések között az üres sor egy teljes sornyi térközt ad.
-        const blockGap = index === 0 ? 0 : heading ? size * 0.35 : block.kind === "body" ? size * 1.25 : 3;
-        const gap = row === 0 ? (node.fitText ? Math.min(blockGap, base * 0.4) : blockGap) : 0;
+        // Ahány üres sor van a forrásban, annyi üres sor marad a dobozon is.
+        const gap = row === 0 ? (block.blankLines ?? 0) * base * 1.25 : 0;
         lines.push({justify: node.justified && block.kind !== "code", wrapped, runs: pieces, text: pieces.map(piece => piece.text).join(""),
           size, weight, indent, color: node.textColor, step: size * 1.25 + gap, gap});
       });
@@ -645,13 +644,10 @@ export function labelLayout(node, blocks = []) {
     offset += line.step;
     const align = line.justify || line.indent > 0 ? "left" : node.alignment ?? "center";
     const x = align === "left" ? -labelWidth / 2 + line.indent : align === "right" ? labelWidth / 2 : 0;
-    let wordSpacing;
-    if (line.justify && line.wrapped) {
-      const spaces = line.text.split(" ").length - 1;
-      const lineWidth = textWidth(line.text, line.size);
-      if (spaces && lineWidth < labelWidth - line.indent) wordSpacing = (labelWidth - line.indent - lineWidth) / spaces;
-    }
-    return {...line, x, y, anchor: {left: "start", center: "middle", right: "end"}[align], wordSpacing};
+    // Kényszerített sorkizárás: minden (nem üres) sor a doboz mindkét széléig ér (textLength, a böngésző méri).
+    const justifyWidth = line.justify && line.text.length > 1 && textWidth(line.text, line.size) < labelWidth - line.indent
+      ? labelWidth - line.indent : undefined;
+    return {...line, x, y, anchor: {left: "start", center: "middle", right: "end"}[align], justifyWidth};
   });
   return {width, height, extentX: width / 2, extentY: height / 2, overflow, lines: positioned, labelWidth, iconSpace, previewSpace};
 }

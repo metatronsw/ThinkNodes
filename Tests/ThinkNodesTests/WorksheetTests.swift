@@ -450,7 +450,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     blurred = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(blurred))
     #expect(blurred.nodes[0].backgroundMode == .blurred)
     let svg = boardSVG(blurred)
-    #expect(svg.contains(#"opacity=".99" filter="url(#box-background-blur)""#))
+    #expect(svg.contains(#"opacity=".98" filter="url(#box-background-blur)""#))
     #expect(svg.contains(#"<feGaussianBlur stdDeviation="2"/>"#))
     #expect(svg.components(separatedBy: "node-surface").count == 2)
     blurred.nodes[0].backgroundMode = .empty
@@ -520,7 +520,7 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     #expect(!svg.contains("worksheet-grid"))
     #expect(!svg.contains("<pattern"))
     #expect(svg.contains("text-anchor=\"start\""))
-    #expect(svg.contains("font-style=\"italic\" text-decoration=\"underline\""))
+    #expect(!svg.contains("text-decoration=\"underline\" font-size"), "a Dőlt/Aláhúzott gombok megszűntek")
     #expect(!svg.contains("font-style=\"normal\""), "a Dőlt gomb nem írja felül a markdown dőlt szöveget")
     #expect(svg.contains("r=\"17.000\" fill=\"#dce9ff\""))
     #expect(svg.contains("rotate(30.000)") && svg.contains(">Kapocs</text>"))
@@ -878,7 +878,8 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     #expect(saved.textJustified == true)
     #expect(saved.nodes[0].justified == true)
     let svg = boardSVG(saved)
-    #expect(svg.contains("word-spacing="))
+    // Kényszerített sorkizárás: a sorok a böngésző által kimért teljes szélességre feszülnek.
+    #expect(svg.contains("lengthAdjust=\"spacing\"") && !svg.contains("word-spacing="))
 }
 
 @Test func compactWorksheetKeysRoundTrip() throws {

@@ -758,7 +758,7 @@ assert.notEqual(emptySurface.props.stroke, "none");
 await press("Elmosott"); await save();
 assert.equal(button("Üres").props["aria-pressed"], false);
 const blurredSurface = prop("class", "node-surface", graphic("outside"));
-assert.equal(blurredSurface.props.opacity, .99);
+assert.equal(blurredSurface.props.opacity, .98);
 assert.equal(blurredSurface.props.filter, "url(#box-background-blur)");
 assert.equal(prop("class", "node-frame", graphic("outside")).props.filter, undefined);
 assert.equal(prop("id", "box-background-blur").children[0].props.stdDeviation, 2);
@@ -801,9 +801,9 @@ assert.ok(prop("href", "/icons.svg#more", control(body, "Összecsukás (csak az 
 for (const tool of ["Címsor", "Félkövér (markdown)", "Dőlt (markdown)", "Lista", "Kód", "Link (markdown)"]) assert.equal(control(body, tool), undefined, tool);
 edit(control(body, "Betűméret"), "18.7");
 prop("aria-label","Jobb oldal",body).props.onClick();
-control(body, "Dőlt").props.onClick();
+for (const removed of ["Félkövér", "Dőlt", "Aláhúzott"]) assert.equal(control(body, removed), undefined, removed + " is gone");
+control(body, "Második betűtípus").props.onClick();
 edit(labelInput(), "Törzs");
-control(body, "Aláhúzott").props.onClick();
 assert.equal(prop("aria-label", "Text háttér színválasztó"), undefined);
 const bodyLabel = () => find(n => n.tag === "tspan" && text(n) === "Törzs", graphic("outside"));
 for (let attempt = 0; !bodyLabel() && attempt < 25; attempt++) {
@@ -813,9 +813,11 @@ for (let attempt = 0; !bodyLabel() && attempt < 25; attempt++) {
 const details = bodyLabel();
 assert.ok(details, "the Markdown response renders the body label");
 assert.equal(details.props["font-size"], 19);
-assert.equal(details.props["font-style"], "italic");
+assert.equal(details.props["font-style"], undefined);
 assert.equal(details.props["text-anchor"], "end");
-assert.equal(details.props["text-decoration"], "underline");
+assert.equal(model("outside").font, 2);
+assert.equal(details.parent.props["font-family"], "Georgia, 'Times New Roman', serif");
+assert.equal(control(body, "Második betűtípus").props["aria-pressed"], true);
 const autoSize = prop("aria-label", "AutoSize", body);
 assert.equal(autoSize.parent.children[autoSize.parent.children.indexOf(autoSize) + 1], titleSize);
 autoSize.props.onClick(); await tick(); await save();
@@ -825,8 +827,7 @@ assert.equal(titleSize.props.disabled, true);
 autoSize.props.onClick(); await tick(); await save();
 assert.equal(titleSize.props.disabled, false);
 assert.equal(model("outside").fontSize, 19);
-control(body, "Dőlt").props.onClick();
-control(body, "Aláhúzott").props.onClick();
+control(body, "Alap betűtípus").props.onClick();
 edit(labelInput(), "outside\n\nTörzs");
 panel().props.onFocusout();
 await save();
@@ -1079,10 +1080,13 @@ assert.equal(model(animatedNode.id).file.alphaEnabled, false);
 await press("Alpha csatorna");
 await save();
 assert.equal(imageSurface().props.fill, "#0090ff");
-await press("Free"); await save();
-assert.equal(imageSurface(), undefined);
-assert.ok(graphicImage());
-await press("Free"); await save();
+// Képnél nincs Free/Üres; az Áttetsző és az Elmosott magára a képre hat.
+assert.equal(button("Free"), undefined);
+assert.equal(button("Üres"), undefined);
+await press("Áttetsző"); await save();
+assert.equal(model(animatedNode.id).backgroundMode, "translucent");
+assert.ok(find(n => n.tag === "div" && [n.props?.class].flat().join(" ").includes("mode-translucent"), graphic(animatedNode.id)));
+await press("Áttetsző"); await save();
 assert.equal(imageSurface().props.fill, "#0090ff");
 delete globalThis.Image;
 toggle("Escape", true); await tick();
@@ -1188,17 +1192,18 @@ assert.equal(labelLayout({...sample,fontSize:28},[{kind:"body",runs:[{text:"body
 const headings = labelLayout(sample, [1, 2, 3].map(level => ({kind: "heading", level, runs: [{text: "H" + level}]})));
 assert.deepEqual(headings.lines.map(line => line.size), [26, 21, 18]);
 assert.deepEqual(headings.lines.map(line => line.weight), [700, 700, 700]);
+// A Félkövér gomb megszűnt: a régi bold mező már nem változtat a megjelenésen.
 const strongHeading = labelLayout({...sample, bold: true}, [{kind: "heading", level: 1, runs: [{text: "H"}]}, {kind: "body", runs: [{text: "b"}]}]);
-assert.deepEqual(strongHeading.lines.map(line => line.weight), [900, 650]);
-assert.equal(strongHeading.lines[0].size, Math.round(16 * 1.6 * 1.1));
+assert.deepEqual(strongHeading.lines.map(line => line.weight), [700, 400]);
 const listed = labelLayout({...sample, alignment: "center"}, [{kind: "body", indent: 2, runs: [{text: "• mély"}]}]);
 assert.equal(listed.lines[0].anchor, "start");
 assert.ok(listed.lines[0].x > -sample.width / 2 * 0.94 + 8);
 const blocks = [{kind: "body", runs: [{text: "Text"}]}];
 const justifiedRows = labelLayout({...sample, width: 130, justified: true},
   [{kind: "body", runs: [{text: "Ez egy rövid példa több szövegsorral."}]}]).lines;
-assert.ok(justifiedRows[0].wordSpacing > 0);
-assert.equal(justifiedRows.at(-1).wordSpacing, undefined);
+// Kényszerített sorkizárás: az utolsó sor is a doboz teljes szélességéig ér.
+assert.ok(justifiedRows[0].justifyWidth > 0);
+assert.equal(justifiedRows.at(-1).justifyWidth, justifiedRows[0].justifyWidth);
 assert.equal(justifiedRows.at(-1).anchor, "start");
 const largeLabel = {...sample, width: 64, height: 40, fontSize: 80};
 const bounded = labelLayout(largeLabel, [{kind: "body", runs: [{text: "Hosszú szöveg"}]}]);
@@ -1223,7 +1228,7 @@ for (const vertical of ["top", "middle", "bottom"]) {
   }
 }
 const linked = labelLayout({...sample, link: {kind: "web", target: "a.web"}}, blocks);
-assert.ok(linked.previewSpace > 0 && linked.iconSpace > 0 && linked.lines[0].y > 0, "a presentation link reserves room for its preview");
+assert.ok(linked.previewSpace > 0 && linked.iconSpace === 0 && linked.lines[0].y > 0, "a presentation link reserves room for its preview; its caption sits below the box");
 assert.equal(labelLayout({...sample, type: "image"}, blocks).lines.length, 0);
 
 const {rebaseWorksheet} = await import("../../Public/collaboration.js");

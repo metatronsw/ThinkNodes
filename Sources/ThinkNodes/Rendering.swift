@@ -336,10 +336,10 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
     let fitText = node.fitText == true
     let blocks = canvasMarkdown(node.text)
     let labelWidth = max(12, node.width * widthRatio - 16)
-    let iconSpace: Double = node.link == nil ? 0 : 20
+    let iconSpace: Double = 0  // a link felirata a doboz alatt, a dobozon kívül áll
     let previewSpace: Double = node.link.map { $0.kind == .url ? 0 : node.height * 0.5 } ?? 0
     let labelHeight = node.height * heightRatio - 12 - iconSpace - previewSpace
-    let strong = node.bold == true
+    let strong = false  // a Félkövér gomb megszűnt
 
     func makeLines(base: Double) -> [IdeaLabelLine] {
         var lines: [IdeaLabelLine] = []
@@ -354,9 +354,8 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
             if block.kind == .quote { runs.insert(MarkdownRun(text: "› "), at: 0) }
             for (row, wrappedLine) in wrapMarkdown(runs, columns: columns, preformatted: block.kind == .code).enumerated() {
                 let pieces = wrappedLine.pieces
-                // Bekezdések között az üres sor egy teljes sornyi térközt ad.
-                let blockGap: Double = index == 0 ? 0 : heading ? size * 0.35 : block.kind == .body ? size * 1.25 : 3
-                let gap = row == 0 ? (fitText ? min(blockGap, base * 0.4) : blockGap) : 0
+                // Ahány üres sor van a forrásban, annyi üres sor marad a dobozon is.
+                let gap = row == 0 ? Double(block.blankLines ?? 0) * base * 1.25 : 0
                 lines.append(IdeaLabelLine(text: pieces.map(\.text).joined(), size: size, weight: weight,
                                            color: node.textColor, runs: pieces, gap: gap,
                                            justify: node.justified == true && block.kind != .code,
@@ -519,7 +518,7 @@ private func boxSurface(_ node: Idea, geometry: String, graphics: VisualTheme.Gr
     }
     let blurred = mode == .blurred
     let empty = mode == .empty
-    if node.isImage && mode == .solid && node.file?.alphaEnabled != false && node.file?.alphaBackground == nil { return "" }
+    if node.isImage && node.file?.alphaEnabled != false && node.file?.alphaBackground == nil { return "" }
     let image = node.isImage
     let locked = node.isBox && node.locked == true
     let glass = graphics?.glass == true && mode == .solid && !image
@@ -532,7 +531,7 @@ private func boxSurface(_ node: Idea, geometry: String, graphics: VisualTheme.Gr
     let effect = glass ? " fill-opacity=\".66\"" : mode == .translucent ? " fill-opacity=\".75\"" : ""
     let pointer = empty && interactive ? " pointer-events=\"fill\"" : ""
     if blurred {
-        return "<\(geometry) class=\"node-surface\" fill=\"\(escaped(fill))\" opacity=\".99\" filter=\"url(#box-background-blur)\" stroke=\"none\"/>"
+        return "<\(geometry) class=\"node-surface\" fill=\"\(escaped(fill))\" opacity=\".98\" filter=\"url(#box-background-blur)\" stroke=\"none\"/>"
             + "<\(geometry) class=\"node-frame\" fill=\"none\" stroke=\"\(escaped(node.border))\" stroke-width=\"\(width)\"\(closed)\(dash)/>"
     }
     let surface = "<\(geometry) class=\"node-surface\" fill=\"\(empty ? "none" : escaped(fill))\" stroke=\"\(stroke)\" stroke-width=\"\(width)\"\(closed)\(dash)\(effect)\(pointer)/>"
@@ -581,7 +580,7 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
     case .bottom: 1
     default: 0.5
     }
-    let strong = node.bold == true
+    let strong = false  // a Félkövér/Dőlt/Aláhúzott gombok megszűntek; a markdown formázás marad
     let extra = drawing.available - drawing.lines.reduce(0) { $0 + $1.step }
     var offset = -(drawing.available + drawing.iconSpace + drawing.previewSpace) / 2 + drawing.previewSpace
     let spans = drawing.lines.map { line in
@@ -594,15 +593,10 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
         case .center: (textX, anchor) = (0, "middle")
         }
         var style = ""
-        if line.justify && line.wrapped {
-            let spaces = line.text.filter { $0 == " " }.count
-            let width = textWidth(line.text, size: line.size)
-            if spaces > 0 && width < labelWidth - line.indent {
-                style += " word-spacing=\"\(number((labelWidth - line.indent - width) / Double(spaces)))px\""
-            }
+        // Kényszerített sorkizárás: minden (nem üres) sor a doboz mindkét széléig ér; a böngésző méri ki a szélességet.
+        if line.justify && line.text.count > 1 && textWidth(line.text, size: line.size) < labelWidth - line.indent {
+            style += " textLength=\"\(number(labelWidth - line.indent))\" lengthAdjust=\"spacing\""
         }
-        if node.italic == true { style += " font-style=\"italic\"" }
-        if node.underline == true { style += " text-decoration=\"underline\"" }
         let baseline = top + line.gap + line.size * (1.25 / 2 + 0.33)
         offset += line.step
         let content = line.runs.map { run in
@@ -622,7 +616,7 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
             """
     }.joined()
     let inset = node.shape.labelRatios.link
-    let marker = node.link.map { linkMarker($0, node: node, bottom: y * inset - 4, width: node.width * inset, siteHost: siteHost) } ?? ""
+    let marker = node.link.map { linkMarker($0, node: node, bottom: y + 20, width: node.width, siteHost: siteHost) } ?? ""
     let previewImage = preview.map { url in
         let top = -y * inset + 6, previewHeight = drawing.previewSpace - 6
         return "<image class=\"node-link-preview\" href=\"\(escaped(url))\" x=\"\(number(-x * inset + 6))\" y=\"\(number(top))\" width=\"\(number(max(1, node.width * inset - 12)))\" height=\"\(number(max(1, previewHeight)))\" preserveAspectRatio=\"xMidYMid meet\" pointer-events=\"none\"/>"
@@ -630,7 +624,7 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
     let contents = """
         \(elevationShadow(node, geometry: geometry, graphics: graphics))
         \(boxSurface(node, geometry: geometry, graphics: graphics, interactive: interactive))
-        \(previewImage)<svg x="\(number(-x))" y="\(number(-y))" width="\(number(width))" height="\(number(height))" viewBox="\(number(-x)) \(number(-y)) \(number(width)) \(number(height))" overflow="hidden" pointer-events="none"><text class="node-text" font-family="system-ui, sans-serif" pointer-events="none">\(spans)</text></svg>
+        \(previewImage)<svg x="\(number(-x))" y="\(number(-y))" width="\(number(width))" height="\(number(height))" viewBox="\(number(-x)) \(number(-y)) \(number(width)) \(number(height))" overflow="hidden" pointer-events="none"><text class="node-text" font-family="\(escaped((graphics ?? VisualTheme.Graphics()).fontFamily(node.font)))" pointer-events="none">\(spans)</text></svg>
         \(marker)
         """
     return """
@@ -835,7 +829,7 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
     let underneath = below.isEmpty ? "" :
         "<foreignObject class=\"node-outside\" x=\"\(left)\" y=\"\(number(top + node.height))\" width=\"\(number(node.width))\" height=\"400\"><div \(ink) class=\"node-file-outside node-below\">\(below)</div></foreignObject>"
     return """
-        \(translated)\(above)<foreignObject x="\(left)" y="\(number(top))" width="\(number(node.width))" height="\(number(node.height))"><div xmlns="http://www.w3.org/1999/xhtml" data-file-ink="\(escaped(node.textColor))" style="color:\(escaped(node.textColor))" class="node-file node-\(node.root)"><div class="node-body">\(content)</div></div></foreignObject>\(underneath)
+        \(translated)\(above)<foreignObject x="\(left)" y="\(number(top))" width="\(number(node.width))" height="\(number(node.height))"><div xmlns="http://www.w3.org/1999/xhtml" data-file-ink="\(escaped(node.textColor))" style="color:\(escaped(node.textColor))" class="node-file node-\(node.root) mode-\(node.resolvedBackgroundMode.rawValue)"><div class="node-body">\(content)</div></div></foreignObject>\(underneath)
         """
 }
 

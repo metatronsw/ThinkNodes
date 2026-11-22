@@ -121,6 +121,11 @@
     "motionSpeed": 0.8,
     "junction": "ellipse",
     "grid": "dots",
-    "glass": true
+    "glass": true,
+    "fonts": [
+      "system-ui, sans-serif",
+      "Didot, 'Bodoni 72', Georgia, serif",
+      "Menlo, 'SF Mono', Consolas, monospace"
+    ]
   }
 }

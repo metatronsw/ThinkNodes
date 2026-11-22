@@ -24,6 +24,8 @@ struct MarkdownBlock: Codable, Sendable {
     var level: Int? = nil
     /// Listaelem mélysége (1 = legfelső szint).
     var indent: Int? = nil
+    /// A blokk előtti üres sorok száma a forrásban: ahány sortörés, annyi üres sor marad a dobozon.
+    var blankLines: Int? = nil
 }
 
 func canvasMarkdown(_ source: String) -> [MarkdownBlock] {
@@ -59,7 +61,8 @@ func canvasMarkdown(_ source: String) -> [MarkdownBlock] {
                 runs.append(MarkdownRun(text: "\n", format: format))
                 return
             case CMARK_NODE_SOFTBREAK:
-                runs.append(MarkdownRun(text: " ", format: format))
+                // A sor végi sortörés új sort kezd (nem olvad össze a következő sorral).
+                runs.append(MarkdownRun(text: "\n", format: format))
                 return
             case CMARK_NODE_STRONG: format.bold = true
             case CMARK_NODE_EMPH: format.italic = true
@@ -70,6 +73,16 @@ func canvasMarkdown(_ source: String) -> [MarkdownBlock] {
         }
 
         var blocks: [MarkdownBlock] = []
+        var previousEnd = 0
+        // Az új blokk elé beírja, hány üres sor volt a forrásban az előző blokk vége óta.
+        func place(_ node: UnsafeMutablePointer<cmark_node>, _ item: MarkdownBlock) {
+            var item = item
+            let start = Int(cmark_node_get_start_line(node))
+            let blank = max(0, start - previousEnd - 1)
+            if blank > 0 { item.blankLines = blank }
+            previousEnd = max(previousEnd, Int(cmark_node_get_end_line(node)))
+            blocks.append(item)
+        }
         func block(_ node: UnsafeMutablePointer<cmark_node>, depth: Int, quote: Bool = false, list: Int = 0) {
             guard depth < 64 else { return }
             let type = cmark_node_get_type(node)
@@ -79,14 +92,14 @@ func canvasMarkdown(_ source: String) -> [MarkdownBlock] {
                 inline(node, format: MarkdownFormat(), depth: 0, runs: &runs)
                 if !runs.isEmpty {
                     let heading = type == CMARK_NODE_HEADING
-                    blocks.append(MarkdownBlock(kind: heading ? .heading : quote ? .quote : .body, runs: runs,
-                                                level: heading ? Int(cmark_node_get_heading_level(node)) : nil,
-                                                indent: list > 0 ? list : nil))
+                    place(node, MarkdownBlock(kind: heading ? .heading : quote ? .quote : .body, runs: runs,
+                                              level: heading ? Int(cmark_node_get_heading_level(node)) : nil,
+                                              indent: list > 0 ? list : nil))
                 }
             case CMARK_NODE_CODE_BLOCK:
-                blocks.append(MarkdownBlock(kind: .code, runs: [MarkdownRun(text: literal(node), format: MarkdownFormat(code: true))]))
+                place(node, MarkdownBlock(kind: .code, runs: [MarkdownRun(text: literal(node), format: MarkdownFormat(code: true))]))
             case CMARK_NODE_THEMATIC_BREAK:
-                blocks.append(MarkdownBlock(kind: .body, runs: [MarkdownRun(text: "────")]))
+                place(node, MarkdownBlock(kind: .body, runs: [MarkdownRun(text: "────")]))
             case CMARK_NODE_LIST:
                 let ordered = cmark_node_get_list_type(node) == CMARK_ORDERED_LIST
                 var index = Int(cmark_node_get_list_start(node))

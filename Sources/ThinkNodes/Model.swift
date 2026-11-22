@@ -182,6 +182,8 @@ struct Idea: Codable, Equatable, Sendable {
     var bold: Bool?
     var italic: Bool?
     var underline: Bool?
+    /// A téma három betűtípusa közül a választott (1 = alap; nil = 1).
+    var font: Int?
     var justified: Bool?
     var alignment: LabelAlignment = .center
     var verticalAlignment: VerticalAlignment?
@@ -195,7 +197,7 @@ struct Idea: Codable, Equatable, Sendable {
     var elevated: Bool?
 
     private enum CodingKeys: String, CodingKey {
-        case id, type, text, file, hideText, fitText, shape, fill, backgroundMode, animation, bold, italic, underline, justified, link
+        case id, type, text, file, hideText, fitText, shape, fill, backgroundMode, animation, bold, italic, underline, font, justified, link
         case angle, parent, container, locked, elevated
         case position = "pos", width = "w", height = "h", textColor = "textCol"
         case fontSize = "fontSz", alignment = "align", verticalAlignment = "vAlign"
@@ -220,7 +222,7 @@ struct Idea: Codable, Equatable, Sendable {
         guard NodeTypes.isKnown(type), validSlug(id), position.isValid, text.utf8.count <= 100_000,
               isJunction ? (4...128).contains(width) && height == width : (64...880).contains(width) && (40...680).contains(height),
               elevated != true || (parent == nil && !isJunction),
-              (1...10000).contains(fontSize), fontSize.rounded() == fontSize,
+              (1...10000).contains(fontSize), fontSize.rounded() == fontSize, (1...3).contains(font ?? 1),
               [fill, textColor, border].allSatisfy(validColor),
               link.map({ $0.isValid && has("link") }) ?? true,
               angle.map({ $0.isFinite && isJunction }) ?? true, container != true || isBox,
@@ -1572,6 +1574,7 @@ extension Idea {
         bold = try? fields.decode(Bool.self, forKey: .bold)
         italic = try? fields.decode(Bool.self, forKey: .italic)
         underline = try? fields.decode(Bool.self, forKey: .underline)
+        font = try? fields.decode(Int.self, forKey: .font)
         justified = try? fields.decode(Bool.self, forKey: .justified)
         alignment = (try? fields.decode(LabelAlignment.self, forKey: .alignment)) ?? .center
         verticalAlignment = try? fields.decode(VerticalAlignment.self, forKey: .verticalAlignment)

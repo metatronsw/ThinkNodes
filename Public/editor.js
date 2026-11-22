@@ -48,6 +48,12 @@ const mode = computed(() => {
   return activeTheme.value?.modes.includes(wanted) ? wanted : activeTheme.value?.modes[0] ?? "light";
 });
 const graphics = computed(() => activeTheme.value?.graphics ?? {});
+// A téma három betűtípusa (Theme.swift fontFamily): 1 = alap, 2 és 3 jól eltérő.
+const defaultFonts = ["system-ui, sans-serif", "Georgia, 'Times New Roman', serif", "'Chalkboard SE', 'Comic Sans MS', cursive"];
+function fontFamily(index) {
+  const list = graphics.value.fonts ?? defaultFonts;
+  return list[Math.min(Math.max((index ?? 1) - 1, 0), list.length - 1)];
+}
 useWorksheetGeometry(() => graphics.value);
 const fallbackColors = ["#f5f8fc","#182335","#dce9ff","#526982","#304ccc","#478666","#f3ae49","#e95c59"];
 function paint(value, role) {
@@ -262,7 +268,7 @@ function shape(node, linked, dropTarget = false) {
   const image = isImage(node) ? node.file : null;
   const mode = backgroundMode(node);
   const blurred = mode === "blurred", empty = mode === "empty";
-  const free = mode === "free" || (mode === "solid" && image && image.alphaEnabled !== false && image.alphaBackground == null);
+  const free = mode === "free" || (image && image.alphaEnabled !== false && image.alphaBackground == null);
   if (dropTarget) return h(tag, {...geometry, class: "drop-target", "data-container-candidate": "",
     fill: empty || free ? "none" : paint(node.fill, 2), "pointer-events": "fill",
     stroke: "#08796c", "stroke-width": 5, "stroke-dasharray": "0 8", "stroke-linecap": "round",
@@ -278,9 +284,9 @@ function shape(node, linked, dropTarget = false) {
     "pointer-events": empty ? "fill" : undefined, class: "node-surface",
     "stroke-width": locked ? 6.4 : glass ? 3 : 1.6,
     "data-locked-outline": locked ? "" : undefined, "stroke-dasharray": linked && isBox(node) ? "7 4" : undefined,
-    opacity: blurred ? .99 : undefined, filter: blurred ? "url(#box-background-blur)" : undefined};
+    opacity: blurred ? .98 : undefined, filter: blurred ? "url(#box-background-blur)" : undefined};
   if (blurred) return [
-    h(tag, {...geometry, fill, opacity: .99, filter: "url(#box-background-blur)", stroke: "none", class: "node-surface"}),
+    h(tag, {...geometry, fill, opacity: .98, filter: "url(#box-background-blur)", stroke: "none", class: "node-surface"}),
     h(tag, {...geometry, fill: "none", stroke: frame, "stroke-width": 1.6, class: "node-frame", "pointer-events": "none"}),
   ];
   if (glass) return [
@@ -432,14 +438,17 @@ createApp({
     }
     const nodeLayouts = new WeakMap();
     const emptyBlocks = [];
+    // Gépelés közben az új szöveg feldolgozásáig az objektum utolsó ismert szövege marad látható
+    // (azonosító szerint, így akkor sem villan üresre, ha a csomópont objektuma kicserélődik).
+    const lastBlocksById = new Map();
     function nodeLayout(node) {
       let layout = nodeLayouts.get(node);
       if (!layout) {
-        let lastBlocks = emptyBlocks;
         const text = computed(() => {
-          if (!node.text) lastBlocks = emptyBlocks;
-          else lastBlocks = canvasText.value.get(node.text) ?? lastBlocks;
-          return lastBlocks;
+          if (!node.text) { lastBlocksById.delete(node.id); return emptyBlocks; }
+          const blocks = canvasText.value.get(node.text) ?? lastBlocksById.get(node.id) ?? emptyBlocks;
+          lastBlocksById.set(node.id, blocks);
+          return blocks;
         });
         layout = computed(() => labelLayout(node, text.value));
         nodeLayouts.set(node, layout);
@@ -1785,7 +1794,13 @@ createApp({
     }
 
     // A téglalap által érintett (vagy teljesen tartalmazott) objektumok; a húzás közbeni kiemelés is ezt használja.
+    // Balról jobbra / fentről lefelé húzva csak a teljesen bent lévő objektumok, jobbról balra vagy
+    // alulról felfelé húzva minden, ami a téglalapot akár csak érinti (Ctrl-lal is kérhető).
+    function rectangleTouches(drag) {
+      return !!drag.touching || drag.point.x < drag.initial.x || drag.point.y < drag.initial.y;
+    }
     function rectangleMembers(drag) {
+      drag = {...drag, touching: rectangleTouches(drag)};
       const box = rectangle(drag.initial, drag.point);
       const right = box.x + box.width, bottom = box.y + box.height;
       const inside = p => p.x >= box.x && p.x <= right && p.y >= box.y && p.y <= bottom;
@@ -2357,6 +2372,12 @@ createApp({
       if (!size?.w || !size?.h) { problem.value = "A kép mérete még nem ismert."; return; }
       setNodeHeight(node, Math.round(node.width * size.h / size.w));
     }
+    // Inaktív, ha a teljes kép látszik (a doboz aránya megegyezik a képével), vagy még nem ismert a kép mérete.
+    function imageAspectFits(node) {
+      const size = imageSizes.value.get(node.file.asset);
+      if (!size?.w || !size?.h) return true;
+      return Math.abs(node.height - node.width * size.h / size.w) < 1;
+    }
     function setNodeHeight(node, height) {
       const current = nodeMap.value.get(node.id);
       if (current && !occupied(current.id)) { current.height = height; modified(); }
@@ -2429,6 +2450,16 @@ createApp({
       const el = e.currentTarget;
       if (el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth) e.stopPropagation();
     };
+    // A görgethető tartalom (pl. CSV) bárhol megfogva mozgatható; csak a görgetősávokon (a jobb és alsó
+    // ~14px-es sávban, ha van mit görgetni) marad a görgetés.
+    const scrollbarPress = e => {
+      const el = e.currentTarget, bounds = el.getBoundingClientRect();
+      const scale = bounds.width / (el.offsetWidth || 1), band = 14;
+      const x = (e.clientX - bounds.left) / scale, y = (e.clientY - bounds.top) / scale;
+      const vertical = el.scrollHeight > el.clientHeight && x >= el.offsetWidth - band;
+      const horizontal = el.scrollWidth > el.clientWidth && y >= el.offsetHeight - band;
+      if (vertical || horizontal) e.stopPropagation();
+    };
 
     function renderFileText(node) {
       const text = fileTexts.value.get(fileTextKey(node));
@@ -2457,7 +2488,9 @@ createApp({
           class: file.asset.toLowerCase().endsWith(".svg") ? "is-svg" : undefined,
           onLoad: event => {
             detectImageAlpha(event, file.asset);
-            imageSizes.value.set(file.asset, {w: event.target.naturalWidth, h: event.target.naturalHeight});
+            const known = imageSizes.value.get(file.asset);
+            if (known?.w !== event.target.naturalWidth || known?.h !== event.target.naturalHeight)
+              imageSizes.value = new Map(imageSizes.value).set(file.asset, {w: event.target.naturalWidth, h: event.target.naturalHeight});
           }});
       } else if (root === "audio") {
         content = h("div", {"data-audio-player": "", class: "node-audio",
@@ -2470,7 +2503,7 @@ createApp({
         ]);
       } else if (root === "text") {
         content = h("div", {class: ["node-note", {"with-fold": backgroundMode(node) === "solid"}], style: {fontSize: (node.fontSize ?? 13) + "px"},
-          onPointerdown: stopScroll, onWheel: stopScroll},
+          onPointerdown: scrollbarPress, onWheel: stopScroll},
           [renderFileText(node)]);
       } else {
         const ext = (file.filename ?? file.asset).split(".").pop().toUpperCase();
@@ -2493,7 +2526,7 @@ createApp({
           h("div", {class: "node-file-outside node-above", style: ink}, [h("header", {class: "node-file-name"}, [renderFileDownload(node)])]),
         ]) : null,
         h("foreignObject", {x: left, y: top, width: node.width, height: node.height}, [
-          h("div", {class: ["node-file", "node-" + root], style: ink}, [h("div", {class: "node-body"}, [content])]),
+          h("div", {class: ["node-file", "node-" + root, "mode-" + backgroundMode(node)], style: ink}, [h("div", {class: "node-body"}, [content])]),
         ]),
         marker || comment ? h("foreignObject", {class: "node-outside", x: left, y: -top, width: node.width, height: belowSpace}, [
           h("div", {class: "node-file-outside node-below", style: ink}, [marker, comment]),
@@ -2504,9 +2537,10 @@ createApp({
     function renderLinkMarker(node, destination) {
       const [, , inset] = shapeLabelRatios(node.shape);
       const caption = linkCaption(node.link);
-      const available = Math.max(12, node.width * inset - 22);
+      // A link felirata a doboz alatt, a dobozon kívül áll.
+      const available = Math.max(12, node.width - 22);
       const shown = Math.min(available, textWidth(caption, 13));
-      const left = -(shown + 18) / 2, bottom = node.height / 2 * inset - 4;
+      const left = -(shown + 18) / 2, bottom = node.height / 2 + 20;
       const color = paint(node.textColor, 1);
       const iconPath = node.link.kind === "web" ? linkIcons.web : linkIcons[destination?.kind ?? "worksheet"];
       const open = e => { e.preventDefault(); e.stopPropagation(); if (destination) followBoxLink(destination); };
@@ -2535,8 +2569,8 @@ createApp({
       const [, , inset] = shapeLabelRatios(node.shape);
       const [outline, dimensions] = selectionOutline(junction ? graphics.value.junction ?? "ellipse" : drawn.shape, drawn.width, drawn.height);
       const snapTarget = (preview.value?.target ?? junctionTarget.value) === node.id;
-      const strong = node.bold === true;
-      const labels = layout.lines.length ? h("text", {class: "node-text", "font-family": "system-ui, sans-serif", "pointer-events": "none"},
+      const strong = false;  // a Félkövér/Dőlt/Aláhúzott gombok megszűntek; a markdown formázás marad
+      const labels = layout.lines.length ? h("text", {class: "node-text", "font-family": fontFamily(node.font), "pointer-events": "none"},
           layout.lines.map(line => h("tspan", {
             "data-body-row": "",
             "pointer-events": "visiblePainted", cursor: alt.value && ctrl.value ? "text" : undefined,
@@ -2552,8 +2586,7 @@ createApp({
             },
             x: line.x + (textDrag ? textDrag.delta.x : 0),
             y: line.y + (textDrag ? textDrag.delta.y : 0), "text-anchor": line.anchor,
-            "font-style": node.italic ? "italic" : undefined, "text-decoration": node.underline ? "underline" : undefined,
-            "word-spacing": line.wordSpacing ? line.wordSpacing + "px" : undefined, fill: paint(line.color, 1), "font-size": line.size, "font-weight": line.weight,
+            textLength: line.justifyWidth, lengthAdjust: line.justifyWidth ? "spacing" : undefined, fill: paint(line.color, 1), "font-size": line.size, "font-weight": line.weight,
           }, line.runs.map(run => {
             const format = run.format || {};
             if (!format.bold && !format.italic && !format.code && !format.link) return run.text;
@@ -2668,7 +2701,7 @@ createApp({
       const targets = mine ? activeHandles : handles;
       targets.push(endpointHandle(original, "source", from), endpointHandle(original, "target", to));
       const animatedArrows = edge.animated && edge.appearance === "thick";
-      const local = mine || batch.value?.edges.has(edge.id);
+      const local = mine || batch.value?.edges.has(edge.id) || marqueeHits.value?.edges.has(edge.id);
       const selectionColor = local ? selectionTint() :
         peers.value.find(peer => !peer.mine && peer.edge === edge.id)?.color;
       // Kijelöléskor a vonal és a nyilak megőrzik az eredeti színüket; a felhasználó színű glow az eredeti alakot követi.
@@ -2866,6 +2899,7 @@ createApp({
             shown ? h("g", {"pointer-events": "none"}, [h("path", shown.stroke),
               renderArrow(shown.ends.source, shown.paint.color), renderArrow(shown.ends.target, shown.paint.color)]) : null,
             gesture.value?.type === "rectangle" ? h("rect", {class: "marquee", ...rectangle(gesture.value.initial,gesture.value.point),
+              "stroke-dasharray": rectangleTouches(gesture.value) ? "6 4" : undefined,
               fill: "#4168e922", stroke: "#4168e9", "vector-effect": "non-scaling-stroke", "pointer-events": "none"}) : null,
             mouse ? h("g", {class: "peer-cursors", "data-mouse-layer": ""}) : null,
           ]),
@@ -3250,8 +3284,9 @@ createApp({
         nodes.some(isImage) ? null : colorPicker("Háttér", value("fill", 2),
           v => setBackground(mode === "free" ? "solid" : mode, v), nodes.map(n => n.id).join(",") + "/fill", false, true, 2,
           {transparent: mode === "free"}),
-        iconToggle("Free", mode === "free", () => setBackground(mode === "free" ? "solid" : "free"), icon("box-free")),
-        iconToggle("Üres", mode === "empty", () => setBackground(mode === "empty" ? "solid" : "empty"), icon("box-empty")),
+        // Képnél a Free és az Üres értelmetlen; az Elmosott és az Áttetsző magára a képre hat.
+        nodes.some(isImage) ? null : iconToggle("Free", mode === "free", () => setBackground(mode === "free" ? "solid" : "free"), icon("box-free")),
+        nodes.some(isImage) ? null : iconToggle("Üres", mode === "empty", () => setBackground(mode === "empty" ? "solid" : "empty"), icon("box-empty")),
         iconToggle("Elmosott", mode === "blurred", () => setBackground(mode === "blurred" ? "solid" : "blurred"), icon("box-blur")),
         iconToggle("Áttetsző", mode === "translucent", () => setBackground(mode === "translucent" ? "solid" : "translucent"), icon("box-background")),
       ];
@@ -3292,23 +3327,23 @@ createApp({
       if (common.has("text")) {
         const fontSize = numeric(value("fontSize", 16), v => change("fontSize", Math.round(v)), 1, 10000,
           {...controlName("Betűméret"), step: 1, clampValue: true, disabled: nodes.every(n => n.fitText)});
-        const toggle = (key, label, symbol) => iconToggle(label, nodes.every(n => n[key] === true), () => {
-          const on = !nodes.every(n => n[key] === true);
-          change(key, on ? true : undefined);
-        }, icon(symbol));
+        const fontButton = (index, label) => iconToggle(label, nodes.every(n => (n.font ?? 1) === index),
+          () => change("font", index === 1 ? undefined : index),
+          h("span", {class: "font-sample", style: {fontFamily: fontFamily(index)}}, "Aa"));
         const justified = nodes.every(n => n.justified === true);
         panels.push(group("Text", [
           single ? markdownEditor(single.text ?? "", v => change("text", v), 6, "Text", true) : null,
           h("div", {class: "typography-tools"}, [
-            propertyTools(
+            h("div", {class: "typography-rows"}, [propertyTools(
               iconToggle("AutoSize", nodes.every(n => n.fitText), () => change("fitText", !nodes.every(n => n.fitText) || undefined),
                 optionSymbol("path", {d: "M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M8 16l4-8 4 8m-6.5-3h5"})),
               fontSize,
+              fontButton(1, "Alap betűtípus"), fontButton(2, "Második betűtípus"), fontButton(3, "Harmadik betűtípus"),
+            ), propertyTools(
               color("Szövegszín", "textColor", 1),
-              toggle("bold", "Félkövér", "bold"), toggle("italic", "Dőlt", "italic"), toggle("underline", "Aláhúzott", "underline"),
               iconToggle("Sorkizárás", justified, () => change("justified", justified ? undefined : true), icon(justified ? "justify" : "text-" + value("alignment", "center"))),
               iconToggle("Összecsukás (csak az első sor)", nodes.every(n => n.hideText), () => change("hideText", nodes.every(n => n.hideText) ? undefined : true), icon("more")),
-            ),
+            )]),
             h("div", {class: "alignment-picker", role: "group", "aria-label": "Igazítás"},
               alignmentPositions.map(([vertical, horizontal, label, symbol]) => h("button", {
                 type: "button", ...controlName(label),
@@ -3364,7 +3399,7 @@ createApp({
         optionPicker("Animáció", boxAnimations, value("animation", "none") ?? "none", v => change("animation", v === "none" ? undefined : v), v => icon("box-" + v)),
         h("div", {class: "property-options property-tools box-effect-options"}, [
           ...backgroundTools(), elevation(),
-          single && isImage(single) ? button("", () => fitImageAspect(single), {symbol: "aspect", class: "button option-icon", disabled: !online.value,
+          single && isImage(single) ? button("", () => fitImageAspect(single), {symbol: "aspect", class: "button option-icon", disabled: !online.value || imageAspectFits(single),
             ...controlName("Eredeti képarány")}) : null,
           single && containerIDs.value.has(single.id) ? iconToggle("Tartalom rögzítése", !!single.locked,
             () => change("locked", single.locked ? undefined : true), icon(single.locked ? "lock" : "unlock")) : null,
@@ -3385,7 +3420,7 @@ createApp({
         const kindLabel = linkKinds.find(([kind]) => kind === single.link.kind)?.[1] ?? "Link";
         panels.push(h("fieldset", {class: "property-group stack link-group"}, [
           h("legend", [h("span", "Link · " + kindLabel)]),
-          h("div", {class: "property-inline"}, [
+          h("div", {class: "link-row"}, [
             single.link.kind === "web" ? h("span", {class: "link-target"}, single.link.target) :
               h("input", {"aria-label": "Link célja", value: single.link.target, maxlength: 2048,
                 onChange: event => {
@@ -3395,8 +3430,8 @@ createApp({
                   change("link", {kind: single.link.kind, target});
                 }}),
             single.link.kind === "web" ? button("", () => transfer(() => openPresentationPicker(path, csrf, item => change("link", {kind: "web", target: item.reference}))),
-              {symbol: "folder", ...controlName("Mappa kiválasztása"), disabled: !online.value}) : null,
-            destination ? button("", () => followBoxLink(destination), {symbol: single.link.kind === "url" ? "website" : "right", ...controlName("Megnyitás")}) : null,
+              {symbol: "folder", class: "button option-icon", ...controlName("Mappa kiválasztása"), disabled: !online.value}) : null,
+            destination ? button("", () => followBoxLink(destination), {symbol: single.link.kind === "url" ? "website" : "right", class: "button option-icon", ...controlName("Megnyitás")}) : null,
             h("button", {type: "button", class: "button option-icon link-remove", ...controlName("Link törlése"),
               onClick: () => removeLink(single)}, [icon("close")]),
           ]),

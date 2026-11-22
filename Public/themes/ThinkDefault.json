@@ -220,6 +220,11 @@
     "junctionSize": 12,
     "motionSpeed": 1,
     "junction": "ellipse",
-    "grid": "dots"
+    "grid": "dots",
+    "fonts": [
+      "system-ui, sans-serif",
+      "Georgia, 'Times New Roman', serif",
+      "'Chalkboard SE', 'Comic Sans MS', cursive"
+    ]
   }
 }
