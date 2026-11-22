@@ -31,12 +31,16 @@ import VaporTesting
     try write("body{color:red}", prezi, "css/main.css")
     try write("<title>Nested slide</title>", prezi, "slides/index.html")
     try write("0123456789", prezi, "clip.webm")
+    try write("export-screenshot", prezi, "screen.png")
     try write("hidden", prezi, ".private")
     try write(#"{"guestReadable":true}"#, prezi, ".settings.json")
     try write(#"{"guestReadable":false}"#, nested.deletingLastPathComponent(), ".settings.json")
     try write(#"{"guestReadable":true}"#, nested, ".settings.json")
     try write("nested-private", nested, "index.html")
     try write("private-presentation", other, "index.html")
+    let exported = root.appendingPathComponent("demoproject/export.web")
+    try directory.createDirectory(at: exported, withIntermediateDirectories: true)
+    try write("<title>Stitch export</title>", exported, "code.html")
     try write("window.protectedResource = true;", other, "app.js")
     try write(#"{"passwordHash":"\#(hash)"}"#, other, ".settings.json")
     try write("outside-secret", root, "outside.txt")
@@ -48,7 +52,7 @@ import VaporTesting
                         position: Point(x: 0, y: 0))]
     _ = try store.update(project, worksheet: board, user: owner)
 
-    try await withApp(configure: { app in configure(app, store: store) }) { app in
+    try await withApp(configure: { app in configure(app, store: store, secureCookies: true) }) { app in
         let browser = try app.testing()
         let base = "/demoproject/web/prezi/"
         let index = try await browser.sendRequest(.GET, base + "index.html")
@@ -59,8 +63,19 @@ import VaporTesting
         #expect(csp.contains("sandbox allow-scripts") && !csp.contains("allow-same-origin"))
         let directoryIndex = try await browser.sendRequest(.GET, String(base.dropLast()))
         #expect(directoryIndex.headers.first(name: .location) == base)
+        #expect(csp.contains("https:") && csp.contains("'unsafe-eval'"))
+        let hosted = try await browser.sendRequest(.GET, base, headers: ["Host": "192.168.1.20:8080"])
+        #expect(hosted.headers.first(name: "Content-Security-Policy")?.contains("img-src 'self' http://192.168.1.20:8080 ") == true)
+        #expect(csp.contains("script-src") && csp.contains("frame-ancestors 'none'"))
+        let export = try await browser.sendRequest(.GET, "/demoproject/web/export/")
+        #expect(export.status == .ok && export.body.string.contains("Stitch export"))
         let slide = try await browser.sendRequest(.GET, base + "slides/")
         #expect(slide.status == .ok && slide.body.string.contains("Nested slide"))
+        let preview = try await browser.sendRequest(.GET, base + "_tn-preview")
+        #expect(preview.status == .ok && preview.body.string == "export-screenshot")
+        #expect(preview.headers.first(name: .contentType) == "image/png")
+        try write("preferred-screenshot", prezi, "preview.png")
+        #expect(try await browser.sendRequest(.GET, base + "_tn-preview").body.string == "preferred-screenshot")
         let css = try await browser.sendRequest(.GET, base + "css/main.css")
         #expect(css.status == .ok && css.body.string == "body{color:red}")
         #expect(css.headers.first(name: .contentType)?.hasPrefix("text/css") == true)
@@ -106,5 +121,41 @@ import VaporTesting
         let revokedResource = try await browser.sendRequest(.GET, assetURL, headers: ["Cookie": String(webCookie.split(separator: ";")[0])])
         #expect(revokedResource.status == .unauthorized)
 
+    }
+}
+
+@Test func protectedPresentationAssetsLoadOverPlainHTTP() async throws {
+    let directory = FileManager.default
+    let root = directory.temporaryDirectory.appendingPathComponent("thinknodes-web-http-\(UUID())")
+    defer { try? directory.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    let hash = try Bcrypt.hash("owner-password", cost: 4)
+    try store.setUser(name: "owner", role: .admin, passwordHash: hash)
+    let owner = try #require(try store.user(named: "owner"))
+    let project = try WorksheetPath(["lan"])
+    _ = try store.open(project, user: owner)
+    let prezi = root.appendingPathComponent("lan/prezi.web")
+    try directory.createDirectory(at: prezi, withIntermediateDirectories: true)
+    try Data("<!doctype html><img src=\"pic.png\">".utf8).write(to: prezi.appendingPathComponent("index.html"))
+    try Data("png-bytes".utf8).write(to: prezi.appendingPathComponent("pic.png"))
+
+    try await withApp(configure: { app in configure(app, store: store, secureCookies: false) }) { app in
+        let browser = try app.testing()
+        let login = try await browser.sendRequest(.GET, "/login")
+        let cookie = try #require(login.headers.first(name: .setCookie)).split(separator: ";")[0]
+        let csrf = try #require(login.body.string.components(separatedBy: #"name="csrf" value=""#).last).split(separator: "\"")[0]
+        let signIn = try await browser.sendRequest(.POST, "/login", headers: ["Cookie": String(cookie)]) { request in
+            try request.content.encode(["csrf": String(csrf), "name": "owner", "password": "owner-password", "next": "/"], as: .urlEncodedForm)
+        }
+        let session = (signIn.headers.first(name: .setCookie)?.split(separator: ";")[0]).map(String.init) ?? String(cookie)
+        let page = try await browser.sendRequest(.GET, "/lan/web/prezi/", headers: ["Cookie": session])
+        #expect(page.status == .ok)
+        #expect(!page.headers[.setCookie].contains { $0.hasPrefix("thinknodes_web_asset=") })
+        let basePart = try #require(page.body.string.components(separatedBy: #"<base href=""#).dropFirst().first)
+        let assetURL = String(basePart.split(separator: "\"")[0]) + "pic.png"
+        // A sandboxed page sends no cookies on plain HTTP; the session-bound lease alone must work.
+        let image = try await browser.sendRequest(.GET, assetURL)
+        #expect(image.status == .ok && image.body.string == "png-bytes")
+        #expect(try await browser.sendRequest(.GET, "/lan/web/prezi/pic.png").status != .ok)
     }
 }

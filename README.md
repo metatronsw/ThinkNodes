@@ -112,11 +112,11 @@ Másold a teljes prezentációt a projektbe egy `NAME.web` mappába. Az alapért
 | `demoproject/prezi.web/css/main.css` | `/demoproject/web/prezi/css/main.css` |
 | `demoproject/anyagok/masik.web/index.html` | `/demoproject/anyagok/web/masik/` |
 
-A szerkesztő vásznának helyi menüjében a **Prezentáció beszúrása** parancs hozzáadja a dobozt. A doboz dupla kattintásra új fülön nyitja meg a prezentációt. A mappába tett `preview.png` a doboz előnézete. A doboz törlésekor a mappa a lemezen marad.
+A szerkesztő vásznának helyi menüjében a **Prezentáció beszúrása** parancs hozzáadja a dobozt. A doboz dupla kattintásra új fülön nyitja meg a prezentációt. A doboz előnézete a mappába tett `preview.png`, ennek hiányában a `screen.png`. A doboz törlésekor a mappa a lemezen marad.
 
 A megtekintő **Prezentációk** gombjánál projektjogosultsággal szűkíthető az olvasók köre és beállítható a prezentáció jelszava. Minden fájlra külön érvényes a projekt, az útvonalon lévő mappák és a prezentáció szabálya. Egy helyi beállítás csak szűkítheti az örökölt hozzáférést.
 
-A böngésző elkülönített környezetben futtatja a prezentációt. A relatív CSS, klasszikus JavaScript és médiafájlok támogatottak. A prezentáció nem fér hozzá a ThinkNodes sütijeihez vagy böngészőtárhelyéhez. A védett prezentációk relatív erőforrásaihoz HTTPS-en vagy helyi loopback címen engedélyezni kell a prezentációra korlátozott biztonságos sütit. A beágyazott keretek, a modulbetöltés és a programból indított hálózati kérések ezen a kiszolgáláson nem támogatottak.
+A böngésző elkülönített környezetben futtatja a prezentációt. A prezentáció nem fér hozzá a ThinkNodes sütijeihez, böngészőtárhelyéhez és bejelentkezett munkamenetéhez, nem küldhet űrlapot és nem ágyazható más oldalba. A mappán belüli relatív CSS-, kép-, font-, média- és klasszikus JavaScript-fájlok, valamint a külső HTTPS-források (például Tailwind CDN, Google Fonts) betöltődnek. Ha a mappában nincs `index.html`, de pontosan egy HTML-fájl van (például `code.html`), az lesz a belépő. A védett prezentációk relatív erőforrásai a megnyitáskor kapott, munkamenethez kötött ideiglenes útvonalon töltődnek be. HTTPS-en ehhez egy prezentációra korlátozott biztonságos süti is szükséges, HTTP-n (`--local`, `--http`) az útvonal önmagában elég. A modulbetöltés és a ThinkNodes felé irányuló, programból indított hálózati kérések nem támogatottak; a prezentáción kívülre mutató relatív hivatkozások (`../`) 404-et adnak.
 
 ## Közös szerkesztés
 

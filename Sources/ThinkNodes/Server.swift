@@ -215,15 +215,16 @@ private func accessDeniedPage(_ identity: SessionInfo, updates: PageUpdates.Subs
     return page
 }
 
-func configure(_ application: Application, store: WorksheetStore) {
+func configure(_ application: Application, store: WorksheetStore, secureCookies: Bool? = nil) {
     let live = Collaboration(store: store)
-    let webSessions = WebPresentationSessions()
     let assets = application.directory.publicDirectory
     let themeJSON = String(decoding: (try? JSONEncoder().encode(Themes.catalog)) ?? Data(), as: UTF8.self)
     let defaultMotionRate = 33
     let rate = Int(Environment.get("THINKNODES_MOTION_RATE") ?? "") ?? defaultMotionRate
     let motionRate = (1...999_999_999).contains(rate) ? rate : defaultMotionRate
-    let secure = application.http.server.configuration.tlsConfiguration != nil || Environment.get("THINKNODES_SECURE_COOKIES") == "1"
+    let secure = secureCookies ?? (application.http.server.configuration.tlsConfiguration != nil || Environment.get("THINKNODES_SECURE_COOKIES") == "1")
+    // Without HTTPS the browser drops the SameSite=None asset cookie, so the lease URL alone grants access.
+    let webSessions = WebPresentationSessions(requireCookie: secure)
     application.sessions.use(.memory)
     application.sessions.configuration = .init(cookieName: "thinknodes_session") { sessionID in
         .init(string: sessionID.string, path: "/", isSecure: secure, isHTTPOnly: true, sameSite: .lax)
@@ -779,8 +780,10 @@ private func serveWebPresentation(_ req: Request, candidates: [WebPresentationRe
             let folders = directory ? candidate.asset : Array(candidate.asset.dropLast())
             let base = scope + (folders.isEmpty ? "" : folders.map(WebPresentationRequest.encodeAsset).joined(separator: "/") + "/")
             let result = try await asset.response(to: req, baseURL: base)
-            result.cookies[WebPresentationSessions.cookieName] = .init(string: grant.secret, expires: grant.expires,
-                path: scope, isSecure: true, isHTTPOnly: true, sameSite: HTTPCookies.SameSitePolicy.none)
+            if webSessions.requireCookie {
+                result.cookies[WebPresentationSessions.cookieName] = .init(string: grant.secret, expires: grant.expires,
+                    path: scope, isSecure: true, isHTTPOnly: true, sameSite: HTTPCookies.SameSitePolicy.none)
+            }
             return result
         } catch let error as Abort where error.status == .unauthorized && candidate.lease == nil {
             return redirect("/login?next=" + encodeQuery(candidate.url))

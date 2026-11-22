@@ -2403,7 +2403,7 @@ createApp({
                 node.file.type === "json" ? h("pre", {class: {"justified-text": node.textStyle?.justified}}, node.text) : null,
               node.file.type === "mp3" && node.text ? h("small", {class: {"justified-text": node.textStyle?.justified}}, node.text) : null,
               webURL ? h("div", {class: "web-box-body"}, [
-                h("img", {class: "web-preview", src: webURL + "preview.png", alt: "", draggable: false,
+                h("img", {class: "web-preview", src: webURL + "_tn-preview", alt: "", draggable: false,
                   onLoad: event => { event.target.dataset.ready = ""; }}),
                 h("span", [icon("website"), node.file.webPath]),
               ]) : renderFileDownload(node),

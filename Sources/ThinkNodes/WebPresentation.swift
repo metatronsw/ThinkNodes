@@ -135,12 +135,14 @@ struct WebAsset: Sendable {
         }
 
         var name = asset.last ?? "index.html"
-        var (descriptor, info) = try openEntry(name)
+        var (descriptor, info) = asset.isEmpty ? (-1, stat()) : try openEntry(name)
         let isDirectory = asset.isEmpty || (info.st_mode & S_IFMT) == S_IFDIR
-        if isDirectory && !asset.isEmpty {
-            close(directory)
-            directory = descriptor
-            name = "index.html"
+        if isDirectory {
+            if !asset.isEmpty {
+                close(directory)
+                directory = descriptor
+            }
+            name = indexName(in: directory)
             (descriptor, info) = try openEntry(name)
         }
         guard (info.st_mode & S_IFMT) == S_IFREG, info.st_size >= 0,
@@ -149,6 +151,30 @@ struct WebAsset: Sendable {
             throw Abort(.notFound)
         }
         return (.init(handle: FileHandle(fileDescriptor: descriptor, closeOnDealloc: true), size: size, name: name), isDirectory)
+    }
+
+    /// `index.html`, or the only HTML page of a folder exported under another name (e.g. `code.html`).
+    private static func indexName(in directory: Int32) -> String {
+        let copy = dup(directory)
+        guard copy >= 0 else { return "index.html" }
+        guard let stream = fdopendir(copy) else { close(copy); return "index.html" }
+        defer { closedir(stream) }
+        var pages: [String] = []
+        while let entry = readdir(stream) {
+            let name = withUnsafeBytes(of: entry.pointee.d_name) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+            if name == "index.html" { return name }
+            let ext = (name as NSString).pathExtension.lowercased()
+            if !name.hasPrefix("."), ext == "html" || ext == "htm" { pages.append(name) }
+        }
+        return pages.count == 1 ? pages[0] : "index.html"
+    }
+
+    static func preview(in root: URL, folders: [String]) -> WebAsset? {
+        for name in ["preview.png", "screen.png"] {
+            if let result = try? open(in: root, folders: folders, asset: [name], trailingSlash: false),
+               !result.directory { return result.0 }
+        }
+        return nil
     }
 
     var mime: String {
@@ -185,8 +211,16 @@ struct WebAsset: Sendable {
                                     "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
                                     "X-Frame-Options": "DENY"]
         if baseURL == nil { headers.replaceOrAdd(name: .acceptRanges, value: "bytes") }
+        // The sandbox gives the document an opaque origin, where some browsers no longer
+        // match 'self' against the server. Name the serving origin explicitly; remote
+        // HTTPS resources (CDN scripts, web fonts) stay usable inside the sandbox.
+        let own = Self.origin(of: req).map { "'self' " + $0 } ?? "'self'"
         headers.replaceOrAdd(name: "Content-Security-Policy", value: """
-            sandbox allow-scripts; default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; object-src 'none'; base-uri \(baseURL == nil ? "'none'" : "'self'"); form-action 'none'; frame-ancestors 'none'
+            sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; default-src 'none'; \
+            script-src \(own) 'unsafe-inline' 'unsafe-eval' https:; style-src \(own) 'unsafe-inline' https:; \
+            img-src \(own) data: blob: https:; font-src \(own) data: https:; media-src \(own) blob: https:; \
+            connect-src \(own) https:; object-src 'none'; base-uri \(baseURL == nil ? "'none'" : own); \
+            form-action 'none'; frame-ancestors 'none'
             """)
         if let range { headers.replaceOrAdd(name: .contentRange, value: "bytes \(range.lowerBound)-\(range.upperBound - 1)/\(size)") }
         let bytes = range ?? 0..<size
@@ -208,6 +242,16 @@ struct WebAsset: Sendable {
             }
         }, count: bytes.count - consumed + prefix.count, byteBufferAllocator: req.byteBufferAllocator)
         return Response(status: range == nil ? .ok : .partialContent, headers: headers, body: body)
+    }
+
+    /// Origin of the server as the browser addressed it, as a CSP host source.
+    static func origin(of req: Request) -> String? {
+        guard let host = req.headers.first(name: .host), !host.isEmpty, host.utf8.count <= 255,
+              host.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || ".-:[]".unicodeScalars.contains($0) })
+        else { return nil }
+        let tls = req.application.http.server.configuration.tlsConfiguration != nil ||
+            req.headers.first(name: "X-Forwarded-Proto")?.lowercased() == "https"
+        return (tls ? "https://" : "http://") + host.lowercased()
     }
 
     private func byteRange(for headers: HTTPHeaders) throws -> Range<Int>? {
@@ -246,8 +290,11 @@ final class WebPresentationSessions: @unchecked Sendable {
         let expires: Date
     }
 
+    let requireCookie: Bool
     private let lock = NSLock()
     private var grants: [UUID: Grant] = [:]
+
+    init(requireCookie: Bool = true) { self.requireCookie = requireCookie }
 
     func issue(session: SessionID, scope: String) -> (id: UUID, secret: String, expires: Date) {
         lock.withLock {
@@ -265,7 +312,8 @@ final class WebPresentationSessions: @unchecked Sendable {
 
     func session(lease: UUID, scope: String, cookie: String?) -> SessionID? {
         lock.withLock {
-            guard let grant = grants[lease], grant.expires > .now, grant.scope == scope, grant.secret == cookie else { return nil }
+            guard let grant = grants[lease], grant.expires > .now, grant.scope == scope,
+                  !requireCookie || grant.secret == cookie else { return nil }
             return grant.session
         }
     }

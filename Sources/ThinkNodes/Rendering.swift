@@ -22,7 +22,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
     let assets = scripts ? """
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
-        <script type="module" src="/editor.js?v=28"></script>
+        <script type="module" src="/editor.js?v=29"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -33,7 +33,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=11">
+          <link rel="stylesheet" href="/app.css?v=12">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -997,7 +997,7 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
             case .md: content = "<div class=\"formatted-text\(justification)\">\(markdownHTML(node.text))</div>"
             case .txt, .json: content = "<pre\(commentClass)>\(escaped(node.text))</pre>"
             case .web:
-                let preview = webURL.map { "<img class=\"web-preview\" alt=\"\" src=\"\(escaped($0 + "preview.png"))\"/>" } ?? ""
+                let preview = webURL.map { "<img class=\"web-preview\" alt=\"\" src=\"\(escaped($0 + "_tn-preview"))\"/>" } ?? ""
                 let path = escaped(file.webPath ?? "")
                 content = "<div class=\"web-box-body\">\(preview)<span>\(uiIcon("website"))\(path)</span></div>"
             case .attachment, .worksheet: content = ""

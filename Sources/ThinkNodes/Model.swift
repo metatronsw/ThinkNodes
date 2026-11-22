@@ -1784,6 +1784,10 @@ extension WorksheetStore {
             guard let context = try webContext(project: request.project, reference: request.reference, user: user, unlocks: unlocks) else { return nil }
             try context.access.authorize(user, unlocks: unlocks)
             let dirs = [request.project] + request.reference.folders + [request.reference.name + ".web"]
+            if request.asset == ["_tn-preview"] {
+                guard !request.trailingSlash, let image = WebAsset.preview(in: root, folders: dirs) else { throw Abort(.notFound) }
+                return (image, false, context.access.publicRead)
+            }
             let (asset, directory) = try WebAsset.open(in: root, folders: dirs, asset: request.asset, trailingSlash: request.trailingSlash)
             return (asset, directory, context.access.publicRead)
         }
@@ -1821,12 +1825,10 @@ extension WorksheetStore {
                               let access = try? webContext(project: project, reference: reference, user: user, unlocks: unlocks),
                               access.access.readable || access.manageable else { continue }
                         let url = reference.url(in: project)
-                        let preview = entry.appendingPathComponent("preview.png")
-                        let previewExists = (try? rejectLink(preview)) != nil &&
-                            (try? preview.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
                         let unlocked = access.access.readable && access.access.hashes.allSatisfy(unlocks.contains)
+                        let preview = unlocked && WebAsset.preview(in: root, folders: [project] + reference.folders + [reference.name + ".web"]) != nil
                         presentations.append(WebPresentationInfo(reference: reference.relativePath, title: String(reference.name.prefix(120)), url: url,
-                            preview: unlocked && previewExists ? url + "preview.png" : nil, manageable: access.manageable,
+                            preview: preview ? url + "_tn-preview" : nil, manageable: access.manageable,
                             membersOnly: access.manageable ? access.policy.guestReadable == false : nil,
                             editors: access.manageable ? access.policy.editors : nil,
                             passwordProtected: access.manageable ? access.policy.passwordHash != nil : nil))
