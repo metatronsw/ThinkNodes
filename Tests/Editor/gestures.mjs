@@ -1209,7 +1209,9 @@ const linked = labelLayout({...sample, link: {kind: "web", target: "a.web"}}, bl
 assert.ok(linked.webPreview && linked.previewSpace === sample.height && linked.lines.length === 0 && linked.overflow,
   "a presentation box is filled by its preview; the text appears only as a tooltip");
 const sheetLinked = labelLayout({...sample, link: {kind: "sheet", target: "masik"}}, blocks);
-assert.ok(sheetLinked.previewSpace > 0 && sheetLinked.iconSpace === 0 && sheetLinked.lines[0].y > 0, "a worksheet link reserves room for its preview");
+assert.ok(sheetLinked.webPreview && sheetLinked.lines.length === 0, "a worksheet link is filled by its preview too");
+const sheetText = labelLayout({...sample, staticPreview: true, link: {kind: "sheet", target: "masik"}}, blocks);
+assert.ok(!sheetText.webPreview && sheetText.previewSpace === 0 && sheetText.lines.length > 0, "with the preview off the text is shown");
 assert.equal(labelLayout({...sample, type: "image"}, blocks).lines.length, 0);
 
 const {rebaseWorksheet} = await import("../../Public/collaboration.js");
@@ -1414,7 +1416,7 @@ const chooseAppearance = async (label, value) => {
   control.props.onChange({target: {value}});
   await tick();
 };
-const {edgeGeometry: themedGeometry, shapeGeometry: themedShape, taperedArc, arrowLength} = await import("../../Public/geometry.js?v=19");
+const {edgeGeometry: themedGeometry, shapeGeometry: themedShape, taperedArc, arrowLength} = await import("../../Public/geometry.js?v=20");
 await chooseAppearance("Téma", "3");
 assert.deepEqual(themedShape("rounded", 100, 80),
   ["polygon", {points: "-45,-40 45,-40 50,-35 50,35 45,40 -45,40 -50,35 -50,-35"}]);

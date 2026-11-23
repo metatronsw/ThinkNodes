@@ -1,4 +1,4 @@
-import {displayShape, polygonVertices} from "./geometry.js?v=19";
+import {displayShape, polygonVertices} from "./geometry.js?v=20";
 
 // Positions stay in worksheet coordinates when a node changes parent.
 export function ancestors(node, byID) {

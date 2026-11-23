@@ -13,7 +13,7 @@ import {justifyRows} from "./justify.js";
 import {canvasMarkdown, canvasMarkdownAvailable} from "./canvas-markdown.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {useWorksheetGeometry, automaticBorder, automaticGridColor, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=19";
+import {useWorksheetGeometry, automaticBorder, automaticGridColor, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=20";
 
 import {ancestors, overlapFraction} from "./containers.js?v=3";
 
@@ -2534,7 +2534,8 @@ createApp({
       }
       const destination = worksheetLink(link.target, path);
       if (!destination) return null;
-      return link.kind === "sheet" ? {...destination, preview: "/api/preview" + (destination.href === "/" ? "" : destination.href)} : destination;
+      if (link.kind === "sheet") return {...destination, preview: "/api/preview" + (destination.href === "/" ? "" : destination.href)};
+      return {...destination, preview: "/api/link-preview?url=" + encodeURIComponent(link.target)};
     }
 
     function renderFileDownload(node, label = null, classes = "node-download") {
@@ -2731,7 +2732,7 @@ createApp({
       if (!gesture.value || !previewRatios.has(node.id)) previewRatios.set(node.id, ratio);
       const linkPreview = isBox(node) && destination?.preview && layout.webPreview ? h("g", {"pointer-events": "none"}, [
         h("clipPath", {id: webClip}, [h(...shapeGeometry(drawn.shape, drawn.width, drawn.height))]),
-        h("image", {class: "node-link-preview node-site-preview", href: destination.preview + "?ratio=" + previewRatios.get(node.id) + (node.staticPreview ? "&live=0" : ""),
+        h("image", {class: "node-link-preview node-site-preview", href: node.link.kind !== "web" ? destination.preview : destination.preview + "?ratio=" + previewRatios.get(node.id) + (node.staticPreview ? "&live=0" : ""),
           x: -drawn.width/2, y: -drawn.height/2, width: Math.max(1, drawn.width), height: Math.max(1, drawn.height),
           preserveAspectRatio: "xMidYMid slice", "clip-path": "url(#" + webClip + ")"})])
       : isBox(node) && destination?.preview && layout.previewSpace ? h("image", {class: "node-link-preview",
@@ -3663,8 +3664,10 @@ createApp({
           ]),
           // Második sor: a többi gomb.
           h("div", {class: "link-row link-actions"}, [
-            single.link.kind === "web" ? iconToggle(single.staticPreview ? "Előnézet generálása: ki" : "Előnézet generálása: be",
-              !single.staticPreview, () => change("staticPreview", single.staticPreview ? undefined : true), icon("camera")) : null,
+            // .web: előnézet generálása be/ki; munkalap- és külső link: előnézet megjelenítése be/ki (kikapcsolva a szöveg látszik).
+            iconToggle(single.link.kind === "web" ? (single.staticPreview ? "Előnézet generálása: ki" : "Előnézet generálása: be")
+              : (single.staticPreview ? "Előnézet: ki (a szöveg látszik)" : "Előnézet: be"),
+              !single.staticPreview, () => change("staticPreview", single.staticPreview ? undefined : true), icon("camera")),
             single.link.kind === "web" ? iconToggle(single.webPublic ? "Publikus: bárki megnézheti" : "Publikus: ki",
               !!single.webPublic, () => toggleWebPublic(single), icon("butterfly"), !online.value) : null,
             h("button", {type: "button", class: "button option-icon link-remove", ...controlName("Link törlése"),

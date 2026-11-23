@@ -11,7 +11,7 @@ import {hideTooltip, showTooltip} from "./tooltip.js";
 import {justifyRows} from "./justify.js";
 import {liveConnection} from "./collaboration.js";
 
-import {useWorksheetGeometry, arrowLength, arrowTransform, edgeGeometry, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireGradientValues, wireLabelLayout} from "./geometry.js?v=19";
+import {useWorksheetGeometry, arrowLength, arrowTransform, edgeGeometry, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireGradientValues, wireLabelLayout} from "./geometry.js?v=20";
 import {ancestors} from "./containers.js?v=3";
 
 let selection;

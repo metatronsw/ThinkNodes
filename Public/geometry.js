@@ -609,13 +609,14 @@ export const headingScale = level => ({1: 1.6, 2: 1.3}[level] ?? 1.15);
 export function labelLayout(node, blocks = []) {
   if (node.type !== "box") return {width: node.width, height: node.height, lines: []};
   // .web doboz: az előnézeti kép tölti ki, a szöveg csak buboréksúgóban jelenik meg (Rendering.swift ideaDrawing).
-  if (node.link?.kind === "web") return {width: node.width, height: node.height, extentX: node.width / 2, extentY: node.height / 2,
+  // Linkes doboz előnézettel (Rendering.swift fillsWithPreview): .web mindig, munkalap/külső link ha nincs kikapcsolva.
+  if (node.link && (node.link.kind === "web" || !node.staticPreview)) return {width: node.width, height: node.height, extentX: node.width / 2, extentY: node.height / 2,
     overflow: Boolean(node.text?.trim()), lines: [], labelWidth: node.width, iconSpace: 0, previewSpace: node.height, webPreview: true};
   const [widthRatio, heightRatio] = shapeLabelRatios(node.shape);
   const width = node.width, height = node.height;
   const labelWidth = Math.max(12, width * widthRatio - 16);
   const iconSpace = 0;  // a link felirata a doboz alatt, a dobozon kívül áll
-  const previewSpace = node.link && node.link.kind !== "url" ? height * 0.5 : 0;
+  const previewSpace = 0;  // előnézet csak teljes kitöltéssel
   const labelHeight = height * heightRatio - 12 - iconSpace - previewSpace;
   const strong = false;  // a Félkövér gomb megszűnt
   const fonts = currentGraphics().fonts ?? defaultFonts;

@@ -793,6 +793,31 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
     app.get("api", "browse-common", use: browseCommon)
     app.get("api", "browse-common", "**", use: browseCommon)
 
+    let linkPreviews = LinkPreviews(root: store.dataRoot, eventLoopGroup: application.eventLoopGroup)
+    application.lifecycle.use(LinkPreviewShutdown(previews: linkPreviews))
+    // Külső webcím előnézete: az oldal megosztási képe, vagy kártya (LinkPreview.swift). `live=0`: nem frissít.
+    app.get("api", "link-preview") { req async throws -> Response in
+        let identity = try session(req, store: store)
+        if try await req.application.threadPool.runIfActive({ try store.settings().requireLogin }) && identity.user == nil {
+            throw Abort(.unauthorized)
+        }
+        guard let target = req.query[String.self, at: "url"] else { throw Abort(.badRequest) }
+        let (file, meta) = try await linkPreviews.preview(for: target, refresh: req.query[String.self, at: "live"] != "0")
+        let response: Response
+        if let file, FileManager.default.fileExists(atPath: file.path) {
+            response = try await req.fileio.asyncStreamFile(at: file.path)
+            let types = ["png": "image/png", "jpg": "image/jpeg", "gif": "image/gif", "webp": "image/webp"]
+            response.headers.replaceOrAdd(name: .contentType, value: types[file.pathExtension] ?? "application/octet-stream")
+        } else {
+            response = Response(status: .ok, body: .init(string: LinkPreviews.card(meta)))
+            response.headers.replaceOrAdd(name: .contentType, value: "image/svg+xml")
+        }
+        response.headers.replaceOrAdd(name: "X-Content-Type-Options", value: "nosniff")
+        response.headers.replaceOrAdd(name: "Content-Security-Policy", value: "sandbox; default-src 'none'; style-src 'unsafe-inline'")
+        response.headers.replaceOrAdd(name: .cacheControl, value: "private, max-age=3600")
+        return response
+    }
+
     app.get("api", "browse", "**") { req async throws -> BrowseListing in
         let identity = try session(req, store: store)
         let path = try WorksheetPath(req.parameters.getCatchall())
@@ -1367,4 +1392,9 @@ private func adminPage(users: [User], settings: SiteSettings, user: User, csrf: 
           </section>
         </main>
         """, updates: updates)
+}
+
+private struct LinkPreviewShutdown: LifecycleHandler {
+    let previews: LinkPreviews
+    func shutdownAsync(_ application: Application) async { await previews.shutdown() }
 }

@@ -23,7 +23,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=42"></script>
+        <script type="module" src="/editor.js?v=43"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -368,7 +368,7 @@ private func ideaDrawing(_ idea: Idea, graphics: VisualTheme.Graphics? = nil) ->
     }
     guard node.isBox else { return IdeaDrawing(node: node, labelWidth: node.width, lines: []) }
     // .web doboz: az előnézeti kép tölti ki, a szöveg csak buboréksúgóban jelenik meg (geometry.js labelLayout).
-    if node.link?.kind == .web {
+    if node.fillsWithPreview {
         return IdeaDrawing(node: node, labelWidth: node.width, previewSpace: node.height,
                            overflow: !node.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, lines: [],
                            extentX: node.width / 2, extentY: node.height / 2)
@@ -378,7 +378,7 @@ private func ideaDrawing(_ idea: Idea, graphics: VisualTheme.Graphics? = nil) ->
     let blocks = canvasMarkdown(node.text)
     let labelWidth = max(12, node.width * widthRatio - 16)
     let iconSpace: Double = 0  // a link felirata a doboz alatt, a dobozon kívül áll
-    let previewSpace: Double = node.link.map { $0.kind == .url ? 0 : node.height * 0.5 } ?? 0
+    let previewSpace: Double = 0  // előnézet csak teljes kitöltéssel (fillsWithPreview)
     let labelHeight = node.height * heightRatio - 12 - iconSpace - previewSpace
     let strong = false  // a Félkövér gomb megszűnt
     let monospace = isMonospaceFont((graphics ?? VisualTheme.Graphics()).fontFamily(node.font))
@@ -673,10 +673,11 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
     let inset = node.shape.labelRatios.link
     let marker = node.link.map { linkMarker($0, node: node, bottom: y + 20, width: node.width, siteHost: siteHost) } ?? ""
     let previewImage = preview.map { url in
-        if node.link?.kind == .web {
-            // Teljes kitöltés a doboz alakjára vágva; az arányt a doboz határozza meg.
+        if node.fillsWithPreview {
+            // Teljes kitöltés a doboz alakjára vágva; .web-nél az arányt a doboz határozza meg.
             let clip = "web-clip-" + node.id
-            let url = url + "?ratio=" + String(format: "%.2f", WebScreenshot.quantized(width / max(1, height))) + (node.staticPreview == true ? "&live=0" : "")
+            let url = node.link?.kind != .web ? url
+                : url + "?ratio=" + String(format: "%.2f", WebScreenshot.quantized(width / max(1, height))) + (node.staticPreview == true ? "&live=0" : "")
             return "<clipPath id=\"\(escaped(clip))\"><\(geometry)/></clipPath><image class=\"node-link-preview node-site-preview\" href=\"\(escaped(url))\" x=\"\(number(-x))\" y=\"\(number(-y))\" width=\"\(number(max(1, width)))\" height=\"\(number(max(1, height)))\" preserveAspectRatio=\"xMidYMid slice\" clip-path=\"url(#\(escaped(clip)))\" pointer-events=\"none\"/>"
         }
         let top = -y * inset + 6, previewHeight = drawing.previewSpace - 6
@@ -1185,7 +1186,7 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
             return (href, "/api/preview" + (href == "/" ? "" : href))
         case .url:
             guard let path, let href = link.worksheetLink?.destination(from: path) else { return nil }
-            return (href, nil)
+            return (href, "/api/link-preview?url=" + encodeQuery(link.target))
         }
     }
     func render(_ drawing: IdeaDrawing) -> String {
@@ -1196,7 +1197,7 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
             graphic = fileBox(node, file: file, base: assetBase ?? noteBase ?? "", interactive: noteBase != nil, exported: assetBase != nil,
                               text: node.isTextFile ? fileText(node) : nil, graphics: graphics, siteHost: siteHost)
         } else {
-            graphic = nodeSVG(drawing, siteHost: siteHost, graphics: graphics, interactive: noteBase != nil, preview: destination?.preview)
+            graphic = nodeSVG(drawing, siteHost: siteHost, graphics: graphics, interactive: noteBase != nil, preview: node.fillsWithPreview ? destination?.preview : nil)
         }
         let classes = nodeClasses(node, hasChildren: containers.contains(node.id))
         guard noteBase != nil else { return "<g class=\"\(classes)\">\(graphic)</g>" }

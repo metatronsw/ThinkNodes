@@ -230,6 +230,7 @@ struct Idea: Codable, Equatable, Sendable {
     var locked: Bool?
     var elevated: Bool?
     /// .web doboz: true = nincs új előnézet-generálás, a meglévő kép vágódik a doboz arányára.
+    /// Munkalap- és külső link: true = nincs előnézet, a doboz szövege látszik.
     var staticPreview: Bool?
     /// .web doboz: a mappa publikus (pillangó ikon a doboz felett); az igazság a .web mappa .settings.json-ja.
     var webPublic: Bool?
@@ -242,6 +243,12 @@ struct Idea: Codable, Equatable, Sendable {
     }
 
     var root: String { NodeTypes.root(type) }
+    /// Linkes doboz előnézettel: a kép kitölti a dobozt, a szöveg buboréksúgóban (geometry.js labelLayout).
+    /// .web-nél mindig; munkalap- és külső linknél, ha az előnézet nincs kikapcsolva (`staticPreview`).
+    var fillsWithPreview: Bool {
+        guard let link else { return false }
+        return link.kind == .web || staticPreview != true
+    }
     var isJunction: Bool { root == "junction" }
     var isBox: Bool { root == "box" }
     var isContainer: Bool { isBox && container == true }
@@ -625,6 +632,8 @@ struct DocumentAction: Content {
 
 final class WorksheetStore: @unchecked Sendable {
     private let root: URL
+    /// A data könyvtár (gyorsítótárakhoz, pl. a külső link-előnézetekhez).
+    var dataRoot: URL { root }
     var dataDirectoryPath: String { root.path }
     let testMode: Bool
     private var testerCount = 0
