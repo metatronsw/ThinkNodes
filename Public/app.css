@@ -894,3 +894,6 @@ svg text { text-rendering: geometricPrecision; }
 .node-comment { transition: opacity .25s ease; }
 .tooltip-open .node-comment { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .node-comment { transition: none; } }
+/* Buboréksúgó áttűnése: ugyanaz az ütem, mint a doboz alatti Text elhalványulása. */
+.canvas-tooltip { transition: opacity .25s ease; }
+@media (prefers-reduced-motion: reduce) { .canvas-tooltip { transition: none; } }

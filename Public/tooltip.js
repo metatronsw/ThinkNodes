@@ -1,30 +1,54 @@
 // Buboréksúgó összecsukott / túl hosszú szöveghez (szerkesztő és megtekintő).
-// A doboz helyén jelenik meg és kitakarja azt; a teljes szöveg görgethető (egérgörgő, jobb oldali görgetősáv).
-// Nyitva marad, amíg az egér a buboréksúgón van; elhagyásakor bezárul.
-let timer, request, tooltip, owner;
+// Az egérmutatótól 32 px-re jelenik meg, abba az irányba, amerre több hely van; sosem lóg ki a képernyőről.
+// Csak akkora, amekkora a szövegnek kell; hosszabb szövegnél görgethető (egérgörgő, jobb oldali görgetősáv).
+// Áttűnéssel jelenik meg és tűnik el (0,25 s, mint a doboz alatti Text – app.css); csökkentett mozgásnál azonnal.
+// A dobozt elhagyva rövid ideig nyitva marad, hogy az egérrel rá lehessen menni görgetni.
+const fade = 250, grace = 400, gap = 32, margin = 8;
+let timer, closing, request, tooltip, owner, pointer = {x: 0, y: 0};
+
+const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function track(event) { pointer = {x: event.clientX, y: event.clientY}; }
+
+function close() {
+  clearTimeout(timer);
+  clearTimeout(closing);
+  request?.abort();
+  owner?.classList.remove("tooltip-open");
+  owner?.removeEventListener("pointermove", track);
+  owner = null;
+  const leaving = tooltip;
+  tooltip = null;
+  if (!leaving) return;
+  if (reducedMotion()) { leaving.remove(); return; }
+  leaving.style.opacity = "0";
+  leaving.style.pointerEvents = "none";
+  setTimeout(() => leaving.remove(), fade);
+}
 
 export function hideTooltip(event) {
-  // A doboz elhagyása a buboréksúgóra (ami a dobozt takarja): nyitva marad.
-  if (tooltip && event?.relatedTarget && tooltip.contains(event.relatedTarget)) return;
-  clearTimeout(timer);
-  request?.abort();
-  tooltip?.remove();
-  tooltip = null;
-  // A doboz alatti Text újra látszik (app.css: .tooltip-open).
-  owner?.classList.remove("tooltip-open");
-  owner = null;
+  // A doboz elhagyása: rövid türelmi idő, hogy az egér átérhessen a súgóra.
+  if (event?.type === "pointerleave" && tooltip) {
+    if (tooltip.contains(event.relatedTarget)) return;
+    clearTimeout(closing);
+    closing = setTimeout(close, grace);
+    return;
+  }
+  close();
 }
 
 // `colors`: {background, color} – a doboz színe; ha hiányzik, a doboz rajzából olvassa ki (megtekintő).
 export function showTooltip(event, render, justified, colors) {
-  hideTooltip();
+  close();
   const {currentTarget} = event;
+  track(event);
+  owner = currentTarget;
+  owner.addEventListener("pointermove", track);
   const signal = (request = new AbortController()).signal;
   timer = setTimeout(async () => {
     try {
       const html = await render(signal);
       if (signal.aborted || !currentTarget.isConnected) return;
-      // A látható doboz (fájldoboz teste, illetve a doboz felülete), nem a felette/alatta lévő feliratok.
       const anchor = currentTarget.querySelector?.(".node-file, .node-surface, .node-site-preview") ?? currentTarget;
       const box = anchor.getBoundingClientRect();
       tooltip = document.createElement("div");
@@ -35,22 +59,25 @@ export function showTooltip(event, render, justified, colors) {
       const {background, color} = colors ?? boxColors(currentTarget, anchor);
       if (background) tooltip.style.background = background;
       if (color) tooltip.style.color = color;
-      // Méret: csak amennyi a szövegnek kell; felső határ a doboz mérete (de legalább olvasható), és a képernyő.
-      // Ha a szöveg ennél hosszabb, görgethető. A doboz közepére kerül.
-      const margin = 8;
+      // Méret: csak amennyi a szövegnek kell; felső határ a doboz mérete (de legalább olvasható) és a képernyő.
       const maxWidth = Math.min(Math.max(box.width, 360), innerWidth - 2 * margin);
       const maxHeight = Math.min(Math.max(box.height, 240), innerHeight - 2 * margin);
-      Object.assign(tooltip.style, {visibility: "hidden", width: "max-content", maxWidth: maxWidth + "px", maxHeight: maxHeight + "px"});
+      Object.assign(tooltip.style, {visibility: "hidden", opacity: "0", width: "max-content",
+        maxWidth: maxWidth + "px", maxHeight: maxHeight + "px"});
       document.body.append(tooltip);
       const {width, height} = tooltip.getBoundingClientRect();
-      const left = Math.max(margin, Math.min(box.left + box.width / 2 - width / 2, innerWidth - width - margin));
-      const top = Math.max(margin, Math.min(box.top + box.height / 2 - height / 2, innerHeight - height - margin));
+      // Irány: vízszintesen és függőlegesen is arra, amerre több hely van; utána a képernyőn belülre szorítva.
+      const right = innerWidth - pointer.x >= pointer.x, below = innerHeight - pointer.y >= pointer.y;
+      const clamp = (value, size, limit) => Math.max(margin, Math.min(value, limit - size - margin));
+      const left = clamp(right ? pointer.x + gap : pointer.x - gap - width, width, innerWidth);
+      const top = clamp(below ? pointer.y + gap : pointer.y - gap - height, height, innerHeight);
       Object.assign(tooltip.style, {left: left + "px", top: top + "px", visibility: ""});
-      // Amíg a súgó látszik, a doboz alatti Text elhalványul (csökkentett mozgásnál animáció nélkül tűnik el).
-      owner = currentTarget;
-      owner.classList.add("tooltip-open");
-      tooltip.addEventListener("pointerleave", () => hideTooltip());
-      tooltip.addEventListener("pointerdown", () => hideTooltip());
+      tooltip.addEventListener("pointerenter", () => clearTimeout(closing));
+      tooltip.addEventListener("pointerleave", event => { if (!owner?.contains(event.relatedTarget)) close(); });
+      tooltip.addEventListener("pointerdown", () => close());
+      // A doboz alatti Text elhalványul (app.css: .tooltip-open), a súgó ugyanolyan ütemben jelenik meg.
+      currentTarget.classList.add("tooltip-open");
+      requestAnimationFrame(() => { if (tooltip) tooltip.style.opacity = "1"; });
     } catch { /* Hover previews are optional when disconnected. */ }
   }, 350);
 }
