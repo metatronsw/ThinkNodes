@@ -895,3 +895,5 @@ svg text { text-rendering: geometricPrecision; }
 /* Buboréksúgó áttűnése: ugyanaz az ütem, mint a doboz alatti Text elhalványulása. */
 .canvas-tooltip { transition: opacity .25s ease; }
 @media (prefers-reduced-motion: reduce) { .canvas-tooltip { transition: none; } }
+/* NAGYBETŰS Text (HTML-ben: doboz alatti Text, szövegfájl, buboréksúgó); a vásznon a tördelés előtt alakul. */
+.is-uppercase :is(.node-comment, .node-note, .node-plain, .formatted-text), .canvas-tooltip .is-uppercase, .canvas-tooltip.is-uppercase { text-transform: uppercase; }

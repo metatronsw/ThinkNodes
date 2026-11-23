@@ -46,7 +46,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=51"></script>
+        <script type="module" src="/editor.js?v=52"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -57,7 +57,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=27">
+          <link rel="stylesheet" href="/app.css?v=28">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -398,7 +398,13 @@ private func ideaDrawing(_ idea: Idea, graphics: VisualTheme.Graphics? = nil) ->
     }
     let (widthRatio, heightRatio, _) = node.shape.labelRatios
     let fitText = node.fitText == true
-    let blocks = canvasMarkdown(node.text)
+    // NAGYBETŰS: a tördelés előtt, mert a nagybetűs szöveg szélesebb (geometry.js labelLayout).
+    let blocks = canvasMarkdown(node.text).map { block in
+        guard node.uppercase == true else { return block }
+        var upper = block
+        upper.runs = block.runs.map { MarkdownRun(text: $0.text.uppercased(with: Locale(identifier: "hu")), format: $0.format) }
+        return upper
+    }
     let labelWidth = max(12, node.width * widthRatio - 16)
     let iconSpace: Double = 0  // a link felirata a doboz alatt, a dobozon kívül áll
     let previewSpace: Double = 0  // előnézet csak teljes kitöltéssel (fillsWithPreview)
@@ -487,6 +493,7 @@ func nodeClasses(_ node: Idea, hasChildren: Bool = false) -> String {
     var classes = "node is-" + node.type
     if node.root != node.type { classes += " is-" + node.root }
     if node.link != nil { classes += " has-link" }
+    if node.uppercase == true { classes += " is-uppercase" }
     if hasChildren { classes += " has-children" }
     return classes
 }

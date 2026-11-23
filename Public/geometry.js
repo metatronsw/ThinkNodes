@@ -607,6 +607,8 @@ export const headingScale = level => ({1: 1.6, 2: 1.3}[level] ?? 1.15);
 
 // Doboz szövegének elrendezése; a Rendering.swift ideaDrawing/nodeSVG párja (docs/node-types.md, Text képesség).
 export function labelLayout(node, blocks = []) {
+  // NAGYBETŰS: a tördelés előtt, mert a nagybetűs szöveg szélesebb (Rendering.swift ideaDrawing).
+  if (node.uppercase) blocks = blocks.map(block => ({...block, runs: block.runs.map(run => ({...run, text: run.text.toLocaleUpperCase("hu")}))}));
   if (node.type !== "box" && node.type !== "preview") return {width: node.width, height: node.height, lines: []};
   // .web doboz: az előnézeti kép tölti ki, a szöveg csak buboréksúgóban jelenik meg (Rendering.swift ideaDrawing).
   // Linkes doboz előnézettel (Rendering.swift fillsWithPreview): .web mindig, munkalap/külső link ha nincs kikapcsolva.

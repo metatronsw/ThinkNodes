@@ -13,7 +13,7 @@ import {justifyRows} from "./justify.js";
 import {canvasMarkdown, canvasMarkdownAvailable} from "./canvas-markdown.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=22";
+import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=23";
 
 import {ancestors, overlapFraction} from "./containers.js?v=3";
 import {glowFilter, glowId, glowReach, glowVNode} from "./glow.js";
@@ -242,6 +242,7 @@ function nodeClasses(node, hasChildren = false) {
   let classes = "node is-" + node.type;
   if (root !== node.type) classes += " is-" + root;
   if (node.link) classes += " has-link";
+  if (node.uppercase) classes += " is-uppercase";
   if (hasChildren) classes += " has-children";
   return classes;
 }
@@ -2786,7 +2787,8 @@ createApp({
           if (!gesture.value && tooltip && node.text) showTooltip(event, async signal => {
             const result = await checked(await fetch("/api/text", {method: "POST", signal,
               headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify({text: node.text})}));
-            return result.text();
+            const html = await result.text();
+            return node.uppercase ? '<div class="is-uppercase">' + html + "</div>" : html;
           }, node.justified, {background: paint(node.fill, 2), color: paint(node.textColor, 1)});
         },
         onPointerleave: hideTooltip,
@@ -3275,6 +3277,12 @@ createApp({
         style: {left: open.x + "px", top: open.y + "px"}, onVnodeMounted: fit, onVnodeUpdated: fit}, entries);
     }
 
+    // NAGYBETŰS kapcsoló minden Text-csoportban (doboz szövege, doboz alatti Text, szövegfájl).
+    function uppercaseToggle(nodes, change) {
+      const upper = nodes.every(n => n.uppercase);
+      return iconToggle(upper ? "NAGYBETŰS: be" : "NAGYBETŰS: ki", upper, () => change("uppercase", upper ? undefined : true), icon("uppercase"));
+    }
+
     function sidebar(label, contents, canvasSettings = false) {
       return h("aside", {class: ["inspector", canvasSettings ? "canvas-inspector" : "object-inspector"], "aria-label": label,
         onFocusin: event => { editingField = event.target.matches("textarea,input,select"); },
@@ -3608,6 +3616,7 @@ createApp({
               color("Szövegszín", "textColor", 1),
               iconToggle("Sorkizárás", justified, () => change("justified", justified ? undefined : true), icon(justified ? "justify" : "text-" + value("alignment", "center"))),
               iconToggle("Összecsukás (csak az első sor)", nodes.every(n => n.hideText), () => change("hideText", nodes.every(n => n.hideText) ? undefined : true), icon("more")),
+              uppercaseToggle(nodes, change),
             )]),
             h("div", {class: "alignment-picker", role: "group", "aria-label": "Igazítás"},
               alignmentPositions.map(([vertical, horizontal, label, symbol]) => h("button", {
@@ -3620,6 +3629,7 @@ createApp({
       }
 
       if (common.has("fileText") && single) {
+        // (NAGYBETŰS kapcsoló: lásd uppercaseToggle)
         const key = fileTextKey(single);
         const loaded = fileTexts.value.get(key);
         const justified = single.justified === true;
@@ -3630,6 +3640,7 @@ createApp({
           propertyTools(
             numeric(single.fontSize ?? 14, v => change("fontSize", Math.round(v)), 6, 72, {...controlName("Betűméret"), step: 1, clampValue: true}),
             color("Szövegszín", "textColor", 1),
+            uppercaseToggle(nodes, change),
             single.type === "text" ? iconToggle("Sorkizárás", justified, () => change("justified", justified ? undefined : true), icon("justify")) : null,
             h("small", {class: "muted", role: "status"}, fileSaveState.value.get(single.id) ?? ""),
           ),
@@ -3645,6 +3656,7 @@ createApp({
               iconToggle(label, value("alignment", "center") === align, () => change("alignment", align), icon(symbol))),
             iconToggle(hidden ? "Text megjelenítése" : "Text elrejtése", !hidden, () => change("hideText", hidden ? undefined : true),
               icon(hidden ? "eye-off" : "eye")),
+            uppercaseToggle(nodes, change),
           ),
         ]));
       }

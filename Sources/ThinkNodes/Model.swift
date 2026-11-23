@@ -234,10 +234,12 @@ struct Idea: Codable, Equatable, Sendable {
     var staticPreview: Bool?
     /// .web doboz: a mappa publikus (pillangó ikon a doboz felett); az igazság a .web mappa .settings.json-ja.
     var webPublic: Bool?
+    /// Text NAGYBETŰS megjelenítése (doboz szövege, doboz alatti Text, szövegfájl); a tárolt szöveg nem változik.
+    var uppercase: Bool?
 
     private enum CodingKeys: String, CodingKey {
         case id, type, text, file, hideText, fitText, shape, fill, backgroundMode, animation, bold, italic, underline, font, justified, link
-        case angle, parent, container, locked, elevated, staticPreview, webPublic
+        case angle, parent, container, locked, elevated, staticPreview, webPublic, uppercase
         case position = "pos", width = "w", height = "h", textColor = "textCol"
         case fontSize = "fontSz", alignment = "align", verticalAlignment = "vAlign"
     }
@@ -2047,6 +2049,7 @@ extension Idea {
         elevated = try? fields.decode(Bool.self, forKey: .elevated)
         staticPreview = try? fields.decode(Bool.self, forKey: .staticPreview)
         webPublic = try? fields.decode(Bool.self, forKey: .webPublic)
+        uppercase = try? fields.decode(Bool.self, forKey: .uppercase)
         normalizePreview()
     }
 

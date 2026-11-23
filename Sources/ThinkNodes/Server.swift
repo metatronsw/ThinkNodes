@@ -1161,7 +1161,7 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
     let tooltips = canvas.tooltipNodes.map {
         let justification = $0.justified == true ? " data-justified" : ""
         // Text: mindenhol formázott markdown (a sima sortörés új sor).
-        let body = markdownHTML($0.text)
+        let body = $0.uppercase == true ? "<div class=\"is-uppercase\">\(markdownHTML($0.text))</div>" : markdownHTML($0.text)
         return "<template data-tooltip=\"\($0.id)\"\(justification)>\(body)</template>"
     }.joined()
     let introduction = worksheet.text.map(markdownHTML) ?? ""
