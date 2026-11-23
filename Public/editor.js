@@ -16,6 +16,7 @@ import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
 import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=22";
 
 import {ancestors, overlapFraction} from "./containers.js?v=3";
+import {glowFilter, glowId, glowReach, glowVNode} from "./glow.js";
 
 const mount = document.querySelector("#editor");
 const {path, csrf, user, motionRate} = mount.dataset;
@@ -1978,6 +1979,20 @@ createApp({
       return peers.value.find(p => p.mine)?.color ?? paint(graphics.value.selection ?? 4, 4);
     }
 
+    // Kijelölés glow-ja SVG-szűrővel (Public/glow.js; a Safari a CSS drop-shadow()-t SVG elemen nem rajzolja ki).
+    // Színenként egy szűrő; az első használat után kerül a vászon defs-ébe (renderelés közben nem írunk reaktív állapotot).
+    const glowFilters = new Map();
+    const glowDefinitions = shallowRef([]);
+    function glow(kind, color) {
+      const size = graphics.value.glow ?? 3;
+      const id = glowId(kind, color, size);
+      if (!glowFilters.has(id)) {
+        glowFilters.set(id, glowFilter(kind, color, size));
+        queueMicrotask(() => { glowDefinitions.value = [...glowFilters.values()]; });
+      }
+      return "url(#" + id + ")";
+    }
+
     function selectRectangle(drag) {
       const group = drag.additive ? selectionMembers() : {nodes: new Set(), edges: new Set()};
       const hits = rectangleMembers(drag);
@@ -2764,8 +2779,6 @@ createApp({
         role: rootType(node.type) === "audio" ? "group" : "button",
         "aria-label": nodeName(node), "data-link": destination ? "" : undefined,
         class: [nodeClasses(node, containerIDs.value.has(node.id)), {"editing-object": editingObject.value === node.id, occupied: occupied(node.id), claimed: !!owner, "own-selected": ownSelected}],
-        // A saját kijelölés glow-ja (CSS drop-shadow currentColor) a kijelölés színét veszi fel.
-        color: ownSelected ? selectionTint() : undefined,
         transform: "translate(" + position.x + " " + position.y + ")",
         onPointerenter: event => {
           // Buboréksúgó: túl hosszú doboz-szöveg, illetve összecsukott többsoros megjegyzés (fájl- és előnézetes doboz).
@@ -2789,11 +2802,11 @@ createApp({
           if (event.key === "Enter" && event.shiftKey) openProperties("node", node.id);
         },
       }, [
-        peerOwner || snapTarget ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-glow", color: peerOwner ? peerOwner.color : selectionTint(), fill: "none",
+        peerOwner || snapTarget ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-glow", color: peerOwner ? peerOwner.color : selectionTint(), filter: glow("peer", peerOwner ? peerOwner.color : selectionTint()), fill: "none",
           stroke: peerOwner ? peerOwner.color : selectionTint(), "stroke-width": 3, "pointer-events": "none"}) : null,
         // Saját kijelölés látható felület nélküli objektumon (Free doboz, átlátszó kép, csomópont): vékony, nyugodt körvonal.
         ownSelected && !peerOwner && (junction || backgroundMode(node) === "free" || isImage(node))
-          ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-own", color: selectionTint(), fill: "none", stroke: selectionTint(), "stroke-width": 2.5, "pointer-events": "none"}) : null,
+          ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-own", filter: glow("ownFrame", selectionTint()), fill: "none", stroke: selectionTint(), "stroke-width": 2.5, "pointer-events": "none"}) : null,
         candidates.value.has("node/" + node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "search-candidate", "stroke-width": 3}) : null,
         ...animateBox(isBox(node) ? node.animation : undefined, [
           elevationShadow(drawn),
@@ -2943,7 +2956,15 @@ createApp({
         h("path", {"data-editor-only": "", d, stroke: "transparent", "stroke-width": Math.max(paint.lineWidth + 10, 14 / zoomStep.value),
           "pointer-events": "stroke", class: "wire-hit"}),
         // Kijelölés: a meglévő vonal, nyilak és animáció kap árnyék alapú glow-t, így a jelzés pontosan az eredeti geometriát követi.
-        h("g", {class: {"wire-own": local, "wire-glow": !!selectionColor}, style: selectionColor || local ? {color: selectionColor ?? paint.color} : undefined}, [
+        h("g", {class: {"wire-own": local, "wire-glow": !!selectionColor},
+          filter: selectionColor ? glow("peer", selectionColor) : local ? glow("ownWire", paint.color) : undefined}, [
+          // A szűrőterület a csoport befoglaló téglalapjához mér; vízszintes/függőleges vonalnál ez nulla vastag lenne,
+          // ezért a két végpontra láthatatlan helytartó kerül, a glow kiterjedésével.
+          ...(selectionColor || local ? [from, to].map(point => {
+            const reach = glowReach(selectionColor ? "peer" : "ownWire", graphics.value.glow ?? 3) + paint.lineWidth;
+            return h("rect", {x: point.x - reach, y: point.y - reach, width: 2 * reach, height: 2 * reach,
+              fill: "none", stroke: "none", "pointer-events": "none", "aria-hidden": "true"});
+          }) : []),
           h("path", {class: "wire-line", ...stroke, ...(taper ? {fill: shaftColor} : {stroke: shaftColor}), "pointer-events": "none", "clip-path": clipPath}, animation.shaft ? [animation.shaft] : undefined),
           renderArrow(ends.source, color, animatedArrows),
           renderArrow(ends.target, color, animatedArrows),
@@ -3124,6 +3145,7 @@ createApp({
 
         }, [
           h("defs", [
+            ...glowDefinitions.value.map(spec => glowVNode(h, spec)),
             sceneNodes.value.some(node => backgroundMode(node) === "blurred")
               ? h("filter", {id: "box-background-blur", x: "-30%", y: "-30%", width: "160%", height: "160%"}, [h("feGaussianBlur", {stdDeviation: 2})]) : null,
             ...(glass ? [
@@ -3786,7 +3808,11 @@ createApp({
         : "";
       return [
         h("div", {class: "editor-workspace", "data-glass": graphics.value.glass ? mode.value : undefined, style: {
-          "--sheet-glow": (graphics.value.glow ?? 3) + "px"
+          "--sheet-glow": (graphics.value.glow ?? 3) + "px",
+          // A saját kijelölés és a keresési találat glow-ja CSS-ből hivatkozik a szűrőre (app.css).
+          "--glow-own-surface": glow("ownSurface", selectionTint()),
+          "--glow-own-frame": glow("ownFrame", selectionTint()),
+          "--glow-search": glow("search", "#cf8200"),
         }}, [
           renderCanvas(),
           problem.value || currentStatus ? h("p", {class: ["canvas-status", {error: problem.value}], role: "status"}, problem.value || currentStatus) : null,

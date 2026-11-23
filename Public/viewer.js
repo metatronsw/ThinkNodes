@@ -13,6 +13,7 @@ import {liveConnection} from "./collaboration.js";
 
 import {useWorksheetGeometry, arrowLength, arrowTransform, edgeGeometry, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireGradientValues, wireLabelLayout} from "./geometry.js?v=22";
 import {ancestors} from "./containers.js?v=3";
+import {ensureGlow, glowReach} from "./glow.js";
 
 let selection;
 let peers = [];
@@ -194,6 +195,7 @@ function outline(box, marker, color) {
   for (const [key, value] of Object.entries({...geometry, [marker]: "", transform: `translate(${x} ${y})`,
     stroke: color, "stroke-width": 3, fill: "none", "pointer-events": "none"})) frame.setAttribute(key, value);
   frame.setAttribute("class", "selection-glow");
+  frame.setAttribute("filter", ensureGlow(main.querySelector(".passive-canvas"), "peer", color, graphics.glow ?? 3));
   frame.style.color = color;
   frame.dataset.peerColor = color;
   box.prepend(frame);
@@ -238,6 +240,18 @@ function paint(peers) {
     const {frame, gradient, path, marker, arrows, taper} = wire;
     frame.classList.toggle("wire-selected", !!color);
     frame.style.color = color;
+    // Glow SVG-szűrővel (Public/glow.js). A szűrőterület a csoport befoglaló téglalapjához mér, ami vízszintes
+    // vonalnál nulla vastag: egy láthatatlan helytartó a glow kiterjedésével megnöveli.
+    frame.querySelector(":scope > [data-glow-padding]")?.remove();
+    if (color) {
+      const box = frame.getBBox(), reach = glowReach("peer", graphics.glow ?? 3) + maximumLineWidth;
+      const padding = document.createElementNS(ns, "rect");
+      for (const [key, value] of Object.entries({x: box.x - reach, y: box.y - reach, width: box.width + 2 * reach,
+        height: box.height + 2 * reach, fill: "none", stroke: "none", "pointer-events": "none", "data-glow-padding": ""}))
+        padding.setAttribute(key, value);
+      frame.prepend(padding);
+      frame.setAttribute("filter", ensureGlow(main.querySelector(".passive-canvas"), "peer", color, graphics.glow ?? 3));
+    } else frame.removeAttribute("filter");
     if (gradient) gradient.style.color = color;
     else if (taper) path.style.fill = color;
     else path.style.stroke = color;
