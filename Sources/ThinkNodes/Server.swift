@@ -506,8 +506,21 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         let identity = try session(req, store: store)
         let path = try WorksheetPath(req.parameters.getCatchall())
         switch try await req.application.threadPool.runIfActive({ try store.preview(path, user: identity.user, unlocks: identity.unlocks, mode: siteMode(req)) }) {
-        case .drawing(let svg): return response(svg, type: "image/svg+xml; charset=utf-8")
+        case .drawing(let svg):
+            // `fill=1`: az előnézetes doboz teljesen kitöltése (levágva), a rajz saját arányától függetlenül.
+            guard req.query[String.self, at: "fill"] == "1", let range = svg.range(of: "<svg "),
+                  !svg[range.lowerBound...].prefix(while: { $0 != ">" }).contains("preserveAspectRatio") else {
+                return response(svg, type: "image/svg+xml; charset=utf-8")
+            }
+            return response(svg.replacingCharacters(in: range, with: "<svg preserveAspectRatio=\"xMidYMid slice\" "), type: "image/svg+xml; charset=utf-8")
         case .image(let file, let mime):
+            if req.query[String.self, at: "fill"] == "1", mime.hasPrefix("image/svg"),
+               let text = try? await req.application.threadPool.runIfActive({ try String(contentsOf: file, encoding: .utf8) }),
+               let range = text.range(of: "<svg "), !(text[range.lowerBound...].prefix(while: { $0 != ">" }).contains("preserveAspectRatio")) {
+                let result = response(text.replacingCharacters(in: range, with: "<svg preserveAspectRatio=\"xMidYMid slice\" "), type: mime)
+                result.headers.replaceOrAdd(name: "Content-Security-Policy", value: "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:")
+                return result
+            }
             let result = try await req.fileio.asyncStreamFile(at: file.path)
             result.headers.replaceOrAdd(name: .contentType, value: mime)
             result.headers.replaceOrAdd(name: "Content-Security-Policy", value: "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:")

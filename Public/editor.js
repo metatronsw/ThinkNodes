@@ -2547,7 +2547,7 @@ createApp({
       }
       const destination = worksheetLink(link.target, path);
       if (!destination) return null;
-      if (link.kind === "sheet") return {...destination, preview: "/api/preview" + (destination.href === "/" ? "" : destination.href)};
+      if (link.kind === "sheet") return {...destination, preview: "/api/preview" + (destination.href === "/" ? "" : destination.href) + "?fill=1"};
       return {...destination, preview: "/api/link-preview?url=" + encodeURIComponent(link.target)};
     }
 

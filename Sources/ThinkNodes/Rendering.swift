@@ -23,7 +23,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=46"></script>
+        <script type="module" src="/editor.js?v=47"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -1186,7 +1186,7 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
             return (url, url + "_tn-preview")
         case .sheet:
             guard let path, let href = link.worksheetLink?.destination(from: path) else { return nil }
-            return (href, "/api/preview" + (href == "/" ? "" : href))
+            return (href, "/api/preview" + (href == "/" ? "" : href) + "?fill=1")
         case .url:
             guard let path, let href = link.worksheetLink?.destination(from: path) else { return nil }
             return (href, "/api/link-preview?url=" + encodeQuery(link.target))
