@@ -96,17 +96,12 @@ struct WebPresentationInfo: Content {
     let url: String
     let preview: String?
     let manageable: Bool
-    let membersOnly: Bool?
-    let editors: [String]?
-    let passwordProtected: Bool?
+    let publicWeb: Bool
 }
 
 struct WebPresentationSettings: Content {
     let reference: String
-    let membersOnly: Bool
-    let editors: [String]?
-    let password: String?
-    let removePassword: Bool
+    let publicWeb: Bool
 }
 
 struct WebAsset: Sendable {

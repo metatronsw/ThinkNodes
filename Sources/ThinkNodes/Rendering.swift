@@ -23,7 +23,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=35"></script>
+        <script type="module" src="/editor.js?v=37"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -682,11 +682,13 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
         let top = -y * inset + 6, previewHeight = drawing.previewSpace - 6
         return "<image class=\"node-link-preview\" href=\"\(escaped(url))\" x=\"\(number(-x * inset + 6))\" y=\"\(number(top))\" width=\"\(number(max(1, node.width * inset - 12)))\" height=\"\(number(max(1, previewHeight)))\" preserveAspectRatio=\"xMidYMid meet\" pointer-events=\"none\"/>"
     } ?? ""
+    let publicMark = node.link?.kind == .web && node.webPublic == true
+        ? "<svg class=\"ui-icon web-public-mark\" x=\"-10\" y=\"\(number(-y - 26))\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" color=\"\(escaped(node.textColor))\" pointer-events=\"none\"><use href=\"/icons.svg#butterfly\"/></svg>" : ""
     let contents = """
         \(elevationShadow(node, geometry: geometry, graphics: graphics))
         \(boxSurface(node, geometry: geometry, graphics: graphics, interactive: interactive))
         \(previewImage)<text class="node-text" text-rendering="geometricPrecision" font-family="\(escaped((graphics ?? VisualTheme.Graphics()).fontFamily(node.font)))" pointer-events="none">\(spans)</text>
-        \(marker)
+        \(marker)\(publicMark)
         """
     return """
         <g aria-label="\(escaped(node.name))" transform="translate(\(number(node.position.x)) \(number(node.position.y)))">

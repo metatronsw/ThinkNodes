@@ -1,4 +1,4 @@
-import {openPresentation, openPresentationPicker} from "./web-presentations.js";
+import {openPresentation} from "./web-presentations.js";
 import {fetchPage, updateSection, watchPageUpdates} from "./page-updates.js";
 import {bindAudioPlayers, syncAudioPlayers} from "./audio-player.js";
 import {objectURL, writeText} from "./canvas-files.js";
@@ -265,10 +265,6 @@ function selectBox(box, broadcast = false) {
 }
 
 document.addEventListener("click", async event => {
-  if (event.target.closest("[data-web-presentations]")) {
-    await openPresentationPicker(path, csrf);
-    return;
-  }
   if (event.target.closest("audio, [data-audio-player], .node-file a, .node-download")) return;
   const linked = event.target.closest(".passive-canvas a[data-link]");
   if (linked && event.detail) {

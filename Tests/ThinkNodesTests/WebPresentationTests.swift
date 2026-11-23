@@ -93,35 +93,22 @@ import VaporTesting
         let linkedFolder = try await browser.sendRequest(.GET, "/demoproject/web/link/index.html")
         #expect(linkedFolder.status == .notFound || linkedFolder.status == .forbidden)
         #expect(try await browser.sendRequest(.GET, "/demoproject/web/ordinary").status == .ok)
-        let privateNested = try await browser.sendRequest(.GET, "/demoproject/anyagok/web/nested/")
-        #expect(privateNested.status == .seeOther && !privateNested.body.string.contains("nested-private"))
+        // Egyszerűsített jogok: a mappák és a .web oldalak saját korlátozásai (szerkesztők, jelszó) nem számítanak;
+        // a publikusnak jelölt .web bárkinek elérhető.
+        let publicNested = try await browser.sendRequest(.GET, "/demoproject/anyagok/web/nested/")
+        #expect(publicNested.status == .ok && publicNested.body.string.contains("nested-private"))
 
-        let protectedURL = "/demoproject/web/masik/"
-        let locked = try await browser.sendRequest(.GET, protectedURL + "app.js")
-        #expect(locked.status == .locked && locked.body.string.contains("Prezentáció feloldása"))
-        #expect(!locked.body.string.contains("protectedResource"))
-        let cookie = try #require(locked.headers.first(name: .setCookie)).split(separator: ";")[0]
-        let csrf = try #require(locked.body.string.components(separatedBy: #"name="csrf" value=""#).last).split(separator: "\"")[0]
-        let unlock = try await browser.sendRequest(.POST, "/api/web-unlock", headers: ["Cookie": String(cookie)]) { request in
-            try request.content.encode(["csrf": String(csrf), "target": protectedURL + "app.js", "password": password], as: .urlEncodedForm)
-        }
-        #expect(unlock.status == .seeOther && unlock.headers.first(name: .location) == protectedURL + "app.js")
-        let opened = try await browser.sendRequest(.GET, protectedURL, headers: ["Cookie": String(cookie)])
-        #expect(opened.body.string.contains("private-presentation"))
-        let basePart = try #require(opened.body.string.components(separatedBy: #"<base href=""#).dropFirst().first)
-        let assetURL = String(basePart.split(separator: "\"")[0]) + "app.js"
-        let webCookie = try #require(opened.headers[.setCookie].first(where: { $0.hasPrefix("thinknodes_web_asset=") }))
-        #expect(webCookie.lowercased().contains("httponly") && webCookie.lowercased().contains("secure") && webCookie.contains("SameSite=None"))
-        #expect(try await browser.sendRequest(.GET, assetURL).status == .notFound)
-        let resource = try await browser.sendRequest(.GET, assetURL, headers: ["Cookie": String(webCookie.split(separator: ";")[0])])
-        #expect(resource.status == .ok && resource.body.string.contains("protectedResource"))
+        let projectURL = "/demoproject/web/masik/"
+        let opened = try await browser.sendRequest(.GET, projectURL + "app.js")
+        #expect(opened.status == .ok && opened.body.string.contains("protectedResource"))
         let page = try await browser.sendRequest(.GET, "/demoproject")
         #expect(page.body.string.contains(#"href="/demoproject/anyagok/web/nested/" data-web-presentation="true" target="_blank""#))
         _ = try store.manage(project, operation: DocumentAction(scope: "project", action: "mode", value: "internal"), user: owner, unlocks: [])
-        let newlyPrivate = try await browser.sendRequest(.GET, base + "css/main.css")
-        #expect(newlyPrivate.status == .seeOther && !newlyPrivate.body.string.contains("color:red"))
-        let revokedResource = try await browser.sendRequest(.GET, assetURL, headers: ["Cookie": String(webCookie.split(separator: ";")[0])])
-        #expect(revokedResource.status == .unauthorized)
+        // Zárt projektben a publikusnak jelölt .web kívülről is elérhető marad, a többi nem.
+        let stillPublic = try await browser.sendRequest(.GET, base + "css/main.css")
+        #expect(stillPublic.status == .ok && stillPublic.body.string.contains("color:red"))
+        let newlyPrivate = try await browser.sendRequest(.GET, projectURL + "app.js")
+        #expect(newlyPrivate.status == .seeOther && !newlyPrivate.body.string.contains("protectedResource"))
 
     }
 }

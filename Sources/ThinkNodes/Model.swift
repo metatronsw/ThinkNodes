@@ -203,10 +203,12 @@ struct Idea: Codable, Equatable, Sendable {
     var elevated: Bool?
     /// .web doboz: true = nincs új előnézet-generálás, a meglévő kép vágódik a doboz arányára.
     var staticPreview: Bool?
+    /// .web doboz: a mappa publikus (pillangó ikon a doboz felett); az igazság a .web mappa .settings.json-ja.
+    var webPublic: Bool?
 
     private enum CodingKeys: String, CodingKey {
         case id, type, text, file, hideText, fitText, shape, fill, backgroundMode, animation, bold, italic, underline, font, justified, link
-        case angle, parent, container, locked, elevated, staticPreview
+        case angle, parent, container, locked, elevated, staticPreview, webPublic
         case position = "pos", width = "w", height = "h", textColor = "textCol"
         case fontSize = "fontSz", alignment = "align", verticalAlignment = "vAlign"
     }
@@ -1303,7 +1305,7 @@ final class WorksheetStore: @unchecked Sendable {
                 try files.moveItem(at: site, to: target)
                 let url = reference.url(in: path.parts[0])
                 return WebPresentationInfo(reference: reference.relativePath, title: reference.name, url: url, preview: url + "_tn-preview",
-                    manageable: true, membersOnly: nil, editors: nil, passwordProtected: nil)
+                    manageable: true, publicWeb: false)
             }
             throw Abort(.conflict, reason: "Nincs szabad mappanév.")
         }
@@ -1716,6 +1718,7 @@ extension Idea {
         locked = try? fields.decode(Bool.self, forKey: .locked)
         elevated = try? fields.decode(Bool.self, forKey: .elevated)
         staticPreview = try? fields.decode(Bool.self, forKey: .staticPreview)
+        webPublic = try? fields.decode(Bool.self, forKey: .webPublic)
     }
 }
 
@@ -1809,35 +1812,29 @@ extension WorksheetStore {
         return url
     }
 
+    /// .web jogok (egyszerűsített): a projekt adminja és szerkesztői kezelik (átnevezés, publikussá tétel, törlés);
+    /// olvasni az tudja, aki a projektet; publikus projektnél vagy publikussá tett .web-nél bárki, bejelentkezés nélkül is.
     private func webContext(project: String, reference: WebPresentationReference, user: User?, unlocks: Set<String>) throws -> WebContext? {
         let requiresLogin = try readSettings().requireLogin
-        if requiresLogin && user == nil { throw Abort(.unauthorized) }
         guard var directory = try webDirectory(project, in: root), let rootRule = try webPolicy(at: directory) else { return nil }
+        for folder in reference.folders {
+            guard let next = try webDirectory(folder, in: directory) else { return nil }
+            directory = next
+        }
+        guard let presentation = try webDirectory(reference.name + ".web", in: directory) else { return nil }
+        let policy = try webPolicy(at: presentation) ?? DocumentPolicy()
+        let publicWeb = policy.guestReadable == true
         let member = user.map { user in
             user.role == .editor && (user.name == rootRule.owner || rootRule.editors?.contains(user.name) == true)
         } == true
         let admin = user?.role == .admin
+        let publicProject = rootRule.guestReadable == true && !(requiresLogin && user == nil)
         var access = WebAccess(admin: admin, projectMember: member, projectOwner: member && user?.name == rootRule.owner,
-            readable: admin || member || rootRule.guestReadable == true,
-            publicRead: !requiresLogin && rootRule.guestReadable == true)
-        access.protect(rootRule.passwordHash)
-        var parts: [String] = []
-        access.protect(rootRule.worksheets?[project + ".thnode"]?.passwordHash)
-        for folder in reference.folders {
-            guard access.readable else { throw Abort(user == nil ? .unauthorized : .forbidden) }
-            guard let next = try webDirectory(folder, in: directory) else { return nil }
-            directory = next
-            parts.append(folder)
-            if let rule = try webPolicy(at: directory) { access.restrict(rule, user: user) }
-            let key = (parts + [folder + ".thnode"]).joined(separator: "/")
-            access.protect(rootRule.worksheets?[key]?.passwordHash)
-        }
+            readable: admin || member || publicProject || publicWeb,
+            publicRead: publicWeb || (!requiresLogin && rootRule.guestReadable == true && rootRule.passwordHash == nil))
+        if !publicWeb { access.protect(rootRule.passwordHash) }
         guard access.readable else { throw Abort(user == nil ? .unauthorized : .forbidden) }
-        guard let presentation = try webDirectory(reference.name + ".web", in: directory) else { return nil }
-        let policy = try webPolicy(at: presentation) ?? DocumentPolicy()
-        let manageable = access.canManage(unlocks: unlocks)
-        access.restrict(policy, user: user)
-        return WebContext(directory: presentation, policy: policy, access: access, manageable: manageable)
+        return WebContext(directory: presentation, policy: policy, access: access, manageable: admin || member)
     }
 
     /// `ratio`: a doboz aránya; `live`: generálhat-e új előnézetet. Az előnézet keresési sorrendje: WebPreview.find.
@@ -1896,11 +1893,10 @@ extension WorksheetStore {
                               access.access.readable || access.manageable else { continue }
                         let url = reference.url(in: project)
                         let unlocked = access.access.readable && access.access.hashes.allSatisfy(unlocks.contains)
+                        let publicWeb = access.policy.guestReadable == true
                         presentations.append(WebPresentationInfo(reference: reference.relativePath, title: String(reference.name.prefix(120)), url: url,
                             preview: unlocked ? url + "_tn-preview" : nil, manageable: access.manageable,
-                            membersOnly: access.manageable ? access.policy.guestReadable == false : nil,
-                            editors: access.manageable ? access.policy.editors : nil,
-                            passwordProtected: access.manageable ? access.policy.passwordHash != nil : nil))
+                            publicWeb: publicWeb))
                     } else if relative.count < 11, (try? WorksheetPath([project] + relative)) != nil {
                         try visit(entry, folders: relative)
                     }
@@ -1911,26 +1907,33 @@ extension WorksheetStore {
         }
     }
 
+    /// Publikus jog ki/be (a .web mappa .settings.json-jában); csak a projekt adminja és szerkesztői állíthatják.
     func setWebPresentation(_ settings: WebPresentationSettings, in path: WorksheetPath, user: User, unlocks: Set<String>) throws {
-        guard settings.password.map({ (1...72).contains($0.utf8.count) }) ?? true else { throw Abort(.badRequest) }
-        // A bcrypt a záron kívül fut.
-        let newHash = try settings.password.map { try Bcrypt.hash($0) }
         try lock.withLock {
-            let worksheet = try context(path)
-            try authorize(accessLocked(worksheet, user: user, unlocks: unlocks), user: user)
             let reference = try WebPresentationReference(settings.reference)
             guard let context = try webContext(project: path.parts[0], reference: reference, user: user, unlocks: unlocks),
                   context.manageable else { throw Abort(.forbidden) }
-            guard settings.editors.map({ $0.count <= 500 && $0.allSatisfy(validSlug) }) ?? true,
-                  settings.password.map({ (1...72).contains($0.utf8.count) && !settings.removePassword }) ?? true else {
-                throw Abort(.badRequest)
-            }
-            var policy = context.policy
-            policy.guestReadable = settings.membersOnly ? false : nil
-            policy.editors = settings.editors.map { Set($0).sorted() }
-            if settings.removePassword { policy.passwordHash = nil }
-            if let newHash { policy.passwordHash = newHash }
+            var policy = DocumentPolicy()
+            policy.guestReadable = settings.publicWeb ? true : nil
             try write(policy, to: settingsURL(context.directory))
         }
     }
+
+    /// A .web mappa a projekt lomtárába kerül (a dobozát törölték a lapról).
+    func trashWeb(_ reference: String, in path: WorksheetPath, user: User?, unlocks: Set<String>) throws {
+        try lock.withLock {
+            let ctx = try context(path)
+            let web = try WebPresentationReference(reference)
+            guard let context = try webContext(project: path.parts[0], reference: web, user: user, unlocks: unlocks),
+                  context.manageable else { throw Abort(.forbidden) }
+            let destination = try trashDestination(context.directory, in: ctx)
+            try files.moveItem(at: context.directory, to: destination)
+            let parent = context.directory.deletingLastPathComponent()
+            for name in (try? files.contentsOfDirectory(atPath: parent.path)) ?? []
+                where name.hasPrefix("." + context.directory.lastPathComponent + WebScreenshot.marker) {
+                try? files.removeItem(at: parent.appendingPathComponent(name))
+            }
+        }
+    }
+
 }

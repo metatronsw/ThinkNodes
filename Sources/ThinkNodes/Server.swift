@@ -639,6 +639,20 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         return ["reference": reference]
     }
 
+    app.post("api", "web-trash", "**") { req async throws -> HTTPStatus in
+        struct Trash: Content { let reference: String }
+        let identity = try session(req, store: store)
+        let user = try identity.editor()
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        let body = try req.content.decode(Trash.self)
+        try await req.application.threadPool.runIfActive {
+            try store.trashWeb(body.reference, in: path, user: user, unlocks: identity.unlocks)
+        }
+        live.pages.publish(.structure, at: try WorksheetPath([path.parts[0]]))
+        return .noContent
+    }
+
     app.post("api", "attachment", "**") { req async throws -> Response in
         let identity = try session(req, store: store)
         let user = identity.user
@@ -964,8 +978,6 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
         : "<button type=\"button\" class=\"button small viewer-edit\" disabled>\(uiIcon("edit"))Szerkesztés</button>"
     let manageEditors = path.parts.count == 1 && access.manageable
         ? "<button type=\"button\" class=\"button small\" data-manage-editors>Szerkesztők kezelése</button>" : ""
-    let managePresentations = access.manageable
-        ? "<button type=\"button\" class=\"button small\" data-web-presentations>\(uiIcon("website"))Prezentációk</button>" : ""
     let downloads = [
         ("svg", "SVG"), ("thnode", "ThinkNodes"), ("text", "Text"),
     ].map { format, title in
@@ -1032,7 +1044,7 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
           </div>
           <div data-viewer-notes>\(tooltips)\(notes)\(note)</div>
           <div class="viewer-meta">
-            <div class="viewer-credits">\(manageEditors)\(managePresentations)</div>
+            <div class="viewer-credits">\(manageEditors)</div>
             <nav class="viewer-downloads" aria-label="Letöltések">\(downloads)</nav>
           </div>
           <div data-viewer-sections>

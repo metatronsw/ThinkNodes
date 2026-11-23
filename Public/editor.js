@@ -1,4 +1,4 @@
-import {openPresentation, openPresentationPicker, webPresentationURL} from "./web-presentations.js";
+import {openPresentation, setWebPublic, trashWeb, webPresentationURL} from "./web-presentations.js";
 import {fetchPage, updateSection, watchPageUpdates} from "./page-updates.js";
 import {bindAudioPlayers} from "./audio-player.js";
 import {assetURL, attachmentURL, checkText, fileName, fileNameParts, importFile, nodeName, objectURL, pngForClipboard, validImageStem, writeText} from "./canvas-files.js";
@@ -1218,6 +1218,18 @@ createApp({
     }
 
     function deleteObjects(ids, preserve, edges = new Set()) {
+      // .web doboz törlésekor a weboldal mappája is a projekt lomtárába kerül, rákérdezés után.
+      const webNodes = [...ids].map(id => nodeMap.value.get(id)).filter(node => node?.link?.kind === "web");
+      const webReferences = [...new Set(webNodes.map(node => node.link.target))];
+      if (webReferences.length) {
+        const names = webReferences.map(reference => reference.split("/").at(-1).replace(/\.web$/, ""));
+        if (!confirm("Törlöd a dobozt? A weboldal mappája is a Lomtárba kerül:\n" + names.join("\n"))) return;
+        const remaining = () => board.value.nodes.filter(node => !ids.has(node.id) && node.link?.kind === "web").map(node => node.link.target);
+        const keep = new Set(remaining());
+        transfer(async () => {
+          for (const reference of webReferences) if (!keep.has(reference)) await trashWeb(path, csrf, reference);
+        });
+      }
       const fileNodes = [...ids].map(id => nodeMap.value.get(id)).filter(node => node?.file);
       if (!fileNodes.length) { removeObjects(ids, preserve, edges); return; }
       const refs = new Set(fileNodes.map(node => node.file.asset));
@@ -2615,6 +2627,18 @@ createApp({
       ]);
     }
 
+    // Publikus jog a .web mappán (szerver), a doboz `webPublic` mezője a pillangó ikonhoz tükrözi.
+    function toggleWebPublic(node) {
+      const reference = node.link.target, next = !node.webPublic;
+      transfer(async () => {
+        await setWebPublic(path, csrf, reference, next);
+        for (const item of board.value.nodes) if (item.link?.kind === "web" && item.link.target === reference && !occupied(item.id)) {
+          item.webPublic = next || undefined;
+        }
+        modified();
+      });
+    }
+
     const previewRatios = new Map();
     function renderNode(node) {
       const drawn = node;
@@ -2673,6 +2697,10 @@ createApp({
         href: destination.preview, x: -drawn.width/2*inset + 6, y: -drawn.height/2*inset + 6,
         width: Math.max(1, drawn.width*inset - 12), height: Math.max(1, layout.previewSpace - 6),
         preserveAspectRatio: "xMidYMid meet", "pointer-events": "none"}) : null;
+      // Publikus .web: pillangó ikon a doboz felett középen.
+      const publicMark = node.link?.kind === "web" && node.webPublic ? h("svg", {class: "ui-icon web-public-mark", "pointer-events": "none",
+        x: -10, y: -drawn.height/2 - 26, width: 20, height: 20, viewBox: "0 0 24 24", color: paint(node.textColor, 1)},
+        [h("use", {href: "/icons.svg#butterfly"})]) : null;
       const junctionLabel = junction && node.text ? h("g", {class: "node-label-turn", transform: "rotate(" + (node.angle ?? 0) + ")"}, [
         h("text", {class: "node-label", x: drawn.width/2 + 4, y: 4, fill: paint(node.textColor, 1), "font-size": 14}, node.text)]) : null;
       return h("g", {key: node.id, "data-node": node.id, "data-type": node.type, "data-width": drawn.width, "data-height": drawn.height, tabindex: 0,
@@ -2712,6 +2740,7 @@ createApp({
           node.file ? renderFileBox(node, destination) : null,
           junctionLabel,
           linkPreview,
+          publicMark,
           // A szöveg közvetlenül a doboz csoportjában van (nincs dobozonkénti vágás): az elrendezés eleve a dobozon belül tartja.
           labels,
           editingObject.value === node.id ? editOverlay(node, -drawn.width/2,
@@ -3087,7 +3116,8 @@ createApp({
       live.ping(target).catch(error => { problem.value = error.message; });
     }
 
-    const linkKinds = [["sheet", "Másik munkalap", "file"], ["web", ".web mappa", "website"], ["url", "Külső cím", "link"]];
+    // .web link ZIP-feltöltéssel jön létre (canvas-files.js importFile).
+    const linkKinds = [["sheet", "Másik munkalap", "file"], ["url", "Külső cím", "link"]];
 
     // Link hozzáadása (docs/node-types.md, link képesség): a fajtát rögtön meg kell adni.
     async function addLink(node, kind) {
@@ -3096,7 +3126,6 @@ createApp({
         const current = nodeMap.value.get(node.id);
         if (current && held.value === node.id && online.value) updateItem(current, "link", {kind, target});
       };
-      if (kind === "web") { transfer(() => openPresentationPicker(path, csrf, item => set(item.reference))); return; }
       const value = window.prompt(kind === "url" ? "Webcím (https://…)" : "Munkalap útvonala (allap, ../testvér vagy /projekt/lap)")?.trim();
       if (!value) return;
       const destination = kind === "url" ? externalURL(value) : worksheetLink(value, path);
@@ -3147,12 +3176,6 @@ createApp({
           menu.value = null;
           addNode(open.position);
         }, {disabled: !board.value, symbol: "plus"}),
-        button("Prezentáció beszúrása", () => {
-          menu.value = null;
-          transfer(() => openPresentationPicker(path, csrf, item => addNode(open.position, {
-            text: item.title ?? "", link: {kind: "web", target: item.reference}, width: 290, height: 200,
-          })));
-        }, {symbol: "website", disabled: !online.value}),
         button("Új munkalap", addSubworksheet, {symbol: "plus", disabled: !online.value}),
         button("Középre állítás", () => { menu.value = null; centerOrigin(); }, {symbol: "center"}),
       ];
@@ -3555,7 +3578,7 @@ createApp({
 
       if (single?.link) {
         const destination = linkDestination(single.link);
-        const kindLabel = linkKinds.find(([kind]) => kind === single.link.kind)?.[1] ?? "Link";
+        const kindLabel = single.link.kind === "web" ? "Weboldal" : linkKinds.find(([kind]) => kind === single.link.kind)?.[1] ?? "Link";
         panels.push(h("fieldset", {class: "property-group stack link-group"}, [
           h("legend", [h("span", "Link · " + kindLabel)]),
           h("div", {class: "link-row"}, [
@@ -3585,11 +3608,14 @@ createApp({
                   if (!target) { problem.value = "Érvénytelen hivatkozás."; event.target.value = single.link.target; return; }
                   change("link", {kind: single.link.kind, target});
                 }}),
+            destination ? button("", () => followBoxLink(destination), {symbol: single.link.kind === "url" ? "website" : "right", class: "button option-icon", ...controlName("Megnyitás")}) : null,
+          ]),
+          // Második sor: a többi gomb.
+          h("div", {class: "link-row link-actions"}, [
             single.link.kind === "web" ? iconToggle(single.staticPreview ? "Előnézet generálása: ki" : "Előnézet generálása: be",
               !single.staticPreview, () => change("staticPreview", single.staticPreview ? undefined : true), icon("camera")) : null,
-            single.link.kind === "web" ? button("", () => transfer(() => openPresentationPicker(path, csrf, item => change("link", {kind: "web", target: item.reference}))),
-              {symbol: "folder", class: "button option-icon", ...controlName("Mappa kiválasztása"), disabled: !online.value}) : null,
-            destination ? button("", () => followBoxLink(destination), {symbol: single.link.kind === "url" ? "website" : "right", class: "button option-icon", ...controlName("Megnyitás")}) : null,
+            single.link.kind === "web" ? iconToggle(single.webPublic ? "Publikus: bárki megnézheti" : "Publikus: ki",
+              !!single.webPublic, () => toggleWebPublic(single), icon("butterfly"), !online.value) : null,
             h("button", {type: "button", class: "button option-icon link-remove", ...controlName("Link törlése"),
               onClick: () => removeLink(single)}, [icon("close")]),
           ]),
