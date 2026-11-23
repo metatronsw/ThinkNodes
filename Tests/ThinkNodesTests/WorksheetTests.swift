@@ -1295,3 +1295,43 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     #expect(parseCSV("a,\"b,c\"\n1,\"x\"\"y\"") == [["a", "b,c"], ["1", "x\"y"]])
     #expect(plainFirstLine("\n# **Cím** [link](https://x)\nmásodik") == "Cím link")
 }
+
+/// Közös fájl: másik lapról is hivatkozható; lomtárba tételkor a többi lap doboza üres dobozzá válik.
+@Test func sharedFileReleaseUnlinksOtherSheets() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-release-\(UUID().uuidString)")
+    let store = try WorksheetStore(root: root)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let password = UUID().uuidString
+    try store.setUser(name: "admin", role: .admin, passwordHash: try Bcrypt.hash(password, cost: 4))
+    let admin = try #require(try store.user(named: "admin"))
+    let project = try WorksheetPath(["kozos"]), child = try WorksheetPath(["kozos", "al"])
+    var parent = try store.open(project, user: admin)
+    var sub = try store.open(child, user: admin)
+    let asset = try store.storeAttachment(Data("# Jegyzet".utf8), named: "jegyzet.md", at: project, user: admin, unlocks: [])
+    parent.nodes = [Idea(id: "parentfile", type: "text", file: CanvasFile(asset: asset, filename: "jegyzet.md"), position: Point(x: 0, y: 0), width: 340, height: 240)]
+    parent = try store.update(project, worksheet: parent, user: admin)
+    sub.nodes = [Idea(id: "childfile", type: "text", file: CanvasFile(asset: asset, source: "", filename: "jegyzet.md"), position: Point(x: 0, y: 0), width: 340, height: 240)]
+    sub = try store.update(child, worksheet: sub, user: admin)
+    #expect(try store.usage(of: "childfile", in: child, user: admin, unlocks: []).map(\.sheet).sorted() == ["kozos", "kozos/al"])
+
+    // Az allap dobozának törlése (mentéssel) nem viszi lomtárba a szülőlap fájlját.
+    var trimmed = sub
+    trimmed.nodes = []
+    _ = try store.update(child, worksheet: trimmed, user: admin)
+    #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("kozos/jegyzet.md").path))
+    sub = try store.update(child, worksheet: { var restored = sub; restored.revision += 1; return restored }(), user: admin)
+
+    try await withApp(configure: { app in configure(app, store: store, secureCookies: false) }) { app in
+        let browser = try app.testing()
+        let session = try await login(browser, name: "admin", password: password, path: child.url)
+        let response = try await browser.sendRequest(.POST, "/api/release/" + child.url,
+            headers: ["Cookie": session.cookie, "X-CSRF-Token": session.csrf, "Content-Type": "application/json"]) { request in
+            try request.content.encode(["id": "childfile", "mode": "unlink"])
+        }
+        #expect(response.status == .ok)
+        let updated = try store.load(project, user: admin)
+        #expect(updated.nodes.first?.type == "box" && updated.nodes.first?.file == nil && updated.nodes.first?.text.contains("lomtárban") == true)
+        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("kozos/jegyzet.md").path))
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("kozos/.trash/jegyzet.md").path))
+    }
+}

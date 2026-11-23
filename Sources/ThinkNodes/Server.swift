@@ -665,6 +665,55 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         return .noContent
     }
 
+    app.get("api", "usage", "**") { req async throws -> [WorksheetStore.Usage] in
+        let identity = try session(req, store: store)
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        guard let id = req.query[String.self, at: "id"], validSlug(id) else { throw Abort(.badRequest) }
+        return try await req.application.threadPool.runIfActive {
+            try store.usage(of: id, in: path, user: identity.user, unlocks: identity.unlocks)
+        }
+    }
+
+    // Közös elem lomtárba: a többi lap rá mutató dobozai törlődnek ("delete") vagy üres dobozzá válnak ("unlink").
+    // A saját lap dobozát a kliens törli utána a szokásos mentéssel.
+    app.post("api", "release", "**") { req async throws -> [String: [String]] in
+        struct Release: Content { let id: String; let mode: String }
+        let identity = try session(req, store: store)
+        let user = identity.user
+        guard user != nil || req.hasSession else { throw Abort(.unauthorized) }
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        let body = try req.content.decode(Release.self)
+        guard validSlug(body.id), ["delete", "unlink"].contains(body.mode) else { throw Abort(.badRequest) }
+        let failed = try await req.application.threadPool.runIfActive { () throws -> [String] in
+            var failed: [String] = []
+            for usage in try store.usage(of: body.id, in: path, user: user, unlocks: identity.unlocks) where usage.sheet != path.url {
+                do {
+                    let sheet = try WorksheetPath(usage.sheet.split(separator: "/").map { $0.removingPercentEncoding ?? String($0) })
+                    var board = try store.load(sheet, user: user, unlocks: identity.unlocks)
+                    let ids = Set(usage.nodes)
+                    if body.mode == "delete" {
+                        board.nodes.removeAll { ids.contains($0.id) }
+                        board.edges.removeAll { ids.contains($0.source ?? "") || ids.contains($0.target.node ?? "") }
+                    } else {
+                        for index in board.nodes.indices where ids.contains(board.nodes[index].id) {
+                            let name = board.nodes[index].name
+                            board.nodes[index].type = "box"
+                            board.nodes[index].file = nil
+                            board.nodes[index].link = nil
+                            board.nodes[index].text = name + " (lomtárban)"
+                        }
+                    }
+                    _ = try live.update(sheet, sheet: board, user: user, client: nil, unlocks: identity.unlocks)
+                } catch { failed.append(usage.title) }
+            }
+            try store.trashTarget(of: body.id, in: path, user: user, unlocks: identity.unlocks)
+            return failed
+        }
+        live.pages.publish(.attachments, at: path)
+        return ["failed": failed]
+    }
+
     app.post("api", "attachment", "**") { req async throws -> Response in
         let identity = try session(req, store: store)
         let user = identity.user

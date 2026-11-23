@@ -1060,6 +1060,9 @@ final class WorksheetStore: @unchecked Sendable {
                 for ref in currentRefs.subtracting(nextRefs).sorted() {
                     guard let source = try sourceOf(ref),
                           !keep.contains(source.lastPathComponent) else { continue }
+                    // Más lap is használja: a fájl marad (a doboz törlése nem viszi lomtárba).
+                    if !usageLocked(.file(owner: path.url, name: source.lastPathComponent), project: path.parts[0])
+                        .filter({ $0.sheet != path.url }).isEmpty { continue }
                     let destination = try trashDestination(source, in: ctx)
                     try move(source, destination)
                     let relative = String(destination.path.dropFirst(ctx.project.path.count + "/.trash/".count))
@@ -1566,6 +1569,89 @@ final class WorksheetStore: @unchecked Sendable {
             metadata.publicFiles = names.isEmpty ? nil : names.sorted()
             next.rules[ctx.directory] = metadata
             try persist(next, previous: ctx)
+        }
+    }
+
+    /// Közösen használható elem: egy lap mappájában lévő fájl (valódi fájlnévvel) vagy .web mappa (projekt-relatív hivatkozás).
+    enum SharedTarget: Equatable {
+        case file(owner: String, name: String)   // owner: a tulajdonos lap URL-útvonala
+        case web(reference: String)
+    }
+
+    struct Usage: Content {
+        let sheet: String       // munkalap URL-útvonala
+        let title: String
+        let nodes: [String]
+    }
+
+    /// A projekt összes munkalapja.
+    private func projectSheetsLocked(_ project: String) -> [WorksheetPath] {
+        var result: [WorksheetPath] = []
+        func visit(_ parts: [String]) {
+            guard let path = try? WorksheetPath(parts), let url = try? worksheetURL(path), files.fileExists(atPath: url.path) else { return }
+            result.append(path)
+            let directory = url.deletingLastPathComponent()
+            let entries = (try? files.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+                                                           options: [.skipsHiddenFiles])) ?? []
+            for entry in entries {
+                guard let info = try? entry.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]),
+                      info.isDirectory == true, info.isSymbolicLink != true, entry.pathExtension != "web", parts.count < 11 else { continue }
+                visit(parts + [entry.lastPathComponent])
+            }
+        }
+        visit([project])
+        return result
+    }
+
+    /// Egy doboz által használt közös elem (a közös könyvtár nem számít).
+    private func targetLocked(of node: Idea, at sheet: WorksheetPath) -> SharedTarget? {
+        if let link = node.link, link.kind == .web { return .web(reference: link.target) }
+        guard let file = node.file, let owner = file.sheet(from: sheet) else { return nil }
+        let media = (try? context(owner))?.local.mediaFiles
+        return .file(owner: owner.url, name: media?[file.asset] ?? file.asset)
+    }
+
+    /// Mely lapok mely dobozai használják az elemet a projektben.
+    private func usageLocked(_ target: SharedTarget, project: String) -> [Usage] {
+        projectSheetsLocked(project).compactMap { sheet in
+            guard let board = try? read(worksheetURL(sheet)) else { return nil }
+            let ids = board.nodes.filter { targetLocked(of: $0, at: sheet) == target }.map(\.id)
+            return ids.isEmpty ? nil : Usage(sheet: sheet.url, title: board.title, nodes: ids)
+        }
+    }
+
+    /// A doboz közös elemének használata (a projektben bárhol); `node` a saját lap egy doboza.
+    func usage(of nodeID: String, in path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> [Usage] {
+        try lock.withLock {
+            let ctx = try context(path)
+            try authorize(accessLocked(ctx, user: user, unlocks: unlocks), user: user)
+            guard let node = try read(worksheetURL(path)).nodes.first(where: { $0.id == nodeID }),
+                  let target = targetLocked(of: node, at: path) else { return [] }
+            return usageLocked(target, project: path.parts[0])
+        }
+    }
+
+    /// A doboz közös elemét a lomtárba teszi (fájl a tulajdonos lap mappájából, vagy .web mappa).
+    func trashTarget(of nodeID: String, in path: WorksheetPath, user: User?, unlocks: Set<String>) throws {
+        let target: SharedTarget? = try lock.withLock {
+            let ctx = try context(path)
+            guard accessLocked(ctx, user: user, unlocks: unlocks).editable else { throw Abort(.forbidden) }
+            guard let node = try read(worksheetURL(path)).nodes.first(where: { $0.id == nodeID }) else { throw Abort(.notFound) }
+            return targetLocked(of: node, at: path)
+        }
+        switch target {
+        case .web(let reference): try trashWeb(reference, in: path, user: user, unlocks: unlocks)
+        case .file(let ownerURL, let name):
+            try lock.withLock {
+                let owner = try WorksheetPath(ownerURL.split(separator: "/").map { $0.removingPercentEncoding ?? String($0) })
+                let ownerContext = try context(owner)
+                guard accessLocked(ownerContext, user: user, unlocks: unlocks).editable else { throw Abort(.forbidden) }
+                let source = ownerContext.directory.appendingPathComponent(name)
+                try rejectLink(source)
+                guard files.fileExists(atPath: source.path) else { return }
+                try files.moveItem(at: source, to: try trashDestination(source, in: ownerContext))
+            }
+        case nil: return
         }
     }
 

@@ -1,9 +1,9 @@
-import {openPresentation, setWebPublic, trashWeb, webPresentationURL} from "./web-presentations.js";
+import {openPresentation, setWebPublic, webPresentationURL} from "./web-presentations.js";
 import {fetchPage, updateSection, watchPageUpdates} from "./page-updates.js";
 import {bindAudioPlayers} from "./audio-player.js";
 import {assetURL, attachmentURL, checkText, fileSheet, fileURL, isCommonFile, sharedFileBox, fileName, fileNameParts, importFile, nodeName, objectURL, pngForClipboard, validImageStem, writeText} from "./canvas-files.js";
 import {hasTrait, rootType, traits, typeLabel} from "./node-types.js";
-import {openFileBrowser} from "./file-browser.js";
+import {chooseRemoval, openFileBrowser} from "./file-browser.js";
 import {decodeWorksheet, encodeWorksheet} from "./worksheet-json.js";
 import {sharedMouse} from "./mouse.js";
 import {worksheetChanges, replayChanges, sameValue} from "./editor-history.js?v=2";
@@ -1238,29 +1238,36 @@ createApp({
       return confirm("Lomtárba helyezed a fájlokat és törlöd a dobozaikat?\n" + [...names].join("\n"));
     }
 
+    // Fájl- és .web-doboz törlése (közös elemek): ha más lap is használja, három lehetőség közül választhat
+    // (csak a doboz / elem lomtárba + a többi doboz törlése / elem lomtárba + a többi üres doboz); ha nem, rákérdezés után lomtárba.
     function deleteObjects(ids, preserve, edges = new Set()) {
-      // .web doboz törlésekor a weboldal mappája is a projekt lomtárába kerül, rákérdezés után.
-      const webNodes = [...ids].map(id => nodeMap.value.get(id)).filter(node => node?.link?.kind === "web");
-      const webReferences = [...new Set(webNodes.map(node => node.link.target))];
-      if (webReferences.length) {
-        const names = webReferences.map(reference => reference.split("/").at(-1).replace(/\.web$/, ""));
-        if (!confirm("Törlöd a dobozt? A weboldal mappája is a Lomtárba kerül:\n" + names.join("\n"))) return;
-        const remaining = () => board.value.nodes.filter(node => !ids.has(node.id) && node.link?.kind === "web").map(node => node.link.target);
-        const keep = new Set(remaining());
-        transfer(async () => {
-          for (const reference of webReferences) if (!keep.has(reference)) await trashWeb(path, csrf, reference);
-        });
-      }
-      const fileNodes = [...ids].map(id => nodeMap.value.get(id)).filter(node => node?.file);
-      if (!fileNodes.length) { removeObjects(ids, preserve, edges); return; }
-      const refs = new Set(fileNodes.map(node => node.file.asset));
-      if (!confirmFileRemoval(fileNodes)) return;
-      for (const node of board.value.nodes) {
-        if (node.file && refs.has(node.file.asset)) ids.add(node.id);
-      }
+      const shared = [...ids].map(id => nodeMap.value.get(id)).filter(node => (node?.file && !isCommonFile(node.file)) || node?.link?.kind === "web");
+      if (!shared.length) { removeObjects(ids, preserve, edges); return; }
+      const key = node => node.link?.kind === "web" ? "web:" + node.link.target : JSON.stringify([node.file.source ?? null, node.file.asset]);
+      for (const node of board.value.nodes) if (((node.file && !isCommonFile(node.file)) || node.link?.kind === "web")
+        && shared.some(item => key(item) === key(node))) ids.add(node.id);
       if (batchBlocked(ids)) return;
       transfer(() => enqueue(async () => {
         await commit();
+        const targets = [...new Map(shared.map(node => [key(node), node])).values()];
+        const others = [];
+        for (const node of targets) {
+          const usage = await (await checked(await fetch("/api/usage/" + path + "?id=" + encodeURIComponent(node.id), {cache: "no-store"}))).json();
+          for (const entry of usage) if (entry.sheet !== path) others.push({node, title: entry.title || entry.sheet, count: entry.nodes.length});
+        }
+        const names = targets.map(nodeName);
+        const choice = others.length ? await chooseRemoval(names, others)
+          : confirm("Lomtárba helyezed, és törlöd a dobozt?\n" + names.join("\n")) ? "delete" : null;
+        if (!choice) return;
+        if (choice !== "keep") {
+          const failed = [];
+          for (const node of targets) {
+            const result = await (await checked(await fetch("/api/release/" + path, {method: "POST",
+              headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify({id: node.id, mode: choice})}))).json();
+            failed.push(...result.failed);
+          }
+          if (failed.length) problem.value = "Ezeken a lapokon nem sikerült módosítani (valaki szerkeszti a dobozt): " + failed.join(", ");
+        }
         const before = copy(board.value);
         removeObjects(ids, preserve, edges, false);
         const after = copy(board.value);

@@ -121,3 +121,29 @@ export function openFileBrowser(path, csrf) {
     show(path);
   });
 }
+
+// Törlés közös elemnél: más lapok is használják. Válasz: "keep" | "delete" | "unlink" | null (Mégse).
+export function chooseRemoval(names, others) {
+  return new Promise(resolve => {
+    let answer = null;
+    const dialog = element("dialog", "", {className: "panel removal-dialog"});
+    dialog.setAttribute("aria-label", "Törlés");
+    const list = element("ul");
+    for (const other of others) list.append(element("li", other.title + (other.count > 1 ? " (" + other.count + " doboz)" : "")));
+    const choice = (label, value, className = "button") => {
+      const button = element("button", label, {type: "button", className});
+      button.addEventListener("click", () => { answer = value; dialog.close(); });
+      return button;
+    };
+    dialog.append(element("h3", "Más lapok is használják"), element("p", names.join(", ")), list,
+      element("div", "", {className: "stack"}));
+    dialog.lastChild.append(
+      choice("Csak ez a doboz törlődik (a fájl marad)", "keep", "button primary"),
+      choice("Lomtárba, a többi doboz is törlődik", "delete", "button danger"),
+      choice("Lomtárba, a többi doboz üres doboz lesz", "unlink", "button danger"),
+      choice("Mégse", null));
+    dialog.addEventListener("close", () => { dialog.remove(); resolve(answer); }, {once: true});
+    document.body.append(dialog);
+    dialog.showModal();
+  });
+}

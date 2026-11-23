@@ -869,3 +869,6 @@ svg text { text-rendering: geometricPrecision; }
 .file-browser-row { display: flex; align-items: center; gap: 8px; justify-content: flex-start; width: 100%; text-align: left; }
 .file-browser-row span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-browser-path { margin: 0; font-family: monospace; }
+.removal-dialog { width: min(420px, 92vw); }
+.removal-dialog ul { margin: 0 0 8px; padding-left: 20px; }
+.file-browser-menu { position: absolute; z-index: 5; }
