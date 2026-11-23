@@ -100,4 +100,14 @@ Gépelés, árnyékok és átlátszó (elmosott/áttetsző) dobozok, nagyítás.
 
 ## Mérés
 
+### Valós képkockaidők (2026-11-23, látható böngészőpanel, 300 doboz / 280 vonal, 100 elmosott, 100 áttetsző, 60 kiemelt)
+
+| Állapot | Húzás (medián / p90) | Nagyítás (medián / p90) |
+|---|---|---|
+| Optimalizálás előtt (`e2e2a65`) | 33,3 / 49 ms (~30 fps) | 50,1 / 66,7 ms (~20 fps) |
+| C1–C3 után (`7a50d10`) | 32,6 / 33,9 ms (~30 fps) | 33,4 / 50,6 ms (~30 fps) |
+| C4/1 után (`13ce09a`) | **16,7 / 17,5 ms (60 fps)** | **33,4 / 50 ms (~30 fps)** |
+
+Következtetés: húzásnál a C1–C3 a JS-t, a C4 a festést szüntette meg szűk keresztmetszetként. Nagyításnál a szűrők nem számítanak; a maradék a böngésző elrendezése és raszterizálása (300 szöveges doboz minden lépésben). Következő jelölt: C6 (csak a látható dobozok), illetve nagyítás közben a szövegek egyszerűsített rajzolása.
+
 Minden lépés előtt és után ugyanaz a mérés: 300 és 1000 dobozos tesztmunkalap ideiglenes adatkönyvtárban (sosem a valódi `Projects`), mért értékek: gépelés leütésenkénti ideje, húzás képkockaideje, nagyítás képkockaideje, távoli frissítés főszál-blokkolása.
