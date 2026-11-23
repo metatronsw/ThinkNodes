@@ -7,3 +7,4 @@ Public/vendor/
 /Projects/*
 !/Projects/ThemeDemo/
 /Projects/ThemeDemo/.*.svg
+.claude/settings.local.json
