@@ -15,7 +15,13 @@ struct Point: Codable, Equatable, Sendable {
 
 private func automaticBorder(_ fill: String) -> String {
     guard let rgb = Int(fill.dropFirst(), radix: 16) else { return "#526982" }
-    return String(format: "#%02x%02x%02x", (rgb >> 16) * 2 / 3, ((rgb >> 8) & 255) * 2 / 3, (rgb & 255) * 2 / 3)
+    // Kézi hex-írás: a String(format:) dobozonként, sokszor hívva drága volt.
+    let digits = Array("0123456789abcdef")
+    var result = "#"
+    for channel in [(rgb >> 16) * 2 / 3, ((rgb >> 8) & 255) * 2 / 3, (rgb & 255) * 2 / 3] {
+        result.append(digits[channel >> 4]); result.append(digits[channel & 15])
+    }
+    return result
 }
 
 enum Shape: String, Codable, Sendable {

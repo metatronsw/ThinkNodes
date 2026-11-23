@@ -85,6 +85,7 @@ Gépelés, árnyékok és átlátszó (elmosott/áttetsző) dobozok, nagyítás.
 
 ### A1 – Memóriabeli gyorsítótár
 - **Kész:** munkalapok (dekódolva + validálva), mappánkénti házirendek és webhely-beállítások gyorsítótára a tárolóban (`WorksheetStore`), a fájl módosítási ideje + mérete szerint érvényesítve, a tárolón keresztüli írás azonnal érvényteleníti. Mérve (debug build, 300 dobozos munkalap, kérésenként medián): presence 49 → 6 ms, főoldal 50 → 8,5 ms, előnézeti kép 46 → 5 ms, munkalap-API 66 → 24 ms, megtekintő oldal 670 → 590 ms.
+- **Renderelés (kész):** az SVG-számformázó (`number()`) és a keretszín (`automaticBorder`) `String(format:)` helyett `vsnprintf`-et, illetve kézi hex-írást használ — az előbbi minden hívásnál ICU-számformázót hozott létre. Megtekintő oldal 590 → 211 ms (debug build), a kimenet bájtra azonos (HTML és SVG-export összevetve).
 - Munkalapok (dekódolt + validált), a `.settings.json` és a házirendek gyorsítótára; érvényesség: módosítási idő + méret, írásnál közvetlen frissítés.
 - Ma minden kérés lemezről olvas, a munkamenet-ellenőrzés is (`authenticatedUser` → `settings.json`).
 

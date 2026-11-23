@@ -127,8 +127,15 @@ func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: 
         """
 }
 
+/// SVG-szám három tizedesjeggyel. A `String(format:locale:)` minden hívásnál ICU-számformázót hozott létre
+/// (a megtekintő oldal renderelési idejének jelentős része, PLAN.md A1); a C `vsnprintf` ugyanazt a `%.3f` kimenetet adja.
 private func number(_ value: Double) -> String {
-    String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), value)
+    var buffer = [CChar](repeating: 0, count: 48)
+    let length = withVaList([value]) { vsnprintf(&buffer, buffer.count, "%.3f", $0) }
+    guard length > 0, length < buffer.count else { return String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), value) }
+    let text = String(cString: buffer)
+    // Ha a folyamat C-locale-ja tizedesvesszőt használna, akkor is ponttal írjuk.
+    return text.contains(",") ? text.replacingOccurrences(of: ",", with: ".") : text
 }
 
 private extension Shape {
