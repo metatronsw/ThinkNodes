@@ -41,6 +41,7 @@ Gépelés, árnyékok és átlátszó (elmosott/áttetsző) dobozok, nagyítás.
 
 ### C3 – Pásztázás és nagyítás közvetlenül a DOM-on
 - **Kész:** görgetéses nagyítás és egérrel pásztázás közben csak a vászon-SVG CSS-transzformja változik (`previewView`), a nézet a d3 `end` eseménykor véglegesedik (`commitView`); a d3-zoom a nem transzformált `.canvas-area` szülőn figyel. Mellékhatás: nagyítás közben a szöveg az elengedésig kicsit elmosódott lehet; kicsinyítéskor a réteg szélén a munkalap háttérszíne látszik rács nélkül. A programozott nézetváltás (Mind, keresés, érintéses csippentés, szóköz+húzás) azonnal véglegesedik, mint eddig.
+- **Külön rácsréteg (kész):** a háttérrács a vászon alatti saját SVG-ben van (`GridLayer`), a mintája mozdulat közben közvetlenül az élő nézetet követi, így pásztázáskor/kicsinyítéskor a réteg szélén is látszik. A munkalap háttérszíne a `.canvas-area` háttere.
 - A d3 zoom minden képkockán a Vue-állapotot (`view`) írja, ez a gyökér render függvényét futtatja (rács, defs, vezérlők).
 - Terv: mozdulat közben a d3 közvetlenül a vászon `<g>` transzformációját írja; a Vue-állapot csak a mozdulat végén (vagy ritkítva) frissül.
 

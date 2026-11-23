@@ -954,6 +954,9 @@ createApp({
       const scale = transform.k / current.k;
       svg.style.transformOrigin = "0 0";
       svg.style.transform = `matrix(${scale},0,0,${scale},${transform.x - scale * current.x},${transform.y - scale * current.y})`;
+      // A rács nem skálázódik a réteggel: a mintája közvetlenül az élő nézetet követi.
+      const [centerX, centerY] = center();
+      zoomHost()?.querySelector?.("#worksheet-grid")?.setAttribute("patternTransform", transform + " translate(" + centerX + " " + centerY + ")");
     }
     function commitView(transform) {
       pendingView = null;
@@ -2883,12 +2886,9 @@ createApp({
     const ViewLayer = {
       setup: () => () => {
         const [centerX, centerY] = center();
-        const [left, top] = view.value.invert([0, 0]);
         const cable = preview.value?.edge;
         const shown = cable ? wireDrawing({...cable, color: "#4168e9"}, wireGeometry(cable)) : null;
         return h("g", {transform: view.value + " translate(" + centerX + " " + centerY + ")"}, [
-            gridVisible.value ? h("rect", {"data-editor-only": "", class: "canvas-grid", x: left-centerX, y: top-centerY, width: size.value.width/view.value.k,
-              height: size.value.height/view.value.k, fill: "url(#worksheet-grid)", "pointer-events": "none"}) : null,
             h("path", {"data-editor-only": "", "pointer-events": "none", stroke: "#aab9cf", "stroke-width": 1,
               d: "M -8 0 H 8 M 0 -8 V 8"}),
             h(CanvasScene),
@@ -2904,16 +2904,40 @@ createApp({
       },
     };
 
+    // A háttérrács külön SVG-réteg a vászon alatt: nagyítás/pásztázás közben a mintája közvetlenül követi a mozdulatot
+    // (previewView), így a vászonréteg szélén is mindig látszik.
+    const GridLayer = {
+      setup: () => () => {
+        const [centerX, centerY] = center();
+        const spacing = gridSpacing.value;
+        const {grid, glass} = graphics.value;
+        const drafting = grid === "drafting";
+        const lined = drafting || grid === "lines";
+        const gridSize = drafting ? spacing * 5 : spacing;
+        const gridLine = at => `M0 ${at} H${gridSize} M${at} 0 V${gridSize}`;
+        const gridStroke = {stroke: "#789bb0", fill: "none"};
+        return h("svg", {class: "canvas-grid-layer", "aria-hidden": "true", "data-editor-only": ""}, [
+          h("defs", [
+            h("pattern", {id: "worksheet-grid", patternUnits: "userSpaceOnUse", x: -spacing/2, y: -spacing/2, width: gridSize, height: gridSize,
+              patternTransform: view.value + " translate(" + centerX + " " + centerY + ")"}, [
+              ...(drafting ? [h("path", {...gridStroke, "stroke-opacity": .08, d: [1, 2, 3, 4].map(i => gridLine((i + .5) * spacing)).join(" ")})] : []),
+              lined
+                ? h("path", {...gridStroke, "stroke-opacity": .22, d: gridLine(spacing/2)})
+                : h("circle", {cx: spacing/2, cy: spacing/2, r: glass ? 1 : 1.1, fill: glass ? "#a397bf" : gridColor.value,
+                  "fill-opacity": glass ? .24 : .28}),
+            ]),
+          ]),
+          gridVisible.value ? h("rect", {class: "canvas-grid", width: "100%", height: "100%", fill: "url(#worksheet-grid)"}) : null,
+        ]);
+      },
+    };
+
     function renderCanvas() {
-      const spacing = gridSpacing.value;
       const {grid, glass} = graphics.value;
-      const drafting = grid === "drafting";
-      const lined = drafting || grid === "lines";
-      const gridSize = drafting ? spacing * 5 : spacing;
-      const gridLine = at => `M0 ${at} H${gridSize} M${at} 0 V${gridSize}`;
-      const gridStroke = {stroke: "#789bb0", fill: "none"};
-      // A háttér a munkalap színe, hogy kicsinyítés közben a CSS-réteg szélén ne villanjon más szín.
+      const lined = grid === "drafting" || grid === "lines";
+      // A háttér a munkalap színe (a rács alatt); a vászonréteg átlátszó.
       return h("div", {class: "canvas-area", style: {background: paint(board.value.background, 0)}}, [
+        h(GridLayer),
         h("svg", {ref: canvas, class: ["canvas", "editor-canvas", {"ctrl-held": ctrl.value, "alt-held": alt.value}],
           "data-drag-cursor": dragCursor(), "aria-label": "Ötletvászon",
           onContextmenu: event => context(event),
@@ -2958,13 +2982,6 @@ createApp({
           h("defs", [
             sceneNodes.value.some(node => backgroundMode(node) === "blurred")
               ? h("filter", {id: "box-background-blur", x: "-30%", y: "-30%", width: "160%", height: "160%"}, [h("feGaussianBlur", {stdDeviation: 2})]) : null,
-            h("pattern", {id: "worksheet-grid", patternUnits: "userSpaceOnUse", x: -spacing/2, y: -spacing/2, width: gridSize, height: gridSize}, [
-              ...(drafting ? [h("path", {...gridStroke, "stroke-opacity": .08, d: [1, 2, 3, 4].map(i => gridLine((i + .5) * spacing)).join(" ")})] : []),
-              lined
-                ? h("path", {...gridStroke, "stroke-opacity": .22, d: gridLine(spacing/2)})
-                : h("circle", {cx: spacing/2, cy: spacing/2, r: glass ? 1 : 1.1, fill: glass ? "#a397bf" : gridColor.value,
-                  "fill-opacity": glass ? .24 : .28}),
-            ]),
             ...(glass ? [
               h("linearGradient", {id: "glass-rim", x2: "25%", y2: "100%"}, [
                 h("stop", {offset: "0%", "stop-color": "#f4eeff", "stop-opacity": .93}),
@@ -2980,7 +2997,6 @@ createApp({
               ]),
             ] : []),
           ]),
-          h("rect", {class: "canvas-background", width: "100%", height: "100%", fill: paint(board.value.background, 0), "pointer-events": "none"}),
           h(ViewLayer),
           spacePan.value ? h("rect", {width: "100%", height: "100%", fill: "none",
             "pointer-events": "all", "aria-hidden": "true", "data-editor-only": ""}) : null,
