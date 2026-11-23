@@ -875,3 +875,9 @@ svg text { text-rendering: geometricPrecision; }
 .context-menu { max-height: calc(100vh - 16px); overflow: auto; }
 /* A Link hozzáadása gomb a panelsor jobb szélén. */
 .property-options .link-add { margin-left: auto; }
+/* Vászonpanel fájlgombjai (Beillesztés – Tallózás, Fájl feltöltése): teljes szélesség, középre igazított felirat. */
+.property-inline.file-actions { display: flex; }
+.file-actions > button { flex: 1; justify-content: center; }
+/* Tallózó link módja: külső webcím sor. */
+.file-browser-url { display: flex; gap: 6px; margin-bottom: 8px; }
+.file-browser-url input { flex: 1; min-width: 0; }

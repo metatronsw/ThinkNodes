@@ -24,20 +24,36 @@ const kindIcon = {folder: "folder", web: "website", file: "file"};
 
 // Visszaadja a választott elemet: {kind: "file" | "web", name, source} — `source` a munkalap útvonala
 // a projekt után ("" = projekt gyökere). Mégse esetén null.
-export function openFileBrowser(path, csrf) {
+// Link mód (`{link: true}`): ugyanez az ablak választja ki minden link célját:
+// {kind: "sheet", target: "/projekt/lap"} · {kind: "web", target: "mappa/nev.web"} · {kind: "url", target: "https://…"}.
+export function openFileBrowser(path, csrf, {link = false} = {}) {
   const project = path.split("/")[0];
   return new Promise(resolve => {
     let chosen = null;
     const dialog = element("dialog", "", {className: "panel file-browser-dialog"});
     dialog.setAttribute("aria-label", "Tallózás");
-    const heading = element("h3", "Beillesztés – Tallózás");
+    const heading = element("h3", link ? "Link – Tallózás" : "Beillesztés – Tallózás");
     const location = element("p", "", {className: "muted file-browser-path"});
     const status = element("p", "", {hidden: true});
     status.setAttribute("role", "alert");
     const list = element("div", "", {className: "file-browser-list stack"});
     const close = element("button", "Mégse", {type: "button", className: "button"});
     close.addEventListener("click", () => dialog.close());
-    dialog.append(heading, location, status, list, close);
+    // Link mód: külső webcím megadása az ablak tetején.
+    const external = element("form", "", {className: "file-browser-url"});
+    const address = element("input", "", {type: "url", placeholder: "Külső webcím (https://…)", maxLength: 2048});
+    address.setAttribute("aria-label", "Külső webcím");
+    const addressButton = element("button", "", {type: "submit", className: "button"});
+    addressButton.append(icon("website"), element("span", "Link"));
+    external.append(address, addressButton);
+    external.addEventListener("submit", event => {
+      event.preventDefault();
+      const value = address.value.trim();
+      if (!/^https?:\/\/[^\s]+$/i.test(value)) { status.textContent = "Adj meg egy http(s) webcímet."; status.hidden = false; return; }
+      chosen = {kind: "url", target: value};
+      dialog.close();
+    });
+    dialog.append(heading, ...(link ? [external] : []), location, status, list, close);
     dialog.addEventListener("close", () => { dialog.remove(); resolve(chosen); }, {once: true});
     document.body.append(dialog);
     dialog.showModal();
@@ -134,14 +150,27 @@ export function openFileBrowser(path, csrf) {
         const source = common ? parts.join("/") : parts.slice(1).join("/");
         location.textContent = common ? "Közös könyvtár /" + parts.slice(1).join("/") : "/" + parts.join("/");
         const rows = [];
-        if (!common) rows.push(row("Közös könyvtár (csak olvasható)", "package", () => show("@common")));
-        if (!common && listing.manageable && csrf) rows.push(row("Lomtár", "trash", () => showTrash(listing.path)));
+        if (link && !common) {
+          rows.push(row("Link erre a lapra: " + parts.join("/"), "link", () => {
+            chosen = {kind: "sheet", target: "/" + parts.join("/")};
+            dialog.close();
+          }));
+        }
+        if (!common && !link) rows.push(row("Közös könyvtár (csak olvasható)", "package", () => show("@common")));
+        if (!common && !link && listing.manageable && csrf) rows.push(row("Lomtár", "trash", () => showTrash(listing.path)));
         if (listing.parent) rows.push(row("..", "parent-up", () => show(listing.parent)));
         else if (common) rows.push(row("..", "parent-up", () => show(path)));
         for (const entry of listing.entries) {
           const mark = entry.publicAccess ? [icon("butterfly")] : [];
           if (entry.kind === "folder") {
             rows.push(row(entry.name, "folder", () => show(listing.path + "/" + encodeURIComponent(entry.name))));
+          } else if (link && entry.kind === "file") {
+            continue;   // link módban csak munkalap, .web és külső cím választható
+          } else if (link && entry.kind === "web") {
+            rows.push(row(entry.name.replace(/\.web$/, ""), "website", () => {
+              chosen = {kind: "web", target: (source ? source + "/" : "") + entry.name};
+              dialog.close();
+            }, mark));
           } else if (common && entry.kind === "file") {
             rows.push(row(entry.name, "file", () => { chosen = {kind: "file", name: entry.name, source, project, common}; dialog.close(); }));
           } else {

@@ -3162,17 +3162,20 @@ createApp({
     const linkKinds = [["sheet", "Másik munkalap", "file"], ["url", "Külső cím", "link"]];
 
     // Link hozzáadása (docs/node-types.md, link képesség): a fajtát rögtön meg kell adni.
-    async function addLink(node, kind) {
-      if (!await selectNode(node.id)) return;
-      const set = target => {
-        const current = nodeMap.value.get(node.id);
-        if (current && held.value === node.id && online.value) updateItem(current, "link", {kind, target});
-      };
-      const value = window.prompt(kind === "url" ? "Webcím (https://…)" : "Munkalap útvonala (allap, ../testvér vagy /projekt/lap)")?.trim();
-      if (!value) return;
-      const destination = kind === "url" ? externalURL(value) : worksheetLink(value, path);
-      if (!destination || (kind === "sheet" && destination.kind !== "worksheet")) { problem.value = "Érvénytelen hivatkozás."; return; }
-      set(kind === "url" ? destination : value);
+    // Link hozzáadása a közös tallózó ablakkal: munkalap, .web oldal vagy külső webcím.
+    async function addLink(node) {
+      const choice = await openFileBrowser(path, csrf, {link: true});
+      if (!choice || !await selectNode(node.id)) return;
+      const current = nodeMap.value.get(node.id);
+      if (!current || held.value !== node.id || !online.value) return;
+      if (choice.kind === "url") {
+        const target = externalURL(choice.target);
+        if (!target) { problem.value = "Érvénytelen webcím."; return; }
+        updateItem(current, "link", {kind: "url", target});
+      } else if (choice.kind === "sheet") {
+        if (worksheetLink(choice.target, path)?.kind !== "worksheet") { problem.value = "Érvénytelen hivatkozás."; return; }
+        updateItem(current, "link", {kind: "sheet", target: choice.target});
+      } else updateItem(current, "link", {kind: "web", target: choice.target});
     }
 
     async function removeLink(node) {
@@ -3182,9 +3185,9 @@ createApp({
       if (current) updateItem(current, "link", undefined);
     }
 
-    function chooseLink(node, event) {
-      const bounds = event.currentTarget.getBoundingClientRect();
-      menu.value = {kind: "link", id: node.id, x: bounds.left, y: bounds.bottom + 4};
+    function chooseLink(node) {
+      menu.value = null;
+      transfer(() => addLink(node));
     }
 
     function renderMenu() {
@@ -3199,14 +3202,11 @@ createApp({
         !isJunction(node) ? elevationButton(node, true) : null,
         // Link csak hozzáadható innen; eltávolítása a tulajdonságpanel ✕ gombjával.
         hasTrait(node, "link") && !node.link ? button("Link hozzáadása", () => {
-          menu.value = {kind: "link", id: node.id, x: open.x, y: open.y};
+          chooseLink(node);
         }, {symbol: "link", disabled: !!occupied(node.id)}) : null,
         button("Szerkesztés", () => openProperties("node", node.id), {symbol: "edit", disabled: !!occupied(node.id)}),
         // Egyetlen törlés: fájl- és linkes doboznál a közös kérdőablak jön fel (deleteObjects).
         button("Törlés", () => { menu.value = null; deleteNode(node); }, {class: "button danger", symbol: "trash", disabled: !!occupied(node.id)}),
-      ] : type === "link" && node ? [
-        h("p", {class: "muted"}, "Milyen link legyen?"),
-        ...linkKinds.map(([kind, label, symbol]) => button(label, () => { menu.value = null; addLink(node, kind); }, {symbol})),
       ] : type === "edge" && edge ? [
         button("Szerkesztés", () => openProperties("edge", edge.id), {symbol: "edit"}),
         ...endpointActions(edge),
@@ -3517,7 +3517,7 @@ createApp({
       }, icon("box-elevated"));
       const linkButton = () => single && common.has("link") && !single.link
         ? h("button", {type: "button", class: "button option-icon link-add", ...controlName("Link hozzáadása"),
-            disabled: !online.value, onClick: event => chooseLink(single, event)}, [icon("link")]) : null;
+            disabled: !online.value, onClick: () => chooseLink(single)}, [icon("link")]) : null;
       const panels = [];
 
       if (common.has("label")) panels.push(group("Címke", [
