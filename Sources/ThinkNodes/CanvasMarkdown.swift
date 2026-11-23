@@ -117,7 +117,18 @@ func canvasMarkdown(_ source: String) -> [MarkdownBlock] {
         }
 
         block(document, depth: 0)
-        return blocks
+        // A szomszédos, azonos formázású darabok összevonva: a CommonMark-feldolgozók eltérően darabolhatják a
+        // szöveget, így a kimenet egyértelmű, és egyezik a kliens (Public/canvas-markdown.js) kimenetével.
+        return blocks.map { block in
+            var block = block
+            var merged: [MarkdownRun] = []
+            for run in block.runs {
+                if let last = merged.indices.last, merged[last].format == run.format { merged[last].text += run.text }
+                else { merged.append(run) }
+            }
+            block.runs = merged
+            return block
+        }
     }
 }
 

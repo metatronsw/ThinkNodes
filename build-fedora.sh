@@ -64,6 +64,8 @@ if [[ "$server_only" == false ]]; then
     cdn=https://cdn.jsdelivr.net/npm
     download vue.js "$cdn/vue@3.5.24/dist/vue.runtime.global.prod.js"
     download d3.js "$cdn/d3@7.9.0/dist/d3.min.js"
+    # A doboz-markdown kliensoldali feldolgozása; a szerver cmark-gfm 0.29-ével azonos CommonMark-specifikáció.
+    download commonmark.js "$cdn/commonmark@0.29.3/dist/commonmark.min.js"
 fi
 
 mkdir -p .build/module-cache .build/package-cache .build/package-config .build/package-security

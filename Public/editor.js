@@ -9,6 +9,7 @@ import {worksheetChanges, replayChanges, sameValue} from "./editor-history.js?v=
 import {flashNode, flashPoint} from "./ping.js";
 import {showTooltip, hideTooltip} from "./tooltip.js";
 import {justifyRows} from "./justify.js";
+import {canvasMarkdown, canvasMarkdownAvailable} from "./canvas-markdown.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
 import {useWorksheetGeometry, automaticBorder, automaticGridColor, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=18";
@@ -769,6 +770,15 @@ createApp({
     }
 
     watch(textSources, (sources, _, onCleanup) => {
+      // A markdown-feldolgozás helyben, szinkron fut (commonmark.js, Public/canvas-markdown.js): a szöveg még ugyanabban
+      // a képkockában megjelenik, kérés nélkül. Ha a commonmark.js nem töltődött be, a szerver dolgozza fel (régi út).
+      if (canvasMarkdownAvailable()) {
+        const current = new Set(sources);
+        const updated = new Map([...canvasText.value].filter(([source]) => current.has(source)));
+        for (const source of sources) if (!updated.has(source)) updated.set(source, canvasMarkdown(source));
+        canvasText.value = updated;
+        return;
+      }
       const controller = new AbortController();
       const timer = setTimeout(() => loadCanvasText(sources, controller.signal).catch(error => {
         if (!controller.signal.aborted) problem.value = error.message;
