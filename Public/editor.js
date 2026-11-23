@@ -2769,7 +2769,13 @@ createApp({
         onPointerenter: event => {
           // Buboréksúgó: túl hosszú doboz-szöveg, illetve összecsukott többsoros megjegyzés (fájl- és előnézetes doboz).
           const tooltip = node.file || node.type === "preview" ? commentCollapsed(node) : isBox(node) && layout.overflow;
-          if (!gesture.value && tooltip && node.text) showTooltip(event, async signal => {
+          if (!gesture.value && tooltip && node.text && (node.file || node.type === "preview")) {
+            // Megjegyzés: sima szöveg, sortörésekkel.
+            const plain = document.createElement("div");
+            plain.className = "plain-comment";
+            plain.textContent = node.text;
+            showTooltip(event, () => plain.outerHTML);
+          } else if (!gesture.value && tooltip && node.text) showTooltip(event, async signal => {
             const result = await checked(await fetch("/api/text", {method: "POST", signal,
               headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify({text: node.text})}));
             return result.text();

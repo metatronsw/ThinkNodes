@@ -313,7 +313,8 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .canvas-area .canvas-creator { position: absolute; bottom: 34px; right: 0; }
 .canvas-people .participants:empty { visibility: hidden; }
 .canvas-creator { flex: none; max-width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .83rem; font-weight: 650; }
-.canvas-tooltip { position: fixed; z-index: 20; pointer-events: none; padding: 10px 14px; background: white; border: 1px solid var(--line); border-radius: 7px; max-width: min(360px, 90vw); max-height: 45vh; overflow: hidden; box-shadow: 0 4px 16px #18233524; }
+/* Buboréksúgó (Public/tooltip.js): a doboz helyén, a teljes szöveg görgethető (görgő és jobb oldali görgetősáv). */
+.canvas-tooltip { position: fixed; z-index: 20; box-sizing: border-box; padding: 10px 14px; background: white; border: 1px solid var(--line); border-radius: 7px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; box-shadow: 0 4px 16px #18233524; }
 .canvas-tooltip > :last-child { margin-bottom: 0; }
 
 .header-left, .header-actions, #editor-tools { display: flex; align-items: center; gap: 8px; }
@@ -885,3 +886,4 @@ svg text { text-rendering: geometricPrecision; }
 /* Linkes doboz: a link felirata a doboz bármely pontja fölött aláhúzott (nem csak a felirat fölött). */
 .editor-canvas [data-node][data-link]:hover .node-link text, .passive-canvas [data-node]:hover .node-link text,
 [data-node]:hover .node-link-caption span { text-decoration: underline; }
+.canvas-tooltip .plain-comment { white-space: pre-wrap; overflow-wrap: anywhere; }

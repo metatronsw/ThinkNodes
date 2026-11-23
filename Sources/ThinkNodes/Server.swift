@@ -1160,7 +1160,9 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
     let canvas = renderWorksheetCanvas(display, noteBase: base, siteHost: host, fileText: { $0.file.flatMap { texts[$0.asset] } })
     let tooltips = canvas.tooltipNodes.map {
         let justification = $0.justified == true ? " data-justified" : ""
-        return "<template data-tooltip=\"\($0.id)\"\(justification)>\(markdownHTML($0.text))</template>"
+        // Megjegyzés (fájl- és előnézetes doboz): sima szöveg, sortörésekkel; doboz-szöveg: formázott markdown.
+        let body = $0.hasComment ? "<div class=\"plain-comment\">\(escaped($0.text))</div>" : markdownHTML($0.text)
+        return "<template data-tooltip=\"\($0.id)\"\(justification)>\(body)</template>"
     }.joined()
     let introduction = worksheet.text.map(markdownHTML) ?? ""
     let notes = introduction.isEmpty ? "" :
