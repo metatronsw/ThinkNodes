@@ -828,8 +828,14 @@ createApp({
       return {x: x - centerX, y: y - centerY};
     };
 
+    // A vászonréteg a látható területnél nagyobb (overscan); a jelenet origója a látható terület bal felső sarka.
+    // A pontokat ehhez a csoporthoz mérjük, így az eltolás és a mozdulat közbeni CSS-transzform is benne van.
+    const overscan = 0.5;
+    const sceneOrigin = ref(null);
+    const margin = () => [size.value.width * overscan, size.value.height * overscan];
+
     function world(event) {
-      const [px, py] = d3.pointer(event, canvas.value);
+      const [px, py] = d3.pointer(event, sceneOrigin.value ?? canvas.value);
       const [x, y] = view.value.invert([px, py]);
       const [centerX, centerY] = center();
       return {x: x - centerX, y: y - centerY};
@@ -866,15 +872,16 @@ createApp({
     }
 
     function measure() {
-      const svg = canvas.value;
-      if (svg) size.value = {width: svg.clientWidth, height: svg.clientHeight};
+      // A látható terület a vászon szülője (a vászonréteg maga nagyobb, lásd overscan).
+      const area = canvas.value?.parentElement ?? canvas.value;
+      if (area) size.value = {width: area.clientWidth, height: area.clientHeight};
     }
 
     const pinchTolerance = 6; // CSS pixels between the two touch points
     let touchView;
     function touchPair(event) {
       const points = [...event.touches].sort((a, b) => a.identifier - b.identifier)
-        .slice(0, 2).map(touch => d3.pointer(touch, canvas.value));
+        .slice(0, 2).map(touch => d3.pointer(touch, sceneOrigin.value ?? canvas.value));
       const [[ax, ay], [bx, by]] = points;
       return {x: (ax + bx) / 2, y: (ay + by) / 2, distance: Math.max(1, Math.hypot(ax - bx, ay - by))};
     }
@@ -938,7 +945,7 @@ createApp({
       // A zoom a nem transzformált szülőn figyel, így a mozdulat közbeni CSS-transzform nem zavarja a koordinátáit.
       d3.select(zoomHost()).call(zoom).on("dblclick.zoom", null);
       resizeObserver = new ResizeObserver(measure);
-      resizeObserver.observe(canvas.value);
+      resizeObserver.observe(zoomHost() ?? canvas.value);
       fit();
     }
 
@@ -952,7 +959,9 @@ createApp({
       const svg = canvas.value, current = view.value;
       if (!svg?.style) return;
       const scale = transform.k / current.k;
-      svg.style.transformOrigin = "0 0";
+      // Az origó a látható terület bal felső sarka a (nagyobb) rétegen belül.
+      const [marginX, marginY] = margin();
+      svg.style.transformOrigin = marginX + "px " + marginY + "px";
       svg.style.transform = `matrix(${scale},0,0,${scale},${transform.x - scale * current.x},${transform.y - scale * current.y})`;
       // A rács nem skálázódik a réteggel: a mintája közvetlenül az élő nézetet követi.
       const [centerX, centerY] = center();
@@ -2997,7 +3006,7 @@ createApp({
               ]),
             ] : []),
           ]),
-          h(ViewLayer),
+          h("g", {ref: sceneOrigin, transform: "translate(" + margin().join(" ") + ")"}, [h(ViewLayer)]),
           spacePan.value ? h("rect", {width: "100%", height: "100%", fill: "none",
             "pointer-events": "all", "aria-hidden": "true", "data-editor-only": ""}) : null,
         ]),
