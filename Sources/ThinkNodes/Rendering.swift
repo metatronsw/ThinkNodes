@@ -46,7 +46,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=54"></script>
+        <script type="module" src="/editor.js?v=55"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -57,7 +57,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=28">
+          <link rel="stylesheet" href="/app.css?v=29">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>

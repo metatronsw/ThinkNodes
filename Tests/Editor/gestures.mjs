@@ -1094,6 +1094,24 @@ assert.equal(linkedBox.type, "preview", "a linked box becomes a preview box");
 assert.equal(linkedBox.shape, "rectangle");
 assert.deepEqual(linkedBox.link, {kind: "url", target: "https://example.org/oldal"});
 assert.ok(prop("data-link-kind", "url", graphic(linkedBox.id)), "the link marker sits on the box");
+{
+  // Átméretezés közben a képet tartalmazó dobozon középen a méret, a kép 50%-kal sötétebb; elengedés után eltűnik.
+  const {x, y} = linkedBox.position;
+  canvas().props.onPointermove(event(canvas(), x, y));
+  toggle("Alt", true); await tick();
+  const corner = find(n => n.props.cursor === "nwse-resize" && n.props.x > 0, graphic(linkedBox.id));
+  const cx = x + corner.props.x + 5, cy = y + corner.props.y + 5;
+  corner.props.onPointerdown(event(corner, cx, cy, {altKey: true}));
+  canvas().props.onPointermove(event(canvas(), cx + 40, cy + 30));
+  await tick();
+  const badge = find(n => n.props.class === "resize-size", graphic(linkedBox.id));
+  assert.ok(badge, "resizing shows the size badge");
+  assert.match(text(badge), /^\d+ × \d+$/);
+  assert.ok(find(n => n.props["fill-opacity"] === .5, badge), "the image is darkened by 50%");
+  canvas().props.onPointerup(event(canvas(), cx + 40, cy + 30));
+  toggle("Alt", false); await tick();
+  assert.equal(find(n => n.props.class === "resize-size", graphic(linkedBox.id)), undefined);
+}
 await properties(linkedBox.id);
 assert.ok(find(n => n.tag === "legend" && text(n).startsWith("Link · Külső cím"), panel()));
 assert.equal(prop("aria-label", "Link hozzáadása", panel()), undefined, "an existing link hides the add button");

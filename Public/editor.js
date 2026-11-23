@@ -975,6 +975,7 @@ createApp({
         })
         .on("start", event => { menu.value = null; if (event.sourceEvent) lastClick = null; markMoving("zoom", true); })
         .on("zoom", event => {
+          showZoomLevel(event.transform.k);
           const type = event.sourceEvent?.type;
           if (type === "mousemove" || type === "pointermove" || type === "touchmove") panning.value = true;
           // Felhasználói mozdulat (görgetés, egérrel pásztázás) közben csak a vászon CSS-rétege mozog;
@@ -2089,6 +2090,23 @@ createApp({
     // Mozgás közben (pásztázás, nagyítás, húzás) a drága szűrők (elmosás, glow, üvegpanelek) ki vannak kapcsolva;
     // a jelzés DOM-attribútum (data-moving), nem Vue-állapot, így nem rajzol újra semmit (PLAN.md C4).
     const movingSources = new Set();
+    // Nagyítás értéke a bal eszköztáron, amíg a nagyítás tart (utána rövid idővel eltűnik).
+    // Szint: 1,25-ös lépések, a 0-s szint a natív méret (1 vászonegység = 1 CSS-pixel).
+    const zoomDisplay = ref(null);
+    let zoomDisplayTimer, lastZoomScale;
+    function showZoomLevel(k) {
+      if (lastZoomScale !== undefined && Math.abs(k - lastZoomScale) < 1e-9) return;
+      lastZoomScale = k;
+      zoomDisplay.value = k;
+      clearTimeout(zoomDisplayTimer);
+      zoomDisplayTimer = setTimeout(() => { zoomDisplay.value = null; }, 1200);
+    }
+    function zoomLabel(k) {
+      const level = Math.round(Math.log(k) / Math.log(1.25));
+      const percent = k >= 0.1 ? Math.round(k * 100) + "%" : (k * 100).toFixed(k >= 0.01 ? 1 : 2) + "%";
+      return percent + " · " + (level > 0 ? "+" + level : level);
+    }
+
     function markMoving(source, active) {
       if (active) movingSources.add(source); else movingSources.delete(source);
       const workspace = canvas.value?.closest?.(".editor-workspace");
@@ -2814,6 +2832,13 @@ createApp({
         width: Math.max(1, drawn.width*inset - 12), height: Math.max(1, layout.previewSpace - 6),
         preserveAspectRatio: "xMidYMid meet", "pointer-events": "none"}) : null;
       // Publikus .web: pillangó ikon a doboz felett középen.
+      // Átméretezés közben a képet tartalmazó dobozon (kép, előnézet) középen a méret, a kép 50%-kal sötétebb.
+      const resizing = gesture.value?.type === "resize" && gesture.value.nodeID === node.id && (isImage(node) || node.type === "preview");
+      const sizeBadge = resizing ? h("g", {class: "resize-size", "pointer-events": "none"}, [
+        h(...(() => { const [tag, attrs] = boxShapeGeometry(drawn); return [tag, {...attrs, fill: "#000", "fill-opacity": .5, stroke: "none"}]; })()),
+        h("text", {x: 0, y: 0, "text-anchor": "middle", "dominant-baseline": "central", fill: "#fff",
+          "font-size": 14 / view.value.k, "font-weight": 600}, Math.round(drawn.width) + " × " + Math.round(drawn.height)),
+      ]) : null;
       const publicMark = (node.link?.kind === "web" || node.file) && node.webPublic ? h("svg", {class: "ui-icon web-public-mark", "pointer-events": "none",
         x: -10, y: -drawn.height/2 - (node.file ? 54 : node.type === "preview" ? 44 : 26), width: 20, height: 20, viewBox: "0 0 24 24", color: paint(node.textColor, 1)},
         [h("use", {href: "/icons.svg#butterfly"})]) : null;
@@ -2859,6 +2884,7 @@ createApp({
           node.file ? renderFileBox(node, destination) : null,
           junctionLabel,
           linkPreview,
+          sizeBadge,
           publicMark,
           // A szöveg közvetlenül a doboz csoportjában van (nincs dobozonkénti vágás): az elrendezés eleve a dobozon belül tartja.
           labels,
@@ -3224,6 +3250,7 @@ createApp({
         h("div", {class: "canvas-controls", "data-open": toolbarOpen.value}, [
           button("", () => { toolbarOpen.value = !toolbarOpen.value; }, {symbol: toolbarOpen.value ? "left" : "right",
             "aria-label": "Eszköztár", "aria-expanded": toolbarOpen.value}),
+          zoomDisplay.value != null ? h("span", {class: "zoom-level", role: "status", "aria-live": "polite"}, zoomLabel(zoomDisplay.value)) : null,
           button("", toggleGrid, {
             title: lined ? "Saját rács megjelenítése" : "Saját pontrács megjelenítése",
             "aria-label": lined ? "Rács" : "Pontrács", "aria-pressed": gridVisible.value, symbol: "grid"}),
