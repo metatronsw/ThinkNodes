@@ -1,26 +1,21 @@
 
+# project migráció
+
+letölthető .zip és feltölthető teljes project, vagy munka lapok
+
+
+
+
 
 [ **HIBÁK** ]
-
-
- 
- 
- 
- [ **TELJESÍTMÉNY – MEGBESZÉLENDŐ** ]
-
-+ **KÉSZ (2026-11-23): kliensre, közös tesztekkel (PLAN.md C5).** Markdown a dobozokban (gépelés közbeni késés): a szerkesztő minden leütés után a szervertől kéri a doboz szövegének markdown-feldolgozását (`/api/text/canvas`, cmark-gfm), ez ~100 ms késést és leütésenként egy kérést jelent. A tördelés már most is kliensoldali (geometry.js `labelLayout`), a szerver csak a megtekintőhöz, előnézetekhez és exporthoz tördel (Rendering.swift, pontosan egyező szabályokkal). Kérdés: kerüljön-e a markdown-feldolgozás is a kliensre (pl. commonmark.js, ugyanazon CommonMark-specifikáció referencia-megvalósítása), és a szerver csak az előnézetekhez/megtekintőhöz dolgozzon? Ha igen: közös tesztkészlet (bemenet → elvárt blokkok) fusson a Swift- és a JS-oldalon is, hogy a kettő ne térjen el. Részletek: PLAN.md C5.
-
- [ **DESIGN** ]
+canvas property panel: a file műveleti gombok (feltöltés és tallozás) legyenek olyan szélesek mint a panel (most rövidebbek)
 
 
 
-
-
-
-
-
+[ **DESIGN** ]
 
 [ **KÍSÉRLETI** ]
+
 
 SHIFT DRAG: 
 - vonal húzáskor, vagy kijelölt vonal vastagítás legyen
@@ -37,6 +32,17 @@ SPACE INSERT:
 [ **FILE KEZELÉS** ]
 + Nagy szövegfájl szerkesztése külső szerkesztőben (docs/node-types.md, text típus). A mérethatárt is meg kell adni.
 + .thnode import: most új almunkalapot hoz létre, de nem keletkezik doboz a vásznon. Az új típusrendszerben (docs/node-types.md) a `sheet` típushoz kell kötni.
+
+Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
++ Kipróbálni két szerkesztővel: törlés („lomtárba, a többi doboz törlődik / üres lesz”) és .web átnevezés, miközben a másik lapot valaki szerkeszti (kijelölt dobozt kihagy, és szól).
++ A pillangó ikon (`webPublic`) csak az aktuális lap dobozain frissül; a többi lapon ugyanarra a fájlra / .web-re mutató doboz régi állapotot mutathat. Megoldás: a szerver adja a publikus állapotot megjelenítéskor, ne a doboz tükrözze.
++ Fájl átnevezése után a többi lapon a dobozon a régi fájlnév látszik (a hivatkozás működik).
++ Másik lapról másolt-beillesztett fájldoboz most új példányt tölt fel; közös hivatkozás legyen helyette (editor.js, beillesztés `sourcePath !== path` ága).
++ Visszavonás (undo) fájldoboz eltávolításakor nem nézi a többi lap használatát; a lomtárba tett (release) fájl undo-val nem jön vissza.
++ Közös könyvtárbeli szövegfájl tartalma a megtekintő oldalon nem jelenik meg (csak a szerkesztőben).
++ A törölt projektek a gyökér `.trash` mappájába kerülnek; ezek kezelése (lista, visszaállítás, ürítés) nincs meg.
++ `common` nevű projektet tiltani kell (a /common/ címet a közös könyvtár foglalja).
++ JS teszt hiba: Tests/Editor/gestures.mjs `ownUnderlay` (a 7e6f36e kijelölés-átírás óta).
 
 
 
