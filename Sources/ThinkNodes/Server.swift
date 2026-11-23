@@ -624,6 +624,21 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         return info
     }
 
+    app.post("api", "web-rename", "**") { req async throws -> [String: String] in
+        struct Rename: Content { let reference: String; let name: String }
+        let identity = try session(req, store: store)
+        let user = identity.user
+        guard user != nil || req.hasSession else { throw Abort(.unauthorized) }
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        let body = try req.content.decode(Rename.self)
+        let reference = try await req.application.threadPool.runIfActive {
+            try store.renameWeb(body.reference, to: body.name, in: path, user: user, unlocks: identity.unlocks)
+        }
+        live.pages.publish(.structure, at: try WorksheetPath([path.parts[0]]))
+        return ["reference": reference]
+    }
+
     app.post("api", "attachment", "**") { req async throws -> Response in
         let identity = try session(req, store: store)
         let user = identity.user
@@ -789,7 +804,7 @@ private func serveWebPresentation(_ req: Request, candidates: [WebPresentationRe
                 viewer = identity
             }
             guard let (asset, directory, publicRead) = try await req.application.threadPool.runIfActive({
-                try store.webAsset(candidate, user: viewer.user, unlocks: viewer.unlocks)
+                try store.webAsset(candidate, user: viewer.user, unlocks: viewer.unlocks, ratio: req.query[Double.self, at: "ratio"])
             }) else { continue }
 
             guard let asset else {

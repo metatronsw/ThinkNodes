@@ -1307,6 +1307,39 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
+    /// A .web mappa átnevezése (a mappa a saját .settings.json-jával együtt mozog); az új hivatkozást adja vissza.
+    func renameWeb(_ old: String, to newName: String, in path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> String {
+        try lock.withLock {
+            let ctx = try context(path)
+            guard accessLocked(ctx, user: user, unlocks: unlocks).editable else { throw Abort(.forbidden) }
+            let project = path.parts[0]
+            let reference = try WebPresentationReference(old)
+            guard let web = try webContext(project: project, reference: reference, user: user, unlocks: unlocks),
+                  web.access.readable || web.manageable else { throw Abort(.notFound) }
+            let name = newName.trimmingCharacters(in: .whitespaces)
+            guard name == WebArchive.folderName(name + ".zip"),
+                  let renamed = try? WebPresentationReference((reference.folders + [name + ".web"]).joined(separator: "/")) else {
+                throw Abort(.badRequest, reason: "A név csak betűt, számot, „_” és „-” jelet tartalmazhat.")
+            }
+            if renamed.name == reference.name { return reference.relativePath }
+            let target = web.directory.deletingLastPathComponent().appendingPathComponent(name + ".web")
+            try rejectLink(target)
+            let names = try files.contentsOfDirectory(atPath: target.deletingLastPathComponent().path)
+            let caseOnly = names.contains(target.lastPathComponent) == false &&
+                target.lastPathComponent.lowercased() == web.directory.lastPathComponent.lowercased()
+            guard caseOnly || !files.fileExists(atPath: target.path) else {
+                throw Abort(.conflict, reason: "Ilyen nevű weboldal már létezik.")
+            }
+            try files.moveItem(at: web.directory, to: target)
+            // A régi néven tárolt előnézeti képek elavultak.
+            let parent = target.deletingLastPathComponent()
+            for name in names where name.hasPrefix("." + web.directory.lastPathComponent + ".preview-") {
+                try? files.removeItem(at: parent.appendingPathComponent(name))
+            }
+            return renamed.relativePath
+        }
+    }
+
     private func pendingFileKey(_ name: String, folder: String) -> String {
         "attachment:" + folder + "/" + name
     }
@@ -1804,19 +1837,26 @@ extension WorksheetStore {
         return WebContext(directory: presentation, policy: policy, access: access, manageable: manageable)
     }
 
-    func webAsset(_ request: WebPresentationRequest, user: User?, unlocks: Set<String>) throws -> (asset: WebAsset?, directory: Bool, publicRead: Bool)? {
-        try lock.withLock {
+    func webAsset(_ request: WebPresentationRequest, user: User?, unlocks: Set<String>, ratio: Double? = nil) throws -> (asset: WebAsset?, directory: Bool, publicRead: Bool)? {
+        var render: (URL, Bool)?
+        let found: (asset: WebAsset?, directory: Bool, publicRead: Bool)? = try lock.withLock {
             guard let context = try webContext(project: request.project, reference: request.reference, user: user, unlocks: unlocks) else { return nil }
             try context.access.authorize(user, unlocks: unlocks)
             let dirs = [request.project] + request.reference.folders + [request.reference.name + ".web"]
             if request.asset == ["_tn-preview"] {
                 guard !request.trailingSlash else { throw Abort(.notFound) }
                 let image = WebAsset.preview(in: root, folders: dirs)
+                if image == nil, let ratio, WebScreenshot.browser != nil { render = (context.directory, context.access.publicRead) }
                 return (image, false, context.access.publicRead)
             }
             let (asset, directory) = try WebAsset.open(in: root, folders: dirs, asset: request.asset, trailingSlash: request.trailingSlash)
             return (asset, directory, context.access.publicRead)
         }
+        // A böngészős renderelés lassú, ezért a záron kívül fut.
+        if let (directory, publicRead) = render, let ratio, let image = WebScreenshot.image(of: directory, ratio: ratio) {
+            return (image, false, publicRead)
+        }
+        return found
     }
 
     func unlockWeb(_ requests: [WebPresentationRequest], password: String, user: User?, unlocks: Set<String>) throws -> (WebPresentationRequest, [String]) {

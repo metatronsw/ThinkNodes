@@ -23,7 +23,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=31"></script>
+        <script type="module" src="/editor.js?v=33"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -676,6 +676,7 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
         if node.link?.kind == .web {
             // Teljes kitöltés a doboz alakjára vágva; az arányt a doboz határozza meg.
             let clip = "web-clip-" + node.id
+            let url = url + "?ratio=" + String(format: "%.2f", WebScreenshot.quantized(width / max(1, height)))
             return "<clipPath id=\"\(escaped(clip))\"><\(geometry)/></clipPath><image class=\"node-link-preview node-web-preview\" href=\"\(escaped(url))\" x=\"\(number(-x))\" y=\"\(number(-y))\" width=\"\(number(max(1, width)))\" height=\"\(number(max(1, height)))\" preserveAspectRatio=\"xMidYMid slice\" clip-path=\"url(#\(escaped(clip)))\" pointer-events=\"none\"/>"
         }
         let top = -y * inset + 6, previewHeight = drawing.previewSpace - 6

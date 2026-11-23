@@ -2615,6 +2615,7 @@ createApp({
       ]);
     }
 
+    const previewRatios = new Map();
     function renderNode(node) {
       const drawn = node;
       const layout = nodeLayout(node);
@@ -2660,9 +2661,12 @@ createApp({
               "text-decoration": format.link ? "underline" : undefined}, run.text);
           })))) : null;
       const webClip = "web-clip-" + node.id;
+      // Előnézet a doboz arányában (0,05-ös lépés, Rendering.swift); húzás közben a korábbi kép marad, elengedéskor új renderelés.
+      const ratio = (Math.round(Math.min(Math.max(drawn.width / Math.max(1, drawn.height), .25), 6) * 20) / 20).toFixed(2);
+      if (!gesture.value || !previewRatios.has(node.id)) previewRatios.set(node.id, ratio);
       const linkPreview = isBox(node) && destination?.preview && layout.webPreview ? h("g", {"pointer-events": "none"}, [
         h("clipPath", {id: webClip}, [h(...shapeGeometry(drawn.shape, drawn.width, drawn.height))]),
-        h("image", {class: "node-link-preview node-web-preview", href: destination.preview,
+        h("image", {class: "node-link-preview node-web-preview", href: destination.preview + "?ratio=" + previewRatios.get(node.id),
           x: -drawn.width/2, y: -drawn.height/2, width: Math.max(1, drawn.width), height: Math.max(1, drawn.height),
           preserveAspectRatio: "xMidYMid slice", "clip-path": "url(#" + webClip + ")"})])
       : isBox(node) && destination?.preview && layout.previewSpace ? h("image", {class: "node-link-preview",
@@ -3556,8 +3560,26 @@ createApp({
         panels.push(h("fieldset", {class: "property-group stack link-group"}, [
           h("legend", [h("span", "Link · " + kindLabel)]),
           h("div", {class: "link-row"}, [
-            single.link.kind === "web" ? h("span", {class: "link-target"}, single.link.target) :
-              h("input", {"aria-label": "Link célja", value: single.link.target, maxlength: 2048,
+            single.link.kind === "web" ? h("input", {"aria-label": "Weboldal neve (a mappa is átnevezve)", value: linkCaption(single.link), maxlength: 80,
+                onChange: event => {
+                  const field = event.target, name = field.value.trim(), previous = linkCaption(single.link);
+                  if (name === previous) return;
+                  transfer(async () => {
+                    try {
+                      const response = await fetch("/api/web-rename/" + path, {method: "POST",
+                        headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf},
+                        body: JSON.stringify({reference: single.link.target, name})});
+                      const result = await response.json().catch(() => ({}));
+                      if (!response.ok) throw Error(result.reason || "Az átnevezés sikertelen.");
+                      // Minden doboz ezen a lapon, amely erre a mappára mutat, az új nevet kapja.
+                      const old = single.link.target;
+                      for (const item of board.value.nodes) if (item.link?.kind === "web" && item.link.target === old && !occupied(item.id)) {
+                        item.link = {kind: "web", target: result.reference};
+                      }
+                      modified();
+                    } catch (error) { field.value = previous; throw error; }
+                  });
+                }}) : h("input", {"aria-label": "Link célja", value: single.link.target, maxlength: 2048,
                 onChange: event => {
                   const raw = event.target.value.trim();
                   const target = single.link.kind === "url" ? externalURL(raw) : worksheetLink(raw, path)?.kind === "worksheet" ? raw : null;

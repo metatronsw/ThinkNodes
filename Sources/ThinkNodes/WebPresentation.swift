@@ -423,3 +423,67 @@ enum WebArchive {
         return names.filter { !$0.hasPrefix(".") && ["html", "htm"].contains(($0 as NSString).pathExtension.lowercased()) }.count == 1
     }
 }
+
+/// .web előnézet headless Chromiummal, a doboz arányában. A kép a .web mappa mellé, rejtett fájlba kerül
+/// (`.név.web.preview-<arány>.png`), és újrarenderelődik, ha az index oldal megváltozik.
+enum WebScreenshot {
+    static let width = 1280
+    private static let renderLock = NSLock()
+
+    static let browser: String? = {
+        if let configured = ProcessInfo.processInfo.environment["THINKNODES_CHROMIUM"], !configured.isEmpty {
+            return FileManager.default.isExecutableFile(atPath: configured) ? configured : nil
+        }
+        let candidates = ["/usr/bin/chromium-browser", "/usr/bin/chromium", "/usr/bin/google-chrome", "/usr/bin/headless_shell",
+            "/Applications/Chromium.app/Contents/MacOS/Chromium", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            "/opt/homebrew/bin/chromium", "/usr/local/bin/chromium"]
+        return candidates.first(where: FileManager.default.isExecutableFile)
+    }()
+
+    /// Arány (szélesség / magasság) 0,05-ös lépésekben, hogy átméretezéskor ne keletkezzen túl sok kép.
+    static func quantized(_ ratio: Double) -> Double {
+        guard ratio.isFinite else { return 1.6 }
+        return (min(max(ratio, 0.25), 6) * 20).rounded() / 20
+    }
+
+    static func image(of directory: URL, ratio raw: Double) -> WebAsset? {
+        guard let browser else { return nil }
+        let ratio = quantized(raw)
+        let height = Int((Double(width) / ratio).rounded())
+        let files = FileManager.default
+        let page = ["index.html", "index.htm"].map { directory.appendingPathComponent($0) }.first { files.fileExists(atPath: $0.path) }
+            ?? ((try? files.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? [])
+                .first { ["html", "htm"].contains($0.pathExtension.lowercased()) }
+        guard let page else { return nil }
+        let cache = directory.deletingLastPathComponent()
+            .appendingPathComponent("." + directory.lastPathComponent + ".preview-" + String(format: "%.2f", ratio) + ".png")
+        func modified(_ url: URL) -> Date? { try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
+
+        renderLock.lock()
+        defer { renderLock.unlock() }
+        let fresh = modified(cache).map { cached in [page, directory].compactMap(modified).allSatisfy { $0 <= cached } } ?? false
+        if !fresh {
+            let output = cache.deletingLastPathComponent().appendingPathComponent(".tn-shot-" + UUID().uuidString + ".png")
+            let profile = files.temporaryDirectory.appendingPathComponent("thinknodes-chromium-" + UUID().uuidString)
+            defer { try? files.removeItem(at: profile); try? files.removeItem(at: output) }
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: browser)
+            process.arguments = ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--mute-audio", "--no-first-run",
+                "--disable-extensions", "--disable-background-networking", "--user-data-dir=" + profile.path,
+                "--virtual-time-budget=4000", "--window-size=\(width),\(height)", "--screenshot=" + output.path, page.absoluteString]
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            do { try process.run() } catch { return nil }
+            // Legfeljebb 20 másodperc; utána leállítjuk.
+            let deadline = Date().addingTimeInterval(20)
+            while process.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
+            if process.isRunning { process.terminate(); return nil }
+            guard files.fileExists(atPath: output.path) else { return nil }
+            try? files.removeItem(at: cache)
+            guard (try? files.moveItem(at: output, to: cache)) != nil else { return nil }
+        }
+        guard let handle = try? FileHandle(forReadingFrom: cache),
+              let size = (try? files.attributesOfItem(atPath: cache.path))?[.size] as? Int else { return nil }
+        return WebAsset(handle: handle, size: size, name: "preview.png")
+    }
+}
