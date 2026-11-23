@@ -86,10 +86,15 @@ Gépelés, árnyékok és átlátszó (elmosott/áttetsző) dobozok, nagyítás.
 ### A1 – Memóriabeli gyorsítótár
 - **Kész:** munkalapok (dekódolva + validálva), mappánkénti házirendek és webhely-beállítások gyorsítótára a tárolóban (`WorksheetStore`), a fájl módosítási ideje + mérete szerint érvényesítve, a tárolón keresztüli írás azonnal érvényteleníti. Mérve (debug build, 300 dobozos munkalap, kérésenként medián): presence 49 → 6 ms, főoldal 50 → 8,5 ms, előnézeti kép 46 → 5 ms, munkalap-API 66 → 24 ms, megtekintő oldal 670 → 590 ms.
 - **Renderelés (kész):** az SVG-számformázó (`number()`) és a keretszín (`automaticBorder`) `String(format:)` helyett `vsnprintf`-et, illetve kézi hex-írást használ — az előbbi minden hívásnál ICU-számformázót hozott létre. Megtekintő oldal 590 → 211 ms (debug build), a kimenet bájtra azonos (HTML és SVG-export összevetve).
+- **Tömör API-válasz (kész):** a munkalap-API tömör JSON-t ad (a letöltött `.thnode` formázott marad): 163 KB → 99 KB, 24 → 17 ms.
+
+### A2 – Presence betöltés nélkül — **elhalasztva**
+- Az A1 után egy presence-kérés ~6 ms (debug build, 300 doboz), a munkalap a gyorsítótárból jön; a szerkezeti átalakítás (revízió és azonosítók a szobában) most nem hozna érdemi nyereséget. Ha sok egyidejű résztvevőnél újra szűk keresztmetszet lesz, újramérni.
+- A maradék megtekintő-idő (debug 211 ms) a dobozszöveg tördelése és a dobozok neve (`plainFirstLine` reguláris kifejezéssel); release buildben újramérni, mielőtt hozzányúlunk.
 - Munkalapok (dekódolt + validált), a `.settings.json` és a házirendek gyorsítótára; érvényesség: módosítási idő + méret, írásnál közvetlen frissítés.
 - Ma minden kérés lemezről olvas, a munkamenet-ellenőrzés is (`authenticatedUser` → `settings.json`).
 
-### A2 – Presence betöltés nélkül
+### A2 (eredeti terv) – Presence betöltés nélkül
 - A szoba tartsa a revíziót és a doboz/vonal azonosítókat; mentéskor frissül. Ma minden `poll`/`select`/`ping` teljes `store.load`, N résztvevőnél egy mentés N betöltést indít (BUGS.md).
 
 ### A3 – Folyamatos mentés + rögzített állapotok

@@ -846,7 +846,8 @@ private func etag(_ revision: Int) -> String { "\"\(revision)\"" }
 
 private func worksheetResponse(_ worksheet: Worksheet, filename: String? = nil) throws -> Response {
     let encoder = JSONEncoder()
-    encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+    // A letöltött .thnode fájl olvasható (formázott); az API-válasz tömör, mert azt csak a szerkesztő olvassa (PLAN.md A1).
+    encoder.outputFormatting = filename == nil ? [.withoutEscapingSlashes] : [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
     let json = String(decoding: try encoder.encode(worksheet), as: UTF8.self) + "\n"
     let result = response(json, type: "application/json; charset=utf-8", filename: filename)
     result.headers.replaceOrAdd(name: .eTag, value: etag(worksheet.revision))
