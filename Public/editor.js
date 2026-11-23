@@ -898,7 +898,7 @@ createApp({
       touchView.zoomDistance = limit(touchView.zoomDistance, pair.distance - pinchTolerance, pair.distance + pinchTolerance);
       const k = limit(start.k * touchView.zoomDistance / touchView.distance, 0.0005, 4);
       const [x, y] = start.invert([touchView.x, touchView.y]);
-      d3.select(canvas.value).call(zoom.transform, d3.zoomIdentity.translate(pair.x - x*k, pair.y - y*k).scale(k));
+      d3.select(zoomHost()).call(zoom.transform, d3.zoomIdentity.translate(pair.x - x*k, pair.y - y*k).scale(k));
     }
     function endTouchView(event) {
       if (!touchView) return;
@@ -917,6 +917,8 @@ createApp({
       measure();
       zoom = d3.zoom().scaleExtent([0.0005, 4])
         .filter(event => {
+          // A vezérlők és jelenlévők (a vászon szülőjének többi gyereke) fölötti események nem nagyítanak/pásztáznak.
+          if (canvas.value?.contains && event.target && !canvas.value.contains(event.target)) return false;
           if (event.type === "wheel") return !gesture.value && !scrollsSelectedText(event);
           if (event.type === "touchstart") return false;
           if (spacePan.value) return !event.button && !gesture.value;
@@ -927,13 +929,36 @@ createApp({
         .on("zoom", event => {
           const type = event.sourceEvent?.type;
           if (type === "mousemove" || type === "pointermove" || type === "touchmove") panning.value = true;
-          view.value = event.transform;
+          // Felhasználói mozdulat (görgetés, egérrel pásztázás) közben csak a vászon CSS-rétege mozog;
+          // a programozott nézetváltás (Mind, keresés, érintés) azonnal érvényes.
+          if (event.sourceEvent) previewView(event.transform);
+          else commitView(event.transform);
         })
-        .on("end", () => { panning.value = false; markMoving("zoom", false); });
-      d3.select(canvas.value).call(zoom).on("dblclick.zoom", null);
+        .on("end", event => { panning.value = false; commitView(event?.transform ?? pendingView); markMoving("zoom", false); });
+      // A zoom a nem transzformált szülőn figyel, így a mozdulat közbeni CSS-transzform nem zavarja a koordinátáit.
+      d3.select(zoomHost()).call(zoom).on("dblclick.zoom", null);
       resizeObserver = new ResizeObserver(measure);
       resizeObserver.observe(canvas.value);
       fit();
+    }
+
+    // Nagyítás és pásztázás a grafikus kártyán (PLAN.md C3/C6): mozdulat közben a teljes vászon-SVG egy CSS-transzformmal
+    // skálázódik és tolódik, újrarajzolás és SVG-újraelrendezés nélkül; a valódi nézet a mozdulat végén egyszer frissül.
+    // A pontkoordináták (world) közben is helyesek, mert a getScreenCTM a CSS-transzformot is tartalmazza.
+    function zoomHost() { return canvas.value?.parentElement; }
+    let pendingView = null;
+    function previewView(transform) {
+      pendingView = transform;
+      const svg = canvas.value, current = view.value;
+      if (!svg?.style) return;
+      const scale = transform.k / current.k;
+      svg.style.transformOrigin = "0 0";
+      svg.style.transform = `matrix(${scale},0,0,${scale},${transform.x - scale * current.x},${transform.y - scale * current.y})`;
+    }
+    function commitView(transform) {
+      pendingView = null;
+      if (canvas.value?.style) canvas.value.style.transform = "";
+      if (transform && (transform.k !== view.value.k || transform.x !== view.value.x || transform.y !== view.value.y)) view.value = transform;
     }
 
     function fit() {
@@ -941,12 +966,12 @@ createApp({
       const bounds = drawnBounds();
       const [x, y] = center();
       const scale = limit(Math.min((x * 2 - 40) / bounds.width, (y * 2 - 40) / bounds.height, 1), 0.0005, 1);
-      d3.select(canvas.value).call(zoom.transform, d3.zoomIdentity.translate(x * (1 - scale), y * (1 - scale)).scale(scale));
+      d3.select(zoomHost()).call(zoom.transform, d3.zoomIdentity.translate(x * (1 - scale), y * (1 - scale)).scale(scale));
     }
 
     function centerOrigin() {
       if (!zoom) return;
-      d3.select(canvas.value).call(zoom.transform, d3.zoomIdentity);
+      d3.select(zoomHost()).call(zoom.transform, d3.zoomIdentity);
     }
 
     function id() {
@@ -1613,7 +1638,7 @@ createApp({
         const [x, y] = operation.screen;
         const start = operation.startView;
         const next = start.translate((event.clientX - x) / start.k, (event.clientY - y) / start.k);
-        d3.select(canvas.value).call(zoom.transform, next);
+        d3.select(zoomHost()).call(zoom.transform, next);
         return;
       }
       if (operation?.waiting) {
@@ -2887,7 +2912,8 @@ createApp({
       const gridSize = drafting ? spacing * 5 : spacing;
       const gridLine = at => `M0 ${at} H${gridSize} M${at} 0 V${gridSize}`;
       const gridStroke = {stroke: "#789bb0", fill: "none"};
-      return h("div", {class: "canvas-area"}, [
+      // A háttér a munkalap színe, hogy kicsinyítés közben a CSS-réteg szélén ne villanjon más szín.
+      return h("div", {class: "canvas-area", style: {background: paint(board.value.background, 0)}}, [
         h("svg", {ref: canvas, class: ["canvas", "editor-canvas", {"ctrl-held": ctrl.value, "alt-held": alt.value}],
           "data-drag-cursor": dragCursor(), "aria-label": "Ötletvászon",
           onContextmenu: event => context(event),
@@ -3188,7 +3214,7 @@ createApp({
         y += point.y;
       }
       const [cx, cy] = center(), k = view.value.k;
-      d3.select(canvas.value).call(zoom.transform,
+      d3.select(zoomHost()).call(zoom.transform,
         d3.zoomIdentity.translate(cx-(cx+x/points.length)*k, cy-(cy+y/points.length)*k).scale(k));
     }
 

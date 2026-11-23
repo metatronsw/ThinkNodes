@@ -40,6 +40,7 @@ Gépelés, árnyékok és átlátszó (elmosott/áttetsző) dobozok, nagyítás.
 - Terv: a nagyításfüggő elemek külön kis komponensben (fogópontok), vagy CSS-változóval (`--k`) és `vector-effect: non-scaling-stroke`-kal.
 
 ### C3 – Pásztázás és nagyítás közvetlenül a DOM-on
+- **Kész:** görgetéses nagyítás és egérrel pásztázás közben csak a vászon-SVG CSS-transzformja változik (`previewView`), a nézet a d3 `end` eseménykor véglegesedik (`commitView`); a d3-zoom a nem transzformált `.canvas-area` szülőn figyel. Mellékhatás: nagyítás közben a szöveg az elengedésig kicsit elmosódott lehet; kicsinyítéskor a réteg szélén a munkalap háttérszíne látszik rács nélkül. A programozott nézetváltás (Mind, keresés, érintéses csippentés, szóköz+húzás) azonnal véglegesedik, mint eddig.
 - A d3 zoom minden képkockán a Vue-állapotot (`view`) írja, ez a gyökér render függvényét futtatja (rács, defs, vezérlők).
 - Terv: mozdulat közben a d3 közvetlenül a vászon `<g>` transzformációját írja; a Vue-állapot csak a mozdulat végén (vagy ritkítva) frissül.
 
@@ -54,6 +55,7 @@ Gépelés, árnyékok és átlátszó (elmosott/áttetsző) dobozok, nagyítás.
 - Terv: mezőszerkesztés közben csak a mező végén rögzíteni a visszavonási lépést (részben már így van), a mentést ritkítani (pl. 300 ms tétlenség), a szöveg-előfeldolgozást (`/api/text/canvas`) csak a szerkesztett dobozra kérni. C1 után a leütés csak egy dobozt rajzol újra.
 
 ### C6 – Csak a látható dobozok renderelése
+- 300 doboznál a C3 után nem szükséges (minden mozdulat 60 fps). Nagyobb (1000+) munkalapnál újramérni.
 - Nagy vásznon a nézeten kívüli dobozokat nem kell renderelni. Bonyolultabb (vonalak, konténerek), C1 után mérni, kell-e.
 
 ### C7 – Kisebb d3
@@ -106,8 +108,9 @@ Gépelés, árnyékok és átlátszó (elmosott/áttetsző) dobozok, nagyítás.
 |---|---|---|
 | Optimalizálás előtt (`e2e2a65`) | 33,3 / 49 ms (~30 fps) | 50,1 / 66,7 ms (~20 fps) |
 | C1–C3 után (`7a50d10`) | 32,6 / 33,9 ms (~30 fps) | 33,4 / 50,6 ms (~30 fps) |
-| C4/1 után (`13ce09a`) | **16,7 / 17,5 ms (60 fps)** | **33,4 / 50 ms (~30 fps)** |
+| C4/1 után (`13ce09a`) | 16,7 / 17,5 ms (60 fps) | 33,4 / 50 ms (~30 fps) |
+| C3 GPU-nagyítás után | **16,6 / 17,4 ms (60 fps)** | **16,7 / 17,5 ms (60 fps)** |
 
-Következtetés: húzásnál a C1–C3 a JS-t, a C4 a festést szüntette meg szűk keresztmetszetként. Nagyításnál a szűrők nem számítanak; a maradék a böngésző elrendezése és raszterizálása (300 szöveges doboz minden lépésben). Következő jelölt: C6 (csak a látható dobozok), illetve nagyítás közben a szövegek egyszerűsített rajzolása.
+Következtetés: húzásnál a C1–C3 a JS-t, a C4 a festést szüntette meg szűk keresztmetszetként. Nagyításnál a szűrők és a szöveg sem számított (kísérlet: szöveg helyett sávok — nincs változás; rács, vonalak, fogantyúk elrejtése — nincs változás): maga az SVG `transform` változása az egész jelenet újraelrendezését kérte (~20 ms). Megoldás: mozdulat közben a vászon-SVG HTML-rétegként, CSS-transzformmal skálázódik/tolódik a grafikus kártyán, a valódi nézet a mozdulat végén egyszer frissül.
 
 Minden lépés előtt és után ugyanaz a mérés: 300 és 1000 dobozos tesztmunkalap ideiglenes adatkönyvtárban (sosem a valódi `Projects`), mért értékek: gépelés leütésenkénti ideje, húzás képkockaideje, nagyítás képkockaideje, távoli frissítés főszál-blokkolása.
