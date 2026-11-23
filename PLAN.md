@@ -44,6 +44,8 @@ Gépelés, árnyékok és átlátszó (elmosott/áttetsző) dobozok, nagyítás.
 - Terv: mozdulat közben a d3 közvetlenül a vászon `<g>` transzformációját írja; a Vue-állapot csak a mozdulat végén (vagy ritkítva) frissül.
 
 ### C4 – Árnyékok, elmosott és áttetsző dobozok
+- **1. lépés kész:** mozgás közben (pásztázás, nagyítás, húzás) `data-moving` jelzés a munkaterületen (DOM-attribútum, nem Vue-állapot); ilyenkor ki van kapcsolva az elmosott doboz szűrője, a kijelölés- és vonal-glow, a keresési jelölés és az üvegpanelek `backdrop-filter`-e, a mozgás végén visszaállnak. A kijelölés pulzálása csak az átlátszóságot animálja, nem a `drop-shadow` szűrőt (az folyamatos újrafestést okozott). Böngészőben ellenőrizve (be/kikapcsolás), a festési idő rejtett panel miatt nem volt mérhető.
+- Az árnyék (Kiemelés) és az áttetsző doboz már eddig is szűrő nélküli volt.
 - Az SVG `filter` (árnyék, `feGaussianBlur`) dobozonként drága, és nagyításkor minden képkockán újraszámolódik.
 - Terv: árnyékhoz előre elmosott alakzat vagy egyszerű eltolt, áttetsző kitöltés szűrő nélkül; elmosott háttérhez egy közös szűrő, kisebb `stdDeviation`; húzás/nagyítás közben a szűrők ideiglenes kikapcsolása (`.is-moving` osztály). Mérni kell, melyik hozza a legtöbbet.
 

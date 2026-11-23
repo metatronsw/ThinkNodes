@@ -923,13 +923,13 @@ createApp({
           return !panLocked.value && !event.button && !event.altKey && !event.ctrlKey && !reconnect.value && !gesture.value
             && !event.target.closest("[data-node], [data-edge]");
         })
-        .on("start", event => { menu.value = null; if (event.sourceEvent) lastClick = null; })
+        .on("start", event => { menu.value = null; if (event.sourceEvent) lastClick = null; markMoving("zoom", true); })
         .on("zoom", event => {
           const type = event.sourceEvent?.type;
           if (type === "mousemove" || type === "pointermove" || type === "touchmove") panning.value = true;
           view.value = event.transform;
         })
-        .on("end", () => { panning.value = false; });
+        .on("end", () => { panning.value = false; markMoving("zoom", false); });
       d3.select(canvas.value).call(zoom).on("dblclick.zoom", null);
       resizeObserver = new ResizeObserver(measure);
       resizeObserver.observe(canvas.value);
@@ -1922,6 +1922,17 @@ createApp({
       if (!group || batchBlocked(group.nodes)) return;
       deleteObjects(new Set(group.nodes), preserve, group.edges);
     }
+
+    // Mozgás közben (pásztázás, nagyítás, húzás) a drága szűrők (elmosás, glow, üvegpanelek) ki vannak kapcsolva;
+    // a jelzés DOM-attribútum (data-moving), nem Vue-állapot, így nem rajzol újra semmit (PLAN.md C4).
+    const movingSources = new Set();
+    function markMoving(source, active) {
+      if (active) movingSources.add(source); else movingSources.delete(source);
+      const workspace = canvas.value?.closest?.(".editor-workspace");
+      if (!workspace?.toggleAttribute) return;
+      workspace.toggleAttribute("data-moving", movingSources.size > 0);
+    }
+    watch(() => !!gesture.value?.moved, moving => markMoving("gesture", moving));
 
     function beginDrag(event, type, extra = {}) {
       event.preventDefault();

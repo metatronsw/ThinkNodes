@@ -455,8 +455,9 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 @keyframes search-button-pulse {
   50% { box-shadow: 0 0 16px #cf8200; }
 }
+/* Csak az átlátszóság pulzál: a szűrő (drop-shadow) animálása minden képkockán újra elmosná a glow-t. PLAN.md C4. */
 @keyframes selection-pulse {
-  50% { opacity: .45; filter: drop-shadow(0 0 calc(var(--sheet-glow, 6px) * 2) currentColor); }
+  50% { opacity: .45; }
 }
 @media (prefers-reduced-motion: no-preference) {
   .drop-target {
@@ -846,3 +847,13 @@ svg text { text-rendering: geometricPrecision; }
 .participants .tool-button .peer-avatar { width: 18px; height: 18px; }
 .canvas-people { bottom: 6px; inset-inline: 6px; }
 .passive-frame > .participants { right: 6px; bottom: 6px; }
+
+/* Mozgás közben (pásztázás, nagyítás, húzás) a drága szűrők ki vannak kapcsolva; a mozgás végén visszaállnak. PLAN.md C4. */
+.editor-workspace[data-moving] .editor-canvas :is(.node-surface[filter], .selection-glow, .search-candidate, .wire-glow, .wire-selected) {
+  filter: none;
+  animation: none;
+}
+.editor-workspace[data-moving][data-glass] :is(.inspector, .quick-search, .canvas-controls, .canvas-empty, .participants) {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
