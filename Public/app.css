@@ -887,3 +887,5 @@ svg text { text-rendering: geometricPrecision; }
 .editor-canvas [data-node][data-link]:hover .node-link text, .passive-canvas [data-node]:hover .node-link text,
 [data-node]:hover .node-link-caption span { text-decoration: underline; }
 .canvas-tooltip .plain-comment { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Buboréksúgó árnyéka: jól látható, világos és sötét módban is (a közös panelszabály után). */
+.canvas-tooltip, :root[data-display="dark"] .canvas-tooltip { box-shadow: 0 10px 30px rgb(0 0 0 / .35), 0 2px 8px rgb(0 0 0 / .25); }

@@ -34,7 +34,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=23">
+          <link rel="stylesheet" href="/app.css?v=24">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
