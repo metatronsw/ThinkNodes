@@ -28,17 +28,19 @@ export function showTooltip(event, render, justified) {
       if (justified) tooltip.classList.add("justified-text");
       tooltip.setAttribute("role", "tooltip");
       tooltip.innerHTML = html;
-      // Méret: legalább a doboz, a szöveghez legalább olvasható szélesség; mindig a képernyőn belül.
+      // Méret: csak amennyi a szövegnek kell; felső határ a doboz mérete (de legalább olvasható), és a képernyő.
+      // Ha a szöveg ennél hosszabb, görgethető. A doboz közepére kerül.
       const margin = 8;
-      const width = Math.min(Math.max(box.width, 260), innerWidth - 2 * margin);
-      const height = Math.min(Math.max(box.height, 160), innerHeight - 2 * margin);
+      const maxWidth = Math.min(Math.max(box.width, 360), innerWidth - 2 * margin);
+      const maxHeight = Math.min(Math.max(box.height, 240), innerHeight - 2 * margin);
+      Object.assign(tooltip.style, {visibility: "hidden", width: "max-content", maxWidth: maxWidth + "px", maxHeight: maxHeight + "px"});
+      document.body.append(tooltip);
+      const {width, height} = tooltip.getBoundingClientRect();
       const left = Math.max(margin, Math.min(box.left + box.width / 2 - width / 2, innerWidth - width - margin));
-      const top = Math.max(margin, Math.min(box.top, innerHeight - height - margin));
-      Object.assign(tooltip.style, {left: left + "px", top: top + "px", width: width + "px", maxHeight: height + "px",
-        minHeight: Math.min(box.height, height) + "px"});
+      const top = Math.max(margin, Math.min(box.top + box.height / 2 - height / 2, innerHeight - height - margin));
+      Object.assign(tooltip.style, {left: left + "px", top: top + "px", visibility: ""});
       tooltip.addEventListener("pointerleave", () => hideTooltip());
       tooltip.addEventListener("pointerdown", () => hideTooltip());
-      document.body.append(tooltip);
     } catch { /* Hover previews are optional when disconnected. */ }
   }, 350);
 }
