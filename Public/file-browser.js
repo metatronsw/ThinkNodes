@@ -79,6 +79,47 @@ export function openFileBrowser(path, csrf) {
       dialog.append(menu);
     }
 
+    // Lomtár (projektszintű): visszaállítás az eredeti helyre, illetve ürítés (végleges törlés).
+    async function showTrash(back) {
+      status.hidden = true;
+      list.replaceChildren(element("p", "Betöltés…"));
+      const endpoint = "/api/trash/" + project;
+      const act = async body => {
+        const response = await fetch(endpoint, {method: "POST", headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify(body)});
+        if (!response.ok) throw Error((await response.json().catch(() => ({}))).reason ?? "A lomtár művelete sikertelen.");
+      };
+      try {
+        const response = await fetch(endpoint, {cache: "no-store"});
+        if (!response.ok) throw Error((await response.json().catch(() => ({}))).reason ?? "A lomtár nem nyitható meg.");
+        const entries = await response.json();
+        location.textContent = "Lomtár · " + decodeURIComponent(project);
+        const rows = [row("..", "parent-up", () => show(back))];
+        for (const entry of entries) {
+          const label = entry.original.split("/").map(decodeURIComponent).join("/");
+          rows.push(row(label + " — visszaállítás", entry.kind === "web" ? "website" : entry.kind === "folder" ? "folder" : "restore", async () => {
+            if (!confirm("Visszaállítod az eredeti helyére?\n" + label)) return;
+            try { await act({action: "restore", path: entry.path}); await showTrash(back); }
+            catch (error) { status.textContent = error.message; status.hidden = false; }
+          }));
+        }
+        if (entries.length) {
+          const empty = element("button", "", {type: "button", className: "button danger file-browser-row"});
+          empty.append(icon("trash"), element("span", "Lomtár ürítése"));
+          empty.addEventListener("click", async () => {
+            if (!confirm("Véglegesen törlöd a lomtár teljes tartalmát (" + entries.length + " elem)? Ez nem vonható vissza.")) return;
+            try { await act({action: "empty"}); await showTrash(back); }
+            catch (error) { status.textContent = error.message; status.hidden = false; }
+          });
+          rows.push(empty);
+        } else rows.push(element("p", "A lomtár üres.", {className: "muted"}));
+        list.replaceChildren(...rows);
+      } catch (error) {
+        list.replaceChildren(row("..", "parent-up", () => show(back)));
+        status.textContent = error.message;
+        status.hidden = false;
+      }
+    }
+
     async function show(sheet) {
       status.hidden = true;
       list.replaceChildren(element("p", "Betöltés…"));
@@ -94,6 +135,7 @@ export function openFileBrowser(path, csrf) {
         location.textContent = common ? "Közös könyvtár /" + parts.slice(1).join("/") : "/" + parts.join("/");
         const rows = [];
         if (!common) rows.push(row("Közös könyvtár (csak olvasható)", "package", () => show("@common")));
+        if (!common && listing.manageable && csrf) rows.push(row("Lomtár", "trash", () => showTrash(listing.path)));
         if (listing.parent) rows.push(row("..", "parent-up", () => show(listing.parent)));
         else if (common) rows.push(row("..", "parent-up", () => show(path)));
         for (const entry of listing.entries) {

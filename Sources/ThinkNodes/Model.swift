@@ -1655,6 +1655,102 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
+    /// A projekt lomtára (`projekt/.trash`): az elemek az eredeti, projekt-relatív helyükkel.
+    struct TrashEntry: Content {
+        let path: String        // a lomtáron belüli relatív útvonal
+        let original: String    // eredeti hely a projektben
+        let kind: String        // "file", "web", "folder"
+    }
+
+    private func trashRoot(_ project: String, user: User?, unlocks: Set<String>) throws -> (URL, Context) {
+        let ctx = try context(try WorksheetPath([project]))
+        guard accessLocked(ctx, user: user, unlocks: unlocks).editable else { throw Abort(.forbidden) }
+        let trash = ctx.project.appendingPathComponent(".trash", isDirectory: true)
+        try rejectLink(trash)
+        return (trash, ctx)
+    }
+
+    /// Lomtár tartalma: fájlok, .web mappák és törölt munkalapok (mappák) az eredeti helyükkel.
+    func trashContents(_ project: String, user: User?, unlocks: Set<String>) throws -> [TrashEntry] {
+        try lock.withLock {
+            let (trash, _) = try trashRoot(project, user: user, unlocks: unlocks)
+            var result: [TrashEntry] = []
+            func original(_ relative: [String]) -> String {
+                // `.versions/<UUID>/…`: ugyanaz a hely többször törölve.
+                (relative.first == ".versions" ? Array(relative.dropFirst(2)) : relative).joined(separator: "/")
+            }
+            func visit(_ directory: URL, _ relative: [String]) {
+                let entries = (try? files.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey])) ?? []
+                for entry in entries.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+                    let name = entry.lastPathComponent
+                    guard let info = try? entry.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]), info.isSymbolicLink != true,
+                          name != ".DS_Store", !(name.hasPrefix(".") && name != ".versions") else { continue }
+                    let path = relative + [name]
+                    if info.isDirectory == true {
+                        if entry.pathExtension == "web" {
+                            result.append(.init(path: path.joined(separator: "/"), original: original(path), kind: "web"))
+                        } else if files.fileExists(atPath: entry.appendingPathComponent(name + ".thnode").path) {
+                            result.append(.init(path: path.joined(separator: "/"), original: original(path), kind: "folder"))
+                        } else if path.count < 14 {
+                            visit(entry, path)
+                        }
+                    } else {
+                        result.append(.init(path: path.joined(separator: "/"), original: original(path), kind: "file"))
+                    }
+                }
+            }
+            visit(trash, [])
+            return result
+        }
+    }
+
+    /// Visszaállítás az eredeti helyre (ha a szülőmappa létezik és a hely szabad).
+    func restoreTrash(_ project: String, path: String, user: User?, unlocks: Set<String>) throws {
+        try lock.withLock {
+            let (trash, ctx) = try trashRoot(project, user: user, unlocks: unlocks)
+            let parts = path.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+            guard !parts.isEmpty, parts.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." && !$0.contains("\\") }) else { throw Abort(.badRequest) }
+            var source = trash
+            for part in parts { source.appendPathComponent(part); try rejectLink(source) }
+            guard files.fileExists(atPath: source.path) else { throw Abort(.notFound) }
+            let target = parts.first == ".versions" ? Array(parts.dropFirst(2)) : parts
+            guard !target.isEmpty else { throw Abort(.badRequest) }
+            var destination = ctx.project
+            for part in target { destination.appendPathComponent(part); try rejectLink(destination) }
+            guard files.fileExists(atPath: destination.deletingLastPathComponent().path) else {
+                throw Abort(.conflict, reason: "Az eredeti mappa már nem létezik.")
+            }
+            guard !files.fileExists(atPath: destination.path) else { throw Abort(.conflict, reason: "Az eredeti helyen már van ilyen nevű elem.") }
+            try files.moveItem(at: source, to: destination)
+            forgetArchived(in: project) { $0 == path }
+        }
+    }
+
+    /// Lomtár ürítése: végleges törlés. A lapok visszavonási hivatkozásai (archivedFiles) is törlődnek.
+    func emptyTrash(_ project: String, user: User?, unlocks: Set<String>) throws {
+        try lock.withLock {
+            let (trash, _) = try trashRoot(project, user: user, unlocks: unlocks)
+            for entry in (try? files.contentsOfDirectory(at: trash, includingPropertiesForKeys: nil)) ?? [] {
+                try files.removeItem(at: entry)
+            }
+            forgetArchived(in: project) { _ in true }
+        }
+    }
+
+    /// A lomtárra mutató visszavonási hivatkozások törlése a projekt lapjainak házirendjéből (zár alatt).
+    private func forgetArchived(in project: String, where matches: (String) -> Bool) {
+        for sheet in projectSheetsLocked(project) {
+            guard let ctx = try? context(sheet), let archived = ctx.local.archivedFiles else { continue }
+            let kept = archived.filter { !matches($0.value) }
+            guard kept.count != archived.count else { continue }
+            var next = ctx
+            var metadata = ctx.local
+            metadata.archivedFiles = kept.isEmpty ? nil : kept
+            next.rules[ctx.directory] = metadata
+            try? persist(next, previous: ctx)
+        }
+    }
+
     /// Másik lap mappájában lévő fájl (zár alatt hívandó).
     private func sharedFile(_ owner: WorksheetPath, named name: String) throws -> URL? {
         let ctx = try context(owner)

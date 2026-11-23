@@ -714,6 +714,34 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         return ["failed": failed]
     }
 
+    app.get("api", "trash", ":project") { req async throws -> [WorksheetStore.TrashEntry] in
+        let identity = try session(req, store: store)
+        let project = try WorksheetPath([req.parameters.get("project") ?? ""]).parts[0]
+        return try await req.application.threadPool.runIfActive {
+            try store.trashContents(project, user: identity.user, unlocks: identity.unlocks)
+        }
+    }
+
+    app.post("api", "trash", ":project") { req async throws -> HTTPStatus in
+        struct TrashAction: Content { let action: String; let path: String? }
+        let identity = try session(req, store: store)
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        let projectPath = try WorksheetPath([req.parameters.get("project") ?? ""])
+        let body = try req.content.decode(TrashAction.self)
+        try await req.application.threadPool.runIfActive {
+            switch body.action {
+            case "restore":
+                guard let path = body.path else { throw Abort(.badRequest) }
+                try store.restoreTrash(projectPath.parts[0], path: path, user: identity.user, unlocks: identity.unlocks)
+            case "empty":
+                try store.emptyTrash(projectPath.parts[0], user: identity.user, unlocks: identity.unlocks)
+            default: throw Abort(.badRequest)
+            }
+        }
+        live.pages.publish(.structure, at: projectPath)
+        return .noContent
+    }
+
     app.post("api", "attachment", "**") { req async throws -> Response in
         let identity = try session(req, store: store)
         let user = identity.user
