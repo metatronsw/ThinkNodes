@@ -890,3 +890,7 @@ svg text { text-rendering: geometricPrecision; }
 .canvas-tooltip .plain-comment { white-space: pre-wrap; overflow-wrap: anywhere; }
 /* Buboréksúgó árnyéka: jól látható, világos és sötét módban is (a közös panelszabály után). */
 .canvas-tooltip, :root[data-display="dark"] .canvas-tooltip { box-shadow: 0 10px 30px rgb(0 0 0 / .35), 0 2px 8px rgb(0 0 0 / .25); }
+/* Buboréksúgó nyitva: a doboz alatti Text elhalványul; csökkentett mozgásnál animáció nélkül tűnik el. */
+.node-comment { transition: opacity .25s ease; }
+.tooltip-open .node-comment { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .node-comment { transition: none; } }

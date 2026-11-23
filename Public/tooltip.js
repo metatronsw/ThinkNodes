@@ -1,7 +1,7 @@
 // Buboréksúgó összecsukott / túl hosszú szöveghez (szerkesztő és megtekintő).
 // A doboz helyén jelenik meg és kitakarja azt; a teljes szöveg görgethető (egérgörgő, jobb oldali görgetősáv).
 // Nyitva marad, amíg az egér a buboréksúgón van; elhagyásakor bezárul.
-let timer, request, tooltip;
+let timer, request, tooltip, owner;
 
 export function hideTooltip(event) {
   // A doboz elhagyása a buboréksúgóra (ami a dobozt takarja): nyitva marad.
@@ -10,6 +10,9 @@ export function hideTooltip(event) {
   request?.abort();
   tooltip?.remove();
   tooltip = null;
+  // A doboz alatti Text újra látszik (app.css: .tooltip-open).
+  owner?.classList.remove("tooltip-open");
+  owner = null;
 }
 
 // `colors`: {background, color} – a doboz színe; ha hiányzik, a doboz rajzából olvassa ki (megtekintő).
@@ -43,6 +46,9 @@ export function showTooltip(event, render, justified, colors) {
       const left = Math.max(margin, Math.min(box.left + box.width / 2 - width / 2, innerWidth - width - margin));
       const top = Math.max(margin, Math.min(box.top + box.height / 2 - height / 2, innerHeight - height - margin));
       Object.assign(tooltip.style, {left: left + "px", top: top + "px", visibility: ""});
+      // Amíg a súgó látszik, a doboz alatti Text elhalványul (csökkentett mozgásnál animáció nélkül tűnik el).
+      owner = currentTarget;
+      owner.classList.add("tooltip-open");
       tooltip.addEventListener("pointerleave", () => hideTooltip());
       tooltip.addEventListener("pointerdown", () => hideTooltip());
     } catch { /* Hover previews are optional when disconnected. */ }
