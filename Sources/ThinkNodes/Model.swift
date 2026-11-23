@@ -545,6 +545,21 @@ struct DocumentPolicy: Codable, Sendable, Equatable {
     var mediaFiles: [String: String]?
     var archivedFiles: [String: String]?
     var worksheets: [String: PageSettings]?
+    /// A mappa publikus fájljai (fájlnév): bejelentkezés nélkül is letölthetők.
+    var publicFiles: [String]?
+}
+
+/// Tallózó: egy munkalap mappájának tartalma (csak a projekten belül).
+struct BrowseListing: Content {
+    struct Entry: Content {
+        let name: String
+        let kind: String        // "folder", "file", "web"
+        let publicAccess: Bool
+    }
+    let path: String            // munkalap-útvonal, pl. "projekt/allap"
+    let parent: String?         // a szülő munkalap útvonala; a projekt gyökerénél nil
+    let manageable: Bool
+    let entries: [Entry]
 }
 
 struct PageSettings: Codable, Sendable, Equatable {
@@ -1488,6 +1503,42 @@ final class WorksheetStore: @unchecked Sendable {
             }
             guard let source = try attachments(at: url, named: file.asset, metadata: ctx.local).first else { throw Abort(.notFound) }
             return .disk(source)
+        }
+    }
+
+    /// Tallózó: a munkalap mappájában lévő almappák (munkalapok), fájlok és .web oldalak.
+    /// Csak a projekt fáján belül mozoghat: a WorksheetPath nem enged `..`-t, a linkeket a rejectLink kizárja.
+    func browse(_ path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> BrowseListing {
+        try lock.withLock {
+            if try readSettings().requireLogin && user == nil { throw Abort(.unauthorized) }
+            let ctx = try context(path)
+            let access = accessLocked(ctx, user: user, unlocks: unlocks)
+            try authorize(access, user: user)
+            let directory = ctx.directory
+            try rejectLink(directory)
+            let publicFiles = Set(ctx.local.publicFiles ?? [])
+            var entries: [BrowseListing.Entry] = []
+            let keys: [URLResourceKey] = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey]
+            for url in try files.contentsOfDirectory(at: directory, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]) {
+                let info = try url.resourceValues(forKeys: Set(keys))
+                guard info.isSymbolicLink != true else { continue }
+                let name = url.lastPathComponent
+                if info.isDirectory == true {
+                    if url.pathExtension == "web" {
+                        let publicWeb = (try? webPolicy(at: url))??.guestReadable == true
+                        entries.append(.init(name: name, kind: "web", publicAccess: publicWeb))
+                    } else if (try? WorksheetPath(path.parts + [name])) != nil,
+                              files.fileExists(atPath: url.appendingPathComponent(".settings.json").path) {
+                        entries.append(.init(name: name, kind: "folder", publicAccess: false))
+                    }
+                } else if info.isRegularFile == true, url.pathExtension.lowercased() != "thnode", validImageStem(name) {
+                    entries.append(.init(name: name, kind: "file", publicAccess: publicFiles.contains(name)))
+                }
+            }
+            let order = ["folder": 0, "web": 1, "file": 2]
+            entries.sort { (order[$0.kind]!, $0.name.lowercased()) < (order[$1.kind]!, $1.name.lowercased()) }
+            let parent = path.parts.count > 1 ? (try? WorksheetPath(Array(path.parts.dropLast())))?.url : nil
+            return BrowseListing(path: path.url, parent: parent, manageable: access.editable, entries: entries)
         }
     }
 

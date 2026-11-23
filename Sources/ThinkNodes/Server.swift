@@ -683,6 +683,14 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         return .noContent
     }
 
+    app.get("api", "browse", "**") { req async throws -> BrowseListing in
+        let identity = try session(req, store: store)
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        return try await req.application.threadPool.runIfActive {
+            try store.browse(path, user: identity.user, unlocks: identity.unlocks)
+        }
+    }
+
     app.get("api", "attachment", "**") { req async throws -> Response in
         let identity = try session(req, store: store)
         if try await req.application.threadPool.runIfActive({ try store.settings().requireLogin }) && identity.user == nil { throw Abort(.unauthorized) }
