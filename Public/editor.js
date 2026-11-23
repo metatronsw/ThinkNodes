@@ -2875,7 +2875,10 @@ createApp({
         h("div", {class: "canvas-people"}, [
           h("div", {class: "participants", "aria-label": "Jelenlévők"},
             !online.value && problem.value ? h("span", {class: "connection-lost", role: "status"}, "Kapcsolat megszakadt") : peers.value.map((p, index) =>
-              h("span", {key: index}, [p.avatar ? h("img", {class: "peer-avatar", src: "/icons/avatar-" + p.avatar + ".svg", alt: ""}) : null, p.name]))),
+              // A jelenlévők gombok; egyelőre nem csinálnak semmit (később: chatüzenet küldése).
+              h("button", {key: index, type: "button", class: "participant", title: p.name,
+                onPointerdown: event => event.stopPropagation()},
+                [p.avatar ? h("img", {class: "peer-avatar", src: "/icons/avatar-" + p.avatar + ".svg", alt: ""}) : null, p.name]))),
         ]),
         h("div", {class: "canvas-controls", "data-open": toolbarOpen.value}, [
           button("", () => { toolbarOpen.value = !toolbarOpen.value; }, {symbol: toolbarOpen.value ? "left" : "right",

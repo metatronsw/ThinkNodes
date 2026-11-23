@@ -204,8 +204,12 @@ function paint(peers) {
   const signature = JSON.stringify(peers.map(({name, avatar}) => [name, avatar]));
   if (signature !== rosterSignature) {
     rosterSignature = signature;
+    // A jelenlévők gombok; egyelőre nem csinálnak semmit (később: chatüzenet küldése).
     roster.replaceChildren(...peers.map(peer => {
-      const label = document.createElement("span");
+      const label = document.createElement("button");
+      label.type = "button";
+      label.className = "participant";
+      label.title = peer.name;
       label.textContent = peer.name;
       if (peer.avatar) {
         const img = document.createElement("img");
