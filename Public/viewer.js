@@ -208,7 +208,7 @@ function paint(peers) {
     roster.replaceChildren(...peers.map(peer => {
       const label = document.createElement("button");
       label.type = "button";
-      label.className = "participant";
+      label.className = "button tool-button participant";
       label.title = peer.name;
       label.textContent = peer.name;
       if (peer.avatar) {
