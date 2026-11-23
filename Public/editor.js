@@ -830,7 +830,8 @@ createApp({
 
     // A vászonréteg a látható területnél nagyobb (overscan); a jelenet origója a látható terület bal felső sarka.
     // A pontokat ehhez a csoporthoz mérjük, így az eltolás és a mozdulat közbeni CSS-transzform is benne van.
-    const overscan = 0.5;
+    // Puffer a látható terület körül, a látható méret arányában, oldalanként (CSS: --overscan).
+    const overscan = 1;
     const sceneOrigin = ref(null);
     const margin = () => [size.value.width * overscan, size.value.height * overscan];
 
@@ -2952,7 +2953,7 @@ createApp({
       const {grid, glass} = graphics.value;
       const lined = grid === "drafting" || grid === "lines";
       // A háttér a munkalap színe (a rács alatt); a vászonréteg átlátszó.
-      return h("div", {class: "canvas-area", style: {background: paint(board.value.background, 0)}}, [
+      return h("div", {class: "canvas-area", style: {background: paint(board.value.background, 0), "--overscan": overscan}}, [
         h(GridLayer),
         h("svg", {ref: canvas, class: ["canvas", "editor-canvas", {"ctrl-held": ctrl.value, "alt-held": alt.value}],
           "data-drag-cursor": dragCursor(), "aria-label": "Ötletvászon",

@@ -44,6 +44,18 @@ Gépelés, árnyékok és átlátszó (elmosott/áttetsző) dobozok, nagyítás.
 - **Külön rácsréteg (kész):** a háttérrács a vászon alatti saját SVG-ben van (`GridLayer`), a mintája mozdulat közben közvetlenül az élő nézetet követi, így pásztázáskor/kicsinyítéskor a réteg szélén is látszik. A munkalap háttérszíne a `.canvas-area` háttere.
 - **Túlméretezett vászonréteg (kész):** a vászon-SVG minden irányban a látható terület felével nagyobb (2× szélesség és magasság, `overscan`), mindig külön grafikus réteg (`will-change: transform`); kisebb pásztázásnál a már kirajzolt dobozok csúsznak be, nincs levágás. A pontok a jelenet origójához (`sceneOrigin`) mérve. Mérve (látható panel, 300 doboz, áttekintő és ráközelített nézet): nagyítás és pásztázás 60 fps vele és nélküle is, a véglegesítő képkocka 33 ms vs. 33 ms — mérhető többletköltség nincs.
 - **Hibrid véglegesítés (kész):** ha a mozdulat közben a látható terület kilógna az előre kirajzolt rétegből, abban a képkockában azonnal valódi újrarajzolás jön, így levágott doboz sosem látszik. Mérve: 2400 px-es pásztázás ráközelített nézetben → 0 levágott képkocka, 2 közbenső újrarajzolás, leglassabb képkocka 18,8 ms.
+- **Puffer mérete (döntés: oldalanként a látható méret 1×-e, a réteg 3× széles és magas):** mérve látható panelen, ráközelített nézetben, 300 doboz:
+
+  | | puffer 0,5 (réteg 2×) | puffer 1,0 (réteg 3×) | puffer 1,0, rács a rétegben |
+  |---|---|---|---|
+  | kis pásztázás (600 px) | 60 fps, 0 újrarajzolás | 60 fps, 0 | 60 fps, 0 |
+  | nagy pásztázás (2400 px) | 60 fps, 2 újrarajzolás | 60 fps, 1 | 60 fps, 1 |
+  | kicsinyítés (30 lépés) p90 / max | 32,2 / 33,2 ms, 3 újrarajzolás | 17,7 / 34,1 ms, 2 | 17,8 / 33,4 ms, 2 |
+  | levágott képkocka | 0 | 0 | 0 |
+  | GPU-folyamat memóriája (footprint) | 218 MB (grafika 81 MB) | 218 MB (grafika 81 MB) | 249 MB (grafika 83 MB) |
+  | JS-heap | 14,9 MB | 15,3 MB | – |
+
+  A nagyobb puffer mérhető memória-többlet nélkül ritkítja az újrarajzolást: a böngésző a rétegnek csak a látható környékét raszterizálja előre. A külön rácsréteg marad: a sebesség és a memória azonos, de mozdulat közben a rács mindig pontos méretű (a rétegben a pontok a nagyítással együtt nőnének/zsugorodnának, és elengedéskor visszaugranának).
 - A d3 zoom minden képkockán a Vue-állapotot (`view`) írja, ez a gyökér render függvényét futtatja (rács, defs, vezérlők).
 - Terv: mozdulat közben a d3 közvetlenül a vászon `<g>` transzformációját írja; a Vue-állapot csak a mozdulat végén (vagy ritkítva) frissül.
 
