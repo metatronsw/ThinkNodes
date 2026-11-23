@@ -11,11 +11,34 @@ func escaped(_ value: String) -> String {
 }
 
 func markdownHTML(_ source: String) -> String {
-    source.withCString { bytes in
+    let source = preservingBlankLines(source)
+    return source.withCString { bytes in
         guard let html = cmark_markdown_to_html(bytes, source.utf8.count, CMARK_OPT_DEFAULT | CMARK_OPT_HARDBREAKS) else { return "" }
         defer { free(html) }
         return String(cString: html)
     }
+}
+
+/// A markdown a több üres sort egyetlen bekezdéshatárrá vonja össze. Hogy ahány üres sor van a forrásban,
+/// annyi látsszon (mint a vásznon, CanvasMarkdown blankLines), a második és további üres sorok
+/// nem törhető szóközt kapnak (látható üres sor lesz belőlük). Kódblokkon belül nem változik semmi.
+func preservingBlankLines(_ source: String) -> String {
+    var lines = source.components(separatedBy: "\n")
+    var fence: String?
+    var previousBlank = false
+    for index in lines.indices {
+        let trimmed = lines[index].trimmingCharacters(in: .whitespaces)
+        if let marker = ["```", "~~~"].first(where: { trimmed.hasPrefix($0) }) {
+            fence = fence == nil ? marker : (fence == marker ? nil : fence)
+            previousBlank = false
+            continue
+        }
+        guard fence == nil else { continue }
+        let blank = trimmed.isEmpty
+        if blank && previousBlank { lines[index] = "\u{00A0}" }
+        previousBlank = blank
+    }
+    return lines.joined(separator: "\n")
 }
 
 func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageUpdates.Subscription? = nil) -> Response {

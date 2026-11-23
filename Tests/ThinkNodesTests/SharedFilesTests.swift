@@ -49,3 +49,11 @@ import Vapor
     try store.emptyTrash("lomtar", user: owner, unlocks: [])
     #expect(try store.trashContents("lomtar", user: owner, unlocks: []).isEmpty)
 }
+
+/// Markdown HTML: a sima sortörés új sor, és ahány üres sor van a forrásban, annyi látszik (kódblokkon kívül).
+@Test func markdownKeepsLineBreaksAndBlankLines() {
+    #expect(markdownHTML("a\nb").contains("a<br />"))
+    let html = markdownHTML("a\n\n\n\nb")
+    #expect(html.components(separatedBy: "\u{00A0}").count - 1 == 2)
+    #expect(preservingBlankLines("```\nx\n\n\ny\n```") == "```\nx\n\n\ny\n```")
+}
