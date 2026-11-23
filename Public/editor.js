@@ -2666,7 +2666,7 @@ createApp({
       if (!gesture.value || !previewRatios.has(node.id)) previewRatios.set(node.id, ratio);
       const linkPreview = isBox(node) && destination?.preview && layout.webPreview ? h("g", {"pointer-events": "none"}, [
         h("clipPath", {id: webClip}, [h(...shapeGeometry(drawn.shape, drawn.width, drawn.height))]),
-        h("image", {class: "node-link-preview node-web-preview", href: destination.preview + "?ratio=" + previewRatios.get(node.id),
+        h("image", {class: "node-link-preview node-site-preview", href: destination.preview + "?ratio=" + previewRatios.get(node.id) + (node.staticPreview ? "&live=0" : ""),
           x: -drawn.width/2, y: -drawn.height/2, width: Math.max(1, drawn.width), height: Math.max(1, drawn.height),
           preserveAspectRatio: "xMidYMid slice", "clip-path": "url(#" + webClip + ")"})])
       : isBox(node) && destination?.preview && layout.previewSpace ? h("image", {class: "node-link-preview",
@@ -3586,6 +3586,8 @@ createApp({
                   if (!target) { problem.value = "Érvénytelen hivatkozás."; event.target.value = single.link.target; return; }
                   change("link", {kind: single.link.kind, target});
                 }}),
+            single.link.kind === "web" ? iconToggle(single.staticPreview ? "Előnézet generálása: ki" : "Előnézet generálása: be",
+              !single.staticPreview, () => change("staticPreview", single.staticPreview ? undefined : true), icon("camera")) : null,
             single.link.kind === "web" ? button("", () => transfer(() => openPresentationPicker(path, csrf, item => change("link", {kind: "web", target: item.reference}))),
               {symbol: "folder", class: "button option-icon", ...controlName("Mappa kiválasztása"), disabled: !online.value}) : null,
             destination ? button("", () => followBoxLink(destination), {symbol: single.link.kind === "url" ? "website" : "right", class: "button option-icon", ...controlName("Megnyitás")}) : null,

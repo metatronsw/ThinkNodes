@@ -201,10 +201,12 @@ struct Idea: Codable, Equatable, Sendable {
     var container: Bool?
     var locked: Bool?
     var elevated: Bool?
+    /// .web doboz: true = nincs új előnézet-generálás, a meglévő kép vágódik a doboz arányára.
+    var staticPreview: Bool?
 
     private enum CodingKeys: String, CodingKey {
         case id, type, text, file, hideText, fitText, shape, fill, backgroundMode, animation, bold, italic, underline, font, justified, link
-        case angle, parent, container, locked, elevated
+        case angle, parent, container, locked, elevated, staticPreview
         case position = "pos", width = "w", height = "h", textColor = "textCol"
         case fontSize = "fontSz", alignment = "align", verticalAlignment = "vAlign"
     }
@@ -1333,7 +1335,7 @@ final class WorksheetStore: @unchecked Sendable {
             try files.moveItem(at: web.directory, to: target)
             // A régi néven tárolt előnézeti képek elavultak.
             let parent = target.deletingLastPathComponent()
-            for name in names where name.hasPrefix("." + web.directory.lastPathComponent + ".preview-") {
+            for name in names where name.hasPrefix("." + web.directory.lastPathComponent + WebScreenshot.marker) {
                 try? files.removeItem(at: parent.appendingPathComponent(name))
             }
             return renamed.relativePath
@@ -1713,6 +1715,7 @@ extension Idea {
         container = try? fields.decode(Bool.self, forKey: .container)
         locked = try? fields.decode(Bool.self, forKey: .locked)
         elevated = try? fields.decode(Bool.self, forKey: .elevated)
+        staticPreview = try? fields.decode(Bool.self, forKey: .staticPreview)
     }
 }
 
@@ -1837,24 +1840,24 @@ extension WorksheetStore {
         return WebContext(directory: presentation, policy: policy, access: access, manageable: manageable)
     }
 
-    func webAsset(_ request: WebPresentationRequest, user: User?, unlocks: Set<String>, ratio: Double? = nil) throws -> (asset: WebAsset?, directory: Bool, publicRead: Bool)? {
-        var render: (URL, Bool)?
+    /// `ratio`: a doboz aránya; `live`: generálhat-e új előnézetet. Az előnézet keresési sorrendje: WebPreview.find.
+    func webAsset(_ request: WebPresentationRequest, user: User?, unlocks: Set<String>, ratio: Double? = nil, live: Bool = true) throws -> (asset: WebAsset?, directory: Bool, publicRead: Bool)? {
+        var preview: (URL, Bool)?
         let found: (asset: WebAsset?, directory: Bool, publicRead: Bool)? = try lock.withLock {
             guard let context = try webContext(project: request.project, reference: request.reference, user: user, unlocks: unlocks) else { return nil }
             try context.access.authorize(user, unlocks: unlocks)
             let dirs = [request.project] + request.reference.folders + [request.reference.name + ".web"]
             if request.asset == ["_tn-preview"] {
                 guard !request.trailingSlash else { throw Abort(.notFound) }
-                let image = WebAsset.preview(in: root, folders: dirs)
-                if image == nil, let ratio, WebScreenshot.browser != nil { render = (context.directory, context.access.publicRead) }
-                return (image, false, context.access.publicRead)
+                preview = (context.directory, context.access.publicRead)
+                return (nil, false, context.access.publicRead)
             }
             let (asset, directory) = try WebAsset.open(in: root, folders: dirs, asset: request.asset, trailingSlash: request.trailingSlash)
             return (asset, directory, context.access.publicRead)
         }
-        // A böngészős renderelés lassú, ezért a záron kívül fut.
-        if let (directory, publicRead) = render, let ratio, let image = WebScreenshot.image(of: directory, ratio: ratio) {
-            return (image, false, publicRead)
+        // A keresés és a böngészős renderelés lassú lehet, ezért a záron kívül fut.
+        if let (directory, publicRead) = preview {
+            return (WebScreenshot.find(in: directory, ratio: live ? ratio : nil), false, publicRead)
         }
         return found
     }

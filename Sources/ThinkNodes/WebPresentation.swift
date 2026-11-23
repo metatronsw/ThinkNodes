@@ -169,14 +169,6 @@ struct WebAsset: Sendable {
         return pages.count == 1 ? pages[0] : "index.html"
     }
 
-    static func preview(in root: URL, folders: [String]) -> WebAsset? {
-        for name in ["preview.png", "screen.png"] {
-            if let result = try? open(in: root, folders: folders, asset: [name], trailingSlash: false),
-               !result.directory { return result.0 }
-        }
-        return nil
-    }
-
     var mime: String {
         let extensionTypes = [
             "html": "text/html; charset=utf-8", "htm": "text/html; charset=utf-8",
@@ -424,10 +416,74 @@ enum WebArchive {
     }
 }
 
-/// .web előnézet headless Chromiummal, a doboz arányában. A kép a .web mappa mellé, rejtett fájlba kerül
-/// (`.név.web.preview-<arány>.png`), és újrarenderelődik, ha az index oldal megváltozik.
+/// .web előnézet. Keresési sorrend (`find`):
+/// 1. saját, Chromiummal generált kép a .web mappa mellett: `.név.web.tn-preview-<arány>.png`
+///    (generálás bekapcsolva: az adott arányhoz renderel; kikapcsolva: a legutóbb generált kép);
+/// 2. a mappa gyökerében screen / screenshot / preview / thumbnail / thumb / site / cover / og-image / social nevű kép;
+/// 3. bármely kép a mappában (először a gyökérben);
+/// 4. nil: a szerver helyettes „nincs elérhető előnézet” SVG-t ad.
 enum WebScreenshot {
     static let width = 1280
+    static let marker = ".tn-preview-"
+    static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "webp", "gif", "svg", "avif"]
+    static let previewNames = ["screen", "screenshot", "preview", "thumbnail", "thumb", "site", "cover", "og-image", "social", "poster"]
+
+    static func find(in directory: URL, ratio: Double?) -> WebAsset? {
+        if let ratio, let image = image(of: directory, ratio: ratio) { return image }
+        if let generated = latestGenerated(for: directory) { return asset(generated) }
+        if let named = namedImage(in: directory) { return asset(named) }
+        if let any = anyImage(in: directory) { return asset(any) }
+        return nil
+    }
+
+    private static func asset(_ url: URL) -> WebAsset? {
+        guard let handle = try? FileHandle(forReadingFrom: url),
+              let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int else { return nil }
+        return WebAsset(handle: handle, size: size, name: url.lastPathComponent)
+    }
+
+    private static func regularFile(_ url: URL) -> Bool {
+        let info = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+        return info?.isRegularFile == true && info?.isSymbolicLink != true
+    }
+
+    private static func latestGenerated(for directory: URL) -> URL? {
+        let parent = directory.deletingLastPathComponent(), prefix = "." + directory.lastPathComponent + marker
+        let names = ((try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? []).filter { $0.hasPrefix(prefix) && $0.hasSuffix(".png") }
+        return names.map { parent.appendingPathComponent($0) }.filter(regularFile)
+            .max { (modified($0) ?? .distantPast) < (modified($1) ?? .distantPast) }
+    }
+
+    private static func images(in directory: URL) -> [URL] {
+        ((try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
+            options: [.skipsHiddenFiles])) ?? [])
+            .filter { imageExtensions.contains($0.pathExtension.lowercased()) && regularFile($0) }
+            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+    }
+
+    private static func namedImage(in directory: URL) -> URL? {
+        let candidates = images(in: directory)
+        for name in previewNames {
+            if let match = candidates.first(where: { $0.deletingPathExtension().lastPathComponent.lowercased() == name }) { return match }
+        }
+        return nil
+    }
+
+    private static func anyImage(in directory: URL) -> URL? {
+        if let first = images(in: directory).first { return first }
+        guard let walker = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { return nil }
+        var checked = 0
+        for case let url as URL in walker {
+            checked += 1
+            if checked > 5_000 || walker.level > 4 { walker.skipDescendants() }
+            if checked > 5_000 { return nil }
+            if imageExtensions.contains(url.pathExtension.lowercased()) && regularFile(url) { return url }
+        }
+        return nil
+    }
+
+    private static func modified(_ url: URL) -> Date? { try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
     private static let renderLock = NSLock()
 
     static let browser: String? = {
@@ -456,8 +512,7 @@ enum WebScreenshot {
                 .first { ["html", "htm"].contains($0.pathExtension.lowercased()) }
         guard let page else { return nil }
         let cache = directory.deletingLastPathComponent()
-            .appendingPathComponent("." + directory.lastPathComponent + ".preview-" + String(format: "%.2f", ratio) + ".png")
-        func modified(_ url: URL) -> Date? { try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
+            .appendingPathComponent("." + directory.lastPathComponent + marker + String(format: "%.2f", ratio) + ".png")
 
         renderLock.lock()
         defer { renderLock.unlock() }
@@ -482,8 +537,6 @@ enum WebScreenshot {
             try? files.removeItem(at: cache)
             guard (try? files.moveItem(at: output, to: cache)) != nil else { return nil }
         }
-        guard let handle = try? FileHandle(forReadingFrom: cache),
-              let size = (try? files.attributesOfItem(atPath: cache.path))?[.size] as? Int else { return nil }
-        return WebAsset(handle: handle, size: size, name: "preview.png")
+        return asset(cache)
     }
 }

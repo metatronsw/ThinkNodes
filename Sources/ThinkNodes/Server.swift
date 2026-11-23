@@ -804,16 +804,21 @@ private func serveWebPresentation(_ req: Request, candidates: [WebPresentationRe
                 viewer = identity
             }
             guard let (asset, directory, publicRead) = try await req.application.threadPool.runIfActive({
-                try store.webAsset(candidate, user: viewer.user, unlocks: viewer.unlocks, ratio: req.query[Double.self, at: "ratio"])
+                try store.webAsset(candidate, user: viewer.user, unlocks: viewer.unlocks, ratio: req.query[Double.self, at: "ratio"], live: req.query[String.self, at: "live"] != "0")
             }) else { continue }
 
             guard let asset else {
                 let name = escaped(candidate.reference.name)
                 return response("""
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 100">
-                      <rect width="320" height="100" rx="8" fill="#233b53"/>
-                      <path d="M143 16h34v22h-34z M160 38v6 M150 45h20" stroke="#fff" fill="none" stroke-width="3"/>
-                      <text x="160" y="77" fill="white" text-anchor="middle" font-family="sans-serif" font-size="17">\(name)</text>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200">
+                      <rect width="320" height="200" fill="#1f2b38"/>
+                      <g fill="none" stroke="#8aa0b6" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="110" y="44" width="100" height="72" rx="6"/><path d="M110 60h100"/>
+                        <circle cx="120" cy="52" r="1.5"/><circle cx="128" cy="52" r="1.5"/>
+                        <path d="M145 76l30 26M175 76l-30 26"/>
+                      </g>
+                      <text x="160" y="150" fill="#c9d6e3" text-anchor="middle" font-family="sans-serif" font-size="16">Nincs elérhető előnézet</text>
+                      <text x="160" y="172" fill="#8aa0b6" text-anchor="middle" font-family="sans-serif" font-size="13">\(name)</text>
                     </svg>
                     """, type: "image/svg+xml")
             }
