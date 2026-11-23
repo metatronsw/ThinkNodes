@@ -959,10 +959,17 @@ createApp({
       const svg = canvas.value, current = view.value;
       if (!svg?.style) return;
       const scale = transform.k / current.k;
+      const shiftX = transform.x - scale * current.x, shiftY = transform.y - scale * current.y;
       // Az origó a látható terület bal felső sarka a (nagyobb) rétegen belül.
       const [marginX, marginY] = margin();
+      const {width, height} = size.value;
+      // Hibrid: ha a látható terület kilógna az előre kirajzolt rétegből, azonnal valódi újrarajzolás jön
+      // (egy lassabb képkocka), így levágott doboz sosem látszik. Utána az eltolás az új nézethez képest folytatódik.
+      const covered = shiftX - scale * marginX <= 0 && shiftY - scale * marginY <= 0 &&
+        shiftX + scale * (width + marginX) >= width && shiftY + scale * (height + marginY) >= height;
+      if (!covered) { commitView(transform); return; }
       svg.style.transformOrigin = marginX + "px " + marginY + "px";
-      svg.style.transform = `matrix(${scale},0,0,${scale},${transform.x - scale * current.x},${transform.y - scale * current.y})`;
+      svg.style.transform = `matrix(${scale},0,0,${scale},${shiftX},${shiftY})`;
       // A rács nem skálázódik a réteggel: a mintája közvetlenül az élő nézetet követi.
       const [centerX, centerY] = center();
       zoomHost()?.querySelector?.("#worksheet-grid")?.setAttribute("patternTransform", transform + " translate(" + centerX + " " + centerY + ")");
