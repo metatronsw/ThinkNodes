@@ -24,7 +24,8 @@ Gépelés, árnyékok és átlátszó (elmosott/áttetsző) dobozok, nagyítás.
 
 ## C) Kliens — szerkesztő (elsőbbség)
 
-### C1 – Komponensbontás (következő lépés)
+### C1 – Komponensbontás (folyamatban)
+- **1. lépés kész:** `NodeView` dobozonként. Gépelés 300 doboznál: 15,8 ms → 1,1 ms leütésenként (medián; p90 32 → 1,6 ms).
 - Ma a vászon egyetlen komponens (`CanvasScene`): bármely változásnál (gépelés egy dobozban, húzás, kijelölés, nagyítás) minden doboz és vonal virtuális DOM-ja újraépül és összehasonlítódik.
 - Terv: `NodeView` és `EdgeView` komponens, csak a saját adataitól függő propokkal (doboz objektum, kijelöltség, foglaló résztvevő, húzási eltolás). Így gépeléskor csak a szerkesztett doboz, húzáskor csak a mozgatott doboz és a hozzá kötött vonalak rajzolódnak újra.
 - A globális állapotot (gesture, peers, batch, marquee) a szülő bontsa le dobozonkénti egyszerű értékekre, hogy egy doboz ne függjön a teljes listától.

@@ -18,7 +18,7 @@ import {ancestors, overlapFraction} from "./containers.js?v=3";
 const mount = document.querySelector("#editor");
 const {path, csrf, user, motionRate} = mount.dataset;
 const d3 = window.d3;
-const {createApp, computed, h, nextTick, onMounted, onUnmounted, onUpdated, ref, shallowRef, toRaw, watch} = window.Vue;
+const {createApp, computed, getCurrentInstance, h, nextTick, onMounted, onUnmounted, onUpdated, ref, shallowRef, toRaw, watch} = window.Vue;
 
 // Az új munkalapállapotban a tartalmilag változatlan dobozok és vonalak a korábbi objektumot kapják vissza.
 // Az elrendezés- és vonalgeometria-gyorsítótárak objektumazonosság szerint működnek; enélkül minden mentés
@@ -2762,19 +2762,29 @@ createApp({
       ]);
     }
 
-    const CanvasScene = {
-      setup: () => {
+    // Dobozonként külön komponens: a doboz csak akkor rajzolódik újra, ha a saját adatai vagy az általa olvasott
+    // állapot változik (gépelés, húzás egy dobozon nem építi újra a többi doboz virtuális DOM-ját). PLAN.md C1.
+    const NodeView = {
+      props: {node: Object},
+      setup(props) {
+        const instance = getCurrentInstance();
         // Sorkizárás: a szóközöket a böngészőben mért sorszélesség alapján tágítjuk (Public/justify.js).
-        const justify = () => justifyRows(canvas.value);
+        const justify = () => justifyRows(instance.proxy.$el);
         onMounted(justify);
         onUpdated(justify);
+        return () => renderNode(props.node);
+      },
+    };
+
+    const CanvasScene = {
+      setup: () => {
         return () => {
         const layers = wireLayers.value;
         const children = [], handles = [], activeHandles = [];
         const addEdge = edge => children.push(renderEdge(edge, handles, activeHandles));
         orderedNodes.value.forEach((node, index) => {
           layers[index].forEach(addEdge);
-          children.push(renderNode(node));
+          children.push(h(NodeView, {key: node.id, node}));
         });
         layers.at(-1).forEach(addEdge);
         // Keep the clickable endpoints above the boxes without changing the wire's paint order.
