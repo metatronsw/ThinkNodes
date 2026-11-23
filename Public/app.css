@@ -738,7 +738,6 @@ svg text { text-rendering: geometricPrecision; }
    A többi felhasználó kijelölése továbbra is .selection-glow / .wire-glow. */
 .own-selected :is(.node-surface, .node-frame):not([data-locked-outline]) { stroke-width: 4px; }
 .own-selected .node-surface:not([filter]) { filter: brightness(1.18); }
-.own-selected .node-file.node-image img { filter: brightness(1.15); }
 .own-selected .junction-surface { filter: brightness(1.3); }
 .wire-own, .wire-own-underlay { filter: brightness(1.3); }
 .wire-own-underlay { opacity: .55; }

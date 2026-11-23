@@ -7,6 +7,10 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 ## Javítva
 
+- **Kijelölt kép eltűnt, csak a Kiemelés árnyéka maradt** (2026-11-23)
+  - Ok: a saját kijelölés `filter: brightness(1.15)`-öt tett a foreignObjectben lévő `<img>`-re; a WebKit a transzformált SVG-ben lévő HTML-elemre tett CSS-szűrőt gyakran nem rajzolja ki.
+  - Javítás: a szabály törölve (`Public/app.css`); a kijelölést a meglévő `selection-own` SVG-körvonal jelzi, a Kiemelés árnyéka megmarad.
+
 - **A munkalap minden presence-kérésnél teljes lemezolvasással töltődik be** (2026-11-23, teljesítmény)
   - A `Collaboration.presence` minden `poll`/`select`/`ping` műveletnél `store.load`-ot hív (beállítások, házirend-lánc, munkalapfájl dekódolása és validálása, mappa listázása), a két globális zár alatt. N résztvevőnél egy mentés N teljes betöltést indít sorban.
   - Az optimalizálási tervben szerepel (memóriabeli munkalap-gyorsítótár); megbeszélendő.
