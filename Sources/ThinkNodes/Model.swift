@@ -107,7 +107,7 @@ struct CanvasFile: Codable, Equatable, Sendable {
     }
 }
 
-private func validImageStem(_ value: String) -> Bool {
+func validImageStem(_ value: String) -> Bool {
     !value.isEmpty && value.utf8.count <= 200 && !value.hasPrefix(".")
         && value == value.trimmingCharacters(in: .whitespacesAndNewlines)
         && !value.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) || "/\\:".unicodeScalars.contains($0) }
@@ -236,10 +236,15 @@ struct Idea: Codable, Equatable, Sendable {
     var webPublic: Bool?
     /// Text NAGYBETŰS megjelenítése (doboz szövege, doboz alatti Text, szövegfájl); a tárolt szöveg nem változik.
     var uppercase: Bool?
+    /// Kép és előnézetes doboz kerete: kép alapból ki (true = be), előnézet alapból be (false = ki); színe a doboz színe.
+    var frame: Bool?
+    /// A keret vastagsága (nil = 1,6, mint minden doboz kerete).
+    var frameWidth: Double?
+    var hasFrame: Bool { isImage ? frame == true : type == "preview" && frame != false }
 
     private enum CodingKeys: String, CodingKey {
         case id, type, text, file, hideText, fitText, shape, fill, backgroundMode, animation, bold, italic, underline, font, justified, link
-        case angle, parent, container, locked, elevated, staticPreview, webPublic, uppercase
+        case angle, parent, container, locked, elevated, staticPreview, webPublic, uppercase, frame, frameWidth
         case position = "pos", width = "w", height = "h", textColor = "textCol"
         case fontSize = "fontSz", alignment = "align", verticalAlignment = "vAlign"
     }
@@ -269,6 +274,7 @@ struct Idea: Codable, Equatable, Sendable {
         guard NodeTypes.isKnown(type), validSlug(id), position.isValid, text.utf8.count <= 100_000,
               isJunction ? (4...128).contains(width) && height == width : (64...4096).contains(width) && (40...4096).contains(height),
               elevated != true || (parent == nil && !isJunction),
+              frameWidth.map({ (0.5...32).contains($0) }) ?? true,
               (1...10000).contains(fontSize), fontSize.rounded() == fontSize, (1...3).contains(font ?? 1),
               [fill, textColor, border].allSatisfy(validColor),
               link.map({ $0.isValid && has("link") }) ?? true,
@@ -607,7 +613,6 @@ struct BrowseListing: Content {
 struct PageSettings: Codable, Sendable, Equatable {
     var hidden = false
     var frozen: Bool?
-    var passwordHash: String?
 }
 
 struct DocumentAccess: Sendable {
@@ -633,7 +638,7 @@ struct DocumentAction: Content {
 }
 
 final class WorksheetStore: @unchecked Sendable {
-    private let root: URL
+    let root: URL
     /// A data könyvtár (gyorsítótárakhoz, pl. a külső link-előnézetekhez).
     var dataRoot: URL { root }
     var dataDirectoryPath: String { root.path }
@@ -644,10 +649,10 @@ final class WorksheetStore: @unchecked Sendable {
         lock.withLock { testerCount += 1; return "Tester" + String(testerCount) }
     }
 
-    private let files = FileManager.default
-    private let lock = NSLock()
+    let files = FileManager.default
+    let lock = NSLock()
     private var pendingAttachments: [String: Date] = [:]
-    private let encoder: JSONEncoder = {
+    let encoder: JSONEncoder = {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         return encoder
@@ -659,7 +664,7 @@ final class WorksheetStore: @unchecked Sendable {
         try files.createDirectory(at: self.root, withIntermediateDirectories: true)
     }
 
-    private func folder(_ path: WorksheetPath) throws -> URL {
+    func folder(_ path: WorksheetPath) throws -> URL {
         var url = root
         for part in path.parts {
             url.appendPathComponent(part)
@@ -668,7 +673,7 @@ final class WorksheetStore: @unchecked Sendable {
         return url
     }
 
-    private func checkName(_ url: URL) throws {
+    func checkName(_ url: URL) throws {
         try rejectLink(url)
         if files.fileExists(atPath: url.path),
            !(try files.contentsOfDirectory(atPath: url.deletingLastPathComponent().path)).contains(url.lastPathComponent) {
@@ -676,19 +681,19 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    private func worksheetURL(_ path: WorksheetPath) throws -> URL {
+    func worksheetURL(_ path: WorksheetPath) throws -> URL {
         let url = try folder(path).appendingPathComponent(path.name).appendingPathExtension("thnode")
         try checkName(url)
         return url
     }
 
-    private func settingsURL(_ directory: URL) throws -> URL {
+    func settingsURL(_ directory: URL) throws -> URL {
         let url = directory.appendingPathComponent(".settings.json")
         try rejectLink(url)
         return url
     }
 
-    private struct Context {
+    struct Context {
         var chain: [URL]
         var rules: [URL: DocumentPolicy]
         let key: String
@@ -704,7 +709,7 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    private func context(_ path: WorksheetPath) throws -> Context {
+    func context(_ path: WorksheetPath) throws -> Context {
         let file = try worksheetURL(path)
         let parts = path.parts
         var chain: [URL] = [], rules: [URL: DocumentPolicy] = [:]
@@ -713,14 +718,17 @@ final class WorksheetStore: @unchecked Sendable {
             directory.appendPathComponent(part)
             let url = try settingsURL(directory)
             guard files.fileExists(atPath: url.path) else { throw Abort(.notFound) }
-            rules[directory] = try readPolicy(url)
+            var rule = try readPolicy(url)
+            // Régi allapjelszó: már nem érvényes, a következő mentéskor kikerül a fájlból.
+            if !chain.isEmpty { rule.passwordHash = nil }
+            rules[directory] = rule
             chain.append(directory)
         }
         let key = (Array(parts.dropFirst()) + [file.lastPathComponent]).joined(separator: "/")
         return try Context(chain: chain, rules: rules, key: key, folderPath: WorksheetPath(parts).url)
     }
 
-    private func persist(_ next: Context, previous: Context) throws {
+    func persist(_ next: Context, previous: Context) throws {
         var written: [URL] = []
         do {
             for directory in next.chain where next.rules[directory] != previous.rules[directory] {
@@ -733,7 +741,7 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    private func accessLocked(_ ctx: Context, user: User?, unlocks: Set<String>) -> DocumentAccess {
+    func accessLocked(_ ctx: Context, user: User?, unlocks: Set<String>) -> DocumentAccess {
         let projectRule = ctx.rules[ctx.project]!
         let names = Set((projectRule.editors ?? []) + [projectRule.owner].compactMap { $0 })
         let admin = user?.role == .admin
@@ -743,25 +751,17 @@ final class WorksheetStore: @unchecked Sendable {
         let publicProject = projectRule.guestReadable == true
         let readable = admin || member || publicProject
         let editable = admin || member || (guest && publicProject)
-        var locked = false, frozen = false, protected = false
-        for directory in ctx.chain {
-            let rule = ctx.rules[directory]!
-            frozen = frozen || rule.frozen == true
-            if let hash = rule.passwordHash {
-                protected = true
-                locked = locked || (!admin && !owner && !unlocks.contains(hash))
-            }
-        }
+        // Jelszó csak a projekten van; az allapok és a .web prezentációk ezt öröklik.
+        let protected = projectRule.passwordHash != nil
+        let locked = projectRule.passwordHash.map { !admin && !owner && !unlocks.contains($0) } ?? false
+        var frozen = false
+        for directory in ctx.chain { frozen = frozen || ctx.rules[directory]!.frozen == true }
         let page = ctx.page
-        if let hash = page.passwordHash {
-            protected = true
-            locked = locked || (!admin && !owner && !unlocks.contains(hash))
-        }
         frozen = frozen || page.frozen == true
         var menu = ctx.local
         menu.hidden = page.hidden
         menu.frozen = ctx.local.frozen ?? page.frozen
-        menu.passwordHash = ctx.local.passwordHash ?? page.passwordHash
+        menu.passwordHash = projectRule.passwordHash
         menu.owner = projectRule.owner
         menu.guestReadable = projectRule.guestReadable
         return DocumentAccess(readable: readable && !locked, editable: editable && !locked && (!frozen || admin || owner),
@@ -774,7 +774,7 @@ final class WorksheetStore: @unchecked Sendable {
         try lock.withLock { try accessLocked(context(path), user: user, unlocks: unlocks) }
     }
 
-    private func authorize(_ access: DocumentAccess, user: User?) throws {
+    func authorize(_ access: DocumentAccess, user: User?) throws {
         if access.locked { throw Abort(.locked, reason: "Ehhez a munkalaphoz jelszó szükséges.") }
         if !access.readable { throw Abort(user == nil ? .unauthorized : .forbidden) }
     }
@@ -783,7 +783,7 @@ final class WorksheetStore: @unchecked Sendable {
         let candidates = try lock.withLock {
             let ctx = try context(path)
             guard accessLocked(ctx, user: user, unlocks: []).locked else { throw Abort(.forbidden) }
-            return ctx.chain.compactMap { ctx.rules[$0]?.passwordHash } + [ctx.page.passwordHash].compactMap { $0 }
+            return [ctx.rules[ctx.project]?.passwordHash].compactMap { $0 }
         }
         // A bcrypt lassú; a záron kívül fut, hogy közben a többi kérés haladhasson.
         let hashes = try candidates.filter { try Bcrypt.verify(password, created: $0) }
@@ -1131,11 +1131,13 @@ final class WorksheetStore: @unchecked Sendable {
                 next.rules[ctx.directory]?.frozen = !(rights.sheetRule.frozen ?? false)
                 page.frozen = nil
             case "password":
+                guard path.parts.count == 1 else {
+                    throw Abort(.badRequest, reason: "Jelszót csak a projekt kaphat; az allapok a projekt jelszavát használják.")
+                }
                 let password = operation.value ?? ""
                 guard password.utf8.count <= 72 else { throw Abort(.badRequest) }
                 // Előre számolt hash hiányában (pl. tesztekből hívva) itt számolódik ki.
                 next.rules[ctx.directory]?.passwordHash = password.isEmpty ? nil : try passwordHash ?? Bcrypt.hash(password)
-                page.passwordHash = nil
             case "mode" where path.parts.count == 1:
                 guard let mode = operation.value, ["public", "internal"].contains(mode) else { throw Abort(.badRequest) }
                 next.rules[ctx.directory]?.guestReadable = mode == "public"
@@ -1748,15 +1750,47 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    /// Lomtár ürítése: végleges törlés. A lapok visszavonási hivatkozásai (archivedFiles) is törlődnek.
+    /// Lomtár ürítése: végleges törlés. A lapok visszavonási hivatkozásai (archivedFiles) is törlődnek,
+    /// kivéve azokat a fájlokat, amelyekre a lap valamelyik mentett állapota (`.version`) még hivatkozik:
+    /// ezek a lomtárban maradnak, hogy a verzió visszaállításakor visszakerülhessenek.
     func emptyTrash(_ project: String, user: User?, unlocks: Set<String>) throws {
         try lock.withLock {
             let (trash, _) = try trashRoot(project, user: user, unlocks: unlocks)
-            for entry in (try? files.contentsOfDirectory(at: trash, includingPropertiesForKeys: nil)) ?? [] {
-                try files.removeItem(at: entry)
+            let kept = versionProtectedTrashLocked(project)
+            func clear(_ directory: URL, _ relative: [String]) throws {
+                for entry in (try? files.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? [] {
+                    let path = relative + [entry.lastPathComponent]
+                    let joined = path.joined(separator: "/")
+                    if kept.contains(joined) { continue }
+                    let isLink = (try? entry.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true
+                    if !isLink, kept.contains(where: { $0.hasPrefix(joined + "/") }) {
+                        try clear(entry, path)
+                    } else {
+                        try files.removeItem(at: entry)
+                    }
+                }
             }
-            forgetArchived(in: project) { _ in true }
+            try clear(trash, [])
+            forgetArchived(in: project) { !kept.contains($0) }
         }
+    }
+
+    /// A lomtárban lévő (archivedFiles) fájlok közül azok relatív útvonala, amelyekre valamelyik lap
+    /// valamelyik mentett állapota még hivatkozik (zár alatt).
+    private func versionProtectedTrashLocked(_ project: String) -> Set<String> {
+        var kept = Set<String>()
+        for sheet in projectSheetsLocked(project) {
+            guard let ctx = try? context(sheet), let archived = ctx.local.archivedFiles, !archived.isEmpty,
+                  let directory = try? versionFolder(sheet) else { continue }
+            var refs = Set<String>()
+            for entry in versionFiles(directory) {
+                guard let data = try? Data(contentsOf: entry.url), let version = try? Worksheet.decodeFile(data) else { continue }
+                for node in version.nodes { if let file = node.file, file.source == nil { refs.insert(file.asset) } }
+                if let preview = version.previewImage { refs.insert(preview) }
+            }
+            for (ref, relative) in archived where refs.contains(ref) { kept.insert(relative) }
+        }
+        return kept
     }
 
     /// A lomtárra mutató visszavonási hivatkozások törlése a projekt lapjainak házirendjéből (zár alatt).
@@ -1774,7 +1808,7 @@ final class WorksheetStore: @unchecked Sendable {
     }
 
     /// Másik lap mappájában lévő fájl (zár alatt hívandó).
-    private func sharedFile(_ owner: WorksheetPath, named name: String) throws -> URL? {
+    func sharedFile(_ owner: WorksheetPath, named name: String) throws -> URL? {
         let ctx = try context(owner)
         return try attachments(at: worksheetURL(owner), named: name, metadata: ctx.local).first
     }
@@ -1832,7 +1866,7 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    private func attachments(at url: URL, named name: String?, metadata: DocumentPolicy?) throws -> [URL] {
+    func attachments(at url: URL, named name: String?, metadata: DocumentPolicy?) throws -> [URL] {
         let directory = url.deletingLastPathComponent()
         let keys: Set<URLResourceKey> = [.isRegularFileKey, .isSymbolicLinkKey]
         let entries: [URL]
@@ -1849,6 +1883,105 @@ final class WorksheetStore: @unchecked Sendable {
             let info = try file.resourceValues(forKeys: keys)
             return info.isRegularFile == true && info.isSymbolicLink != true
         }.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+    }
+
+    // MARK: Mentett állapotok (verziók)
+    // Minden lap a saját mappájában, a `.version` alkönyvtárban tárolja:
+    // `0001_20261123-142530.thnode` (sorszám, UTC időbélyeg). Nincs darabszám-korlát.
+
+    struct VersionEntry: Content {
+        let number: Int
+        let created: Date
+        let user: String?
+    }
+
+    struct VersionList: Content {
+        let versions: [VersionEntry]
+        let changed: Bool
+    }
+
+    private func versionFolder(_ path: WorksheetPath) throws -> URL {
+        let url = try folder(path).appendingPathComponent(".version")
+        try rejectLink(url)
+        return url
+    }
+
+    private func versionFiles(_ directory: URL) -> [(number: Int, url: URL)] {
+        let names = (try? files.contentsOfDirectory(atPath: directory.path)) ?? []
+        return names.compactMap { name -> (Int, URL)? in
+            guard name.hasSuffix(".thnode"), let number = Int(name.prefix { $0.isNumber }), number > 0 else { return nil }
+            return (number, directory.appendingPathComponent(name))
+        }.sorted { $0.0 < $1.0 }
+    }
+
+    private static let versionStamp: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter
+    }()
+
+    private func versionEntry(_ number: Int, _ url: URL) -> VersionEntry {
+        let stem = url.deletingPathExtension().lastPathComponent
+        let parts = stem.split(separator: "_", maxSplits: 2).map(String.init)
+        let created = parts.count > 1 ? Self.versionStamp.date(from: parts[1]) : nil
+        return VersionEntry(number: number,
+                            created: created ?? ((try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast),
+                            user: parts.count > 2 ? parts[2].removingPercentEncoding : nil)
+    }
+
+    private func sameContent(_ a: Worksheet, _ b: Worksheet) -> Bool {
+        var a = a, b = b
+        a.revision = 0; b.revision = 0
+        a.resetRevision = nil; b.resetRevision = nil
+        a.schemaVersion = 0; b.schemaVersion = 0
+        return a == b
+    }
+
+    private func editableContext(_ path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> Context {
+        if try readSettings().requireLogin && user == nil { throw Abort(.unauthorized) }
+        let ctx = try context(path)
+        guard accessLocked(ctx, user: user, unlocks: unlocks).editable else { throw Abort(.forbidden) }
+        return ctx
+    }
+
+    func versions(_ path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> VersionList {
+        try lock.withLock {
+            _ = try editableContext(path, user: user, unlocks: unlocks)
+            let list = versionFiles(try versionFolder(path))
+            let current = try read(worksheetURL(path))
+            let changed = try list.last.map { !sameContent(try Worksheet.decodeFile(Data(contentsOf: $0.url)), current) } ?? true
+            return VersionList(versions: list.reversed().map { versionEntry($0.number, $0.url) }, changed: changed)
+        }
+    }
+
+    /// A lap aktuális (lemezen lévő) állapotát új sorszámú másolatként menti.
+    func saveVersion(_ path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> VersionEntry {
+        try lock.withLock {
+            _ = try editableContext(path, user: user, unlocks: unlocks)
+            let directory = try versionFolder(path)
+            try files.createDirectory(at: directory, withIntermediateDirectories: true)
+            let number = (versionFiles(directory).last?.number ?? 0) + 1
+            let now = Date()
+            var name = String(format: "%04d", number) + "_" + Self.versionStamp.string(from: now)
+            if let author = user?.name { name += "_" + WorksheetPath.encodeSegment(author) }
+            let url = directory.appendingPathComponent(name + ".thnode")
+            let data = try Data(contentsOf: worksheetURL(path))
+            try data.write(to: url, options: .withoutOverwriting)
+            return versionEntry(number, url)
+        }
+    }
+
+    /// Egy mentett állapot tartalma; a visszaállítást a hívó a szokásos mentéssel végzi (`restoring: true`).
+    func version(_ path: WorksheetPath, number: Int, user: User?, unlocks: Set<String>) throws -> Worksheet {
+        try lock.withLock {
+            _ = try editableContext(path, user: user, unlocks: unlocks)
+            guard let entry = versionFiles(try versionFolder(path)).first(where: { $0.number == number }) else {
+                throw Abort(.notFound, reason: "A mentett állapot nem található.")
+            }
+            return try Worksheet.decodeFile(Data(contentsOf: entry.url))
+        }
     }
 
     func archive(_ path: WorksheetPath, expected: Int) throws {
@@ -1927,7 +2060,7 @@ final class WorksheetStore: @unchecked Sendable {
 
     private var settingsFile: URL { root.appendingPathComponent(".settings.json") }
 
-    private func readSettings() throws -> SiteSettings {
+    func readSettings() throws -> SiteSettings {
         try rejectLink(settingsFile)
         guard files.fileExists(atPath: settingsFile.path) else { return SiteSettings() }
         return try cached(settingsFile, in: &settingsCache) { try JSONDecoder().decode(SiteSettings.self, from: $0) }
@@ -1966,11 +2099,11 @@ final class WorksheetStore: @unchecked Sendable {
         settingsCache.removeValue(forKey: key)
     }
 
-    private func readPolicy(_ url: URL) throws -> DocumentPolicy {
+    func readPolicy(_ url: URL) throws -> DocumentPolicy {
         try cached(url, in: &policyCache) { try JSONDecoder().decode(DocumentPolicy.self, from: $0) }
     }
 
-    private func readUsers() throws -> [User] {
+    func readUsers() throws -> [User] {
         try readSettings().users ?? []
     }
 
@@ -1990,7 +2123,7 @@ final class WorksheetStore: @unchecked Sendable {
         try files.setAttributes([.posixPermissions: 0o600], ofItemAtPath: settingsFile.path)
     }
 
-    private func read(_ url: URL) throws -> Worksheet {
+    func read(_ url: URL) throws -> Worksheet {
         guard files.fileExists(atPath: url.path) else { throw Abort(.notFound, reason: "A munkalap nem található.") }
         return try cached(url, in: &sheetCache) { data in
             let worksheet = try Worksheet.decodeFile(data)
@@ -2002,13 +2135,13 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    private func write(_ value: some Encodable, to url: URL) throws {
+    func write(_ value: some Encodable, to url: URL) throws {
         invalidate(url)
         defer { invalidate(url) }
         try (encoder.encode(value) + Data([10])).write(to: url, options: .atomic)
     }
 
-    private func rejectLink(_ url: URL) throws {
+    func rejectLink(_ url: URL) throws {
         if (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
             throw Abort(.notFound)
         }
@@ -2050,6 +2183,8 @@ extension Idea {
         staticPreview = try? fields.decode(Bool.self, forKey: .staticPreview)
         webPublic = try? fields.decode(Bool.self, forKey: .webPublic)
         uppercase = try? fields.decode(Bool.self, forKey: .uppercase)
+        frame = try? fields.decode(Bool.self, forKey: .frame)
+        frameWidth = try? fields.decode(Double.self, forKey: .frameWidth)
         normalizePreview()
     }
 
@@ -2100,17 +2235,6 @@ extension WorksheetStore {
         var readable: Bool
         var publicRead: Bool
         var hashes: [String] = []
-
-        mutating func restrict(_ policy: DocumentPolicy, user: User?) {
-            if policy.guestReadable == false || policy.editors != nil { publicRead = false }
-            protect(policy.passwordHash)
-            guard !admin else { return }
-            if policy.guestReadable == false { readable = readable && projectMember }
-            if let editors = policy.editors {
-                let allowed = editors + [policy.owner].compactMap { $0 }
-                readable = readable && (user.map { allowed.contains($0.name) } == true)
-            }
-        }
 
         mutating func protect(_ hash: String?) {
             if let hash {

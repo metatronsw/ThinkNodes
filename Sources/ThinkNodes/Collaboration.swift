@@ -227,10 +227,12 @@ final class Collaboration: @unchecked Sendable {
         }
     }
 
-    func update(_ path: WorksheetPath, sheet: Worksheet, user: User?, client: String?, unlocks: Set<String> = []) throws -> Worksheet {
+    func update(_ path: WorksheetPath, sheet: Worksheet, user: User?, client: String?, unlocks: Set<String> = [], restoring: Bool = false) throws -> Worksheet {
         try lock.withLock {
             rooms[path.url]?.expire()
-            let saved = try store.update(path, worksheet: sheet, user: user, unlocks: unlocks) { current in
+            let saved = try store.update(path, worksheet: sheet, user: user, restoring: restoring, unlocks: unlocks) { current in
+                // Visszaállításkor a más által kijelölt dobozok nem akadályoznak; a kijelölések alább megszűnnek.
+                if restoring { return }
                 if let client {
                     guard let peer = rooms[path.url]?.peers[client], peer.name == user?.name else {
                         throw Abort(.conflict, reason: "Kapcsolódj újra a munkalaphoz.")
@@ -251,8 +253,8 @@ final class Collaboration: @unchecked Sendable {
                 let ids = Set(saved.nodes.map(\.id))
                 let edges = Set(saved.edges.map(\.id))
                 for (id, peer) in room.peers {
-                    if let node = peer.node, !ids.contains(node) { room.peers[id]?.node = nil }
-                    if let edge = peer.edge, !edges.contains(edge) { room.peers[id]?.edge = nil }
+                    if let node = peer.node, restoring || !ids.contains(node) { room.peers[id]?.node = nil }
+                    if let edge = peer.edge, restoring || !edges.contains(edge) { room.peers[id]?.edge = nil }
                 }
                 if !room.peers.values.contains(where: \.editing) { room.checkpoint = nil }
                 room.changed()

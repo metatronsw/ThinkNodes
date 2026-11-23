@@ -44,6 +44,7 @@ enum ThinkNodes {
                 app.http.server.configuration.tlsConfiguration = tls
             }
             store.reconcileAtStartup()
+            store.cleanPackageStaging(all: true)
             configure(app, store: store)
             try await app.execute()
         } catch {
@@ -336,7 +337,7 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         return htmlPage(title: worksheet.title, body: """
             <div class="editor-root">
             \(siteHeader(path: path.url, project: worksheet.title, user: user, csrf: csrf, editing: true))
-            <main id="editor" data-themes="\(escaped(themeJSON))" data-preferences="\(escaped(preferences))" data-path="\(path.url)" data-csrf="\(csrf)" data-motion-rate="\(motionRate)" data-role="\(user?.role.rawValue ?? "guest")" data-user="\(escaped(user?.name ?? ""))">
+            <main id="editor" data-themes="\(escaped(themeJSON))" data-preferences="\(escaped(preferences))" data-path="\(path.url)" data-csrf="\(csrf)" data-motion-rate="\(motionRate)" data-role="\(user?.role.rawValue ?? "guest")" data-user="\(escaped(user?.name ?? ""))" data-manage="\(access.manageable && user?.role != .guest)" data-protected="\(access.protectedByPassword)">
               <p class="editor-loading">\(loading)</p>
               <noscript><p>A szerkesztőhöz JavaScript szükséges.</p><a href="/\(path.url)">Megtekintés</a></noscript>
             </main></div>
@@ -440,6 +441,43 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         let client = req.headers.first(name: "X-Worksheet-Client")
         let worksheet = try await req.application.threadPool.runIfActive { try live.update(path, sheet: submitted, user: user, client: client, unlocks: identity.unlocks) }
         return try worksheetResponse(worksheet)
+    }
+
+    // Mentett állapotok: lista, új mentés, visszaállítás (admin és szerkesztő).
+    app.get("api", "versions", "**") { req async throws -> WorksheetStore.VersionList in
+        let identity = try session(req, store: store)
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        return try await req.application.threadPool.runIfActive {
+            try store.versions(path, user: identity.user, unlocks: identity.unlocks)
+        }
+    }
+
+    app.post("api", "versions", "**") { req async throws -> Response in
+        struct VersionAction: Content { let action: String; let number: Int?; let revision: Int? }
+        let identity = try session(req, store: store)
+        let user = identity.user
+        guard user != nil || req.hasSession else { throw Abort(.unauthorized) }
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        let body = try req.content.decode(VersionAction.self)
+        switch body.action {
+        case "save":
+            let entry = try await req.application.threadPool.runIfActive {
+                try store.saveVersion(path, user: user, unlocks: identity.unlocks)
+            }
+            let result = Response(status: .created)
+            try result.content.encode(entry)
+            return result
+        case "restore":
+            guard let number = body.number, let revision = body.revision else { throw Abort(.badRequest) }
+            let worksheet = try await req.application.threadPool.runIfActive { () throws -> Worksheet in
+                var sheet = try store.version(path, number: number, user: user, unlocks: identity.unlocks)
+                sheet.revision = revision
+                return try live.update(path, sheet: sheet, user: user, client: nil, unlocks: identity.unlocks, restoring: true)
+            }
+            return try worksheetResponse(worksheet)
+        default: throw Abort(.badRequest)
+        }
     }
 
     app.post("api", "text") { req -> Response in
@@ -620,6 +658,68 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         }
         live.pages.publish(.structure, at: file)
         return ["path": file.url]
+    }
+
+    // Projektcsomag (docs/migration.md): export, valamint import feltöltés → (jelszó) → jóváhagyás lépésekben.
+    app.post("api", "package", "export", "**") { req async throws -> Response in
+        let identity = try session(req, store: store)
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        let options = try req.content.decode(PackageExportRequest.self)
+        let file = try await req.application.threadPool.runIfActive {
+            try store.exportPackage(path, options: options, user: identity.user, unlocks: identity.unlocks)
+        }
+        let response = try await req.fileio.asyncStreamFile(at: file.path, mediaType: .zip) { _ in
+            try? FileManager.default.removeItem(at: file)
+        }
+        response.headers.replaceOrAdd(name: .cacheControl, value: "no-store")
+        response.headers.replaceOrAdd(name: .contentDisposition, value: attachmentDisposition(path.name + ".zip"))
+        return response
+    }
+
+    @Sendable func uploadPackage(_ req: Request, target: WorksheetPath?) async throws -> PackageReport {
+        let identity = try session(req, store: store)
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        guard let body = req.body.data else { throw Abort(.badRequest) }
+        let bytes = Data(body.readableBytesView)
+        return try await req.application.threadPool.runIfActive {
+            try store.uploadPackage(bytes, target: target, user: identity.user, unlocks: identity.unlocks)
+        }
+    }
+    app.on(.POST, "api", "package", "upload", body: .collect(maxSize: "200mb")) { req async throws -> PackageReport in
+        try await uploadPackage(req, target: nil)
+    }
+    app.on(.POST, "api", "package", "upload", "**", body: .collect(maxSize: "200mb")) { req async throws -> PackageReport in
+        try await uploadPackage(req, target: WorksheetPath(req.parameters.getCatchall()))
+    }
+
+    app.post("api", "package", "unlock") { req async throws -> PackageReport in
+        let identity = try session(req, store: store)
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        let request = try req.content.decode(PackageUnlock.self)
+        return try await req.application.threadPool.runIfActive {
+            try store.unlockPackage(request, user: identity.user, unlocks: identity.unlocks)
+        }
+    }
+
+    app.post("api", "package", "commit") { req async throws -> [String: String] in
+        let identity = try session(req, store: store)
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        let request = try req.content.decode(PackageCommit.self)
+        let path = try await req.application.threadPool.runIfActive {
+            try store.commitPackage(request, user: identity.user, unlocks: identity.unlocks)
+        }
+        live.pages.publish(.structure, at: path)
+        return ["path": path.url]
+    }
+
+    app.post("api", "package", "cancel") { req async throws -> HTTPStatus in
+        struct Cancel: Content { let token: String }
+        let identity = try session(req, store: store)
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        let request = try req.content.decode(Cancel.self)
+        try await req.application.threadPool.runIfActive { try store.cancelPackage(request.token, user: identity.user) }
+        return .noContent
     }
 
     app.on(.POST, "api", "web-archive", "**", body: .collect(maxSize: "100mb")) { req async throws -> WebPresentationInfo in
@@ -1107,7 +1207,7 @@ private func indexPage(_ items: [ProjectCard], session: SessionInfo, updates: Pa
         </a>
         """
     }.joined()
-    let create = session.user == nil || session.user?.role == .guest ? "" : "<button type=\"button\" class=\"panel sub-preview new-worksheet\">\(uiIcon("plus"))Új projekt</button>"
+    let create = session.user == nil || session.user?.role == .guest ? "" : "<button type=\"button\" class=\"panel sub-preview new-worksheet\">\(uiIcon("plus"))Új projekt</button><button type=\"button\" class=\"panel sub-preview import-package\">\(uiIcon("download"))Projekt importálása (.zip)</button>"
     let openProject = """
         <form class="header-open" method="get" action="/open"><input aria-label="Munkalap útvonala" name="path" placeholder="Munkalap útvonala" required><button class="\(headerButtonClass)" aria-label="Megnyitás">\(uiIcon("folder"))</button></form>
         """
@@ -1146,7 +1246,8 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
         ("svg", "SVG"), ("thnode", "ThinkNodes"), ("text", "Text"),
     ].map { format, title in
         buttonLink("/export/" + format + "/" + path.url, title, symbol: "download", classes: "button small")
-    }.joined()
+    }.joined() + (access.manageable && session.user != nil && session.user?.role != .guest
+        ? "<button type=\"button\" class=\"button small\" data-package-export>\(uiIcon("download"))ZIP</button>" : "")
     let note: String
     if let noteID = req.query[String.self, at: "note"] {
         guard let node = worksheet.nodes.first(where: { $0.id == noteID && !$0.isJunction }) else { throw Abort(.notFound) }

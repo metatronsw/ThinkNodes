@@ -57,3 +57,40 @@ import Vapor
     #expect(html.components(separatedBy: "\u{00A0}").count - 1 == 2)
     #expect(preservingBlankLines("```\nx\n\n\ny\n```") == "```\nx\n\n\ny\n```")
 }
+
+/// Mentett állapotok: sorszámozott mentés, visszaállítás; a lomtár ürítése megtartja a mentésben hivatkozott fájlt.
+@Test func versionsRestoreAndProtectTrashedFiles() throws {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appendingPathComponent("thinknodes-versions-\(UUID())")
+    defer { try? fm.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    let owner = User(name: "owner", role: .admin, passwordHash: "")
+    let project = try WorksheetPath(["verzio"])
+    _ = try store.open(project, user: owner)
+    let kept = try store.storeAttachment(Data("marad".utf8), named: "marad.txt", at: project, user: owner, unlocks: [])
+    let gone = try store.storeAttachment(Data("torlodik".utf8), named: "torlodik.txt", at: project, user: owner, unlocks: [])
+    var sheet = try store.load(project, user: owner)
+    sheet.nodes = [Idea(id: "a", type: "text", file: CanvasFile(asset: kept, filename: "marad.txt"), position: Point(x: 0, y: 0))]
+    sheet = try store.update(project, worksheet: sheet, user: owner)
+    #expect(try store.versions(project, user: owner, unlocks: []).changed)
+    #expect(try store.saveVersion(project, user: owner, unlocks: []).number == 1)
+    #expect(try !store.versions(project, user: owner, unlocks: []).changed)
+
+    // Egy másik fájl is lomtárba kerül, de arra egyik mentés sem hivatkozik.
+    sheet.nodes = [Idea(id: "b", type: "text", file: CanvasFile(asset: gone, filename: "torlodik.txt"), position: Point(x: 0, y: 0))]
+    sheet = try store.update(project, worksheet: sheet, user: owner)
+    sheet.nodes = []
+    sheet = try store.update(project, worksheet: sheet, user: owner)
+    #expect(try store.saveVersion(project, user: owner, unlocks: []).number == 2)
+    #expect(try store.versions(project, user: owner, unlocks: []).versions.map(\.number) == [2, 1])
+    #expect(!fm.fileExists(atPath: root.appendingPathComponent("verzio/marad.txt").path))
+
+    try store.emptyTrash("verzio", user: owner, unlocks: [])
+    #expect(try store.trashContents("verzio", user: owner, unlocks: []).map(\.path) == ["marad.txt"])
+
+    var restored = try store.version(project, number: 1, user: owner, unlocks: [])
+    restored.revision = sheet.revision
+    _ = try store.update(project, worksheet: restored, user: owner, restoring: true)
+    #expect(fm.fileExists(atPath: root.appendingPathComponent("verzio/marad.txt").path))
+    #expect(try store.load(project, user: owner).nodes.map(\.id) == ["a"])
+}

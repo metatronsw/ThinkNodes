@@ -1,18 +1,48 @@
 
+
+# Kép
+
+
 # project migráció
 
-letölthető .zip és feltölthető teljes project, vagy munka lapok
++ Kész (docs/migration.md „Megvalósítás”): ZIP-export (projekt / részfa / lap, .version, külső fájlok, titkosítás), import főoldalon és allapként.
++ Hátra: ThinkNodes-csomag ZIP behúzása a vászonra (most .web-ként próbálja, különben mellékletként tölti fel) → ismerje fel és ajánlja fel az importot.
+
++ Projektcsomag mérethatára: most a .web ZIP max. 100 MiB, a .thnode max. 12 MiB, a teljes projekt (képek, .web, .version) ennél jóval nagyobb lehet. Dönteni kell a felső határról (és a kibontott méret/fájlszám korlátjáról); ha több száz MB vagy GB is előfordulhat, streamelt feltöltés és letöltés kell (nem `body.collect` memóriába), plusz folyamatjelző a kliensen.
 
 
 
+
+
+
+# letölthető .zip és feltölthető teljes project, vagy munka lapok
+
+
+
+
+# fókusz kérés a többiektől.
+-full screen legyen egy adott doboz vagy prezi ? 
+
+# instance 
+- lehessen létrehozni instanced klónokat dobozokról, ha az egyik változtatva van a másik is kövesse a változást.
+- kell egy ID minden doboznak (vonal,csomópont egyedi lesz, annak nem kell) vagy már most is van ? 
+- 
 
 
 [ **HIBÁK** ]
-canvas property panel: a file műveleti gombok (feltöltés és tallozás) legyenek olyan szélesek mint a panel (most rövidebbek)
-
 
 
 [ **DESIGN** ]
+
+Nyilat az adott pontra illeszteni dobozon belül!
+Shift -el húzva
+ 
+
+
+
+
+
+
 
 [ **KÍSÉRLETI** ]
 
@@ -46,8 +76,7 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 
 
 
-
-## KONTÉNER ÚJ működés
+[ **KONTÉNER ÚJ működés** ]
 
 konténer tartalma mindig kitakarva legyen egy felete lévő másik doboztól ami nem a konténer része csak rálóg
 
@@ -86,7 +115,7 @@ Első körben egy kapcsolható Rács elrendezés módot terveznék, amely:
 Ez reális és takarékos megoldás. A megvalósítás előtt tisztázandó tervezési pont, hogy az automatikus mód változtathatja-e a konténer külső méretét, vagy csak annak meglévő méretein belül rendezheti a tartalmát.
 
 
-[ **ÖTLET** ]
+[ **ÖTLETEK A JÖVŐBEN** ]
 + lézer rajz
 + szabadkézi rajz
 + svg -nél beágyazható legyen mentéskor a kép

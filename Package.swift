@@ -7,7 +7,8 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/vapor/vapor.git", exact: "4.122.4"),
         .package(url: "https://github.com/apple/swift-nio-ssl.git", from: "2.36.1"),
-        .package(url: "https://github.com/swiftlang/swift-cmark.git", exact: "0.6.0")
+        .package(url: "https://github.com/swiftlang/swift-cmark.git", exact: "0.6.0"),
+        .package(url: "https://github.com/apple/swift-crypto.git", "3.8.0"..<"5.0.0")
     ],
     targets: [
         .executableTarget(
@@ -15,7 +16,9 @@ let package = Package(
             dependencies: [
                 .product(name: "Vapor", package: "vapor"),
                 .product(name: "NIOSSL", package: "swift-nio-ssl"),
-                .product(name: "cmark-gfm", package: "swift-cmark")
+                .product(name: "cmark-gfm", package: "swift-cmark"),
+                .product(name: "Crypto", package: "swift-crypto"),
+                .product(name: "_CryptoExtras", package: "swift-crypto")
             ]
         ),
         .testTarget(

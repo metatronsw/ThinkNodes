@@ -22,6 +22,25 @@ enum WorksheetLink {
         }
     }
 
+    /// Laplink célja útvonalrészekként (projekt az első elem); a `from` a hivatkozó lap útvonala.
+    static func resolve(_ value: String, from base: [String]) -> [String] {
+        let relative = !value.hasPrefix("/") || value == "/.." || value.hasPrefix("/../")
+        var parts = relative ? base : []
+        for segment in value.split(separator: "/") {
+            if segment == ".." { _ = parts.popLast() }
+            else if segment != "." { parts.append(String(segment).removingPercentEncoding ?? String(segment)) }
+        }
+        return parts
+    }
+
+    /// Relatív laplink `from` lapról `to` lapra (mindkettő teljes útvonal, projekttel).
+    static func relative(from: [String], to: [String]) -> String {
+        var common = 0
+        while common < from.count, common < to.count, from[common] == to[common] { common += 1 }
+        let parts = Array(repeating: "..", count: from.count - common) + to[common...]
+        return parts.isEmpty ? "." : parts.joined(separator: "/")
+    }
+
     func destination(from path: WorksheetPath) -> String? {
         switch self {
         case .website(let url): return url

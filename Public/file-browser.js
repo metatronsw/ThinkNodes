@@ -193,26 +193,37 @@ export function openFileBrowser(path, csrf, {link = false} = {}) {
   });
 }
 
-// Törlés közös elemnél: más lapok is használják. Válasz: "keep" | "delete" | "unlink" | null (Mégse).
-export function chooseRemoval(names, others) {
+// Törlés közös elemnél. `others`: a többi lap, ahol használják ({title, count}); `local`: dobozok száma ezen a lapon.
+// Ha más lap nem használja, csak a „Lomtárba” megerősítés (és Mégse) jelenik meg.
+// Válasz: "keep" | "delete" | "unlink" | null (Mégse).
+export function chooseRemoval(names, others, local = 1) {
   return new Promise(resolve => {
     let answer = null;
     const dialog = element("dialog", "", {className: "panel removal-dialog"});
     dialog.setAttribute("aria-label", "Törlés");
-    const list = element("ul");
-    for (const other of others) list.append(element("li", other.title + (other.count > 1 ? " (" + other.count + " doboz)" : "")));
     const choice = (label, value, className = "button") => {
       const button = element("button", label, {type: "button", className});
       button.addEventListener("click", () => { answer = value; dialog.close(); });
       return button;
     };
-    dialog.append(element("h3", "Más lapok is használják"), element("p", names.join(", ")), list,
-      element("div", "", {className: "stack"}));
-    dialog.lastChild.append(
-      choice("Csak ez a doboz törlődik (a fájl marad)", "keep", "button primary"),
-      choice("Lomtárba, a többi doboz is törlődik", "delete", "button danger"),
-      choice("Lomtárba, a többi doboz üres doboz lesz", "unlink", "button danger"),
-      choice("Mégse", null));
+    const boxes = others.reduce((sum, other) => sum + other.count, 0);
+    const here = local > 1 ? "Ezen a lapon " + local + " doboz használja (mind törlődik)." : null;
+    const actions = element("div", "", {className: "stack"});
+    if (others.length) {
+      const list = element("ul");
+      for (const other of others) list.append(element("li", other.title + " (" + other.count + " doboz)"));
+      dialog.append(element("h3", "Még " + others.length + " további lapon használják (" + boxes + " doboz)"),
+        element("p", names.join(", ")), ...(here ? [element("p", here)] : []), list, actions);
+      actions.append(
+        choice("Csak ez a doboz törlődik (a fájl marad)", "keep", "button primary"),
+        choice("Lomtárba, a többi doboz is törlődik", "delete", "button danger"),
+        choice("Lomtárba, a többi doboz üres doboz lesz", "unlink", "button danger"),
+        choice("Mégse", null));
+    } else {
+      dialog.append(element("h3", "Lomtárba helyezed?"), element("p", names.join(", ")),
+        element("p", "Más lapon nincs használva." + (here ? " " + here : "")), actions);
+      actions.append(choice("Lomtárba", "delete", "button danger"), choice("Mégse", null));
+    }
     dialog.addEventListener("close", () => { dialog.remove(); resolve(answer); }, {once: true});
     document.body.append(dialog);
     dialog.showModal();

@@ -46,7 +46,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=55"></script>
+        <script type="module" src="/editor.js?v=56"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -66,20 +66,24 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
         """, type: "text/html; charset=utf-8")
 }
 
+/// `Content-Disposition` letöltéshez; nem ASCII névnél tartalék név + UTF-8 név.
+func attachmentDisposition(_ filename: String) -> String {
+    let encoded = filename.utf8.map { byte in
+        switch byte {
+        case 48...57, 65...90, 97...122, 45, 46, 95: String(UnicodeScalar(byte))
+        default: String(format: "%%%02X", byte)
+        }
+    }.joined()
+    let fallback = encoded.contains("%") ? "munkalap." + (filename.split(separator: ".").last.map(String.init) ?? "txt") : encoded
+    return "attachment; filename=\"\(fallback)\"; filename*=UTF-8''\(encoded)"
+}
+
 func response(_ content: String, type: String, filename: String? = nil) -> Response {
     var headers: HTTPHeaders = ["Content-Type": type, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"]
     headers.replaceOrAdd(name: "Content-Security-Policy",
                          value: "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob:; media-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
     if let filename {
-        let encoded = filename.utf8.map { byte in
-            switch byte {
-            case 48...57, 65...90, 97...122, 45, 46, 95: String(UnicodeScalar(byte))
-            default: String(format: "%%%02X", byte)
-            }
-        }.joined()
-        let fallback = encoded.contains("%") ? "munkalap." + (filename.split(separator: ".").last.map(String.init) ?? "txt") : encoded
-        headers.replaceOrAdd(name: "Content-Disposition",
-                             value: "attachment; filename=\"\(fallback)\"; filename*=UTF-8''\(encoded)")
+        headers.replaceOrAdd(name: "Content-Disposition", value: attachmentDisposition(filename))
     }
     return Response(status: .ok, headers: headers, body: .init(string: content))
 }
@@ -611,6 +615,12 @@ private func elevationShadow(_ node: Idea, geometry: String, graphics: VisualThe
         """
 }
 
+/// Kép és előnézetes doboz kerete (editor.js frameOutline): a doboz színével, a beállított vastagsággal, a tartalom felett.
+private func frameOutline(_ node: Idea) -> String {
+    guard node.hasFrame else { return "" }
+    return "<rect class=\"node-frame-outline\" x=\"\(number(-node.width / 2))\" y=\"\(number(-node.height / 2))\" width=\"\(number(node.width))\" height=\"\(number(node.height))\" rx=\"5\" fill=\"none\" stroke=\"\(escaped(node.fill))\" stroke-width=\"\(number(node.frameWidth ?? 1.6))\" pointer-events=\"none\"/>"
+}
+
 private func boxSurface(_ node: Idea, geometry: String, graphics: VisualTheme.Graphics?, interactive: Bool) -> String {
     let mode = node.resolvedBackgroundMode
     guard mode != .free else {
@@ -625,15 +635,16 @@ private func boxSurface(_ node: Idea, geometry: String, graphics: VisualTheme.Gr
     let glass = graphics?.glass == true && mode == .solid && !image
     let fill = node.fill
     // Üres doboz keretének színe a doboz színe; elmosottnál a háttér elmosódik, a keret nem.
-    let stroke = empty ? escaped(node.fill) : image ? "none" : glass ? "url(#glass-rim)" : escaped(node.border)
-    let width = locked ? "6.4" : glass ? "3" : "1.6"
-    let dash = node.isBox && node.link != nil ? " stroke-dasharray=\"7 4\"" : ""
+    let stroke = node.type == "preview" ? "none" : empty ? escaped(node.fill) : image ? "none" : glass ? "url(#glass-rim)" : escaped(node.border)
+    // Minden doboz kerete sima és egyforma vastag (a zárolt konténer jelzése kivétel).
+    let width = locked ? "6.4" : "1.6"
+    let dash = ""
     let closed = locked ? " data-locked-outline=\"\"" : ""
     let effect = glass ? " fill-opacity=\".66\"" : mode == .translucent ? " fill-opacity=\".75\"" : ""
     let pointer = empty && interactive ? " pointer-events=\"fill\"" : ""
     if blurred {
         return "<\(geometry) class=\"node-surface\" fill=\"\(escaped(fill))\" opacity=\".98\" filter=\"url(#box-background-blur)\" stroke=\"none\"/>"
-            + "<\(geometry) class=\"node-frame\" fill=\"none\" stroke=\"\(escaped(node.border))\" stroke-width=\"\(width)\"\(closed)\(dash)/>"
+            + "<\(geometry) class=\"node-frame\" fill=\"none\" stroke=\"\(node.type == "preview" ? "none" : escaped(node.border))\" stroke-width=\"\(width)\"\(closed)\(dash)/>"
     }
     let surface = "<\(geometry) class=\"node-surface\" fill=\"\(empty ? "none" : escaped(fill))\" stroke=\"\(stroke)\" stroke-width=\"\(width)\"\(closed)\(dash)\(effect)\(pointer)/>"
     return surface + (glass ? "<\(geometry) fill=\"url(#glass-sheen)\" pointer-events=\"none\" aria-hidden=\"true\"/>" : "")
@@ -738,7 +749,7 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
     let contents = """
         \(elevationShadow(node, geometry: geometry, graphics: graphics))
         \(boxSurface(node, geometry: geometry, graphics: graphics, interactive: interactive))
-        \(previewImage)<text class="node-text" text-rendering="geometricPrecision" font-family="\(escaped((graphics ?? VisualTheme.Graphics()).fontFamily(node.font)))" pointer-events="none">\(spans)</text>
+        \(previewImage)\(frameOutline(node))<text class="node-text" text-rendering="geometricPrecision" font-family="\(escaped((graphics ?? VisualTheme.Graphics()).fontFamily(node.font)))" pointer-events="none">\(spans)</text>
         \(marker)\(noteBelow)\(publicMark)
         """
     return """
@@ -941,6 +952,8 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
     let chrome = elevationShadow(node, geometry: geometry, graphics: graphics) +
         boxSurface(node, geometry: geometry, graphics: graphics, interactive: interactive)
     let translated = chrome.isEmpty ? "" : "<g transform=\"translate(\(number(node.position.x)) \(number(node.position.y)))\">\(chrome)</g>"
+    let outline = frameOutline(node)
+    let framed = outline.isEmpty ? "" : "<g transform=\"translate(\(number(node.position.x)) \(number(node.position.y)))\">\(outline)</g>"
     // A fájlnév a doboz felett, a link és a megjegyzés alatta, egyetlen foreignObjectben normál
     // (nem abszolút) elrendezéssel: a Safari így is jó helyre rajzolja, és nagyításkor kevesebb a munka.
     let top = node.position.y - node.height / 2 - 30
@@ -950,7 +963,7 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
     let publicMark = node.webPublic == true
         ? "<svg class=\"ui-icon web-public-mark\" x=\"\(number(node.position.x - 10))\" y=\"\(number(top - 24))\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" color=\"\(escaped(node.textColor))\" pointer-events=\"none\"><use href=\"/icons.svg#butterfly\"/></svg>" : ""
     return """
-        \(translated)\(publicMark)<foreignObject class="node-file-frame" x="\(number(node.position.x - node.width / 2))" y="\(number(top))" width="\(number(node.width))" height="\(number(height))"><div xmlns="http://www.w3.org/1999/xhtml" class="node-file-stack" style="color:\(escaped(node.textColor))"><div class="node-above" style="height:30px">\(header)</div><div data-file-ink="\(escaped(node.textColor))" style="height:\(number(node.height))px" class="node-file node-\(node.root)\(node.isImage ? "" : " mode-" + node.resolvedBackgroundMode.rawValue)"><div class="node-body">\(content)</div></div>\(underneath)</div></foreignObject>
+        \(translated)\(publicMark)<foreignObject class="node-file-frame" x="\(number(node.position.x - node.width / 2))" y="\(number(top))" width="\(number(node.width))" height="\(number(height))"><div xmlns="http://www.w3.org/1999/xhtml" class="node-file-stack" style="color:\(escaped(node.textColor))"><div class="node-above" style="height:30px">\(header)</div><div data-file-ink="\(escaped(node.textColor))" style="height:\(number(node.height))px" class="node-file node-\(node.root)\(node.isImage ? "" : " mode-" + node.resolvedBackgroundMode.rawValue)"><div class="node-body">\(content)</div></div>\(underneath)</div></foreignObject>\(framed)
         """
 }
 
@@ -1013,8 +1026,9 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
     let ordered = drawings.sorted { a, b in
         let raisedA = elevated.contains(a.node.id), raisedB = elevated.contains(b.node.id)
         if raisedA != raisedB { return raisedB }
+        // Kiemelt rétegben csak a méret számít (a kisebb takarja a nagyobbat), a konténer-szabály ott nem hat.
         let outerA = containers.contains(a.node.id), outerB = containers.contains(b.node.id)
-        if outerA != outerB { return outerA }
+        if !raisedA, outerA != outerB { return outerA }
         return a.node.width * a.node.height > b.node.width * b.node.height
     }
     let nodeLayers = Dictionary(uniqueKeysWithValues: ordered.enumerated().map { ($0.element.node.id, $0.offset) })

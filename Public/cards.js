@@ -1,4 +1,5 @@
 import {fetchPage, updateSection, watchPageUpdates} from "./page-updates.js";
+import {chooseZip, exportPackage, importPackage} from "./package.js";
 function updateCardColors() {
   const dark = document.documentElement.dataset.display === "dark";
   for (const card of document.querySelectorAll(".project-card")) {
@@ -133,10 +134,17 @@ export function documentEntries(card) {
     if (value != null) change(card, action, value.trim());
   }, icon];
   if (card.dataset.scope === "attachment") return entries;
+  entries.push(["Letöltés (.zip)", () => exportPackage({path: card.pathname.slice(1), csrf: card.closest("[data-csrf]")?.dataset.csrf,
+    protected: card.dataset.password === "true"}), "download"]);
   entries.push(
     ["Törlés", () => { if (confirm("Lomtárba helyezed?")) change(card, "delete"); }, "trash"],
     [card.dataset.hidden === "true" ? "Megjelenítés" : "Elrejtés", () => change(card, "hide"), "eye"],
+  );
+  // Jelszót csak a projekt kaphat; az allapok és a .web prezentációk ezt öröklik.
+  if (card.dataset.scope === "project") entries.push(
     card.dataset.password === "true" ? ["Jelszár feloldása", () => change(card, "password", ""), "unlock"] : ["Jelszár beállítása", () => passwordDialog(card), "lock"],
+  );
+  entries.push(
     [card.dataset.frozen === "true" ? "Szerkesztés feloldása" : "Szerkesztés zárolása", () => change(card, "freeze"), "hand"],
     input("Átnevezés", "rename", "Új útvonalnév", "edit"),
   );
@@ -158,6 +166,19 @@ document.addEventListener("click", async event => {
   if (event.target.closest("[data-manage-editors]")) {
     const card = document.querySelector("[data-current-document][data-scope=project][data-manage=true]");
     if (card) await editorsDialog(card);
+    return;
+  }
+  const packageExport = event.target.closest("[data-package-export]");
+  if (packageExport) {
+    const card = document.querySelector("[data-current-document]");
+    exportPackage({path: card.pathname.slice(1), csrf: packageExport.closest("[data-csrf]")?.dataset.csrf, protected: card.dataset.password === "true"});
+    return;
+  }
+  if (event.target.closest(".import-package")) {
+    const file = await chooseZip();
+    if (!file) return;
+    const path = await importPackage(file, {csrf: event.target.closest("[data-csrf]").dataset.csrf});
+    if (path) location.assign("/" + path);
     return;
   }
   const button = event.target.closest(".new-worksheet");

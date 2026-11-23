@@ -1367,3 +1367,31 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
         #expect(try store.load(child, user: admin).nodes.first?.link?.target == "uj.web")
     }
 }
+
+@Test func onlyProjectsHavePasswords() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-password-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    let owner = User(name: "owner", role: .editor, passwordHash: "")
+    let member = User(name: "member", role: .editor, passwordHash: "")
+    try store.setUser(name: "admin", role: .admin, passwordHash: "unused")
+    try store.setUser(name: member.name, role: .editor, passwordHash: "unused")
+    let project = try WorksheetPath(["main"])
+    let child = try WorksheetPath(["main", "child"])
+    _ = try store.open(project, user: owner)
+    _ = try store.open(child, user: owner)
+    _ = try store.manage(project, operation: DocumentAction(scope: "project", action: "grant", value: member.name), user: owner, unlocks: [])
+    #expect(throws: Abort.self) {
+        try store.manage(child, operation: DocumentAction(scope: "sheet", action: "password", value: "abcdefgh"), user: owner, unlocks: [])
+    }
+    // Régi, allapon tárolt jelszó: nem zár.
+    let legacy = try Bcrypt.hash("legacy-pass", cost: 4)
+    try Data(#"{"passwordHash":"\#(legacy)"}"#.utf8).write(to: root.appendingPathComponent("main/child/.settings.json"))
+    #expect(try store.load(child, user: member).nodes.isEmpty)
+    // A projekt jelszava az allapot is zárja, és ugyanazzal oldható fel.
+    _ = try store.manage(project, operation: DocumentAction(scope: "project", action: "password", value: "project-pass"), user: owner, unlocks: [])
+    #expect(throws: Abort.self) { try store.load(child, user: member) }
+    #expect(throws: Abort.self) { try store.unlock(child, password: "legacy-pass", user: member) }
+    let keys = Set(try store.unlock(child, password: "project-pass", user: member))
+    #expect(try store.load(child, user: member, unlocks: keys).nodes.isEmpty)
+}

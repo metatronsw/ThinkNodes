@@ -7,6 +7,10 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 ## Javítva
 
+- **A szerkesztő `.web` előnézet-frissítése hibát dobott: `awaitWebPreview is not defined`** (2026-11-23)
+  - Ok: a `168ca5b` commit az `editor.js`-ben használja az `awaitWebPreview`-t, de az importja kimaradt; minden `.web` dobozos lapon konzolhiba, a háttérben elkészült előnézet nem töltődött újra.
+  - Javítás: `import {awaitWebPreview} from "./web-preview-refresh.js"` (`Public/editor.js`).
+
 - **Kijelölt kép eltűnt, csak a Kiemelés árnyéka maradt** (2026-11-23)
   - Ok: a saját kijelölés `filter: brightness(1.15)`-öt tett a foreignObjectben lévő `<img>`-re; a WebKit a transzformált SVG-ben lévő HTML-elemre tett CSS-szűrőt gyakran nem rajzolja ki.
   - Javítás: a szabály törölve (`Public/app.css`); a kijelölést a meglévő `selection-own` SVG-körvonal jelzi, a Kiemelés árnyéka megmarad.

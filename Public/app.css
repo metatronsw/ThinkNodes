@@ -114,8 +114,6 @@ input[type="color"] { height: 37px; padding: 3px; cursor: pointer; }
 body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-select: none; }
 
 .passive-canvas a[data-node]:hover { text-decoration: none; }
-.canvas [data-link]:hover [stroke-dasharray="7 4"] { stroke-dasharray: none; }
-.canvas [data-link]:hover [stroke-dasharray="7 4"]:not([data-locked-outline]) { stroke-width: 4; }
 .passive-note { margin-top: 18px; padding: 22px; }
 .passive-note h2 { margin: 14px 0; }
 .formatted-text { line-height: 1.6; overflow-wrap: anywhere; }
@@ -352,7 +350,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .context-menu :focus { outline: none; }
 .worksheet-section { margin-top: 2rem; }
 .sub-preview { min-height: 210px; }
-.new-worksheet { place-items: center; align-content: center; color: inherit; font: inherit; cursor: pointer; }
+.new-worksheet, .import-package { place-items: center; align-content: center; color: inherit; font: inherit; cursor: pointer; }
 .locked-preview { min-height: 140px; display: grid; place-items: center; }
 .fullscreen { position: absolute; bottom: 8px; right: 8px; }
 .passive-frame:fullscreen { display: grid; place-items: center; }
@@ -899,3 +897,19 @@ svg text { text-rendering: geometricPrecision; }
 .is-uppercase :is(.node-comment, .node-note, .node-plain, .formatted-text), .canvas-tooltip .is-uppercase, .canvas-tooltip.is-uppercase { text-transform: uppercase; }
 /* Nagyítás értéke a bal eszköztáron (csak nagyítás közben). */
 .canvas-controls .zoom-level { align-self: center; min-width: 74px; padding: 0 8px; font-size: 12px; font-variant-numeric: tabular-nums; text-align: center; white-space: nowrap; color: var(--ink); }
+
+/* Mentett állapotok listája (vászon tulajdonságpanel) */
+.version-list { list-style: none; margin: 0; padding: 0; max-height: 16rem; overflow-y: auto; display: grid; gap: 0.25rem; }
+.version-item { width: 100%; justify-content: flex-start; }
+
+/* Projektcsomag párbeszéd (package.js) */
+.package-dialog { width: min(460px, 92vw); }
+.package-dialog fieldset { border: 0; padding: 0; margin: 0; }
+.package-dialog legend { font-weight: 600; margin-bottom: 4px; }
+.package-choice { display: flex; align-items: center; justify-content: flex-start; gap: 8px; text-align: left; }
+.package-choice input { width: auto; flex: none; margin: 0; }
+.package-dialog [hidden] { display: none !important; }
+.package-status:empty { display: none; }
+.package-warnings ul { max-height: 30vh; overflow-y: auto; margin: 6px 0 0; padding-left: 18px; font-size: .9em; }
+.package-dialog .editor-membership select { width: auto; flex: 0 1 60%; }
+.package-dialog .editor-membership span { flex: 1 1 auto; min-width: 0; }

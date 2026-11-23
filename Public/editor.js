@@ -4,6 +4,7 @@ import {bindAudioPlayers} from "./audio-player.js";
 import {assetURL, attachmentURL, checkText, fileSheet, fileURL, isCommonFile, plainFirstLine, sharedFileBox, fileName, fileNameParts, importFile, nodeName, objectURL, pngForClipboard, validImageStem, writeText} from "./canvas-files.js";
 import {hasTrait, rootType, traits, typeLabel} from "./node-types.js";
 import {chooseRemoval, openFileBrowser} from "./file-browser.js";
+import {chooseZip, exportPackage, importPackage} from "./package.js";
 import {decodeWorksheet, encodeWorksheet} from "./worksheet-json.js";
 import {sharedMouse} from "./mouse.js";
 import {worksheetChanges, replayChanges, sameValue} from "./editor-history.js?v=2";
@@ -17,6 +18,7 @@ import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder,
 
 import {ancestors, overlapFraction} from "./containers.js?v=3";
 import {glowFilter, glowId, glowReach, glowVNode} from "./glow.js";
+import {awaitWebPreview} from "./web-preview-refresh.js";
 
 const mount = document.querySelector("#editor");
 const {path, csrf, user, motionRate} = mount.dataset;
@@ -292,6 +294,17 @@ function elevationShadow(node) {
     [h(tag, {...geometry, transform: "translate(12 28)", fill: "#11172b", "fill-opacity": .44})]);
 }
 
+// Kép és előnézetes doboz (weboldal, munkalap) kerete: ki/be kapcsolható (kép: alapból ki, előnézet: alapból be),
+// a vastagsága állítható, a színe a doboz színe (Rendering.swift frameOutline). Minden doboz kerete sima, alapból 1,6 vastag.
+const boxFrameWidth = 1.6;
+const framedType = node => isImage(node) || node.type === "preview";
+const hasFrame = node => isImage(node) ? node.frame === true : node.type === "preview" && node.frame !== false;
+function frameOutline(node) {
+  if (!hasFrame(node)) return null;
+  return h("rect", {x: -node.width/2, y: -node.height/2, width: node.width, height: node.height, rx: 5, fill: "none",
+    stroke: paint(node.fill, 2), "stroke-width": node.frameWidth ?? boxFrameWidth, class: "node-frame-outline", "pointer-events": "none"});
+}
+
 function shape(node, linked, dropTarget = false) {
   if (isJunction(node)) {
     const [tag, attrs] = shapeGeometry(graphics.value.junction ?? "ellipse", node.width, node.height);
@@ -311,16 +324,16 @@ function shape(node, linked, dropTarget = false) {
   const glass = graphics.value.glass && mode === "solid" && !image;
   const fill = paint(node.fill, 2);
   // Üres doboz: csak a keret látszik, a keret színe a doboz színe. Elmosottnál a háttér elmosódik, a keret nem.
-  const frame = empty ? paint(node.fill, 2) : image && !empty ? "none" : glass ? "url(#glass-rim)" : automaticBorder(fill);
+  const frame = node.type === "preview" ? "none" : empty ? paint(node.fill, 2) : image && !empty ? "none" : glass ? "url(#glass-rim)" : automaticBorder(fill);
   const translucent = mode === "translucent";
   const style = {fill: empty ? "none" : fill, stroke: frame, "fill-opacity": translucent ? .75 : undefined,
     "pointer-events": empty ? "fill" : undefined, class: "node-surface",
-    "stroke-width": locked ? 6.4 : glass ? 3 : 1.6,
-    "data-locked-outline": locked ? "" : undefined, "stroke-dasharray": linked && isBox(node) ? "7 4" : undefined,
+    "stroke-width": locked ? 6.4 : boxFrameWidth,
+    "data-locked-outline": locked ? "" : undefined,
     opacity: blurred ? .98 : undefined, filter: blurred ? "url(#box-background-blur)" : undefined};
   if (blurred) return [
     h(tag, {...geometry, fill, opacity: .98, filter: "url(#box-background-blur)", stroke: "none", class: "node-surface"}),
-    h(tag, {...geometry, fill: "none", stroke: frame, "stroke-width": 1.6, class: "node-frame", "pointer-events": "none"}),
+    h(tag, {...geometry, fill: "none", stroke: frame, "stroke-width": boxFrameWidth, class: "node-frame", "pointer-events": "none"}),
   ];
   if (glass) return [
     h(tag, {...style, ...geometry, "fill-opacity": .66}),
@@ -429,7 +442,8 @@ createApp({
     const containerIDs = computed(() => new Set(sceneNodes.value.filter(node => isBox(node) && node.container).map(node => node.id)));
     const orderedNodes = computed(() => [...sceneNodes.value].sort((a,b) =>
       Number(elevatedNodes.value.has(a.id))-Number(elevatedNodes.value.has(b.id)) ||
-      Number(containerIDs.value.has(b.id))-Number(containerIDs.value.has(a.id)) || b.width*b.height-a.width*a.height));
+      // Kiemelt rétegben csak a méret számít (a kisebb takarja a nagyobbat), a konténer-szabály ott nem hat.
+      (elevatedNodes.value.has(a.id) ? 0 : Number(containerIDs.value.has(b.id))-Number(containerIDs.value.has(a.id))) || b.width*b.height-a.width*a.height));
     const wireLayers = computed(() => {
       const nodes = orderedNodes.value;
       const order = new Map(nodes.map((node, index) => [node.id, index]));
@@ -1271,8 +1285,8 @@ createApp({
           for (const entry of usage) if (entry.sheet !== path) others.push({node, title: entry.title || entry.sheet, count: entry.nodes.length});
         }
         const names = targets.map(nodeName);
-        const choice = others.length ? await chooseRemoval(names, others)
-          : confirm("Lomtárba helyezed, és törlöd a dobozt?\n" + names.join("\n")) ? "delete" : null;
+        const local = [...ids].filter(id => { const item = nodeMap.value.get(id); return item && targets.some(target => key(target) === key(item)); }).length;
+        const choice = await chooseRemoval(names, others, local);
         if (!choice) return;
         if (choice !== "keep") {
           const failed = [];
@@ -1718,6 +1732,8 @@ createApp({
 
     // Kép eredeti pixelmérete: feltöltött kép (a betöltött <img>), illetve külső cím megosztási képe.
     const naturalSizes = new Map();
+    // Képbetöltés-számláló: a tulajdonságpanel „Eredeti arány/méret” gombjai a betöltés után frissülnek.
+    const imageLoads = ref(0);
     function naturalSize(node) {
       if (isImage(node)) {
         const image = document.querySelector('[data-node="' + node.id + '"] img');
@@ -2326,6 +2342,95 @@ createApp({
       } finally { checkpointBusy.value = false; }
     }
 
+    // Mentett állapotok: a lap `.version` mappájában sorszámozott, időbélyeges .thnode másolatok.
+    const versionList = ref(null);
+    const versionBusy = ref(false);
+    const versionEndpoint = "/api/versions/" + path;
+    async function fetchVersions() {
+      return (await checked(await fetch(versionEndpoint, {headers: {Accept: "application/json"}}))).json();
+    }
+    async function versionTask(task) {
+      if (!online.value || versionBusy.value || checkpointBusy.value || gesture.value) return;
+      versionBusy.value = true;
+      problem.value = "";
+      try { await enqueue(async () => { await commit(); await task(); }); }
+      catch (error) {
+        problem.value = error.message;
+        if (error.status === 412) await enqueue(refresh).catch(() => {});
+      } finally { versionBusy.value = false; }
+    }
+    function saveVersion() {
+      if (!confirm("Elmented a lap jelenlegi állapotát új verzióként?")) return;
+      return versionTask(async () => {
+        await checked(await fetch(versionEndpoint, {method: "POST",
+          headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify({action: "save"})}));
+        if (versionList.value) versionList.value = await fetchVersions();
+      });
+    }
+    async function toggleVersions() {
+      if (versionList.value) { versionList.value = null; return; }
+      try { versionList.value = await fetchVersions(); } catch (error) { problem.value = error.message; }
+    }
+    function restoreVersion(entry) {
+      return versionTask(async () => {
+        const state = await fetchVersions();
+        const latest = state.versions[0];
+        const warning = state.changed
+          ? (latest ? "A lap jelenlegi állapota eltér az utolsó mentett állapottól (#" + latest.number + "), a nem mentett változások elvesznek. " : "A lap jelenlegi állapota nincs elmentve. ")
+          : "";
+        if (state.changed && !confirm(warning + "Visszaállítod a(z) #" + entry.number + " mentett állapotot? Ez minden résztvevő vásznára érvényes.")) return;
+        await checked(await fetch(versionEndpoint, {method: "POST",
+          headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf},
+          body: JSON.stringify({action: "restore", number: entry.number, revision: baseline.revision})}));
+        await refresh();
+        versionList.value = await fetchVersions();
+      });
+    }
+    const versionTime = value => new Date(value).toLocaleString("hu-HU", {dateStyle: "short", timeStyle: "medium"});
+    function versionGroup() {
+      const disabled = versionBusy.value || !online.value;
+      const list = versionList.value;
+      return group("Mentett állapotok", [
+        h("div", {class: "property-inline file-actions"}, [
+          button("Mentés", saveVersion, {symbol: "save", disabled, title: "A lap jelenlegi állapotának mentése új verzióként (Ctrl+S)"}),
+          button("Visszaállítás", toggleVersions, {symbol: "restore", disabled: !online.value, "aria-expanded": !!list,
+            title: "Korábbi mentett állapot visszahívása"}),
+        ]),
+        list ? (list.versions.length
+          ? h("ul", {class: "version-list"}, list.versions.map(entry => h("li", [
+              h("button", {type: "button", class: "button version-item", disabled,
+                title: "Visszaállítás erre az állapotra", onClick: () => restoreVersion(entry)}, [
+                h("strong", "#" + entry.number), " " + versionTime(entry.created) + (entry.user ? " · " + entry.user : ""),
+              ]),
+            ])))
+          : h("p", {class: "muted"}, "Még nincs mentett állapot.")) : null,
+      ]);
+    }
+
+    // Projektcsomag (docs/migration.md): a lap letöltése ZIP-ben, illetve csomag importálása allapként, laplinkes dobozzal.
+    const canManage = mount.dataset.manage === "true";
+    function importSubsheet() {
+      transfer(async () => {
+        const file = await chooseZip();
+        if (!file) return;
+        if (dirty.value) await save();
+        const created = await importPackage(file, {target: path, csrf});
+        if (!created || !online.value) return;
+        const name = decodeURIComponent(created.split("/").pop());
+        addNode(worldAtCenter(), {text: name, link: {kind: "sheet", target: name}, width: 220, height: 90});
+      });
+    }
+    function packageGroup() {
+      return group("Projektcsomag", [
+        h("div", {class: "property-inline file-actions"}, [
+          button("Letöltés (.zip)", () => exportPackage({path, csrf, protected: mount.dataset.protected === "true"}),
+            {symbol: "download", title: "A lap (és allapjai) letöltése ZIP-csomagként"}),
+          button("Importálás", importSubsheet, {symbol: "plus", disabled: !online.value,
+            title: "ThinkNodes ZIP-csomag importálása ennek a lapnak az allapjaként"}),
+        ]),
+      ]);
+    }
+
     async function followBoxLink(destination) {
       if (destination.kind === "web") { openPresentation(destination.href); return; }
       if (destination.kind === "website") { openExternalLink(destination.href); return; }
@@ -2361,7 +2466,7 @@ createApp({
       }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
-        sessionAction("checkpoint");
+        if (!event.repeat) saveVersion();
       }
       if (searchQuery.value !== null) {
         if (event.key === "Escape" || event.key === "Enter") {
@@ -2661,7 +2766,7 @@ createApp({
       const file = node.file, root = rootType(node.type);
       let content;
       if (root === "image") {
-        content = h("img", {src: fileURL(path, file), alt: nodeName(node), draggable: false,
+        content = h("img", {src: fileURL(path, file), alt: nodeName(node), draggable: false, onLoad: () => { imageLoads.value++; },
           class: file.asset.toLowerCase().endsWith(".svg") ? "is-svg" : undefined});
       } else if (root === "audio") {
         content = h("div", {"data-audio-player": "", class: "node-audio",
@@ -2884,6 +2989,7 @@ createApp({
           node.file ? renderFileBox(node, destination) : null,
           junctionLabel,
           linkPreview,
+          frameOutline(drawn),
           sizeBadge,
           publicMark,
           // A szöveg közvetlenül a doboz csoportjában van (nincs dobozonkénti vágás): az elrendezés eleve a dobozon belül tartja.
@@ -3560,18 +3666,22 @@ createApp({
         h("input", {ref: attachmentInput, type: "file", multiple: true, hidden: true,
           onChange: uploadAttachments}),
         group("Cím", [input(sheet.title, value => updateItem(sheet, "title", value), {"aria-label": "Cím", maxlength: 120})]),
-        group("Leírás", [markdownEditor(sheet.text ?? "", value => updateItem(sheet, "text", value), 7, "Leírás")]),
+        group("Leírás", [markdownEditor(sheet.text ?? "", value => updateItem(sheet, "text", value), 7, "Leírás", false, {empty: 4, max: 4})]),
         themeSettings(sheet, [
           colorPicker("Munkalap háttérszíne", sheet.background ?? 0,
             value => updateItem(sheet, "background", value), "worksheet/background", false, false, 0),
           field("Rácsköz", numeric(sheet.gridSpacing ?? 32, value => updateItem(sheet, "gridSpacing", Math.round(value)), 6, 160,
             {...controlName("Rácsköz"), step: 1, clampValue: true})),
+          // Előnézeti kép (a Megjelenés szekció része).
+          field("Előnézeti kép", h("select", {"aria-label": "Előnézeti kép", value: previewImages.value.includes(sheet.previewImage) ? sheet.previewImage : "",
+            onFocus: loadPreviewImages, onChange: e => updateItem(sheet, "previewImage", e.target.value || undefined)}, [
+            h("option", {value: ""}, "Default · Munkalap SVG"), ...previewImages.value.map(name => h("option", {value: name}, name))
+          ])),
+          h("img", {class: "canvas-preview-thumbnail", alt: "Előnézet", loading: "lazy",
+            src: "/api/preview/" + path + "?v=" + sheet.revision + "&image=" + encodeURIComponent(sheet.previewImage ?? "")}),
         ]),
-        group("Előnézeti kép", [h("select", {"aria-label": "Előnézeti kép", value: previewImages.value.includes(sheet.previewImage) ? sheet.previewImage : "",
-          onFocus: loadPreviewImages, onChange: e => updateItem(sheet, "previewImage", e.target.value || undefined)}, [
-          h("option", {value: ""}, "Default · Munkalap SVG"), ...previewImages.value.map(name => h("option", {value: name}, name))
-        ]), h("img", {class: "canvas-preview-thumbnail", alt: "Előnézet", loading: "lazy",
-          src: "/api/preview/" + path + "?v=" + sheet.revision + "&image=" + encodeURIComponent(sheet.previewImage ?? "")})]),
+        versionGroup(),
+        canManage ? packageGroup() : null,
         h("div", {class: "property-inline file-actions"}, [button("Beillesztés – Tallózás", insertFromBrowser,
           {symbol: "folder", disabled: !online.value, title: "Már feltöltött fájl vagy weboldal beillesztése a projektből"})]),
         h("div", {class: "property-inline file-actions"}, [button(uploading.value ? "Feltöltés…" : "Fájl feltöltése", event => {
@@ -3583,10 +3693,23 @@ createApp({
     }
 
     // Markdown szerkesztő: formázógombok nélkül, a szöveg közvetlenül szerkeszthető.
-    function markdownEditor(value, change, rows = 6, label = "Text", primary = false) {
+    function markdownEditor(value, change, rows = 6, label = "Text", primary = false, fit = null) {
+      // `fit`: {empty, max} – üresen `empty` sor, egyébként a tartalomhoz igazodó magasság legfeljebb `max` sorig.
+      // Kézi átméretezés után (inline magasság) nem igazít.
+      const adjust = el => {
+        if (!fit || el.style.height) return;
+        if (!el.value) { el.rows = fit.empty; return; }
+        el.rows = 1;
+        const style = getComputedStyle(el);
+        const line = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.4;
+        const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+        el.rows = Math.max(1, Math.min(fit.max, Math.round((el.scrollHeight - padding) / line)));
+      };
       return h("div", {class: "markdown-editor stack"}, [
-        h("textarea", {"aria-label": label, value, maxlength: 100000, rows, "data-object-label": primary ? "" : undefined,
-          onInput: event => change(event.target.value)}),
+        h("textarea", {"aria-label": label, value, maxlength: 100000, rows: fit ? (value ? fit.max : fit.empty) : rows,
+          "data-object-label": primary ? "" : undefined,
+          onVnodeMounted: fit ? vnode => adjust(vnode.el) : undefined,
+          onInput: event => { change(event.target.value); adjust(event.target); }}),
       ]);
     }
 
@@ -3732,6 +3855,33 @@ createApp({
       }
 
 
+      // Kép: „Eredeti arány” (a levágott/torzított kép visszaáll a kép arányára, a nagyobbik oldal marad) és
+      // „Eredeti méret” (a doboz a kép pixelmérete, 1 egység = 1 CSS-pixel a 0-s szinten, legfeljebb 4096 × 4096).
+      const imageSizeButtons = () => {
+        if (!single || !isImage(single)) return [];
+        imageLoads.value;
+        const natural = naturalSize(single);
+        const fit = (w, h) => {
+          const scale = Math.min(1, 4096 / w, 4096 / h, natural.width / w, natural.height / h);
+          w *= scale; h *= scale;
+          const grow = Math.max(1, 64 / w, 40 / h);
+          return {width: Math.round(Math.min(4096, w * grow)), height: Math.round(Math.min(4096, h * grow))};
+        };
+
+        const original = natural ? fit(natural.width, natural.height) : null;
+        // Az arány a doboz nagyobbik oldalát tartja meg, a másik oldal igazodik.
+        const ratio = !natural ? null : single.width >= single.height
+          ? fit(single.width, single.width * natural.height / natural.width)
+          : fit(single.height * natural.width / natural.height, single.height);
+        const matches = size => Math.abs(single.width - size.width) <= 1 && Math.abs(single.height - size.height) <= 1;
+        const apply = size => change("width", node => { node.height = size.height; return size.width; });
+        const sizeButton = (label, symbol, size, disabled) => h("button", {type: "button", class: "button option-icon", ...controlName(label),
+          disabled: !size || disabled, onClick: () => apply(size)}, [icon(symbol)]);
+        return [
+          sizeButton("Eredeti arány", "aspect", ratio, ratio && (matches(ratio) || Math.abs(single.width / single.height - natural.width / natural.height) < .01)),
+          sizeButton("Eredeti méret", "fit", original, original && matches(original)),
+        ];
+      };
       if (common.has("shape")) panels.push(group("Doboz", [
         optionPicker("Forma", shapes, value("shape", null), v => change("shape", v), shapeSymbol),
         optionPicker("Animáció", boxAnimations, value("animation", "none") ?? "none", v => change("animation", v === "none" ? undefined : v), v => icon("box-" + v)),
@@ -3742,10 +3892,22 @@ createApp({
           linkButton(),
         ]),
       ]));
-      else if (common.has("surface")) panels.push(group("Megjelenés", [
-        // Képnél a megjelenés-módosítók közül csak a Kiemelés maradt.
-        h("div", {class: "property-options property-tools box-effect-options"}, [...(nodes.some(isImage) ? [] : backgroundTools()), elevation(), linkButton()]),
-      ]));
+      else if (common.has("surface")) {
+        // Kép és előnézetes doboz: keret ki/be és vastagsága; a szín a keret és a buboréksúgó színe.
+        const framed = nodes.every(framedType);
+        const framing = nodes.every(hasFrame);
+        const frameTools = framed ? [
+          iconToggle(framing ? "Keret: be" : "Keret: ki", framing,
+            () => change("frame", node => isImage(node) ? (framing ? undefined : true) : (framing ? false : undefined)), icon("box-empty")),
+          numeric(value("frameWidth", boxFrameWidth), v => change("frameWidth", v === boxFrameWidth ? undefined : v), .5, 32,
+            {...controlName("Keret vastagsága"), step: .5, clampValue: true, disabled: !framing}),
+        ] : [];
+        panels.push(group("Megjelenés", [
+          h("div", {class: "property-options property-tools box-effect-options"}, [
+            ...(nodes.some(isImage) ? [color("Szín (keret, súgó)", "fill", 2)] : backgroundTools()),
+            ...frameTools, elevation(), ...imageSizeButtons(), linkButton()]),
+        ]));
+      }
 
       if (common.has("diameter")) panels.push(group("Megjelenés", [propertyTools(
         numeric(value("width", 12), size => change("width", node => { node.height = size; return size; }), 4, 128, controlName("Átmérő")),
@@ -3866,8 +4028,6 @@ createApp({
 
     const topRow = mount.closest?.(".editor-root")?.querySelector(".worksheet-nav");
     function renderHeader() {
-      const changed = online.value && (dirty.value || (board.value.revision > checkpointState.value.revision
-        ? board.value.revision !== checkpointRevision : checkpointState.value.changed));
       const historyButton = (label, symbol, forward, available) =>
         headerButton(() => replay(forward), {title: label, "aria-label": label,
           symbol, disabled: !available || !online.value || !!gesture.value,
@@ -3876,10 +4036,6 @@ createApp({
       const controls = [
           historyButton("Visszavonás", "undo", false, undo.value.length || fieldChanged),
           historyButton("Újra", "redo", true, redo.value.length),
-          headerButton(() => sessionAction("resign"), {"aria-label": "Resign", symbol: "restore", title: "A közös visszaállítási pont betöltése",
-            disabled: checkpointBusy.value || !online.value}),
-          headerButton(() => sessionAction("checkpoint"), {symbol: "save", "aria-label": "Mentés", class: {"save-label-changed": changed},
-            title: "Közös visszaállítási pont rögzítése", disabled: checkpointBusy.value || !online.value}),
       ];
       return h("div", {class: "worksheet-history"}, controls);
     }
