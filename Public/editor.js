@@ -2664,7 +2664,8 @@ createApp({
       });
     }
 
-    function renderEdge(original, handles, activeHandles) {
+    // A vonal húzás közbeni (csoportos mozgatás, végpont húzása) megjelenített változata.
+    function displayedEdge(original) {
       let edge = original;
       const drag = gesture.value;
       if (drag?.type === "batch" && batch.value?.edges.has(edge.id)) edge = moveBatchEdge(edge,drag);
@@ -2672,15 +2673,22 @@ createApp({
         edge = {...edge};
         setEndpoint(edge, drag.end, preview.value?.attachment ?? {point: drag.endPosition});
       }
+      return edge;
+    }
+
+    function selectedEdge(edge) {
+      return selected.value?.id === edge.id && ["edge","endpoint"].includes(selected.value.kind);
+    }
+
+    function renderEdge(original) {
+      const edge = displayedEdge(original);
       const geometry = wireGeometry(edge);
       const {d, from, to} = geometry;
       const {stroke, ends, paint, taper} = cachedWireDrawing(edge, geometry);
       const label = edge.label?.trim() ? wireLabelLayout(geometry, edge.label, paint, edge.labelInLine) : null;
       const clipId = "editor-wire-gap-" + edge.id;
       const clipPath = label?.clip ? "url(#" + clipId + ")" : undefined;
-      const mine = selected.value?.id === edge.id && ["edge","endpoint"].includes(selected.value.kind);
-      const targets = mine ? activeHandles : handles;
-      targets.push(endpointHandle(original, "source", from), endpointHandle(original, "target", to));
+      const mine = selectedEdge(edge);
       const animatedArrows = edge.animated && edge.appearance === "thick";
       // Saját kijelölés: világosabb és vastagabb vonal; más felhasználó kijelölése: az ő színű glow.
       const local = mine || batch.value?.edges.has(edge.id) || marqueeHits.value?.edges.has(edge.id);
@@ -2776,22 +2784,39 @@ createApp({
       },
     };
 
+    // Vonalanként külön komponens: húzáskor csak a mozgatott dobozhoz kötött vonalak rajzolódnak újra. PLAN.md C1.
+    const EdgeView = {
+      props: {edge: Object},
+      setup: props => () => renderEdge(props.edge),
+    };
+
+    // A végpontok és csomópontok fogantyúi a vonalak és dobozok fölött, külön komponensben:
+    // a nagyításfüggő méretük miatt nagyításkor csak ez a réteg rajzolódik újra.
+    const HandleLayer = {
+      setup: () => () => {
+        const handles = [], activeHandles = [];
+        for (const original of wireLayers.value.flat()) {
+          const {from, to} = wireGeometry(displayedEdge(original));
+          (selectedEdge(original) ? activeHandles : handles)
+            .push(endpointHandle(original, "source", from), endpointHandle(original, "target", to));
+        }
+        // Keep the clickable endpoints above the boxes without changing the wire's paint order.
+        return [h("g", {"data-editor-only": "", "data-endpoint-handles": ""}, [...handles, ...activeHandles]), renderJunctionHandles()];
+      },
+    };
+
     const CanvasScene = {
-      setup: () => {
-        return () => {
+      setup: () => () => {
         const layers = wireLayers.value;
-        const children = [], handles = [], activeHandles = [];
-        const addEdge = edge => children.push(renderEdge(edge, handles, activeHandles));
+        const children = [];
+        const addEdge = edge => children.push(h(EdgeView, {key: "edge/" + edge.id, edge}));
         orderedNodes.value.forEach((node, index) => {
           layers[index].forEach(addEdge);
           children.push(h(NodeView, {key: node.id, node}));
         });
         layers.at(-1).forEach(addEdge);
-        // Keep the clickable endpoints above the boxes without changing the wire's paint order.
-        children.push(h("g", {"data-editor-only": "", "data-endpoint-handles": ""}, [...handles, ...activeHandles]));
-        children.push(renderJunctionHandles());
+        children.push(h(HandleLayer, {key: "handles"}));
         return h("g", {"data-scene": ""}, children);
-        };
       },
     };
 
