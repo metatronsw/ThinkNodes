@@ -882,3 +882,6 @@ svg text { text-rendering: geometricPrecision; }
 /* Tallózó link módja: külső webcím sor. */
 .file-browser-url { display: flex; gap: 6px; margin-bottom: 8px; }
 .file-browser-url input { flex: 1; min-width: 0; }
+/* Linkes doboz: a link felirata a doboz bármely pontja fölött aláhúzott (nem csak a felirat fölött). */
+.editor-canvas [data-node][data-link]:hover .node-link text, .passive-canvas [data-node]:hover .node-link text,
+[data-node]:hover .node-link-caption span { text-decoration: underline; }

@@ -2779,6 +2779,8 @@ createApp({
         onPointerdown: event => { hideTooltip(); pressNode(event, node); },
         onDblclick: event => {
           event.stopPropagation();
+          // Előnézetes (linkes) doboz: dupla kattintás megnyitja a linket; Alt-tal a szerkesztés marad.
+          if (node.type === "preview" && destination && !event.altKey) { followBoxLink(destination); return; }
           editObject("node", node.id, event.altKey ? "text" : true);
         },
         onContextmenu: event => context(event, "node", node.id),
