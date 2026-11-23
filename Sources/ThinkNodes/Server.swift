@@ -974,7 +974,7 @@ private func serveWebPresentation(_ req: Request, candidates: [WebPresentationRe
                 viewer = identity
             }
             guard let (asset, directory, publicRead) = try await req.application.threadPool.runIfActive({
-                try store.webAsset(candidate, user: viewer.user, unlocks: viewer.unlocks, ratio: req.query[Double.self, at: "ratio"], live: req.query[String.self, at: "live"] != "0")
+                try store.webAsset(candidate, user: viewer.user, unlocks: viewer.unlocks, size: WebScreenshot.boxSize(width: req.query[Double.self, at: "w"], height: req.query[Double.self, at: "h"]), live: req.query[String.self, at: "live"] != "0")
             }) else { continue }
 
             guard let asset else {

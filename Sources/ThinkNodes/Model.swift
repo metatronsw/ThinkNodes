@@ -267,7 +267,7 @@ struct Idea: Codable, Equatable, Sendable {
 
     var isValid: Bool {
         guard NodeTypes.isKnown(type), validSlug(id), position.isValid, text.utf8.count <= 100_000,
-              isJunction ? (4...128).contains(width) && height == width : (64...880).contains(width) && (40...680).contains(height),
+              isJunction ? (4...128).contains(width) && height == width : (64...4096).contains(width) && (40...4096).contains(height),
               elevated != true || (parent == nil && !isJunction),
               (1...10000).contains(fontSize), fontSize.rounded() == fontSize, (1...3).contains(font ?? 1),
               [fill, textColor, border].allSatisfy(validColor),
@@ -2177,8 +2177,8 @@ extension WorksheetStore {
         return WebContext(directory: presentation, policy: policy, access: access, manageable: admin || member)
     }
 
-    /// `ratio`: a doboz aránya; `live`: generálhat-e új előnézetet. Az előnézet keresési sorrendje: WebPreview.find.
-    func webAsset(_ request: WebPresentationRequest, user: User?, unlocks: Set<String>, ratio: Double? = nil, live: Bool = true) throws -> (asset: WebAsset?, directory: Bool, publicRead: Bool)? {
+    /// `size`: a doboz mérete; `live`: generálhat-e új előnézetet. Az előnézet keresési sorrendje: WebPreview.find.
+    func webAsset(_ request: WebPresentationRequest, user: User?, unlocks: Set<String>, size: (width: Int, height: Int)? = nil, live: Bool = true) throws -> (asset: WebAsset?, directory: Bool, publicRead: Bool)? {
         var preview: (URL, Bool)?
         let found: (asset: WebAsset?, directory: Bool, publicRead: Bool)? = try lock.withLock {
             guard let context = try webContext(project: request.project, reference: request.reference, user: user, unlocks: unlocks) else { return nil }
@@ -2194,7 +2194,7 @@ extension WorksheetStore {
         }
         // A keresés és a böngészős renderelés lassú lehet, ezért a záron kívül fut.
         if let (directory, publicRead) = preview {
-            return (WebScreenshot.find(in: directory, ratio: live ? ratio : nil), false, publicRead)
+            return (WebScreenshot.find(in: directory, size: live ? size : nil), false, publicRead)
         }
         return found
     }

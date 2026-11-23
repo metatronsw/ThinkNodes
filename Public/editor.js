@@ -1715,11 +1715,36 @@ createApp({
       claimGesture(node);
     }
 
+    // Kép eredeti pixelmérete: feltöltött kép (a betöltött <img>), illetve külső cím megosztási képe.
+    const naturalSizes = new Map();
+    function naturalSize(node) {
+      if (isImage(node)) {
+        const image = document.querySelector('[data-node="' + node.id + '"] img');
+        return image?.naturalWidth ? {width: Math.max(64, image.naturalWidth), height: Math.max(40, image.naturalHeight)} : null;
+      }
+      if (node.type !== "preview" || node.link?.kind !== "url" || node.staticPreview) return null;
+      const source = linkDestination(node.link)?.preview;
+      if (!source) return null;
+      if (!naturalSizes.has(source)) {
+        naturalSizes.set(source, null);
+        fetch(source).then(async response => {
+          // A kártya (SVG, ha nincs megosztási kép) nem korlátoz.
+          if (!response.ok || response.headers.get("Content-Type")?.includes("svg")) return;
+          const bitmap = await createImageBitmap(await response.blob());
+          naturalSizes.set(source, {width: Math.max(64, bitmap.width), height: Math.max(40, bitmap.height)});
+          bitmap.close();
+        }).catch(() => {});
+      }
+      return naturalSizes.get(source);
+    }
+
     function resizeCorner(operation, point) {
       const {original, width, height, sx, sy} = operation;
       const node = nodeMap.value.get(operation.nodeID);
-      const w = limit(width + sx * (point.x-operation.initial.x), 64, 880);
-      const h = limit(height + sy * (point.y-operation.initial.y), 40, 680);
+      // Felső korlát 4096 × 4096; kép és külső megosztási kép legfeljebb az eredeti pixelmérete (1 egység = 1 CSS-pixel a 0-s szinten).
+      const natural = naturalSize(node);
+      const w = limit(width + sx * (point.x-operation.initial.x), 64, Math.min(4096, natural?.width ?? 4096));
+      const h = limit(height + sy * (point.y-operation.initial.y), 40, Math.min(4096, natural?.height ?? 4096));
       node.width = w;
       node.height = h;
       const drawn = drawnNode(node.id);
@@ -2758,12 +2783,14 @@ createApp({
               "text-decoration": format.link ? "underline" : undefined}, run.text);
           })))) : null;
       const webClip = "web-clip-" + node.id;
-      // Előnézet a doboz arányában (0,05-ös lépés, Rendering.swift); húzás közben a korábbi kép marad, elengedéskor új renderelés.
-      const ratio = (Math.round(Math.min(Math.max(drawn.width / Math.max(1, drawn.height), .25), 6) * 20) / 20).toFixed(2);
-      if (!gesture.value || !previewRatios.has(node.id)) previewRatios.set(node.id, ratio);
+      // .web előnézet a doboz méretében (8-as lépés, WebScreenshot.boxSize); húzás közben a korábbi kép marad,
+      // elengedéskor új renderelés.
+      const step = value => Math.round(Math.min(Math.max(value, 64), 4096) / 8) * 8;
+      const previewSize = "?w=" + step(drawn.width) + "&h=" + step(drawn.height);
+      if (!gesture.value || !previewRatios.has(node.id)) previewRatios.set(node.id, previewSize);
       const linkPreview = isBox(node) && destination?.preview && layout.webPreview ? h("g", {"pointer-events": "none"}, [
         h("clipPath", {id: webClip}, [h(...boxShapeGeometry(drawn))]),
-        h("image", {class: "node-link-preview node-site-preview", href: node.link.kind !== "web" ? destination.preview : destination.preview + "?ratio=" + previewRatios.get(node.id) + (node.staticPreview ? "&live=0" : ""),
+        h("image", {class: "node-link-preview node-site-preview", href: node.link.kind !== "web" ? destination.preview : destination.preview + previewRatios.get(node.id) + (node.staticPreview ? "&live=0" : ""),
           x: -drawn.width/2, y: -drawn.height/2, width: Math.max(1, drawn.width), height: Math.max(1, drawn.height),
           preserveAspectRatio: "xMidYMid slice", "clip-path": "url(#" + webClip + ")"})])
       : isBox(node) && destination?.preview && layout.previewSpace ? h("image", {class: "node-link-preview",

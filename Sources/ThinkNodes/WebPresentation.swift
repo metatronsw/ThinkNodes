@@ -423,8 +423,15 @@ enum WebScreenshot {
     static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "webp", "gif", "svg", "avif"]
     static let previewNames = ["preview", "screen", "screenshot", "thumbnail", "thumb", "site", "cover", "og-image", "social", "poster"]
 
-    static func find(in directory: URL, ratio: Double?) -> WebAsset? {
-        if let ratio, let image = image(of: directory, ratio: ratio) { return image }
+    /// Előnézet mérete: a doboz mérete vászonegységben (= CSS-pixel a 0-s szinten), 8-as lépésekre kerekítve.
+    static func boxSize(width: Double?, height: Double?) -> (width: Int, height: Int)? {
+        guard let width, let height, width.isFinite, height.isFinite else { return nil }
+        func step(_ value: Double) -> Int { Int((min(max(value, 64), 4096) / 8).rounded()) * 8 }
+        return (step(width), step(height))
+    }
+
+    static func find(in directory: URL, size: (width: Int, height: Int)?) -> WebAsset? {
+        if let size, let image = image(of: directory, size: size) { return image }
         if let generated = generated(for: directory).filter(regularFile).first { return asset(generated) }
         if let named = namedImage(in: directory) { return asset(named) }
         if let any = anyImage(in: directory) { return asset(any) }
@@ -546,10 +553,13 @@ enum WebScreenshot {
 
     /// Az előnézet a doboz arányában. Csak egy kép van; új renderelés, ha nincs, ha más arányú,
     /// vagy ha az oldal (index fájl, .web mappa) újabb nála.
-    static func image(of directory: URL, ratio raw: Double) -> WebAsset? {
+    /// A képernyőkép a doboz méretében készül (az ablak = a doboz), 2× sűrűséggel a retina kijelzőkhöz;
+    /// a kép legfeljebb 4096 px lehet a hosszabb oldalán.
+    static func image(of directory: URL, size: (width: Int, height: Int)) -> WebAsset? {
         guard let browser else { return nil }
-        let ratio = quantized(raw)
-        let height = Int((Double(width) / ratio).rounded())
+        let (width, height) = size
+        let scale = max(1, min(2, 4096 / Double(max(width, height))))
+        let expected = (Int((Double(width) * scale).rounded()), Int((Double(height) * scale).rounded()))
         let files = FileManager.default
         let page = ["index.html", "index.htm"].map { directory.appendingPathComponent($0) }.first { files.fileExists(atPath: $0.path) }
             ?? ((try? files.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? [])
@@ -560,7 +570,7 @@ enum WebScreenshot {
 
         renderLock.lock()
         defer { renderLock.unlock() }
-        if let existing, let size = pixelSize(existing), quantized(Double(size.width) / Double(max(1, size.height))) == ratio,
+        if let existing, let pixels = pixelSize(existing), abs(pixels.width - expected.0) <= 2, abs(pixels.height - expected.1) <= 2,
            let cached = modified(existing), [page, directory].compactMap(modified).allSatisfy({ $0 <= cached }) {
             return asset(existing)
         }
@@ -572,7 +582,8 @@ enum WebScreenshot {
             defer { try? files.removeItem(at: shot) }
             guard run(browser, ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--mute-audio", "--no-first-run",
                 "--disable-extensions", "--disable-background-networking", "--user-data-dir=" + profile.path,
-                "--virtual-time-budget=4000", "--window-size=\(width),\(height)", "--screenshot=" + shot.path, page.absoluteString], timeout: 20),
+                "--virtual-time-budget=4000", "--window-size=\(width),\(height)", "--force-device-scale-factor=" + String(format: "%.3f", scale),
+                "--screenshot=" + shot.path, page.absoluteString], timeout: 30),
                   pixelSize(shot) != nil else { continue }
             // Csak egy kép marad: a régi (más arányú vagy formátumú) előnézet törlődik.
             for old in generated(for: directory) { try? files.removeItem(at: old) }
