@@ -609,6 +609,21 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         return ["path": file.url]
     }
 
+    app.on(.POST, "api", "web-archive", "**", body: .collect(maxSize: "100mb")) { req async throws -> WebPresentationInfo in
+        let identity = try session(req, store: store)
+        let user = identity.user
+        guard user != nil || req.hasSession else { throw Abort(.unauthorized) }
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        guard let name = req.query[String.self, at: "name"], let body = req.body.data else { throw Abort(.badRequest) }
+        let bytes = Data(body.readableBytesView)
+        let info = try await req.application.threadPool.runIfActive {
+            try store.importWebArchive(bytes, named: name, at: path, user: user, unlocks: identity.unlocks)
+        }
+        live.pages.publish(.structure, at: path)
+        return info
+    }
+
     app.post("api", "attachment", "**") { req async throws -> Response in
         let identity = try session(req, store: store)
         let user = identity.user

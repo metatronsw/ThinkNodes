@@ -23,7 +23,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=30"></script>
+        <script type="module" src="/editor.js?v=31"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -367,6 +367,12 @@ private func ideaDrawing(_ idea: Idea, graphics: VisualTheme.Graphics? = nil) ->
         return IdeaDrawing(node: node, labelWidth: 0, lines: [])
     }
     guard node.isBox else { return IdeaDrawing(node: node, labelWidth: node.width, lines: []) }
+    // .web doboz: az előnézeti kép tölti ki, a szöveg csak buboréksúgóban jelenik meg (geometry.js labelLayout).
+    if node.link?.kind == .web {
+        return IdeaDrawing(node: node, labelWidth: node.width, previewSpace: node.height,
+                           overflow: !node.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, lines: [],
+                           extentX: node.width / 2, extentY: node.height / 2)
+    }
     let (widthRatio, heightRatio, _) = node.shape.labelRatios
     let fitText = node.fitText == true
     let blocks = canvasMarkdown(node.text)
@@ -667,6 +673,11 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
     let inset = node.shape.labelRatios.link
     let marker = node.link.map { linkMarker($0, node: node, bottom: y + 20, width: node.width, siteHost: siteHost) } ?? ""
     let previewImage = preview.map { url in
+        if node.link?.kind == .web {
+            // Teljes kitöltés a doboz alakjára vágva; az arányt a doboz határozza meg.
+            let clip = "web-clip-" + node.id
+            return "<clipPath id=\"\(escaped(clip))\"><\(geometry)/></clipPath><image class=\"node-link-preview node-web-preview\" href=\"\(escaped(url))\" x=\"\(number(-x))\" y=\"\(number(-y))\" width=\"\(number(max(1, width)))\" height=\"\(number(max(1, height)))\" preserveAspectRatio=\"xMidYMid slice\" clip-path=\"url(#\(escaped(clip)))\" pointer-events=\"none\"/>"
+        }
         let top = -y * inset + 6, previewHeight = drawing.previewSpace - 6
         return "<image class=\"node-link-preview\" href=\"\(escaped(url))\" x=\"\(number(-x * inset + 6))\" y=\"\(number(top))\" width=\"\(number(max(1, node.width * inset - 12)))\" height=\"\(number(max(1, previewHeight)))\" preserveAspectRatio=\"xMidYMid meet\" pointer-events=\"none\"/>"
     } ?? ""

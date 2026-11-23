@@ -4,11 +4,13 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 ## Nyitott
 
+
+## Javítva
+
 - **A munkalap minden presence-kérésnél teljes lemezolvasással töltődik be** (2026-11-23, teljesítmény)
   - A `Collaboration.presence` minden `poll`/`select`/`ping` műveletnél `store.load`-ot hív (beállítások, házirend-lánc, munkalapfájl dekódolása és validálása, mappa listázása), a két globális zár alatt. N résztvevőnél egy mentés N teljes betöltést indít sorban.
   - Az optimalizálási tervben szerepel (memóriabeli munkalap-gyorsítótár); megbeszélendő.
-
-## Javítva
+  - Javítás: memóriabeli gyorsítótár (munkalapok, házirendek, beállítások), presence 49 → 6 ms (`87e94f6`).
 
 - **A sorok túl rövidre tördelődtek, sorkizáráskor nagy hézagokkal** (2026-11-23)
   - Ok: a tördelés fix oszlopszámmal dolgozott (`betűméret × 0,65` karakterenként), a valódi átlag ~0,45–0,5 em, így a sorok csak 55–75%-ig teltek.

@@ -318,3 +318,108 @@ final class WebPresentationSessions: @unchecked Sendable {
         }
     }
 }
+
+/// Feltöltött weboldal-csomag (.zip) ellenőrzése és kicsomagolása. A `unzip` parancsot használja.
+enum WebArchive {
+    static let maximumArchive = 100 * 1024 * 1024
+    static let maximumExtracted: Int64 = 300 * 1024 * 1024
+    static let maximumEntries = 5_000
+
+    /// A .web mappa neve a ZIP fájlnévből: csak betű, szám, `_` és `-` marad.
+    static func folderName(_ filename: String) -> String {
+        let stem = (filename as NSString).deletingPathExtension.precomposedStringWithCanonicalMapping
+        var result = ""
+        for scalar in stem.unicodeScalars {
+            let allowed = CharacterSet.letters.union(.decimalDigits).union(.nonBaseCharacters).contains(scalar) || scalar == "_" || scalar == "-"
+            result.unicodeScalars.append(allowed ? scalar : "_")
+        }
+        while result.contains("__") { result = result.replacingOccurrences(of: "__", with: "_") }
+        result = result.trimmingCharacters(in: CharacterSet(charactersIn: "_-"))
+        return String((result.isEmpty ? "weboldal" : result).prefix(80))
+    }
+
+    private static func unzip(_ arguments: [String]) throws -> String {
+        let process = Process()
+        let candidates = ["/usr/bin/unzip", "/bin/unzip", "/usr/local/bin/unzip", "/opt/homebrew/bin/unzip"]
+        guard let tool = candidates.first(where: FileManager.default.isExecutableFile) else {
+            throw Abort(.internalServerError, reason: "A szerveren nincs telepítve az unzip.")
+        }
+        process.executableURL = URL(fileURLWithPath: tool)
+        process.arguments = arguments
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus <= 1 else { throw Abort(.unprocessableEntity, reason: "A ZIP fájl sérült vagy nem olvasható.") }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    /// Kicsomagolja a csomagot a `destination` (még nem létező) mappába, és visszaadja a weboldal gyökerét.
+    static func extract(_ archive: URL, into destination: URL) throws -> URL {
+        let files = FileManager.default
+        // 1. Bejegyzések: nincs abszolút út, `..`, visszaper, vezérlőkarakter; korlátozott darabszám.
+        let entries = try unzip(["-Z1", archive.path]).split(separator: "\n").map(String.init).filter { !$0.isEmpty }
+        guard !entries.isEmpty else { throw Abort(.unprocessableEntity, reason: "A ZIP fájl üres.") }
+        guard entries.count <= maximumEntries else { throw Abort(.payloadTooLarge, reason: "A ZIP legfeljebb \(maximumEntries) fájlt tartalmazhat.") }
+        for entry in entries {
+            let parts = entry.split(separator: "/", omittingEmptySubsequences: false)
+            guard !entry.hasPrefix("/"), !entry.contains("\\"), !parts.contains(".."),
+                  !entry.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else {
+                throw Abort(.unprocessableEntity, reason: "A ZIP érvénytelen útvonalat tartalmaz: \(entry)")
+            }
+        }
+        // 2. Kicsomagolt méret (zip-bomba ellen) és szimbolikus linkek a fejlécek alapján.
+        let listing = try unzip(["-Zl", archive.path])
+        var total: Int64 = 0
+        for line in listing.split(separator: "\n") {
+            let columns = line.split(separator: " ", omittingEmptySubsequences: true)
+            guard columns.count >= 9, let mode = columns.first, mode.count == 10, let size = Int64(columns[3]) else { continue }
+            if mode.hasPrefix("l") { throw Abort(.unprocessableEntity, reason: "A ZIP szimbolikus linket tartalmaz.") }
+            total += size
+        }
+        guard total <= maximumExtracted else { throw Abort(.payloadTooLarge, reason: "A kicsomagolt weboldal legfeljebb 300 MiB lehet.") }
+
+        try files.createDirectory(at: destination, withIntermediateDirectories: false)
+        do {
+            _ = try unzip(["-qq", "-n", archive.path, "-x", "__MACOSX/*", "*.DS_Store", "-d", destination.path])
+            // 3. Utólagos ellenőrzés: csak közönséges fájl és mappa maradhat.
+            var size: Int64 = 0
+            if let walker = files.enumerator(at: destination, includingPropertiesForKeys: [.isSymbolicLinkKey, .isRegularFileKey, .isDirectoryKey, .fileSizeKey]) {
+                for case let url as URL in walker {
+                    let info = try url.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey, .isDirectoryKey, .fileSizeKey])
+                    guard info.isSymbolicLink != true, info.isRegularFile == true || info.isDirectory == true else {
+                        throw Abort(.unprocessableEntity, reason: "A ZIP nem támogatott fájltípust tartalmaz.")
+                    }
+                    size += Int64(info.fileSize ?? 0)
+                    guard size <= maximumExtracted else { throw Abort(.payloadTooLarge, reason: "A kicsomagolt weboldal legfeljebb 300 MiB lehet.") }
+                }
+            }
+            // 4. Ha minden egy közös gyökérmappában van (Finder-tömörítés), az a weboldal gyökere.
+            var site = destination
+            while true {
+                let content = try files.contentsOfDirectory(at: site, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])
+                guard content.count == 1, try content[0].resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true,
+                      !hasPage(site) else { break }
+                site = content[0]
+            }
+            guard hasPage(site) else {
+                throw Abort(.unprocessableEntity, headers: ["X-ThinkNodes-Not-Website": "1"],
+                            reason: "A ZIP-ben nincs index.html (vagy egyetlen .html oldal).")
+            }
+            // A feltöltő nem állíthat be hozzáférési szabályt a csomaggal.
+            try? files.removeItem(at: site.appendingPathComponent(".settings.json"))
+            return site
+        } catch {
+            try? files.removeItem(at: destination)
+            throw error
+        }
+    }
+
+    private static func hasPage(_ directory: URL) -> Bool {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        if names.contains("index.html") { return true }
+        return names.filter { !$0.hasPrefix(".") && ["html", "htm"].contains(($0 as NSString).pathExtension.lowercased()) }.count == 1
+    }
+}

@@ -116,6 +116,23 @@ export async function importFile(blob, path, csrf) {
     }
     return null;
   }
+  const zipHeader = ext === "zip" && blob.size <= 100*1024*1024
+    ? new Uint8Array(await blob.slice(0, 4).arrayBuffer()).join() === "80,75,3,4" : false;
+  if (zipHeader) {
+    // Teljes weboldal: a szerver ellenőrzi, kicsomagolja és „név.web” mappát készít belőle.
+    // Ha nincs benne weboldal (index.html), a ZIP sima mellékletként töltődik fel.
+    const response = await fetch("/api/web-archive/" + path + "?name=" + encodeURIComponent(name), {
+      method: "POST", headers: {"Content-Type": "application/zip", "X-CSRF-Token": csrf}, body: blob,
+    });
+    if (response.ok) {
+      const item = await response.json();
+      return {text: item.title, link: {kind: "web", target: item.reference}, width: 320, height: 200};
+    }
+    if (!response.headers.has("X-ThinkNodes-Not-Website")) {
+      const detail = await response.json().catch(() => ({}));
+      throw Error(detail.reason || "A weboldal feltöltése sikertelen.");
+    }
+  }
   if (blob.size > 12*1024*1024) throw Error("A fájl legfeljebb 12 MiB lehet.");
   const pastedImage = !ext && blob.type.startsWith("image/");
   const media = pastedImage ? "image" : mediaType(ext);

@@ -1269,6 +1269,44 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
+    /// Weboldal-csomag (.zip) feltöltése a munkalap mappájába `név.web` néven; a hivatkozást adja vissza.
+    func importWebArchive(_ bytes: Data, named filename: String, at path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> WebPresentationInfo {
+        guard bytes.count <= WebArchive.maximumArchive else { throw Abort(.payloadTooLarge, reason: "A ZIP legfeljebb 100 MiB lehet.") }
+        guard bytes.starts(with: [0x50, 0x4b, 0x03, 0x04]) else { throw Abort(.unsupportedMediaType, reason: "A fájl nem ZIP.") }
+        let directory: URL = try lock.withLock {
+            if try readSettings().requireLogin && user == nil { throw Abort(.unauthorized) }
+            let ctx = try context(path)
+            guard accessLocked(ctx, user: user, unlocks: unlocks).editable else { throw Abort(.forbidden) }
+            return ctx.directory
+        }
+        // A kicsomagolás lassú lehet, ezért a záron kívül, rejtett ideiglenes mappában fut.
+        let token = ".tn-upload-" + UUID().uuidString
+        let archive = directory.appendingPathComponent(token + ".zip"), staging = directory.appendingPathComponent(token)
+        defer { try? files.removeItem(at: archive); try? files.removeItem(at: staging) }
+        try bytes.write(to: archive, options: .withoutOverwriting)
+        let site = try WebArchive.extract(archive, into: staging)
+        return try lock.withLock {
+            let ctx = try context(path)
+            guard accessLocked(ctx, user: user, unlocks: unlocks).editable else { throw Abort(.forbidden) }
+            let folders = Array(path.parts.dropFirst())
+            let base = WebArchive.folderName(filename)
+            for attempt in 1...999 {
+                let name = attempt == 1 ? base : base + "-" + String(attempt)
+                guard let reference = try? WebPresentationReference((folders + [name + ".web"]).joined(separator: "/")) else {
+                    throw Abort(.unprocessableEntity, reason: "Érvénytelen mappanév.")
+                }
+                let target = ctx.directory.appendingPathComponent(name + ".web")
+                try rejectLink(target)
+                if files.fileExists(atPath: target.path) { continue }
+                try files.moveItem(at: site, to: target)
+                let url = reference.url(in: path.parts[0])
+                return WebPresentationInfo(reference: reference.relativePath, title: reference.name, url: url, preview: url + "_tn-preview",
+                    manageable: true, membersOnly: nil, editors: nil, passwordProtected: nil)
+            }
+            throw Abort(.conflict, reason: "Nincs szabad mappanév.")
+        }
+    }
+
     private func pendingFileKey(_ name: String, folder: String) -> String {
         "attachment:" + folder + "/" + name
     }

@@ -12,7 +12,7 @@ import {justifyRows} from "./justify.js";
 import {canvasMarkdown, canvasMarkdownAvailable} from "./canvas-markdown.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {useWorksheetGeometry, automaticBorder, automaticGridColor, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=18";
+import {useWorksheetGeometry, automaticBorder, automaticGridColor, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=19";
 
 import {ancestors, overlapFraction} from "./containers.js?v=3";
 
@@ -2659,7 +2659,13 @@ createApp({
               "xml:space": format.code ? "preserve" : undefined,
               "text-decoration": format.link ? "underline" : undefined}, run.text);
           })))) : null;
-      const linkPreview = isBox(node) && destination?.preview && layout.previewSpace ? h("image", {class: "node-link-preview",
+      const webClip = "web-clip-" + node.id;
+      const linkPreview = isBox(node) && destination?.preview && layout.webPreview ? h("g", {"pointer-events": "none"}, [
+        h("clipPath", {id: webClip}, [h(...shapeGeometry(drawn.shape, drawn.width, drawn.height))]),
+        h("image", {class: "node-link-preview node-web-preview", href: destination.preview,
+          x: -drawn.width/2, y: -drawn.height/2, width: Math.max(1, drawn.width), height: Math.max(1, drawn.height),
+          preserveAspectRatio: "xMidYMid slice", "clip-path": "url(#" + webClip + ")"})])
+      : isBox(node) && destination?.preview && layout.previewSpace ? h("image", {class: "node-link-preview",
         href: destination.preview, x: -drawn.width/2*inset + 6, y: -drawn.height/2*inset + 6,
         width: Math.max(1, drawn.width*inset - 12), height: Math.max(1, layout.previewSpace - 6),
         preserveAspectRatio: "xMidYMid meet", "pointer-events": "none"}) : null;
