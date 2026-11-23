@@ -27,6 +27,7 @@ enum NodeTypes {
     /// Tartalék, ha a regiszter nem olvasható (pl. hibás telepítés); a JSON-nal egyezik.
     private static let fallback: [String: NodeTypeDefinition] = [
         "box": .init(traits: ["text", "shape", "motion", "surface", "elevation", "size", "children", "link"]),
+        "preview": .init(label: "Előnézet", base: "box", traits: ["text", "surface", "elevation", "size", "link"]),
         "text": .init(file: "text", traits: ["file", "fileText", "comment", "surface", "elevation", "size"]),
         "code": .init(base: "text", extensions: ["json", "js", "mjs", "swift", "css"]),
         "csv": .init(base: "text", extensions: ["csv", "tsv"]),

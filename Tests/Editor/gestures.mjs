@@ -1090,7 +1090,8 @@ toggle("Escape", true); await tick();
 paste("https://example.org/oldal");
 await tick(); await save();
 const linkedBox = sheet.nodes.at(-1);
-assert.equal(linkedBox.type, "box");
+assert.equal(linkedBox.type, "preview", "a linked box becomes a preview box");
+assert.equal(linkedBox.shape, "rectangle");
 assert.deepEqual(linkedBox.link, {kind: "url", target: "https://example.org/oldal"});
 assert.ok(prop("data-link-kind", "url", graphic(linkedBox.id)), "the link marker sits on the box");
 await properties(linkedBox.id);
@@ -1416,7 +1417,7 @@ const chooseAppearance = async (label, value) => {
   control.props.onChange({target: {value}});
   await tick();
 };
-const {edgeGeometry: themedGeometry, shapeGeometry: themedShape, taperedArc, arrowLength} = await import("../../Public/geometry.js?v=20");
+const {edgeGeometry: themedGeometry, shapeGeometry: themedShape, taperedArc, arrowLength} = await import("../../Public/geometry.js?v=21");
 await chooseAppearance("Téma", "3");
 assert.deepEqual(themedShape("rounded", 100, 80),
   ["polygon", {points: "-45,-40 45,-40 50,-35 50,35 45,40 -45,40 -50,35 -50,-35"}]);

@@ -1,7 +1,7 @@
 import {openPresentation, setWebPublic, webPresentationURL} from "./web-presentations.js";
 import {fetchPage, updateSection, watchPageUpdates} from "./page-updates.js";
 import {bindAudioPlayers} from "./audio-player.js";
-import {assetURL, attachmentURL, checkText, fileSheet, fileURL, isCommonFile, sharedFileBox, fileName, fileNameParts, importFile, nodeName, objectURL, pngForClipboard, validImageStem, writeText} from "./canvas-files.js";
+import {assetURL, attachmentURL, checkText, fileSheet, fileURL, isCommonFile, plainFirstLine, sharedFileBox, fileName, fileNameParts, importFile, nodeName, objectURL, pngForClipboard, validImageStem, writeText} from "./canvas-files.js";
 import {hasTrait, rootType, traits, typeLabel} from "./node-types.js";
 import {chooseRemoval, openFileBrowser} from "./file-browser.js";
 import {decodeWorksheet, encodeWorksheet} from "./worksheet-json.js";
@@ -13,7 +13,7 @@ import {justifyRows} from "./justify.js";
 import {canvasMarkdown, canvasMarkdownAvailable} from "./canvas-markdown.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {useWorksheetGeometry, automaticBorder, automaticGridColor, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=20";
+import {useWorksheetGeometry, automaticBorder, automaticGridColor, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=21";
 
 import {ancestors, overlapFraction} from "./containers.js?v=3";
 
@@ -245,7 +245,19 @@ function nodeClasses(node, hasChildren = false) {
   return classes;
 }
 const isJunction = node => node?.type === "junction";
-const isBox = node => node?.type === "box";
+// Doboz: a sima doboz és az előnézetes link-doboz (`preview`, Model.swift normalizePreview).
+const isBox = node => node?.type === "box" || node?.type === "preview";
+// Linkes doboz mindig `preview` (téglalap, 5 px lekerekítés, animáció nélkül); link nélkül sima `box`.
+function normalizePreview(node) {
+  if (node.type === "box" && node.link) node.type = "preview";
+  if (node.type === "preview" && !node.link) node.type = "box";
+  if (node.type === "preview") { node.shape = "rectangle"; delete node.animation; }
+  return node;
+}
+// A doboz alakja: az előnézetes doboz mindig 5 px-es lekerekítésű téglalap.
+function boxShapeGeometry(node, width = node.width, height = node.height) {
+  return node.type === "preview" ? ["rect", {x: -width/2, y: -height/2, width, height, rx: 5}] : shapeGeometry(node.shape, width, height);
+}
 const isImage = node => rootType(node?.type) === "image";
 const isTextFile = node => rootType(node?.type) === "text";
 
@@ -283,7 +295,7 @@ function shape(node, linked, dropTarget = false) {
     const [tag, attrs] = shapeGeometry(graphics.value.junction ?? "ellipse", node.width, node.height);
     return h(tag, {...attrs, class: "junction-surface", fill: paint(node.fill, 2)});
   }
-  const [tag, geometry] = shapeGeometry(node.shape, node.width, node.height);
+  const [tag, geometry] = boxShapeGeometry(node);
   const image = isImage(node) ? node.file : null;
   const mode = backgroundMode(node);
   const blurred = mode === "blurred", empty = mode === "empty";
@@ -1033,7 +1045,7 @@ createApp({
     function addNode(position = worldAtCenter(), properties = {}) {
       if (!board.value || !online.value) return;
       finishField();
-      const node = {...makeNode(position, properties.type), ...properties};
+      const node = normalizePreview({...makeNode(position, properties.type), ...properties});
       board.value.nodes.push(node);
       modified();
       openProperties("node", node.id, isBox(node) ? "text" : true);
@@ -2140,6 +2152,7 @@ createApp({
     function updateItem(item, key, value) {
       if (item[key] === value) return;
       item[key] = value;
+      if (key === "link") normalizePreview(item);
       modified();
     }
 
@@ -2731,7 +2744,7 @@ createApp({
       const ratio = (Math.round(Math.min(Math.max(drawn.width / Math.max(1, drawn.height), .25), 6) * 20) / 20).toFixed(2);
       if (!gesture.value || !previewRatios.has(node.id)) previewRatios.set(node.id, ratio);
       const linkPreview = isBox(node) && destination?.preview && layout.webPreview ? h("g", {"pointer-events": "none"}, [
-        h("clipPath", {id: webClip}, [h(...shapeGeometry(drawn.shape, drawn.width, drawn.height))]),
+        h("clipPath", {id: webClip}, [h(...boxShapeGeometry(drawn))]),
         h("image", {class: "node-link-preview node-site-preview", href: node.link.kind !== "web" ? destination.preview : destination.preview + "?ratio=" + previewRatios.get(node.id) + (node.staticPreview ? "&live=0" : ""),
           x: -drawn.width/2, y: -drawn.height/2, width: Math.max(1, drawn.width), height: Math.max(1, drawn.height),
           preserveAspectRatio: "xMidYMid slice", "clip-path": "url(#" + webClip + ")"})])
@@ -2740,8 +2753,12 @@ createApp({
         width: Math.max(1, drawn.width*inset - 12), height: Math.max(1, layout.previewSpace - 6),
         preserveAspectRatio: "xMidYMid meet", "pointer-events": "none"}) : null;
       // Publikus .web: pillangó ikon a doboz felett középen.
+      // Előnézetes doboz: a szöveg első sora a doboz felett, kívül (Rendering.swift nodeSVG).
+      const headline = node.type === "preview" ? plainFirstLine(node.text ?? "") : "";
+      const previewTitle = headline ? h("text", {class: "node-preview-title", x: 0, y: -drawn.height/2 - 8, "text-anchor": "middle",
+        "font-size": 13, fill: paint(node.textColor, 1), "pointer-events": "none"}, fitCaption(headline, 13, Math.max(12, drawn.width))) : null;
       const publicMark = (node.link?.kind === "web" || node.file) && node.webPublic ? h("svg", {class: "ui-icon web-public-mark", "pointer-events": "none",
-        x: -10, y: -drawn.height/2 - (node.file ? 54 : 26), width: 20, height: 20, viewBox: "0 0 24 24", color: paint(node.textColor, 1)},
+        x: -10, y: -drawn.height/2 - (node.file ? 54 : headline ? 46 : 26), width: 20, height: 20, viewBox: "0 0 24 24", color: paint(node.textColor, 1)},
         [h("use", {href: "/icons.svg#butterfly"})]) : null;
       const junctionLabel = junction && node.text ? h("g", {class: "node-label-turn", transform: "rotate(" + (node.angle ?? 0) + ")"}, [
         h("text", {class: "node-label", x: drawn.width/2 + 4, y: 4, fill: paint(node.textColor, 1), "font-size": 14}, node.text)]) : null;
@@ -2782,6 +2799,7 @@ createApp({
           node.file ? renderFileBox(node, destination) : null,
           junctionLabel,
           linkPreview,
+          previewTitle,
           publicMark,
           // A szöveg közvetlenül a doboz csoportjában van (nincs dobozonkénti vágás): az elrendezés eleve a dobozon belül tartja.
           labels,

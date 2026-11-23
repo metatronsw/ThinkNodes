@@ -23,7 +23,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=45"></script>
+        <script type="module" src="/editor.js?v=46"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -516,7 +516,7 @@ private func boxGeometry(_ node: Idea, graphics: VisualTheme.Graphics?) -> Strin
     }
     switch node.shape {
     case .rectangle, .rounded:
-        return "rect x=\"\(number(-x))\" y=\"\(number(-y))\" width=\"\(number(node.width))\" height=\"\(number(node.height))\" rx=\"\(node.shape == .rounded ? "12" : "0")\""
+        return "rect x=\"\(number(-x))\" y=\"\(number(-y))\" width=\"\(number(node.width))\" height=\"\(number(node.height))\" rx=\"\(node.type == "preview" ? "5" : node.shape == .rounded ? "12" : "0")\""
     case .ellipse:
         return "ellipse rx=\"\(number(x))\" ry=\"\(number(y))\""
     case .diamond, .triangle, .pentagon, .hexagon, .parallelogram:
@@ -532,7 +532,7 @@ private func boxOutline(_ node: Idea, graphics: VisualTheme.Graphics?) -> String
     }
     switch node.shape {
     case .rectangle, .rounded:
-        let r: Double = node.shape == .rounded ? 12 : 0
+        let r: Double = node.type == "preview" ? 5 : node.shape == .rounded ? 12 : 0
         return "M\(number(-x+r)) \(number(-y))H\(number(x-r))Q\(number(x)) \(number(-y)) \(number(x)) \(number(-y+r))"
             + "V\(number(y-r))Q\(number(x)) \(number(y)) \(number(x-r)) \(number(y))"
             + "H\(number(-x+r))Q\(number(-x)) \(number(y)) \(number(-x)) \(number(y-r))"
@@ -683,13 +683,16 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
         let top = -y * inset + 6, previewHeight = drawing.previewSpace - 6
         return "<image class=\"node-link-preview\" href=\"\(escaped(url))\" x=\"\(number(-x * inset + 6))\" y=\"\(number(top))\" width=\"\(number(max(1, node.width * inset - 12)))\" height=\"\(number(max(1, previewHeight)))\" preserveAspectRatio=\"xMidYMid meet\" pointer-events=\"none\"/>"
     } ?? ""
+    // Előnézetes doboz: a szöveg első sora a doboz felett, kívül (a teljes szöveg buboréksúgóban).
+    let headline = node.type == "preview" ? plainFirstLine(node.text) : ""
+    let caption = headline.isEmpty ? "" : "<text class=\"node-preview-title\" x=\"0\" y=\"\(number(-y - 8))\" text-anchor=\"middle\" font-size=\"13\" fill=\"\(escaped(node.textColor))\" pointer-events=\"none\">\(escaped(fitCaption(headline, size: 13, available: max(12, width))))</text>"
     let publicMark = node.link?.kind == .web && node.webPublic == true
-        ? "<svg class=\"ui-icon web-public-mark\" x=\"-10\" y=\"\(number(-y - 26))\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" color=\"\(escaped(node.textColor))\" pointer-events=\"none\"><use href=\"/icons.svg#butterfly\"/></svg>" : ""
+        ? "<svg class=\"ui-icon web-public-mark\" x=\"-10\" y=\"\(number(-y - (headline.isEmpty ? 26 : 46)))\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" color=\"\(escaped(node.textColor))\" pointer-events=\"none\"><use href=\"/icons.svg#butterfly\"/></svg>" : ""
     let contents = """
         \(elevationShadow(node, geometry: geometry, graphics: graphics))
         \(boxSurface(node, geometry: geometry, graphics: graphics, interactive: interactive))
         \(previewImage)<text class="node-text" text-rendering="geometricPrecision" font-family="\(escaped((graphics ?? VisualTheme.Graphics()).fontFamily(node.font)))" pointer-events="none">\(spans)</text>
-        \(marker)\(publicMark)
+        \(marker)\(caption)\(publicMark)
         """
     return """
         <g aria-label="\(escaped(node.name))" transform="translate(\(number(node.position.x)) \(number(node.position.y)))">

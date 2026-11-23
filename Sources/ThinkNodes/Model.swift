@@ -2047,6 +2047,15 @@ extension Idea {
         elevated = try? fields.decode(Bool.self, forKey: .elevated)
         staticPreview = try? fields.decode(Bool.self, forKey: .staticPreview)
         webPublic = try? fields.decode(Bool.self, forKey: .webPublic)
+        normalizePreview()
+    }
+
+    /// Előnézetes link-doboz (`preview`): minden linkes doboz ez, mindig téglalap (5 px lekerekítés), animáció nélkül.
+    /// A régi, linkes `box` betöltéskor átáll; link nélkül a `preview` visszaáll `box`-ra.
+    mutating func normalizePreview() {
+        if type == "box", link != nil { type = "preview" }
+        if type == "preview", link == nil { type = "box" }
+        if type == "preview" { shape = .rectangle; animation = nil }
     }
 }
 
