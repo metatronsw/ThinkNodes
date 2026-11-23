@@ -1335,3 +1335,35 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
         #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("kozos/.trash/jegyzet.md").path))
     }
 }
+
+/// .web átnevezése: a projekt többi lapjának linkje is az új nevet kapja.
+@Test func webRenameUpdatesOtherSheets() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-rename-\(UUID().uuidString)")
+    let store = try WorksheetStore(root: root)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let password = UUID().uuidString
+    try store.setUser(name: "admin", role: .admin, passwordHash: try Bcrypt.hash(password, cost: 4))
+    let admin = try #require(try store.user(named: "admin"))
+    let project = try WorksheetPath(["nevek"]), child = try WorksheetPath(["nevek", "al"])
+    var parent = try store.open(project, user: admin)
+    var sub = try store.open(child, user: admin)
+    let site = root.appendingPathComponent("nevek/regi.web")
+    try FileManager.default.createDirectory(at: site, withIntermediateDirectories: true)
+    try Data("<title>x</title>".utf8).write(to: site.appendingPathComponent("index.html"))
+    parent.nodes = [Idea(id: "parentweb", text: "regi", position: Point(x: 0, y: 0), link: NodeLink(kind: .web, target: "regi.web"))]
+    parent = try store.update(project, worksheet: parent, user: admin)
+    sub.nodes = [Idea(id: "childweb", text: "regi", position: Point(x: 0, y: 0), link: NodeLink(kind: .web, target: "regi.web"))]
+    sub = try store.update(child, worksheet: sub, user: admin)
+
+    try await withApp(configure: { app in configure(app, store: store, secureCookies: false) }) { app in
+        let browser = try app.testing()
+        let session = try await login(browser, name: "admin", password: password, path: project.url)
+        let response = try await browser.sendRequest(.POST, "/api/web-rename/" + project.url,
+            headers: ["Cookie": session.cookie, "X-CSRF-Token": session.csrf, "Content-Type": "application/json"]) { request in
+            try request.content.encode(["reference": "regi.web", "name": "uj"])
+        }
+        #expect(response.status == .ok)
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("nevek/uj.web/index.html").path))
+        #expect(try store.load(child, user: admin).nodes.first?.link?.target == "uj.web")
+    }
+}

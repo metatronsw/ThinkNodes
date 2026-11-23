@@ -1049,6 +1049,12 @@ final class WorksheetStore: @unchecked Sendable {
                         try move(source, destination)
                     }
                     media[ref] = name
+                    // A publikus jog a fájl új nevével marad érvényben.
+                    if var names = metadata.publicFiles, let index = names.firstIndex(of: source.lastPathComponent) {
+                        names[index] = name
+                        metadata.publicFiles = names.sorted()
+                        next.rules[directory] = metadata
+                    }
                     if ref != updated.previewImage, source.lastPathComponent == updated.previewImage { updated.previewImage = name }
                 }
                 for index in updated.nodes.indices {
@@ -1618,6 +1624,11 @@ final class WorksheetStore: @unchecked Sendable {
             let ids = board.nodes.filter { targetLocked(of: $0, at: sheet) == target }.map(\.id)
             return ids.isEmpty ? nil : Usage(sheet: sheet.url, title: board.title, nodes: ids)
         }
+    }
+
+    /// .web hivatkozás használata a projekt lapjain (átnevezéskor ezek linkjei frissülnek).
+    func webUsage(_ reference: String, project: String) -> [Usage] {
+        lock.withLock { usageLocked(.web(reference: reference), project: project) }
     }
 
     /// A doboz közös elemének használata (a projektben bárhol); `node` a saját lap egy doboza.

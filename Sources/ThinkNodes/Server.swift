@@ -632,8 +632,19 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
         let path = try WorksheetPath(req.parameters.getCatchall())
         let body = try req.content.decode(Rename.self)
-        let reference = try await req.application.threadPool.runIfActive {
-            try store.renameWeb(body.reference, to: body.name, in: path, user: user, unlocks: identity.unlocks)
+        let reference = try await req.application.threadPool.runIfActive { () throws -> String in
+            let others = store.webUsage(body.reference, project: path.parts[0]).filter { $0.sheet != path.url }
+            let renamed = try store.renameWeb(body.reference, to: body.name, in: path, user: user, unlocks: identity.unlocks)
+            // A többi lap linkjei is az új nevet kapják (a saját lapot a kliens frissíti).
+            for usage in others {
+                guard let sheet = try? WorksheetPath(usage.sheet.split(separator: "/").map { $0.removingPercentEncoding ?? String($0) }),
+                      var board = try? store.load(sheet, user: user, unlocks: identity.unlocks) else { continue }
+                for index in board.nodes.indices where usage.nodes.contains(board.nodes[index].id) {
+                    board.nodes[index].link?.target = renamed
+                }
+                _ = try? live.update(sheet, sheet: board, user: user, client: nil, unlocks: identity.unlocks)
+            }
+            return renamed
         }
         live.pages.publish(.structure, at: try WorksheetPath([path.parts[0]]))
         return ["reference": reference]
