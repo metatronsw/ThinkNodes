@@ -490,7 +490,7 @@ enum WebScreenshot {
         if let configured = ProcessInfo.processInfo.environment["THINKNODES_CHROMIUM"], !configured.isEmpty {
             return FileManager.default.isExecutableFile(atPath: configured) ? configured : nil
         }
-        let candidates = ["/usr/bin/chromium-browser", "/usr/bin/chromium", "/usr/bin/google-chrome", "/usr/bin/headless_shell",
+        let candidates = ["/usr/lib64/chromium-browser/headless_shell", "/usr/bin/chromium-browser", "/usr/bin/chromium", "/usr/bin/google-chrome", "/usr/bin/headless_shell",
             "/Applications/Chromium.app/Contents/MacOS/Chromium", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
             "/opt/homebrew/bin/chromium", "/usr/local/bin/chromium"]
         return candidates.first(where: FileManager.default.isExecutableFile)
