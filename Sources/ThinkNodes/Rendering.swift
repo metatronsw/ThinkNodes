@@ -23,7 +23,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=47"></script>
+        <script type="module" src="/editor.js?v=48"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -34,7 +34,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=19">
+          <link rel="stylesheet" href="/app.css?v=20">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -370,7 +370,7 @@ private func ideaDrawing(_ idea: Idea, graphics: VisualTheme.Graphics? = nil) ->
     // .web doboz: az előnézeti kép tölti ki, a szöveg csak buboréksúgóban jelenik meg (geometry.js labelLayout).
     if node.fillsWithPreview {
         return IdeaDrawing(node: node, labelWidth: node.width, previewSpace: node.height,
-                           overflow: !node.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, lines: [],
+                           overflow: node.type == "preview" ? commentCollapsed(node) : !node.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, lines: [],
                            extentX: node.width / 2, extentY: node.height / 2)
     }
     let (widthRatio, heightRatio, _) = node.shape.labelRatios
@@ -469,12 +469,29 @@ func nodeClasses(_ node: Idea, hasChildren: Bool = false) -> String {
 }
 
 func needsTextTooltip(_ node: Idea, overflow: @autoclosure () -> Bool) -> Bool {
-    node.isBox && !node.text.isEmpty && overflow()
+    if node.hasComment { return commentCollapsed(node) }
+    return node.isBox && !node.text.isEmpty && overflow()
 }
 
-/// Fájldoboz megjegyzése a legegyszerűbb formában: egy sor, formázás nélkül (a CSS rövidíti „…”-tal).
-func plainComment(_ text: String) -> String {
-    text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+extension Idea {
+    /// Megjegyzés a doboz alatt: fájldoboz és előnézetes link-doboz (a `text` mező).
+    var hasComment: Bool { file != nil || type == "preview" }
+}
+
+/// Összecsukott (elrejtett) megjegyzés, amelynek több sora van: a teljes szöveg buboréksúgóban.
+func commentCollapsed(_ node: Idea) -> Bool {
+    node.hideText == true && commentLines(node.text).count > 1
+}
+
+private func commentLines(_ text: String) -> [String] {
+    text.trimmingCharacters(in: .whitespacesAndNewlines).components(separatedBy: .newlines)
+}
+
+/// A doboz alatt látható megjegyzés: sima szöveg, minden sora; összecsukva az első sor és alatta „…”.
+func visibleComment(_ node: Idea) -> String {
+    let lines = commentLines(node.text)
+    guard node.hideText == true, lines.count > 1 else { return lines.joined(separator: "\n") }
+    return lines[0] + "\n…"
 }
 
 func needsTextTooltip(_ node: Idea) -> Bool {
@@ -671,7 +688,10 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
             """
     }.joined()
     let inset = node.shape.labelRatios.link
-    let marker = node.link.map { linkMarker($0, node: node, bottom: y + 20, width: node.width, siteHost: siteHost) } ?? ""
+    // Előnézetes doboz: a link felirata a doboz felett (mint a fájlnév), a megjegyzés alatta.
+    let marker = node.link.map { linkMarker($0, node: node, bottom: node.type == "preview" ? -y - 6 : y + 20, width: node.width, siteHost: siteHost) } ?? ""
+    let noteBelow = node.type == "preview" && !node.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        ? "<foreignObject x=\"\(number(-x))\" y=\"\(number(y))\" width=\"\(number(width))\" height=\"4000\" pointer-events=\"none\"><div xmlns=\"http://www.w3.org/1999/xhtml\" class=\"node-below\" style=\"color:\(escaped(node.textColor))\"><footer class=\"node-comment align-\(node.alignment.rawValue)\">\(escaped(visibleComment(node)))</footer></div></foreignObject>" : ""
     let previewImage = preview.map { url in
         if node.fillsWithPreview {
             // Teljes kitöltés a doboz alakjára vágva; .web-nél az arányt a doboz határozza meg.
@@ -683,16 +703,13 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
         let top = -y * inset + 6, previewHeight = drawing.previewSpace - 6
         return "<image class=\"node-link-preview\" href=\"\(escaped(url))\" x=\"\(number(-x * inset + 6))\" y=\"\(number(top))\" width=\"\(number(max(1, node.width * inset - 12)))\" height=\"\(number(max(1, previewHeight)))\" preserveAspectRatio=\"xMidYMid meet\" pointer-events=\"none\"/>"
     } ?? ""
-    // Előnézetes doboz: a szöveg első sora a doboz felett, kívül (a teljes szöveg buboréksúgóban).
-    let headline = node.type == "preview" ? plainFirstLine(node.text) : ""
-    let caption = headline.isEmpty ? "" : "<text class=\"node-preview-title\" x=\"0\" y=\"\(number(-y - 8))\" text-anchor=\"middle\" font-size=\"13\" fill=\"\(escaped(node.textColor))\" pointer-events=\"none\">\(escaped(fitCaption(headline, size: 13, available: max(12, width))))</text>"
     let publicMark = node.link?.kind == .web && node.webPublic == true
-        ? "<svg class=\"ui-icon web-public-mark\" x=\"-10\" y=\"\(number(-y - (headline.isEmpty ? 26 : 46)))\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" color=\"\(escaped(node.textColor))\" pointer-events=\"none\"><use href=\"/icons.svg#butterfly\"/></svg>" : ""
+        ? "<svg class=\"ui-icon web-public-mark\" x=\"-10\" y=\"\(number(-y - (node.type == "preview" ? 44 : 26)))\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" color=\"\(escaped(node.textColor))\" pointer-events=\"none\"><use href=\"/icons.svg#butterfly\"/></svg>" : ""
     let contents = """
         \(elevationShadow(node, geometry: geometry, graphics: graphics))
         \(boxSurface(node, geometry: geometry, graphics: graphics, interactive: interactive))
         \(previewImage)<text class="node-text" text-rendering="geometricPrecision" font-family="\(escaped((graphics ?? VisualTheme.Graphics()).fontFamily(node.font)))" pointer-events="none">\(spans)</text>
-        \(marker)\(caption)\(publicMark)
+        \(marker)\(noteBelow)\(publicMark)
         """
     return """
         <g aria-label="\(escaped(node.name))" transform="translate(\(number(node.position.x)) \(number(node.position.y)))">
@@ -887,8 +904,8 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
     let marker = node.link.map { link in
         "<p class=\"node-link-caption\" data-link-kind=\"\(link.kind.rawValue)\">\(uiIcon(link.kind == .url ? "website" : "link"))<span>\(escaped(linkCaption(link)))</span></p>"
     } ?? ""
-    let comment = node.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || node.hideText == true ? "" :
-        "<footer class=\"node-comment align-\(node.alignment.rawValue)\" title=\"\(escaped(node.text))\">\(escaped(plainComment(node.text)))</footer>"
+    let comment = node.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" :
+        "<footer class=\"node-comment align-\(node.alignment.rawValue)\">\(escaped(visibleComment(node)))</footer>"
     let below = marker + comment
     let geometry = boxGeometry(node, graphics: graphics)
     let chrome = elevationShadow(node, geometry: geometry, graphics: graphics) +
@@ -897,7 +914,7 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
     // A fájlnév a doboz felett, a link és a megjegyzés alatta, egyetlen foreignObjectben normál
     // (nem abszolút) elrendezéssel: a Safari így is jó helyre rajzolja, és nagyításkor kevesebb a munka.
     let top = node.position.y - node.height / 2 - 30
-    let height = 30 + node.height + (below.isEmpty ? 0 : 400)
+    let height = 30 + node.height + (below.isEmpty ? 0 : 4000)
     let underneath = below.isEmpty ? "" : "<div class=\"node-below\">\(below)</div>"
     // Publikus fájl: pillangó ikon a fájlnév-sor fölött középen.
     let publicMark = node.webPublic == true

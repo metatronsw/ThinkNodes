@@ -611,7 +611,7 @@ export function labelLayout(node, blocks = []) {
   // .web doboz: az előnézeti kép tölti ki, a szöveg csak buboréksúgóban jelenik meg (Rendering.swift ideaDrawing).
   // Linkes doboz előnézettel (Rendering.swift fillsWithPreview): .web mindig, munkalap/külső link ha nincs kikapcsolva.
   if (node.link && (node.link.kind === "web" || !node.staticPreview)) return {width: node.width, height: node.height, extentX: node.width / 2, extentY: node.height / 2,
-    overflow: Boolean(node.text?.trim()), lines: [], labelWidth: node.width, iconSpace: 0, previewSpace: node.height, webPreview: true};
+    overflow: node.type === "preview" ? commentCollapsed(node) : Boolean(node.text?.trim()), lines: [], labelWidth: node.width, iconSpace: 0, previewSpace: node.height, webPreview: true};
   const [widthRatio, heightRatio] = shapeLabelRatios(node.shape);
   const width = node.width, height = node.height;
   const labelWidth = Math.max(12, width * widthRatio - 16);
@@ -708,3 +708,12 @@ export function linkCaption(link) {
 }
 
 export {textWidth, wrapRuns};
+
+// Megjegyzés (fájldoboz, előnézetes doboz) a doboz alatt: sima szöveg, minden sora (Rendering.swift visibleComment).
+const commentLines = text => (text ?? "").trim().split(/\r?\n/);
+// Összecsukott, többsoros megjegyzés: a teljes szöveg buboréksúgóban.
+export const commentCollapsed = node => !!node.hideText && commentLines(node.text).length > 1;
+export function visibleComment(node) {
+  const lines = commentLines(node.text);
+  return node.hideText && lines.length > 1 ? lines[0] + "\n…" : lines.join("\n");
+}

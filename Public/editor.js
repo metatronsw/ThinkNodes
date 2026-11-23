@@ -13,7 +13,7 @@ import {justifyRows} from "./justify.js";
 import {canvasMarkdown, canvasMarkdownAvailable} from "./canvas-markdown.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {useWorksheetGeometry, automaticBorder, automaticGridColor, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=21";
+import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=22";
 
 import {ancestors, overlapFraction} from "./containers.js?v=3";
 
@@ -2625,8 +2625,8 @@ createApp({
         ]);
       }
       // A megjegyzés a legegyszerűbb formában: egy sor, formázás nélkül; a CSS rövidíti „…”-tal (Rendering.swift plainComment).
-      const comment = node.text?.trim() && !node.hideText
-        ? h("footer", {class: "node-comment align-" + (node.alignment ?? "center"), title: node.text}, node.text.split(/\s+/).filter(Boolean).join(" ")) : null;
+      const comment = node.text?.trim()
+        ? h("footer", {class: "node-comment align-" + (node.alignment ?? "center")}, visibleComment(node)) : null;
       const marker = node.link ? h("p", {class: "node-link-caption", "data-link-kind": node.link.kind,
         onPointerdown: e => { if (!e.altKey && !e.ctrlKey) e.stopPropagation(); },
         onClick: e => { e.stopPropagation(); if (destination) followBoxLink(destination); }},
@@ -2646,7 +2646,7 @@ createApp({
       ]);
     }
 
-    function renderLinkMarker(node, destination) {
+    function renderLinkMarker(node, destination, above = false) {
       const [, , inset] = shapeLabelRatios(node.shape);
       const caption = linkCaption(node.link);
       // A link felirata a doboz alatt, a dobozon kívül áll.
@@ -2654,7 +2654,8 @@ createApp({
       // Egysoros felirat: ha nem fér el, „…”-tal rövidül (nincs tördelés, nincs összenyomás).
       const shownCaption = fitCaption(caption, 13, available);
       const shown = textWidth(shownCaption, 13);
-      const left = -(shown + 18) / 2, bottom = node.height / 2 + 20;
+      // Előnézetes doboznál a felirat a doboz felett áll (mint a fájlnév), egyébként alatta.
+      const left = -(shown + 18) / 2, bottom = above ? -node.height / 2 - 6 : node.height / 2 + 20;
       const color = paint(node.textColor, 1);
       const iconPath = node.link.kind === "web" ? linkIcons.web : linkIcons[destination?.kind ?? "worksheet"];
       const open = e => { e.preventDefault(); e.stopPropagation(); if (destination) followBoxLink(destination); };
@@ -2753,12 +2754,8 @@ createApp({
         width: Math.max(1, drawn.width*inset - 12), height: Math.max(1, layout.previewSpace - 6),
         preserveAspectRatio: "xMidYMid meet", "pointer-events": "none"}) : null;
       // Publikus .web: pillangó ikon a doboz felett középen.
-      // Előnézetes doboz: a szöveg első sora a doboz felett, kívül (Rendering.swift nodeSVG).
-      const headline = node.type === "preview" ? plainFirstLine(node.text ?? "") : "";
-      const previewTitle = headline ? h("text", {class: "node-preview-title", x: 0, y: -drawn.height/2 - 8, "text-anchor": "middle",
-        "font-size": 13, fill: paint(node.textColor, 1), "pointer-events": "none"}, fitCaption(headline, 13, Math.max(12, drawn.width))) : null;
       const publicMark = (node.link?.kind === "web" || node.file) && node.webPublic ? h("svg", {class: "ui-icon web-public-mark", "pointer-events": "none",
-        x: -10, y: -drawn.height/2 - (node.file ? 54 : headline ? 46 : 26), width: 20, height: 20, viewBox: "0 0 24 24", color: paint(node.textColor, 1)},
+        x: -10, y: -drawn.height/2 - (node.file ? 54 : node.type === "preview" ? 44 : 26), width: 20, height: 20, viewBox: "0 0 24 24", color: paint(node.textColor, 1)},
         [h("use", {href: "/icons.svg#butterfly"})]) : null;
       const junctionLabel = junction && node.text ? h("g", {class: "node-label-turn", transform: "rotate(" + (node.angle ?? 0) + ")"}, [
         h("text", {class: "node-label", x: drawn.width/2 + 4, y: 4, fill: paint(node.textColor, 1), "font-size": 14}, node.text)]) : null;
@@ -2770,7 +2767,9 @@ createApp({
         color: ownSelected ? selectionTint() : undefined,
         transform: "translate(" + position.x + " " + position.y + ")",
         onPointerenter: event => {
-          if (!gesture.value && isBox(node) && layout.overflow && node.text) showTooltip(event, async signal => {
+          // Buboréksúgó: túl hosszú doboz-szöveg, illetve összecsukott többsoros megjegyzés (fájl- és előnézetes doboz).
+          const tooltip = node.file || node.type === "preview" ? commentCollapsed(node) : isBox(node) && layout.overflow;
+          if (!gesture.value && tooltip && node.text) showTooltip(event, async signal => {
             const result = await checked(await fetch("/api/text", {method: "POST", signal,
               headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify({text: node.text})}));
             return result.text();
@@ -2799,14 +2798,16 @@ createApp({
           node.file ? renderFileBox(node, destination) : null,
           junctionLabel,
           linkPreview,
-          previewTitle,
           publicMark,
           // A szöveg közvetlenül a doboz csoportjában van (nincs dobozonkénti vágás): az elrendezés eleve a dobozon belül tartja.
           labels,
           editingObject.value === node.id ? editOverlay(node, -drawn.width/2,
             junction ? -14 : (layout.lines[0]?.y ?? (node.file ? drawn.height/2 - 20 : 0)) - 18,
             drawn.width, editKey.value === "text" && !junction ? Math.max(34, drawn.height/2) : 28) : null,
-          isBox(node) && node.link ? renderLinkMarker(drawn, destination) : null,
+          isBox(node) && node.link ? renderLinkMarker(drawn, destination, node.type === "preview") : null,
+          node.type === "preview" && node.text?.trim() ? h("foreignObject", {x: -drawn.width/2, y: drawn.height/2, width: drawn.width, height: 4000,
+            "pointer-events": "none"}, [h("div", {class: "node-below", style: {color: paint(node.textColor, 1)}}, [
+              h("footer", {class: "node-comment align-" + (node.alignment ?? "center")}, visibleComment(node))])]) : null,
         ]),
         ...(resizeTarget.value === node.id && gesture.value?.type !== "rectangle" && !occupied(node.id) && !ancestors(node, nodeMap.value).some(n => n.locked)
           ? [[-1,-1], [1,-1], [1,1], [-1,1]].map(([sx, sy]) => {
@@ -3655,7 +3656,8 @@ createApp({
       if (single?.link) {
         const destination = linkDestination(single.link);
         const kindLabel = single.link.kind === "web" ? "Weboldal" : linkKinds.find(([kind]) => kind === single.link.kind)?.[1] ?? "Link";
-        panels.push(h("fieldset", {class: "property-group stack link-group"}, [
+        // A Link csoport mindig legfelül áll.
+        panels.unshift(h("fieldset", {class: "property-group stack link-group"}, [
           h("legend", [h("span", "Link · " + kindLabel)]),
           h("div", {class: "link-row"}, [
             single.link.kind === "web" ? h("input", {"aria-label": "Weboldal neve (a mappa is átnevezve)", value: linkCaption(single.link), maxlength: 80,
