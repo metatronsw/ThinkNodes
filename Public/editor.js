@@ -248,10 +248,11 @@ function backgroundMode(node) {
 }
 
 function elevationShadow(node) {
-  if (!node.elevated || backgroundMode(node) === "free") return null;
+  // Képnél a láthatósági mód nem számít: a Kiemelés árnyéka mindig a teljes kép alatt van.
+  if (!node.elevated || (!isImage(node) && backgroundMode(node) === "free")) return null;
   const [tag, geometry] = shapeGeometry(node.shape, node.width, node.height);
   // Üres dobozon csak a keret vet árnyékot; a kitöltött doboz árnyéka a doboz alatt marad (nincs clipPath: gyorsabb mozgatás).
-  if (backgroundMode(node) === "empty") {
+  if (!isImage(node) && backgroundMode(node) === "empty") {
     return h("g", {class: "node-shadow", "pointer-events": "none", "aria-hidden": "true"},
       [h(tag, {...geometry, transform: "translate(12 28)", fill: "none", stroke: "#11172b", "stroke-opacity": .44, "stroke-width": 1.6})]);
   }
@@ -268,7 +269,7 @@ function shape(node, linked, dropTarget = false) {
   const image = isImage(node) ? node.file : null;
   const mode = backgroundMode(node);
   const blurred = mode === "blurred", empty = mode === "empty";
-  const free = mode === "free" || (image && image.alphaEnabled !== false && image.alphaBackground == null);
+  const free = mode === "free" || !!image;  // a kép mindig háttér nélkül, a saját átlátszóságával jelenik meg
   if (dropTarget) return h(tag, {...geometry, class: "drop-target", "data-container-candidate": "",
     fill: empty || free ? "none" : paint(node.fill, 2), "pointer-events": "fill",
     stroke: "#08796c", "stroke-width": 5, "stroke-dasharray": "0 8", "stroke-linecap": "round",
@@ -276,7 +277,7 @@ function shape(node, linked, dropTarget = false) {
   if (free) return h(tag, {...geometry, "data-editor-only": "", fill: "none", stroke: "none", "pointer-events": "fill"});
   const locked = isBox(node) && node.locked;
   const glass = graphics.value.glass && mode === "solid" && !image;
-  const fill = image?.alphaEnabled === false ? "#ffffff" : paint(image?.alphaBackground ?? node.fill, 2);
+  const fill = paint(node.fill, 2);
   // Üres doboz: csak a keret látszik, a keret színe a doboz színe. Elmosottnál a háttér elmosódik, a keret nem.
   const frame = empty ? paint(node.fill, 2) : image && !empty ? "none" : glass ? "url(#glass-rim)" : automaticBorder(fill);
   const translucent = mode === "translucent";
@@ -2362,43 +2363,6 @@ createApp({
       }), 1500));
     }
 
-    const imageAlpha = ref(new Map());
-    const imageSizes = ref(new Map());
-
-    // Eredeti képarány: a doboz magassága a kép méretarányát követi, a szélesség marad.
-    function fitImageAspect(node) {
-      const size = imageSizes.value.get(node.file.asset);
-      if (!size?.w || !size?.h) { problem.value = "A kép mérete még nem ismert."; return; }
-      setNodeHeight(node, Math.round(node.width * size.h / size.w));
-    }
-    // Inaktív, ha a teljes kép látszik (a doboz aránya megegyezik a képével), vagy még nem ismert a kép mérete.
-    function imageAspectFits(node) {
-      const size = imageSizes.value.get(node.file.asset);
-      if (!size?.w || !size?.h) return true;
-      return Math.abs(node.height - node.width * size.h / size.w) < 1;
-    }
-    function setNodeHeight(node, height) {
-      const current = nodeMap.value.get(node.id);
-      if (current && !occupied(current.id)) { current.height = height; modified(); }
-    }
-
-    function detectImageAlpha(event, asset) {
-      if (imageAlpha.value.has(asset)) return;
-      const image = event.target;
-      if (asset.endsWith(".jpg")) { imageAlpha.value.set(asset, false); return; }
-      const sample = document.createElement("canvas");
-      sample.width = Math.min(512, image.naturalWidth);
-      sample.height = Math.min(512, image.naturalHeight);
-      const context = sample.getContext("2d", {willReadFrequently: true});
-      if (!context || !sample.width || !sample.height) return;
-      try {
-        context.drawImage(image, 0, 0, sample.width, sample.height);
-        const pixels = context.getImageData(0, 0, sample.width, sample.height).data;
-        imageAlpha.value.set(asset, pixels.some((value, index) => index % 4 === 3 && value < 255));
-      } catch {
-        imageAlpha.value.set(asset, false);
-      }
-    }
 
     function editOverlay(item, x, y, width, height) {
       if (editingObject.value !== item.id) return null;
@@ -2485,13 +2449,7 @@ createApp({
       let content;
       if (root === "image") {
         content = h("img", {src: assetURL(path, file.asset), alt: nodeName(node), draggable: false,
-          class: file.asset.toLowerCase().endsWith(".svg") ? "is-svg" : undefined,
-          onLoad: event => {
-            detectImageAlpha(event, file.asset);
-            const known = imageSizes.value.get(file.asset);
-            if (known?.w !== event.target.naturalWidth || known?.h !== event.target.naturalHeight)
-              imageSizes.value = new Map(imageSizes.value).set(file.asset, {w: event.target.naturalWidth, h: event.target.naturalHeight});
-          }});
+          class: file.asset.toLowerCase().endsWith(".svg") ? "is-svg" : undefined});
       } else if (root === "audio") {
         content = h("div", {"data-audio-player": "", class: "node-audio",
           onPointerdown: e => e.stopPropagation(), onDblclick: e => e.stopPropagation()}, [
@@ -2527,7 +2485,7 @@ createApp({
         h("div", {class: "node-file-stack", style: {color: paint(node.textColor, 1)}}, [
           h("div", {class: "node-above", style: {height: fileNameSpace + "px"}},
             file.showFilename !== false ? [h("header", {class: "node-file-name"}, [renderFileDownload(node)])] : []),
-          h("div", {class: ["node-file", "node-" + root, "mode-" + backgroundMode(node)], style: {height: node.height + "px"}}, [h("div", {class: "node-body"}, [content])]),
+          h("div", {class: ["node-file", "node-" + root], style: {height: node.height + "px"}}, [h("div", {class: "node-body"}, [content])]),
           below ? h("div", {class: "node-below"}, [marker, comment]) : null,
         ]),
       ]);
@@ -2631,7 +2589,7 @@ createApp({
         peerOwner || snapTarget ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-glow", color: peerOwner ? peerOwner.color : selectionTint(), fill: "none",
           stroke: peerOwner ? peerOwner.color : selectionTint(), "stroke-width": 3, "pointer-events": "none"}) : null,
         // Saját kijelölés látható felület nélküli objektumon (Free doboz, átlátszó kép, csomópont): vékony, nyugodt körvonal.
-        ownSelected && !peerOwner && (junction || backgroundMode(node) === "free" || (isImage(node) && node.file.alphaBackground == null))
+        ownSelected && !peerOwner && (junction || backgroundMode(node) === "free" || isImage(node))
           ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-own", fill: "none", stroke: selectionTint(), "stroke-width": 2.5, "pointer-events": "none"}) : null,
         candidates.value.has("node/" + node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "search-candidate", "stroke-width": 3}) : null,
         ...animateBox(isBox(node) ? node.animation : undefined, [
@@ -2913,9 +2871,8 @@ createApp({
           spacePan.value ? h("rect", {width: "100%", height: "100%", fill: "none",
             "pointer-events": "all", "aria-hidden": "true", "data-editor-only": ""}) : null,
         ]),
+        // A létrehozó neve nem jelenik meg a vásznon (a megtekintő cím sorában látszik); itt csak a jelenlévők.
         h("div", {class: "canvas-people"}, [
-          user && board.value.creator === user ? null :
-            h("span", {class: "canvas-creator"}, "Létrehozó: " + (board.value.creator ?? "ismeretlen")),
           h("div", {class: "participants", "aria-label": "Jelenlévők"},
             !online.value && problem.value ? h("span", {class: "connection-lost", role: "status"}, "Kapcsolat megszakadt") : peers.value.map((p, index) =>
               h("span", {key: index}, [p.avatar ? h("img", {class: "peer-avatar", src: "/icons/avatar-" + p.avatar + ".svg", alt: ""}) : null, p.name]))),
@@ -3391,30 +3348,20 @@ createApp({
         ]));
       }
 
-      if (common.has("alpha") && single) panels.push(group("Átlátszóság", [h("div", {class: "property-options image-alpha-options"}, [
-        iconToggle("Alpha csatorna", single.file.alphaEnabled !== false,
-          () => change("file", node => ({...node.file, alphaEnabled: node.file.alphaEnabled === false})),
-          optionSymbol("path", {d: "M4 4h16v16H4z M4 12h16 M12 4v16 M4 4h8v8H4z M12 12h8v8h-8z", "fill-rule": "evenodd"})),
-        colorPicker("Kép háttérszíne", single.file.alphaBackground ?? 2,
-          v => { change("file", node => ({...node.file, alphaBackground: v})); if (mode === "free" || mode === "empty") setBackground("solid"); },
-          single.id + "/alpha", single.file.alphaEnabled === false || imageAlpha.value.get(single.file.asset) !== true, true, 2,
-          {transparent: mode === "free" || mode === "empty", clear: () => change("file", node => ({...node.file, alphaBackground: undefined}))}),
-      ])]));
 
       if (common.has("shape")) panels.push(group("Doboz", [
         optionPicker("Forma", shapes, value("shape", null), v => change("shape", v), shapeSymbol),
         optionPicker("Animáció", boxAnimations, value("animation", "none") ?? "none", v => change("animation", v === "none" ? undefined : v), v => icon("box-" + v)),
         h("div", {class: "property-options property-tools box-effect-options"}, [
           ...backgroundTools(), elevation(),
-          single && isImage(single) ? button("", () => fitImageAspect(single), {symbol: "aspect", class: "button option-icon", disabled: !online.value || imageAspectFits(single),
-            ...controlName("Eredeti képarány")}) : null,
           single && containerIDs.value.has(single.id) ? iconToggle("Tartalom rögzítése", !!single.locked,
             () => change("locked", single.locked ? undefined : true), icon(single.locked ? "lock" : "unlock")) : null,
           linkButton(),
         ]),
       ]));
       else if (common.has("surface")) panels.push(group("Megjelenés", [
-        h("div", {class: "property-options property-tools box-effect-options"}, [...backgroundTools(), elevation(), linkButton()]),
+        // Képnél a megjelenés-módosítók közül csak a Kiemelés maradt.
+        h("div", {class: "property-options property-tools box-effect-options"}, [...(nodes.some(isImage) ? [] : backgroundTools()), elevation(), linkButton()]),
       ]));
 
       if (common.has("diameter")) panels.push(group("Megjelenés", [propertyTools(

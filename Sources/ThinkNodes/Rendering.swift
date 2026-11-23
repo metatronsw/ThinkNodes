@@ -501,9 +501,10 @@ private func boxOutline(_ node: Idea, graphics: VisualTheme.Graphics?) -> String
 }
 
 private func elevationShadow(_ node: Idea, geometry: String, graphics: VisualTheme.Graphics?) -> String {
-    guard node.elevated == true, node.resolvedBackgroundMode != .free else { return "" }
+    // Képnél a láthatósági mód nem számít: a Kiemelés árnyéka mindig a teljes kép alatt van.
+    guard node.elevated == true, node.isImage || node.resolvedBackgroundMode != .free else { return "" }
     // Üres dobozon csak a keret vet árnyékot; kitöltött doboznál a kitöltés (nincs clipPath: gyorsabb mozgatás).
-    if node.resolvedBackgroundMode == .empty {
+    if !node.isImage && node.resolvedBackgroundMode == .empty {
         return """
             <g class="node-shadow" pointer-events="none" aria-hidden="true">
               <\(geometry) transform="translate(12 28)" fill="none" stroke="#11172b" stroke-opacity=".44" stroke-width="1.6"/>
@@ -524,11 +525,12 @@ private func boxSurface(_ node: Idea, geometry: String, graphics: VisualTheme.Gr
     }
     let blurred = mode == .blurred
     let empty = mode == .empty
-    if node.isImage && node.file?.alphaEnabled != false && node.file?.alphaBackground == nil { return "" }
+    // A kép mindig háttér nélkül, a saját átlátszóságával jelenik meg (a régi alfa- és háttérbeállítások nem hatnak).
+    if node.isImage { return "" }
     let image = node.isImage
     let locked = node.isBox && node.locked == true
     let glass = graphics?.glass == true && mode == .solid && !image
-    let fill = image ? (node.file?.alphaEnabled == false ? "#ffffff" : node.file?.alphaBackground ?? node.fill) : node.fill
+    let fill = node.fill
     // Üres doboz keretének színe a doboz színe; elmosottnál a háttér elmosódik, a keret nem.
     let stroke = empty ? escaped(node.fill) : image ? "none" : glass ? "url(#glass-rim)" : escaped(node.border)
     let width = locked ? "6.4" : glass ? "3" : "1.6"
@@ -832,7 +834,7 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
     let height = 30 + node.height + (below.isEmpty ? 0 : 400)
     let underneath = below.isEmpty ? "" : "<div class=\"node-below\">\(below)</div>"
     return """
-        \(translated)<foreignObject class="node-file-frame" x="\(number(node.position.x - node.width / 2))" y="\(number(top))" width="\(number(node.width))" height="\(number(height))"><div xmlns="http://www.w3.org/1999/xhtml" class="node-file-stack" style="color:\(escaped(node.textColor))"><div class="node-above" style="height:30px">\(header)</div><div data-file-ink="\(escaped(node.textColor))" style="height:\(number(node.height))px" class="node-file node-\(node.root) mode-\(node.resolvedBackgroundMode.rawValue)"><div class="node-body">\(content)</div></div>\(underneath)</div></foreignObject>
+        \(translated)<foreignObject class="node-file-frame" x="\(number(node.position.x - node.width / 2))" y="\(number(top))" width="\(number(node.width))" height="\(number(height))"><div xmlns="http://www.w3.org/1999/xhtml" class="node-file-stack" style="color:\(escaped(node.textColor))"><div class="node-above" style="height:30px">\(header)</div><div data-file-ink="\(escaped(node.textColor))" style="height:\(number(node.height))px" class="node-file node-\(node.root)\(node.isImage ? "" : " mode-" + node.resolvedBackgroundMode.rawValue)"><div class="node-body">\(content)</div></div>\(underneath)</div></foreignObject>
         """
 }
 

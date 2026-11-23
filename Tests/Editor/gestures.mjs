@@ -1043,7 +1043,7 @@ titleActions.length = 0;
 await picker.props.onChange({target: {files: [image], value: image.name}});
 await tick();
 assert.equal(panel().props["aria-label"], "Kép szerkesztése");
-assert.ok(section("Megjegyzés") && section("Átlátszóság") && prop("aria-label", "Link hozzáadása", panel()));
+assert.ok(section("Megjegyzés") && !section("Átlátszóság") && prop("aria-label", "Link hozzáadása", panel()));
 assert.deepEqual(titleActions, ["focus", "pelda"]);
 prop("aria-label", "Megjegyzés", panel()).props.onInput({target: {value: "Képcím"}});
 await save();
@@ -1059,38 +1059,12 @@ assert.equal(animatedNode.type, "image");
 assert.equal(svgUpload.headers["Content-Type"], "image/svg+xml");
 assert.equal(await svgUpload.body.text(), animation, "the original animation is uploaded intact");
 assert.ok(prop("src", "/api/attachment/test?inline=1&name=mozgas.svg", graphic(animatedNode.id)));
-const alphaColor = () => prop("aria-label", "Kép háttérszíne színválasztó", panel());
-assert.equal(alphaColor().props.disabled, true, "color is inactive until transparency is detected");
-document.createElement = () => ({getContext: () => ({
-  drawImage() {},
-  getImageData: () => ({data: Uint8ClampedArray.of(0, 0, 0, 80)}),
-})});
-const graphicImage = () => find(n => n.tag === "img", graphic(animatedNode.id));
+// Képnél a megjelenés-módosítók közül csak a Kiemelés maradt; a kép háttér (felület) nélkül jelenik meg.
 const imageSurface = () => prop("class", "node-surface", graphic(animatedNode.id));
-graphicImage().props.onLoad({target: {naturalWidth: 1, naturalHeight: 1}});
-delete document.createElement;
-await tick();
-assert.equal(alphaColor().props.disabled, false);
-alphaColor().props.onClick(); await tick();
-prop("aria-label","Jelzőfény",panel()).props.onClick();
-await tick();
-assert.equal(imageSurface().props.fill, "#0090ff");
-await press("Alpha csatorna");
-assert.equal(alphaColor().props.disabled, true);
-assert.equal(imageSurface().props.fill, "#ffffff");
-await save();
-assert.equal(model(animatedNode.id).file.alphaEnabled, false);
-await press("Alpha csatorna");
-await save();
-assert.equal(imageSurface().props.fill, "#0090ff");
-// Képnél nincs Free/Üres; az Áttetsző és az Elmosott magára a képre hat.
-assert.equal(button("Free"), undefined);
-assert.equal(button("Üres"), undefined);
-await press("Áttetsző"); await save();
-assert.equal(model(animatedNode.id).backgroundMode, "translucent");
-assert.ok(find(n => n.tag === "div" && [n.props?.class].flat().join(" ").includes("mode-translucent"), graphic(animatedNode.id)));
-await press("Áttetsző"); await save();
-assert.equal(imageSurface().props.fill, "#0090ff");
+for (const removed of ["Alpha csatorna", "Free", "Üres", "Elmosott", "Áttetsző", "Eredeti képarány"]) assert.equal(button(removed), undefined, removed);
+assert.equal(prop("aria-label", "Kép háttérszíne színválasztó", panel()), undefined);
+assert.ok(button("Kiemelés"));
+assert.equal(imageSurface(), undefined);
 delete globalThis.Image;
 toggle("Escape", true); await tick();
 assert.ok(!text(canvasPanel()).includes("fájl feltöltve"));
