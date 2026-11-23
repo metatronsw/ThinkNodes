@@ -3197,14 +3197,13 @@ createApp({
         node.file ? button("Link másolása", () => { menu.value = null; transfer(() => writeText(objectURL(path,node.id))); }, {symbol: "link"}) : null,
         button("Ping", () => ping({node: node.id}), {symbol: "center", disabled: !online.value}),
         !isJunction(node) ? elevationButton(node, true) : null,
-        hasTrait(node, "link") ? button(node.link ? "Link törlése" : "Link hozzáadása", () => {
-          if (node.link) { menu.value = null; removeLink(node); }
-          else menu.value = {kind: "link", id: node.id, x: open.x, y: open.y};
-        }, {symbol: node.link ? "unlink" : "link", disabled: !!occupied(node.id)}) : null,
+        // Link csak hozzáadható innen; eltávolítása a tulajdonságpanel ✕ gombjával.
+        hasTrait(node, "link") && !node.link ? button("Link hozzáadása", () => {
+          menu.value = {kind: "link", id: node.id, x: open.x, y: open.y};
+        }, {symbol: "link", disabled: !!occupied(node.id)}) : null,
         button("Szerkesztés", () => openProperties("node", node.id), {symbol: "edit", disabled: !!occupied(node.id)}),
+        // Egyetlen törlés: fájl- és linkes doboznál a közös kérdőablak jön fel (deleteObjects).
         button("Törlés", () => { menu.value = null; deleteNode(node); }, {class: "button danger", symbol: "trash", disabled: !!occupied(node.id)}),
-        button("Törlés bekötés meghagyásával", () => { menu.value = null; deleteNode(node, true); },
-          {class: "button danger", symbol: "trash", disabled: !!occupied(node.id)}),
       ] : type === "link" && node ? [
         h("p", {class: "muted"}, "Milyen link legyen?"),
         ...linkKinds.map(([kind, label, symbol]) => button(label, () => { menu.value = null; addLink(node, kind); }, {symbol})),
@@ -3221,8 +3220,15 @@ createApp({
         button("Új munkalap", addSubworksheet, {symbol: "plus", disabled: !online.value}),
         button("Középre állítás", () => { menu.value = null; centerOrigin(); }, {symbol: "center"}),
       ];
+      // A menü mindig a böngészőablakon belül marad (jobbra/lent kilógás helyett eltolódik).
+      const fit = ({el}) => {
+        if (!el?.getBoundingClientRect || typeof innerWidth !== "number") return;
+        const box = el.getBoundingClientRect(), margin = 8;
+        el.style.left = Math.max(margin, Math.min(open.x, innerWidth - box.width - margin)) + "px";
+        el.style.top = Math.max(margin, Math.min(open.y, innerHeight - box.height - margin)) + "px";
+      };
       return h("div", {class: "context-menu panel", "aria-label": "Műveletek",
-        style: {left: open.x + "px", top: open.y + "px"}}, entries);
+        style: {left: open.x + "px", top: open.y + "px"}, onVnodeMounted: fit, onVnodeUpdated: fit}, entries);
     }
 
     function sidebar(label, contents, canvasSettings = false) {
@@ -3510,7 +3516,7 @@ createApp({
         change("elevated", node => { if (raise) node.parent = undefined; return raise ? true : undefined; });
       }, icon("box-elevated"));
       const linkButton = () => single && common.has("link") && !single.link
-        ? h("button", {type: "button", class: "button option-icon", ...controlName("Link hozzáadása"),
+        ? h("button", {type: "button", class: "button option-icon link-add", ...controlName("Link hozzáadása"),
             disabled: !online.value, onClick: event => chooseLink(single, event)}, [icon("link")]) : null;
       const panels = [];
 

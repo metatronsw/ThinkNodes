@@ -872,3 +872,6 @@ svg text { text-rendering: geometricPrecision; }
 .removal-dialog { width: min(420px, 92vw); }
 .removal-dialog ul { margin: 0 0 8px; padding-left: 20px; }
 .file-browser-menu { position: absolute; z-index: 5; }
+.context-menu { max-height: calc(100vh - 16px); overflow: auto; }
+/* A Link hozzáadása gomb a panelsor jobb szélén. */
+.property-options .link-add { margin-left: auto; }
