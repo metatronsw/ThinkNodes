@@ -573,6 +573,9 @@ createApp({
     const canvasPointer = ref(null);
     const view = shallowRef(d3.zoomIdentity);
     const zoomScale = computed(() => view.value.k);
+    // A nagyítás 25%-os lépcsőkre kerekítve: a fogantyúk mérete és a vonalak találati szélessége csak lépcsőváltáskor
+    // változik, így a legtöbb nagyítási lépés nem rajzol újra vonalat és fogantyút (PLAN.md C2).
+    const zoomStep = computed(() => Math.pow(1.25, Math.round(Math.log(view.value.k) / Math.log(1.25))));
     const panning = ref(false);
     const size = ref({width: 0, height: 0});
     const gesture = ref(null);
@@ -2655,8 +2658,7 @@ createApp({
 
     function endpointHandle(edge, end, point) {
       return h("circle", {key: end + "/" + edge.id, transform: "translate(" + point.x + " " + point.y + ")",
-        // A sugár nagyítástól független képernyőméret: a CSS számolja a vászon --zoom változójából (PLAN.md C2).
-        r: 10, style: {r: "calc(10px / var(--zoom, 1))"}, fill: "transparent", tabindex: -1, "pointer-events": alt.value ? "none" : "all",
+        r: 10 / zoomStep.value, fill: "transparent", tabindex: -1, "pointer-events": alt.value ? "none" : "all",
         "data-edge": edge.id, "data-endpoint": end, class: edgeEndpoint(edge, end).node ? "wire-handle is-attached" : "wire-handle",
         onPointerdown: event => pressEndpoint(event, edge, end),
         onContextmenu: event => context(event, "edge", edge.id),
@@ -2752,8 +2754,7 @@ createApp({
         candidates.value.has("edge/" + edge.id) ? h("path", {"data-editor-only": "", d: taper ? d : stroke.d, class: "search-candidate", "clip-path": clipPath,
           "stroke-width": paint.lineWidth + 9 / zoomScale.value}) : null,
         animation.gradient ? h("defs", [animation.gradient]) : null,
-        h("path", {"data-editor-only": "", d, stroke: "transparent", "stroke-width": paint.lineWidth + 10,
-          style: {strokeWidth: `max(${paint.lineWidth + 10}px, calc(14px / var(--zoom, 1)))`},
+        h("path", {"data-editor-only": "", d, stroke: "transparent", "stroke-width": Math.max(paint.lineWidth + 10, 14 / zoomStep.value),
           "pointer-events": "stroke", class: "wire-hit"}),
         selectionColor ? h("path", {class: "wire-glow", d, fill: "none", stroke: selectionColor,
           "stroke-width": paint.lineWidth + 10, "stroke-linecap": "round", "pointer-events": "none", "data-editor-only": ""}) : null,
@@ -2849,7 +2850,7 @@ createApp({
         const [left, top] = view.value.invert([0, 0]);
         const cable = preview.value?.edge;
         const shown = cable ? wireDrawing({...cable, color: "#4168e9"}, wireGeometry(cable)) : null;
-        return h("g", {transform: view.value + " translate(" + centerX + " " + centerY + ")", style: {"--zoom": view.value.k}}, [
+        return h("g", {transform: view.value + " translate(" + centerX + " " + centerY + ")"}, [
             gridVisible.value ? h("rect", {"data-editor-only": "", class: "canvas-grid", x: left-centerX, y: top-centerY, width: size.value.width/view.value.k,
               height: size.value.height/view.value.k, fill: "url(#worksheet-grid)", "pointer-events": "none"}) : null,
             h("path", {"data-editor-only": "", "pointer-events": "none", stroke: "#aab9cf", "stroke-width": 1,
