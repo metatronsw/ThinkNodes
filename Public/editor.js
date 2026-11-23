@@ -2792,16 +2792,23 @@ createApp({
 
     // A végpontok és csomópontok fogantyúi a vonalak és dobozok fölött, külön komponensben:
     // a nagyításfüggő méretük miatt nagyításkor csak ez a réteg rajzolódik újra.
+    // Egy vonal két végpont-fogantyúja; csak a saját vonala geometriájától és a nagyítástól függ.
+    const EdgeHandles = {
+      props: {edge: Object},
+      setup: props => () => {
+        const {from, to} = wireGeometry(displayedEdge(props.edge));
+        return [endpointHandle(props.edge, "source", from), endpointHandle(props.edge, "target", to)];
+      },
+    };
+    const JunctionHandles = {setup: () => () => renderJunctionHandles()};
     const HandleLayer = {
       setup: () => () => {
-        const handles = [], activeHandles = [];
-        for (const original of wireLayers.value.flat()) {
-          const {from, to} = wireGeometry(displayedEdge(original));
-          (selectedEdge(original) ? activeHandles : handles)
-            .push(endpointHandle(original, "source", from), endpointHandle(original, "target", to));
-        }
+        const edges = wireLayers.value.flat();
+        // A kijelölt vonal fogantyúi kerülnek legfelülre.
+        const ordered = [...edges.filter(edge => !selectedEdge(edge)), ...edges.filter(selectedEdge)];
         // Keep the clickable endpoints above the boxes without changing the wire's paint order.
-        return [h("g", {"data-editor-only": "", "data-endpoint-handles": ""}, [...handles, ...activeHandles]), renderJunctionHandles()];
+        return [h("g", {"data-editor-only": "", "data-endpoint-handles": ""},
+          ordered.map(edge => h(EdgeHandles, {key: edge.id, edge}))), h(JunctionHandles)];
       },
     };
 
