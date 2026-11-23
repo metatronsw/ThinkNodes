@@ -1109,7 +1109,7 @@ createApp({
     // Tallózó: a projekt bármely lapjának fájlja vagy .web oldala beilleszthető (feltöltés nélkül, közös hivatkozással).
     function insertFromBrowser() {
       transfer(async () => {
-        const choice = await openFileBrowser(path);
+        const choice = await openFileBrowser(path, csrf);
         if (!choice || !online.value) return;
         const own = path.split("/").slice(1).map(decodeURIComponent).join("/");
         // Saját mappa: belső azonosítóval a megszokott hivatkozás; azonosító nélküli kép/hang közösként, valódi névvel.
@@ -2660,6 +2660,19 @@ createApp({
       });
     }
 
+    // Publikus jog a fájlon (a tulajdonos lap mappájában); a `webPublic` mező a pillangó ikonhoz tükrözi.
+    function toggleFilePublic(node) {
+      const {asset, source} = node.file, next = !node.webPublic;
+      transfer(async () => {
+        await checked(await fetch("/api/file-public/" + fileSheet(path, node.file), {method: "PATCH",
+          headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify({name: asset, publicAccess: next})}));
+        for (const item of board.value.nodes) if (item.file?.asset === asset && item.file?.source === source && !occupied(item.id)) {
+          item.webPublic = next || undefined;
+        }
+        modified();
+      });
+    }
+
     const previewRatios = new Map();
     function renderNode(node) {
       const drawn = node;
@@ -2719,8 +2732,8 @@ createApp({
         width: Math.max(1, drawn.width*inset - 12), height: Math.max(1, layout.previewSpace - 6),
         preserveAspectRatio: "xMidYMid meet", "pointer-events": "none"}) : null;
       // Publikus .web: pillangó ikon a doboz felett középen.
-      const publicMark = node.link?.kind === "web" && node.webPublic ? h("svg", {class: "ui-icon web-public-mark", "pointer-events": "none",
-        x: -10, y: -drawn.height/2 - 26, width: 20, height: 20, viewBox: "0 0 24 24", color: paint(node.textColor, 1)},
+      const publicMark = (node.link?.kind === "web" || node.file) && node.webPublic ? h("svg", {class: "ui-icon web-public-mark", "pointer-events": "none",
+        x: -10, y: -drawn.height/2 - (node.file ? 54 : 26), width: 20, height: 20, viewBox: "0 0 24 24", color: paint(node.textColor, 1)},
         [h("use", {href: "/icons.svg#butterfly"})]) : null;
       const junctionLabel = junction && node.text ? h("g", {class: "node-label-turn", transform: "rotate(" + (node.angle ?? 0) + ")"}, [
         h("text", {class: "node-label", x: drawn.width/2 + 4, y: 4, fill: paint(node.textColor, 1), "font-size": 14}, node.text)]) : null;
@@ -3598,6 +3611,14 @@ createApp({
         numeric(value("width", 12), size => change("width", node => { node.height = size; return size; }), 4, 128, controlName("Átmérő")),
         color("Szín", "fill", 2),
       )]));
+
+      if (single?.file && !isCommonFile(single.file)) panels.push(h("fieldset", {class: "property-group stack link-group"}, [
+        h("legend", [h("span", "Hozzáférés")]),
+        h("div", {class: "link-row link-actions"}, [
+          iconToggle(single.webPublic ? "Publikus: bárki letöltheti" : "Publikus: ki", !!single.webPublic,
+            () => toggleFilePublic(single), icon("butterfly"), !online.value),
+        ]),
+      ]));
 
       if (single?.link) {
         const destination = linkDestination(single.link);

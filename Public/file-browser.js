@@ -24,7 +24,7 @@ const kindIcon = {folder: "folder", web: "website", file: "file"};
 
 // Visszaadja a választott elemet: {kind: "file" | "web", name, source} — `source` a munkalap útvonala
 // a projekt után ("" = projekt gyökere). Mégse esetén null.
-export function openFileBrowser(path) {
+export function openFileBrowser(path, csrf) {
   const project = path.split("/")[0];
   return new Promise(resolve => {
     let chosen = null;
@@ -47,6 +47,36 @@ export function openFileBrowser(path) {
       button.append(icon(symbol), element("span", label), ...extra);
       button.addEventListener("click", onClick);
       return button;
+    }
+
+    // Jobb gombos menü: publikus jog ki/be (fájl: a mappa .settings.json-jában; .web: a .web mappában).
+    let menu = null;
+    const closeMenu = () => { menu?.remove(); menu = null; };
+    dialog.addEventListener("pointerdown", event => { if (menu && !menu.contains(event.target)) closeMenu(); });
+    function contextMenu(event, entry, listing, source) {
+      event.preventDefault();
+      closeMenu();
+      menu = element("div", "", {className: "context-menu panel file-browser-menu"});
+      const label = entry.publicAccess ? "Publikus jog elvétele" : "Publikus jog hozzáadása";
+      const button = element("button", "", {type: "button", className: "button"});
+      button.append(icon("butterfly"), element("span", label));
+      button.addEventListener("click", async () => {
+        closeMenu();
+        try {
+          const next = !entry.publicAccess;
+          const [url, body] = entry.kind === "web"
+            ? ["/api/web-presentations/" + listing.path, {reference: (source ? source + "/" : "") + entry.name, publicWeb: next}]
+            : ["/api/file-public/" + listing.path, {name: entry.asset ?? entry.name, publicAccess: next}];
+          const response = await fetch(url, {method: "PATCH", headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify(body)});
+          if (!response.ok) throw Error((await response.json().catch(() => ({}))).reason ?? "A jog módosítása sikertelen.");
+          await show(listing.path);
+        } catch (error) { status.textContent = error.message; status.hidden = false; }
+      });
+      menu.append(button);
+      const box = dialog.getBoundingClientRect();
+      menu.style.left = (event.clientX - box.left) + "px";
+      menu.style.top = (event.clientY - box.top) + "px";
+      dialog.append(menu);
     }
 
     async function show(sheet) {
@@ -73,10 +103,12 @@ export function openFileBrowser(path) {
           } else if (common && entry.kind === "file") {
             rows.push(row(entry.name, "file", () => { chosen = {kind: "file", name: entry.name, source, project, common}; dialog.close(); }));
           } else {
-            rows.push(row(entry.kind === "web" ? entry.name.replace(/\.web$/, "") : entry.name, kindIcon[entry.kind], () => {
+            const item = row(entry.kind === "web" ? entry.name.replace(/\.web$/, "") : entry.name, kindIcon[entry.kind], () => {
               chosen = {kind: entry.kind, name: entry.name, asset: entry.asset ?? null, source, project, common};
               dialog.close();
-            }, mark));
+            }, mark);
+            if (listing.manageable && csrf) item.addEventListener("contextmenu", event => contextMenu(event, entry, listing, source));
+            rows.push(item);
           }
         }
         list.replaceChildren(...(rows.length ? rows : [element("p", "Üres mappa.", {className: "muted"})]));

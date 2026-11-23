@@ -1548,6 +1548,27 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
+    private func isPublic(_ name: String, metadata: DocumentPolicy) -> Bool {
+        let filename = metadata.mediaFiles?[name] ?? name
+        return metadata.publicFiles?.contains(filename) == true
+    }
+
+    /// Publikus jog ki/be egy fájlon (a lap mappájában, fájlnév szerint); a lap szerkesztői állíthatják.
+    func setFilePublic(_ name: String, publicAccess: Bool, in path: WorksheetPath, user: User?, unlocks: Set<String>) throws {
+        try lock.withLock {
+            let ctx = try context(path)
+            guard accessLocked(ctx, user: user, unlocks: unlocks).editable else { throw Abort(.forbidden) }
+            guard let file = try attachments(at: worksheetURL(path), named: name, metadata: ctx.local).first else { throw Abort(.notFound) }
+            var next = ctx
+            var metadata = ctx.local
+            var names = Set(metadata.publicFiles ?? [])
+            if publicAccess { names.insert(file.lastPathComponent) } else { names.remove(file.lastPathComponent) }
+            metadata.publicFiles = names.isEmpty ? nil : names.sorted()
+            next.rules[ctx.directory] = metadata
+            try persist(next, previous: ctx)
+        }
+    }
+
     /// Másik lap mappájában lévő fájl (zár alatt hívandó).
     private func sharedFile(_ owner: WorksheetPath, named name: String) throws -> URL? {
         let ctx = try context(owner)
@@ -1596,6 +1617,11 @@ final class WorksheetStore: @unchecked Sendable {
             let url = try worksheetURL(path)
             let ctx = try context(path)
             _ = try read(worksheetURL(path))
+            if let name, isPublic(name, metadata: ctx.local) {
+                // Publikus fájl: bárki letöltheti, bejelentkezés és jelszó nélkül is.
+                return try attachments(at: url, named: name, metadata: ctx.local)
+            }
+            if try readSettings().requireLogin && user == nil { throw Abort(.unauthorized) }
             let access = accessLocked(ctx, user: user, unlocks: unlocks)
             try authorize(access, user: user)
             return try attachments(at: url, named: name, metadata: ctx.local)

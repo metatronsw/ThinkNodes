@@ -653,6 +653,18 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         return .noContent
     }
 
+    app.patch("api", "file-public", "**") { req async throws -> HTTPStatus in
+        struct Change: Content { let name: String; let publicAccess: Bool }
+        let identity = try session(req, store: store)
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        let change = try req.content.decode(Change.self)
+        try await req.application.threadPool.runIfActive {
+            try store.setFilePublic(change.name, publicAccess: change.publicAccess, in: path, user: identity.user, unlocks: identity.unlocks)
+        }
+        return .noContent
+    }
+
     app.post("api", "attachment", "**") { req async throws -> Response in
         let identity = try session(req, store: store)
         let user = identity.user
@@ -703,7 +715,7 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
 
     app.get("api", "attachment", "**") { req async throws -> Response in
         let identity = try session(req, store: store)
-        if try await req.application.threadPool.runIfActive({ try store.settings().requireLogin }) && identity.user == nil { throw Abort(.unauthorized) }
+        // A bejelentkezést a store ellenőrzi: publikus fájl bejelentkezés nélkül is letölthető.
         let path = try WorksheetPath(req.parameters.getCatchall())
         guard let name = req.query[String.self, at: "name"] else { throw Abort(.badRequest) }
         let file: URL

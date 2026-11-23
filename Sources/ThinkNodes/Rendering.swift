@@ -23,7 +23,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=40"></script>
+        <script type="module" src="/editor.js?v=41"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -895,8 +895,11 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
     let top = node.position.y - node.height / 2 - 30
     let height = 30 + node.height + (below.isEmpty ? 0 : 400)
     let underneath = below.isEmpty ? "" : "<div class=\"node-below\">\(below)</div>"
+    // Publikus fájl: pillangó ikon a fájlnév-sor fölött középen.
+    let publicMark = node.webPublic == true
+        ? "<svg class=\"ui-icon web-public-mark\" x=\"\(number(node.position.x - 10))\" y=\"\(number(top - 24))\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" color=\"\(escaped(node.textColor))\" pointer-events=\"none\"><use href=\"/icons.svg#butterfly\"/></svg>" : ""
     return """
-        \(translated)<foreignObject class="node-file-frame" x="\(number(node.position.x - node.width / 2))" y="\(number(top))" width="\(number(node.width))" height="\(number(height))"><div xmlns="http://www.w3.org/1999/xhtml" class="node-file-stack" style="color:\(escaped(node.textColor))"><div class="node-above" style="height:30px">\(header)</div><div data-file-ink="\(escaped(node.textColor))" style="height:\(number(node.height))px" class="node-file node-\(node.root)\(node.isImage ? "" : " mode-" + node.resolvedBackgroundMode.rawValue)"><div class="node-body">\(content)</div></div>\(underneath)</div></foreignObject>
+        \(translated)\(publicMark)<foreignObject class="node-file-frame" x="\(number(node.position.x - node.width / 2))" y="\(number(top))" width="\(number(node.width))" height="\(number(height))"><div xmlns="http://www.w3.org/1999/xhtml" class="node-file-stack" style="color:\(escaped(node.textColor))"><div class="node-above" style="height:30px">\(header)</div><div data-file-ink="\(escaped(node.textColor))" style="height:\(number(node.height))px" class="node-file node-\(node.root)\(node.isImage ? "" : " mode-" + node.resolvedBackgroundMode.rawValue)"><div class="node-body">\(content)</div></div>\(underneath)</div></foreignObject>
         """
 }
 
