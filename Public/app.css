@@ -835,3 +835,5 @@ svg text { text-rendering: geometricPrecision; }
 .site-header.stacked > .header-parent { order: 5; flex: 1 0 100%; display: flex; }
 .site-header.stacked .header-open { flex: 1; width: 100%; max-width: none; }
 .site-header.stacked .header-open input { flex: 1; width: auto; min-width: 0; }
+/* Megtekintő: a vászon alatti gombsor ugyanakkora távolságra van a szövegdoboztól, mint a szövegdoboz a vászontól. */
+[data-viewer-notes]:has(.worksheet-notes) + .viewer-meta { margin-top: 18px; }
