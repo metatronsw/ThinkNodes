@@ -644,7 +644,7 @@ final class WorksheetStore: @unchecked Sendable {
             directory.appendPathComponent(part)
             let url = try settingsURL(directory)
             guard files.fileExists(atPath: url.path) else { throw Abort(.notFound) }
-            rules[directory] = try JSONDecoder().decode(DocumentPolicy.self, from: Data(contentsOf: url))
+            rules[directory] = try readPolicy(url)
             chain.append(directory)
         }
         let key = (Array(parts.dropFirst()) + [file.lastPathComponent]).joined(separator: "/")
@@ -1519,7 +1519,44 @@ final class WorksheetStore: @unchecked Sendable {
     private func readSettings() throws -> SiteSettings {
         try rejectLink(settingsFile)
         guard files.fileExists(atPath: settingsFile.path) else { return SiteSettings() }
-        return try JSONDecoder().decode(SiteSettings.self, from: Data(contentsOf: settingsFile))
+        return try cached(settingsFile, in: &settingsCache) { try JSONDecoder().decode(SiteSettings.self, from: $0) }
+    }
+
+    // MARK: Memóriabeli gyorsítótár (PLAN.md A1)
+    // A munkalapok, a mappánkénti házirendek és a webhely-beállítások dekódolt (és validált) példánya a fájl
+    // módosítási ideje és mérete szerint érvényes. Az adatkönyvtárat egyelőre csak a szerver írja; ha kézzel
+    // módosul, a megváltozott időbélyeg miatt újraolvasódik. A tárolón keresztüli írás azonnal érvényteleníti.
+    // Minden hozzáférés a tároló zárja alatt történik.
+    private struct FileStamp: Equatable { let modified: Date?; let size: Int? }
+    private var sheetCache: [String: (stamp: FileStamp, value: Worksheet)] = [:]
+    private var policyCache: [String: (stamp: FileStamp, value: DocumentPolicy)] = [:]
+    private var settingsCache: [String: (stamp: FileStamp, value: SiteSettings)] = [:]
+
+    private func stamp(_ url: URL) -> FileStamp? {
+        guard let attributes = try? files.attributesOfItem(atPath: url.path) else { return nil }
+        return FileStamp(modified: attributes[.modificationDate] as? Date, size: (attributes[.size] as? NSNumber)?.intValue)
+    }
+
+    private func cached<Value>(_ url: URL, in cache: inout [String: (stamp: FileStamp, value: Value)],
+                               decode: (Data) throws -> Value) throws -> Value {
+        let key = url.standardizedFileURL.path
+        let current = stamp(url)
+        if let current, let hit = cache[key], hit.stamp == current { return hit.value }
+        let value = try decode(Data(contentsOf: url))
+        if cache.count > 1_000 { cache.removeAll() }
+        if let current { cache[key] = (current, value) }
+        return value
+    }
+
+    private func invalidate(_ url: URL) {
+        let key = url.standardizedFileURL.path
+        sheetCache.removeValue(forKey: key)
+        policyCache.removeValue(forKey: key)
+        settingsCache.removeValue(forKey: key)
+    }
+
+    private func readPolicy(_ url: URL) throws -> DocumentPolicy {
+        try cached(url, in: &policyCache) { try JSONDecoder().decode(DocumentPolicy.self, from: $0) }
     }
 
     private func readUsers() throws -> [User] {
@@ -1536,21 +1573,27 @@ final class WorksheetStore: @unchecked Sendable {
     }
 
     private func saveSiteSettings(_ settings: SiteSettings) throws {
+        invalidate(settingsFile)
+        defer { invalidate(settingsFile) }
         try encoder.encode(settings).write(to: settingsFile, options: .atomic)
         try files.setAttributes([.posixPermissions: 0o600], ofItemAtPath: settingsFile.path)
     }
 
     private func read(_ url: URL) throws -> Worksheet {
         guard files.fileExists(atPath: url.path) else { throw Abort(.notFound, reason: "A munkalap nem található.") }
-        let worksheet = try Worksheet.decodeFile(Data(contentsOf: url))
-        guard worksheet.schemaVersion == Worksheet.currentSchema else {
-            throw Abort(.unprocessableEntity, reason: "Régi formátumú munkalap (\(worksheet.schemaVersion). verzió). Az új objektumtípusok miatt nem tölthető be; törölhető.")
+        return try cached(url, in: &sheetCache) { data in
+            let worksheet = try Worksheet.decodeFile(data)
+            guard worksheet.schemaVersion == Worksheet.currentSchema else {
+                throw Abort(.unprocessableEntity, reason: "Régi formátumú munkalap (\(worksheet.schemaVersion). verzió). Az új objektumtípusok miatt nem tölthető be; törölhető.")
+            }
+            try worksheet.validate()
+            return worksheet
         }
-        try worksheet.validate()
-        return worksheet
     }
 
     private func write(_ value: some Encodable, to url: URL) throws {
+        invalidate(url)
+        defer { invalidate(url) }
         try (encoder.encode(value) + Data([10])).write(to: url, options: .atomic)
     }
 
@@ -1675,7 +1718,7 @@ extension WorksheetStore {
         guard files.fileExists(atPath: url.path) else { return nil }
         let info = try url.resourceValues(forKeys: [.isRegularFileKey])
         guard info.isRegularFile == true else { throw Abort(.notFound) }
-        return try JSONDecoder().decode(DocumentPolicy.self, from: Data(contentsOf: url))
+        return try readPolicy(url)
     }
 
     private func webDirectory(_ name: String, in parent: URL) throws -> URL? {

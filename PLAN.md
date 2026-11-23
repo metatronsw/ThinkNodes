@@ -84,6 +84,7 @@ Gépelés, árnyékok és átlátszó (elmosott/áttetsző) dobozok, nagyítás.
 ## A) Szerver
 
 ### A1 – Memóriabeli gyorsítótár
+- **Kész:** munkalapok (dekódolva + validálva), mappánkénti házirendek és webhely-beállítások gyorsítótára a tárolóban (`WorksheetStore`), a fájl módosítási ideje + mérete szerint érvényesítve, a tárolón keresztüli írás azonnal érvényteleníti. Mérve (debug build, 300 dobozos munkalap, kérésenként medián): presence 49 → 6 ms, főoldal 50 → 8,5 ms, előnézeti kép 46 → 5 ms, munkalap-API 66 → 24 ms, megtekintő oldal 670 → 590 ms.
 - Munkalapok (dekódolt + validált), a `.settings.json` és a házirendek gyorsítótára; érvényesség: módosítási idő + méret, írásnál közvetlen frissítés.
 - Ma minden kérés lemezről olvas, a munkamenet-ellenőrzés is (`authenticatedUser` → `settings.json`).
 
