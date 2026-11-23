@@ -691,9 +691,22 @@ createApp({
       problem.value = error.message;
     }, {editing: true, onCursor: mouse?.receive, onMotion: receiveMotion, rate: Number(motionRate) || 33});
 
+    // Mentés ütemezése. Mezőszerkesztés (gépelés) közben a mentés a szünetre vár (0,5 mp), de legfeljebb 2 mp-et,
+    // így nem megy ki minden leütés után a teljes munkalap; egyébként (húzás, gomb) 70 ms után ment. PLAN.md C5.
+    let saveDue = null;
+    function fireSave() { saveTimer = null; saveDue = null; save(); }
     function scheduleSave() {
-      if (saveTimer) return;
-      saveTimer = setTimeout(() => { saveTimer = null; save(); }, 70);
+      if (!editingField) {
+        if (saveTimer && saveDue === null) return;
+        clearTimeout(saveTimer);
+        saveDue = null;
+        saveTimer = setTimeout(fireSave, 70);
+        return;
+      }
+      const now = performance.now();
+      saveDue ??= now + 2000;
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(fireSave, Math.max(0, Math.min(500, saveDue - now)));
     }
 
     async function selectNode(id, edge = null) {
@@ -784,6 +797,8 @@ createApp({
       editingField = false;
       if (fieldChanged) recordChanges();
       fieldChanged = false;
+      // A mező elhagyásakor a gépelés miatt késleltetett mentés azonnal (70 ms) indul.
+      if (saveDue !== null && dirty.value) scheduleSave();
     }
 
     function replay(forward) {

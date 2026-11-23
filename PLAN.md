@@ -66,6 +66,8 @@ Gépelés, árnyékok és átlátszó (elmosott/áttetsző) dobozok, nagyítás.
 - Terv: árnyékhoz előre elmosott alakzat vagy egyszerű eltolt, áttetsző kitöltés szűrő nélkül; elmosott háttérhez egy közös szűrő, kisebb `stdDeviation`; húzás/nagyítás közben a szűrők ideiglenes kikapcsolása (`.is-moving` osztály). Mérni kell, melyik hozza a legtöbbet.
 
 ### C5 – Gépelés
+- **1. lépés kész:** mezőszerkesztés (gépelés) közben a mentés a szünetre vár (0,5 mp), de legfeljebb 2 mp-et; a mező elhagyásakor azonnal ment. Mérve (300 doboz, 32 leütés ~8 karakter/s): teljes mentés 16 → 2 db, feltöltés 1,5 MB → 188 KB, presence-ébresztés 16 → 2; a doboz szövege továbbra is ~100 ms-on belül (p90) frissül. Oldalbezáráskor a meglévő figyelmeztetés véd a mentetlen változásra.
+- A szöveg-előfeldolgozás (`/api/text/canvas`) leütésenként egy kis kérés (csak az új szöveg); ez adja a ~100 ms-os késést, a kliensoldali markdown-feldolgozás a szerverrel való egyezés miatt nem éri meg.
 - Minden leütés: `modified()` → `recordChanges()` a teljes munkalap JSON-másolatával és diffjével, majd 70 ms múlva teljes mentés, és a szerveren a szövegtördelés kérése.
 - Terv: mezőszerkesztés közben csak a mező végén rögzíteni a visszavonási lépést (részben már így van), a mentést ritkítani (pl. 300 ms tétlenség), a szöveg-előfeldolgozást (`/api/text/canvas`) csak a szerkesztett dobozra kérni. C1 után a leütés csak egy dobozt rajzol újra.
 
