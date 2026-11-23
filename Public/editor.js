@@ -2655,7 +2655,8 @@ createApp({
 
     function endpointHandle(edge, end, point) {
       return h("circle", {key: end + "/" + edge.id, transform: "translate(" + point.x + " " + point.y + ")",
-        r: 10 / zoomScale.value, fill: "transparent", tabindex: -1, "pointer-events": alt.value ? "none" : "all",
+        // A sugár nagyítástól független képernyőméret: a CSS számolja a vászon --zoom változójából (PLAN.md C2).
+        r: 10, style: {r: "calc(10px / var(--zoom, 1))"}, fill: "transparent", tabindex: -1, "pointer-events": alt.value ? "none" : "all",
         "data-edge": edge.id, "data-endpoint": end, class: edgeEndpoint(edge, end).node ? "wire-handle is-attached" : "wire-handle",
         onPointerdown: event => pressEndpoint(event, edge, end),
         onContextmenu: event => context(event, "edge", edge.id),
@@ -2751,7 +2752,8 @@ createApp({
         candidates.value.has("edge/" + edge.id) ? h("path", {"data-editor-only": "", d: taper ? d : stroke.d, class: "search-candidate", "clip-path": clipPath,
           "stroke-width": paint.lineWidth + 9 / zoomScale.value}) : null,
         animation.gradient ? h("defs", [animation.gradient]) : null,
-        h("path", {"data-editor-only": "", d, stroke: "transparent", "stroke-width": Math.max(paint.lineWidth + 10, 14 / zoomScale.value),
+        h("path", {"data-editor-only": "", d, stroke: "transparent", "stroke-width": paint.lineWidth + 10,
+          style: {strokeWidth: `max(${paint.lineWidth + 10}px, calc(14px / var(--zoom, 1)))`},
           "pointer-events": "stroke", class: "wire-hit"}),
         selectionColor ? h("path", {class: "wire-glow", d, fill: "none", stroke: selectionColor,
           "stroke-width": paint.lineWidth + 10, "stroke-linecap": "round", "pointer-events": "none", "data-editor-only": ""}) : null,
@@ -2839,8 +2841,33 @@ createApp({
       return panning.value ? "grabbing" : undefined;
     }
 
+    // A nézet (pásztázás, nagyítás) és a húzás közbeni előnézetek külön komponensben: így a nagyítás és a
+    // pásztázás nem rajzolja újra a teljes felületet (fejléc, panelek, ellenőrző). PLAN.md C2/C3.
+    const ViewLayer = {
+      setup: () => () => {
+        const [centerX, centerY] = center();
+        const [left, top] = view.value.invert([0, 0]);
+        const cable = preview.value?.edge;
+        const shown = cable ? wireDrawing({...cable, color: "#4168e9"}, wireGeometry(cable)) : null;
+        return h("g", {transform: view.value + " translate(" + centerX + " " + centerY + ")", style: {"--zoom": view.value.k}}, [
+            gridVisible.value ? h("rect", {"data-editor-only": "", class: "canvas-grid", x: left-centerX, y: top-centerY, width: size.value.width/view.value.k,
+              height: size.value.height/view.value.k, fill: "url(#worksheet-grid)", "pointer-events": "none"}) : null,
+            h("path", {"data-editor-only": "", "pointer-events": "none", stroke: "#aab9cf", "stroke-width": 1,
+              d: "M -8 0 H 8 M 0 -8 V 8"}),
+            h(CanvasScene),
+            preview.value?.junction ? h("circle", {"data-editor-only": "", cx: preview.value.junction.x, cy: preview.value.junction.y,
+              r: 9 / view.value.k, stroke: "#078469", fill: "#b9f3e1", "stroke-width": 2 / view.value.k, "pointer-events": "none"}) : null,
+            shown ? h("g", {"pointer-events": "none"}, [h("path", shown.stroke),
+              renderArrow(shown.ends.source, shown.paint.color), renderArrow(shown.ends.target, shown.paint.color)]) : null,
+            gesture.value?.type === "rectangle" ? h("rect", {class: "marquee", ...rectangle(gesture.value.initial,gesture.value.point),
+              "stroke-dasharray": rectangleTouches(gesture.value) ? "6 4" : undefined,
+              fill: "#4168e922", stroke: "#4168e9", "vector-effect": "non-scaling-stroke", "pointer-events": "none"}) : null,
+            mouse ? h("g", {class: "peer-cursors", "data-mouse-layer": ""}) : null,
+          ]);
+      },
+    };
+
     function renderCanvas() {
-      const [centerX, centerY] = center();
       const spacing = gridSpacing.value;
       const {grid, glass} = graphics.value;
       const drafting = grid === "drafting";
@@ -2848,9 +2875,6 @@ createApp({
       const gridSize = drafting ? spacing * 5 : spacing;
       const gridLine = at => `M0 ${at} H${gridSize} M${at} 0 V${gridSize}`;
       const gridStroke = {stroke: "#789bb0", fill: "none"};
-      const [left, top] = view.value.invert([0, 0]);
-      const cable = preview.value?.edge;
-      const shown = cable ? wireDrawing({...cable, color: "#4168e9"}, wireGeometry(cable)) : null;
       return h("div", {class: "canvas-area"}, [
         h("svg", {ref: canvas, class: ["canvas", "editor-canvas", {"ctrl-held": ctrl.value, "alt-held": alt.value}],
           "data-drag-cursor": dragCursor(), "aria-label": "Ötletvászon",
@@ -2919,21 +2943,7 @@ createApp({
             ] : []),
           ]),
           h("rect", {class: "canvas-background", width: "100%", height: "100%", fill: paint(board.value.background, 0), "pointer-events": "none"}),
-          h("g", {transform: view.value + " translate(" + centerX + " " + centerY + ")"}, [
-            gridVisible.value ? h("rect", {"data-editor-only": "", class: "canvas-grid", x: left-centerX, y: top-centerY, width: size.value.width/view.value.k,
-              height: size.value.height/view.value.k, fill: "url(#worksheet-grid)", "pointer-events": "none"}) : null,
-            h("path", {"data-editor-only": "", "pointer-events": "none", stroke: "#aab9cf", "stroke-width": 1,
-              d: "M -8 0 H 8 M 0 -8 V 8"}),
-            h(CanvasScene),
-            preview.value?.junction ? h("circle", {"data-editor-only": "", cx: preview.value.junction.x, cy: preview.value.junction.y,
-              r: 9 / view.value.k, stroke: "#078469", fill: "#b9f3e1", "stroke-width": 2 / view.value.k, "pointer-events": "none"}) : null,
-            shown ? h("g", {"pointer-events": "none"}, [h("path", shown.stroke),
-              renderArrow(shown.ends.source, shown.paint.color), renderArrow(shown.ends.target, shown.paint.color)]) : null,
-            gesture.value?.type === "rectangle" ? h("rect", {class: "marquee", ...rectangle(gesture.value.initial,gesture.value.point),
-              "stroke-dasharray": rectangleTouches(gesture.value) ? "6 4" : undefined,
-              fill: "#4168e922", stroke: "#4168e9", "vector-effect": "non-scaling-stroke", "pointer-events": "none"}) : null,
-            mouse ? h("g", {class: "peer-cursors", "data-mouse-layer": ""}) : null,
-          ]),
+          h(ViewLayer),
           spacePan.value ? h("rect", {width: "100%", height: "100%", fill: "none",
             "pointer-events": "all", "aria-hidden": "true", "data-editor-only": ""}) : null,
         ]),
