@@ -2679,6 +2679,8 @@ createApp({
         role: rootType(node.type) === "audio" ? "group" : "button",
         "aria-label": nodeName(node), "data-link": destination ? "" : undefined,
         class: [nodeClasses(node, containerIDs.value.has(node.id)), {"editing-object": editingObject.value === node.id, occupied: occupied(node.id), claimed: !!owner, "own-selected": ownSelected}],
+        // A saját kijelölés glow-ja (CSS drop-shadow currentColor) a kijelölés színét veszi fel.
+        color: ownSelected ? selectionTint() : undefined,
         transform: "translate(" + position.x + " " + position.y + ")",
         onPointerenter: event => {
           if (!gesture.value && isBox(node) && layout.overflow && node.text) showTooltip(event, async signal => {
@@ -2702,7 +2704,7 @@ createApp({
           stroke: peerOwner ? peerOwner.color : selectionTint(), "stroke-width": 3, "pointer-events": "none"}) : null,
         // Saját kijelölés látható felület nélküli objektumon (Free doboz, átlátszó kép, csomópont): vékony, nyugodt körvonal.
         ownSelected && !peerOwner && (junction || backgroundMode(node) === "free" || isImage(node))
-          ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-own", fill: "none", stroke: selectionTint(), "stroke-width": 2.5, "pointer-events": "none"}) : null,
+          ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-own", color: selectionTint(), fill: "none", stroke: selectionTint(), "stroke-width": 2.5, "pointer-events": "none"}) : null,
         candidates.value.has("node/" + node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "search-candidate", "stroke-width": 3}) : null,
         ...animateBox(isBox(node) ? node.animation : undefined, [
           elevationShadow(drawn),
@@ -2847,11 +2849,8 @@ createApp({
         animation.gradient ? h("defs", [animation.gradient]) : null,
         h("path", {"data-editor-only": "", d, stroke: "transparent", "stroke-width": Math.max(paint.lineWidth + 10, 14 / zoomStep.value),
           "pointer-events": "stroke", class: "wire-hit"}),
-        selectionColor ? h("path", {class: "wire-glow", d, fill: "none", stroke: selectionColor,
-          "stroke-width": paint.lineWidth + 10, "stroke-linecap": "round", "pointer-events": "none", "data-editor-only": ""}) : null,
-        local ? h("path", {class: "wire-own-underlay", d, fill: "none", stroke: paint.color, "stroke-width": paint.lineWidth + 4,
-          "stroke-linecap": "round", "pointer-events": "none", "data-editor-only": ""}) : null,
-        h("g", {class: {"wire-own": local}}, [
+        // Kijelölés: a meglévő vonal, nyilak és animáció kap árnyék alapú glow-t, így a jelzés pontosan az eredeti geometriát követi.
+        h("g", {class: {"wire-own": local, "wire-glow": !!selectionColor}, style: selectionColor || local ? {color: selectionColor ?? paint.color} : undefined}, [
           h("path", {class: "wire-line", ...stroke, ...(taper ? {fill: shaftColor} : {stroke: shaftColor}), "pointer-events": "none", "clip-path": clipPath}, animation.shaft ? [animation.shaft] : undefined),
           renderArrow(ends.source, color, animatedArrows),
           renderArrow(ends.target, color, animatedArrows),

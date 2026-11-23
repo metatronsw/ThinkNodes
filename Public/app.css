@@ -324,7 +324,8 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .site-header .button.primary { color: white; background: var(--accent); }
 
 #editor { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.node.claimed:focus { outline: none; }
+/* Egérrel kattintva a böngésző fókuszkerete nem látszik (első kattintáskor felvillant, amíg a kijelölés meg nem érkezett). */
+.node:focus:not(:focus-visible), .node.claimed:focus { outline: none; }
 @media (max-width: 1100px) {
   .site-header { grid-template-columns: 1fr auto 1fr; }
   .header-left { grid-column: 1 / -1; flex-wrap: wrap; }
@@ -446,7 +447,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .search-candidate { color: #cf8200; fill: none; stroke: currentColor; stroke-dasharray: 6 3; pointer-events: none; }
 
 .selection-glow, .search-candidate { filter: drop-shadow(0 0 6px currentColor); }
-.wire-glow { filter: drop-shadow(0 0 3px currentColor) drop-shadow(0 0 7px currentColor); opacity: .85; }
+.wire-glow { filter: drop-shadow(0 0 3px currentColor) drop-shadow(0 0 7px currentColor); }
 .wire-selected { filter: drop-shadow(0 0 4px currentColor) drop-shadow(0 0 8px currentColor); }
 
 @keyframes container-drop-pulse {
@@ -583,7 +584,7 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 }
 :root[data-display="dark"] :is(.button, .guide-nav a):hover { background-color: var(--control-hover); }
 :root[data-display="dark"] .inspector button[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: -2px; }
-:is(.editor-workspace, .canvas) :is(.selection-glow, .wire-glow) { filter: drop-shadow(0 0 var(--sheet-glow, 4px) currentColor); }
+:is(.editor-workspace, .canvas) :is(.selection-glow, .wire-glow) { filter: drop-shadow(0 0 var(--sheet-glow, 4px) currentColor) drop-shadow(0 0 calc(var(--sheet-glow, 4px) * 2.5) currentColor); }
 .color-sample, .color-presets button { width: 32px; height: 32px; padding: 3px; border-radius: 7px; }
 .palette-tile { display: block; width: 100%; height: 100%; border-radius: 4px; }
 .transparent-swatch { background: conic-gradient(#c3cbd7 25%, #fff 0 50%, #c3cbd7 0 75%, #fff 0) 0 0 / 10px 10px; }
@@ -737,10 +738,10 @@ svg text { text-rendering: geometricPrecision; }
 /* Saját kijelölés (szerkesztő saját nézete): világosabb szín, vastagabb keret/vonal, glow és pulzálás nélkül.
    A többi felhasználó kijelölése továbbra is .selection-glow / .wire-glow. */
 .own-selected :is(.node-surface, .node-frame):not([data-locked-outline]) { stroke-width: 4px; }
-.own-selected .node-surface:not([filter]) { filter: brightness(1.18); }
+.own-selected .node-surface:not([filter]) { filter: brightness(1.18) drop-shadow(0 0 2px currentColor) drop-shadow(0 0 6px currentColor); }
+.own-selected .node-frame, .selection-own { filter: drop-shadow(0 0 2px currentColor) drop-shadow(0 0 6px currentColor); }
 .own-selected .junction-surface { filter: brightness(1.3); }
-.wire-own, .wire-own-underlay { filter: brightness(1.3); }
-.wire-own-underlay { opacity: .55; }
+.wire-own { filter: brightness(1.3) drop-shadow(0 0 2px currentColor) drop-shadow(0 0 5px currentColor); }
 /* Útvonal gombok: munkalaponként a mappa neve; az aktuális kiemelve, nem kattintható. */
 /* Elválasztó (›) a gombok közötti résben: nulla szélességű, így nem növeli a távolságot. */
 .crumb-sep { flex: none; width: 0; margin-inline: calc(var(--crumb-gap, 13px) / -2); display: inline-flex; justify-content: center; color: #97a9c5; font-size: 1rem; line-height: 1; pointer-events: none; user-select: none; }
@@ -853,7 +854,7 @@ svg text { text-rendering: geometricPrecision; }
 .passive-frame > .participants { right: 6px; bottom: 6px; }
 
 /* Mozgás közben (pásztázás, nagyítás, húzás) a drága szűrők ki vannak kapcsolva; a mozgás végén visszaállnak. PLAN.md C4. */
-.editor-workspace[data-moving] .editor-canvas :is(.node-surface[filter], .selection-glow, .search-candidate, .wire-glow, .wire-selected) {
+.editor-workspace[data-moving] .editor-canvas :is(.node-surface[filter], .selection-glow, .selection-own, .search-candidate, .wire-glow, .wire-selected) {
   filter: none;
   animation: none;
 }
