@@ -10,8 +10,21 @@ export function attachmentURL(path, name) {
 // A fájlt tároló munkalap útvonala: `file.source` a projekten belüli másik lap ("" = projekt gyökere), nélküle a saját lap.
 export function fileSheet(path, file) {
   if (file?.source == null) return path;
+  if (isCommonFile(file)) throw Error("A közös könyvtár fájljai nem módosíthatók.");
   const project = path.split("/")[0];
   return [project, ...(file.source ? file.source.split("/").map(part => encodeURIComponent(part)) : [])].join("/");
+}
+
+// Közös könyvtár (Public/common): `file.source` "@common" vagy "@common/almappa"; csak olvasható, statikus cím.
+export const commonSource = "@common";
+export const isCommonFile = file => file?.source === commonSource || file?.source?.startsWith(commonSource + "/");
+
+// A fájl tartalmának címe a dobozon (saját lap, másik lap vagy közös könyvtár).
+export function fileURL(path, file, asset = file.asset) {
+  if (isCommonFile(file)) {
+    return "/" + ["common", ...file.source.split("/").slice(1), asset].map(part => encodeURIComponent(part)).join("/");
+  }
+  return assetURL(fileSheet(path, file), asset);
 }
 
 export function assetURL(path, asset) {
@@ -208,7 +221,8 @@ export async function pngForClipboard(url) {
 export async function sharedFileBox(name, sheet, source, asset = name) {
   const ext = name.includes(".") ? name.split(".").pop() : "";
   const media = mediaType(ext);
-  const url = assetURL(sheet, asset);
+  const url = source != null && (source === commonSource || source.startsWith(commonSource + "/"))
+    ? fileURL("", {source, asset}) : assetURL(sheet, asset);
   if (media === "image") {
     const image = new Image();
     image.src = url;

@@ -583,3 +583,34 @@ enum WebScreenshot {
         return existing.flatMap(asset)
     }
 }
+
+/// Közös könyvtár (Public/common): ikonok, képek, hangok minden projektnek; csak olvasható.
+enum CommonLibrary {
+    static func list(_ folders: [String], publicDirectory: String) throws -> BrowseListing {
+        let root = URL(fileURLWithPath: publicDirectory).appendingPathComponent("common", isDirectory: true)
+        var directory = root
+        for folder in folders {
+            guard validSegment(folder) else { throw Abort(.notFound) }
+            directory.appendPathComponent(folder, isDirectory: true)
+        }
+        let keys: [URLResourceKey] = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey]
+        guard (try? directory.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])).map({ $0.isDirectory == true && $0.isSymbolicLink != true }) == true
+        else { return BrowseListing(path: CanvasFile.common, parent: nil, manageable: false, entries: []) }
+        var entries: [BrowseListing.Entry] = []
+        for url in try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]) {
+            let info = try url.resourceValues(forKeys: Set(keys))
+            guard info.isSymbolicLink != true, validSegment(url.lastPathComponent) else { continue }
+            if info.isDirectory == true { entries.append(.init(name: url.lastPathComponent, kind: "folder", publicAccess: true)) }
+            else if info.isRegularFile == true { entries.append(.init(name: url.lastPathComponent, kind: "file", publicAccess: true)) }
+        }
+        entries.sort { ($0.kind == "folder" ? 0 : 1, $0.name.lowercased()) < ($1.kind == "folder" ? 0 : 1, $1.name.lowercased()) }
+        let path = ([CanvasFile.common] + folders.map(WorksheetPath.encodeSegment)).joined(separator: "/")
+        let parent = folders.isEmpty ? nil : ([CanvasFile.common] + folders.dropLast().map(WorksheetPath.encodeSegment)).joined(separator: "/")
+        return BrowseListing(path: path, parent: parent, manageable: false, entries: entries)
+    }
+
+    private static func validSegment(_ value: String) -> Bool {
+        !value.isEmpty && value.utf8.count <= 200 && !value.hasPrefix(".") && !value.contains("/") && !value.contains("\\")
+            && !value.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
+    }
+}

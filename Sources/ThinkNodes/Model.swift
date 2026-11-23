@@ -68,12 +68,27 @@ struct CanvasFile: Codable, Equatable, Sendable {
     /// Szövegfájl változásszámlálója: mentés után nő, a többi kliens ebből tudja, hogy újra kell tölteni.
     var rev: Int?
 
+    /// Közös könyvtár (Public/common): minden projekt olvashatja, senki nem módosíthatja.
+    static let common = "@common"
+
     static func validSource(_ source: String) -> Bool {
-        source.isEmpty || (try? WorksheetPath(["project"] + source.split(separator: "/", omittingEmptySubsequences: false).map(String.init))) != nil
+        if source == common { return true }
+        let path = source.hasPrefix(common + "/") ? String(source.dropFirst(common.count + 1)) : source
+        return path.isEmpty || (try? WorksheetPath(["project"] + path.split(separator: "/", omittingEmptySubsequences: false).map(String.init))) != nil
     }
 
-    /// A fájlt tároló munkalap útvonala; `own` a doboz saját lapja.
+    var isCommon: Bool { source == Self.common || source?.hasPrefix(Self.common + "/") == true }
+
+    /// Közös könyvtárbeli fájl címe (`/common/...`), nyilvános statikus fájlként.
+    var commonURL: String? {
+        guard isCommon, let source else { return nil }
+        let folders = source.split(separator: "/").dropFirst().map { WorksheetPath.encodeSegment(String($0)) }
+        return "/" + (["common"] + folders + [WebPresentationRequest.encodeAsset(asset)]).joined(separator: "/")
+    }
+
+    /// A fájlt tároló munkalap útvonala; `own` a doboz saját lapja. Közös könyvtárnál nil.
     func sheet(from own: WorksheetPath) -> WorksheetPath? {
+        guard !isCommon else { return nil }
         guard let source else { return own }
         return try? WorksheetPath([own.parts[0]] + (source.isEmpty ? [] : source.split(separator: "/").map(String.init)))
     }

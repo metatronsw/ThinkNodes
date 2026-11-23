@@ -1,7 +1,7 @@
 import {openPresentation, setWebPublic, trashWeb, webPresentationURL} from "./web-presentations.js";
 import {fetchPage, updateSection, watchPageUpdates} from "./page-updates.js";
 import {bindAudioPlayers} from "./audio-player.js";
-import {assetURL, attachmentURL, checkText, fileSheet, sharedFileBox, fileName, fileNameParts, importFile, nodeName, objectURL, pngForClipboard, validImageStem, writeText} from "./canvas-files.js";
+import {assetURL, attachmentURL, checkText, fileSheet, fileURL, isCommonFile, sharedFileBox, fileName, fileNameParts, importFile, nodeName, objectURL, pngForClipboard, validImageStem, writeText} from "./canvas-files.js";
 import {hasTrait, rootType, traits, typeLabel} from "./node-types.js";
 import {openFileBrowser} from "./file-browser.js";
 import {decodeWorksheet, encodeWorksheet} from "./worksheet-json.js";
@@ -1070,7 +1070,7 @@ createApp({
           const copied = {type: item.type, text: item.text, link: item.link, width: item.width, height: item.height,
             alignment: item.alignment, hideText: item.hideText};
           if (sourcePath !== path) {
-            const url = ["image", "audio"].includes(rootType(item.type)) ? assetURL(fileSheet(sourcePath, item.file), item.file.asset) : "/api/box-file/" + sourcePath + "?id=" + encodeURIComponent(item.id);
+            const url = ["image", "audio"].includes(rootType(item.type)) ? fileURL(sourcePath, item.file) : "/api/box-file/" + sourcePath + "?id=" + encodeURIComponent(item.id);
             const blob = await (await checked(await fetch(url))).blob();
             const imported = await importFile(new File([blob], fileName(item.file, isImage(item)), {type: blob.type}), path, csrf);
             if (!imported) return;
@@ -1121,7 +1121,7 @@ createApp({
           addNode(position, {text: choice.name.replace(/\.web$/, ""), link: {kind: "web", target}, width: 320, height: 200});
           return;
         }
-        const sheet = [choice.project, ...(choice.source ? choice.source.split("/").map(encodeURIComponent) : [])].join("/");
+        const sheet = choice.common ? "" : [choice.project, ...(choice.source ? choice.source.split("/").map(encodeURIComponent) : [])].join("/");
         addNode(position, await sharedFileBox(choice.name, sheet, source, choice.asset ?? choice.name));
       });
     }
@@ -1152,7 +1152,7 @@ createApp({
     function copyBox(node) {
       if (!node) return;
       if (isImage(node) && navigator.clipboard?.write && window.ClipboardItem) {
-        return navigator.clipboard.write([new ClipboardItem({"image/png": pngForClipboard(assetURL(fileSheet(path, node.file), node.file.asset))})]);
+        return navigator.clipboard.write([new ClipboardItem({"image/png": pngForClipboard(fileURL(path, node.file))})]);
       }
       return writeText(node.file ? objectURL(path,node.id) : node.text);
     }
@@ -2466,7 +2466,7 @@ createApp({
         const [source, asset] = JSON.parse(key.slice(0, key.lastIndexOf("#")));
         fileTexts.value = new Map(fileTexts.value).set(key, null);
         try {
-          const text = await (await checked(await fetch(assetURL(fileSheet(path, {source}), asset)))).text();
+          const text = await (await checked(await fetch(fileURL(path, {source: source ?? undefined, asset})))).text();
           fileTexts.value = new Map(fileTexts.value).set(key, text);
         } catch (error) {
           const next = new Map(fileTexts.value);
@@ -2532,7 +2532,7 @@ createApp({
 
     function renderFileDownload(node, label = null, classes = "node-download") {
       const filename = nodeName(node);
-      const href = "/api/box-file/" + path + "?id=" + encodeURIComponent(node.id);
+      const href = isCommonFile(node.file) ? fileURL(path, node.file) : "/api/box-file/" + path + "?id=" + encodeURIComponent(node.id);
       const download = () => transfer(async () => { await enqueue(commit); location.assign(href); });
       return h("button", {type: "button", class: classes, title: filename,
         "aria-label": "Letöltés · " + filename,
@@ -2581,12 +2581,12 @@ createApp({
       const file = node.file, root = rootType(node.type);
       let content;
       if (root === "image") {
-        content = h("img", {src: assetURL(fileSheet(path, file), file.asset), alt: nodeName(node), draggable: false,
+        content = h("img", {src: fileURL(path, file), alt: nodeName(node), draggable: false,
           class: file.asset.toLowerCase().endsWith(".svg") ? "is-svg" : undefined});
       } else if (root === "audio") {
         content = h("div", {"data-audio-player": "", class: "node-audio",
           onPointerdown: e => e.stopPropagation(), onDblclick: e => e.stopPropagation()}, [
-          h("audio", {src: assetURL(fileSheet(path, file), file.asset), preload: "metadata", hidden: true}),
+          h("audio", {src: fileURL(path, file), preload: "metadata", hidden: true}),
           button("", null, {symbol: "play", "data-audio-toggle": "", "aria-label": "Lejátszás", title: "Lejátszás"}),
           h("input", {type: "range", min: 0, max: 0, step: "any", disabled: true, "data-audio-seek": "", "aria-label": "Lejátszási pozíció"}),
           h("small", {"data-audio-time": ""}, "0:00"),

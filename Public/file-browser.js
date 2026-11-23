@@ -52,22 +52,29 @@ export function openFileBrowser(path) {
     async function show(sheet) {
       status.hidden = true;
       list.replaceChildren(element("p", "Betöltés…"));
+      const common = sheet === "@common" || sheet.startsWith("@common/");
       try {
-        const response = await fetch("/api/browse/" + sheet, {cache: "no-store"});
+        const endpoint = common ? "/api/browse-common/" + sheet.split("/").slice(1).join("/") : "/api/browse/" + sheet;
+        const response = await fetch(endpoint, {cache: "no-store"});
         if (!response.ok) throw Error((await response.json().catch(() => ({}))).reason ?? "A mappa nem nyitható meg.");
         const listing = await response.json();
         const parts = listing.path.split("/").map(decodeURIComponent);
-        const source = parts.slice(1).join("/");
-        location.textContent = "/" + parts.join("/");
+        // Közös könyvtárnál a forrás maga az útvonal ("@common/…"), projektben a projekt utáni rész.
+        const source = common ? parts.join("/") : parts.slice(1).join("/");
+        location.textContent = common ? "Közös könyvtár /" + parts.slice(1).join("/") : "/" + parts.join("/");
         const rows = [];
+        if (!common) rows.push(row("Közös könyvtár (csak olvasható)", "package", () => show("@common")));
         if (listing.parent) rows.push(row("..", "parent-up", () => show(listing.parent)));
+        else if (common) rows.push(row("..", "parent-up", () => show(path)));
         for (const entry of listing.entries) {
           const mark = entry.publicAccess ? [icon("butterfly")] : [];
           if (entry.kind === "folder") {
             rows.push(row(entry.name, "folder", () => show(listing.path + "/" + encodeURIComponent(entry.name))));
+          } else if (common && entry.kind === "file") {
+            rows.push(row(entry.name, "file", () => { chosen = {kind: "file", name: entry.name, source, project, common}; dialog.close(); }));
           } else {
             rows.push(row(entry.kind === "web" ? entry.name.replace(/\.web$/, "") : entry.name, kindIcon[entry.kind], () => {
-              chosen = {kind: entry.kind, name: entry.name, asset: entry.asset ?? null, source, project};
+              chosen = {kind: entry.kind, name: entry.name, asset: entry.asset ?? null, source, project, common};
               dialog.close();
             }, mark));
           }

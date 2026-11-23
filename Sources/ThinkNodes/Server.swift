@@ -683,6 +683,16 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         return .noContent
     }
 
+    @Sendable func browseCommon(_ req: Request) async throws -> BrowseListing {
+        _ = try session(req, store: store)
+        let folders = req.parameters.getCatchall().map { $0.removingPercentEncoding ?? $0 }
+        return try await req.application.threadPool.runIfActive {
+            try CommonLibrary.list(folders, publicDirectory: assets)
+        }
+    }
+    app.get("api", "browse-common", use: browseCommon)
+    app.get("api", "browse-common", "**", use: browseCommon)
+
     app.get("api", "browse", "**") { req async throws -> BrowseListing in
         let identity = try session(req, store: store)
         let path = try WorksheetPath(req.parameters.getCatchall())
