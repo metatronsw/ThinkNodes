@@ -973,6 +973,14 @@ private func serveWebPresentation(_ req: Request, candidates: [WebPresentationRe
             } else {
                 viewer = identity
             }
+            if candidate.asset == ["_tn-preview"], req.query[String.self, at: "state"] == "1" {
+                guard let state = try await req.application.threadPool.runIfActive({
+                    try store.webPreviewState(candidate, user: viewer.user, unlocks: viewer.unlocks)
+                }) else { continue }
+                let result = response("{\"pending\":\(state.pending),\"version\":\"\(state.version)\"}", type: "application/json")
+                result.headers.replaceOrAdd(name: .cacheControl, value: "no-store")
+                return result
+            }
             guard let (asset, directory, publicRead) = try await req.application.threadPool.runIfActive({
                 try store.webAsset(candidate, user: viewer.user, unlocks: viewer.unlocks, size: WebScreenshot.boxSize(width: req.query[Double.self, at: "w"], height: req.query[Double.self, at: "h"]), live: req.query[String.self, at: "live"] != "0")
             }) else { continue }

@@ -1,4 +1,5 @@
 import {openPresentation} from "./web-presentations.js";
+import {refreshWebPreviews} from "./web-preview-refresh.js";
 import {fetchPage, updateSection, watchPageUpdates} from "./page-updates.js";
 import {bindAudioPlayers, syncAudioPlayers} from "./audio-player.js";
 import {objectURL, writeText} from "./canvas-files.js";
@@ -26,6 +27,8 @@ const ns = "http://www.w3.org/2000/svg";
 const roster = main.querySelector(".participants");
 const mouse = sharedMouse(point => live.cursor(point));
 function bindCanvas() {
+  // A háttérben renderelt .web előnézetek elkészültükkor újratöltődnek.
+  refreshWebPreviews(document);
   const svg = main.querySelector(".passive-canvas");
   svg.style.setProperty("--sheet-glow", (graphics.glow ?? 3) + "px");
   main.querySelector(".passive-frame > .mouse-share")?.remove();

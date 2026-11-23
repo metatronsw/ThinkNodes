@@ -2199,6 +2199,16 @@ extension WorksheetStore {
         return found
     }
 
+    /// .web előnézet állapota: fut-e a háttérben renderelés, és a kész kép változata (a kliens ezzel tölti újra).
+    func webPreviewState(_ request: WebPresentationRequest, user: User?, unlocks: Set<String>) throws -> (pending: Bool, version: String)? {
+        let directory: URL? = try lock.withLock {
+            guard let context = try webContext(project: request.project, reference: request.reference, user: user, unlocks: unlocks) else { return nil }
+            try context.access.authorize(user, unlocks: unlocks)
+            return context.directory
+        }
+        return directory.map { (WebScreenshot.isPending($0), WebScreenshot.version($0)) }
+    }
+
     func unlockWeb(_ requests: [WebPresentationRequest], password: String, user: User?, unlocks: Set<String>) throws -> (WebPresentationRequest, [String]) {
         let (request, required) = try lock.withLock { () throws -> (WebPresentationRequest, Set<String>) in
             for request in requests {

@@ -430,8 +430,12 @@ enum WebScreenshot {
         return (step(width), step(height))
     }
 
+    /// Azonnal válaszol: friss kép, ha van; különben ütemezi a renderelést, és addig a meglévő képet adja.
     static func find(in directory: URL, size: (width: Int, height: Int)?) -> WebAsset? {
-        if let size, let image = image(of: directory, size: size) { return image }
+        if let size {
+            if let current = fresh(directory, size: size) { return asset(current) }
+            schedule(directory, size: size)
+        }
         if let generated = generated(for: directory).filter(regularFile).first { return asset(generated) }
         if let named = namedImage(in: directory) { return asset(named) }
         if let any = anyImage(in: directory) { return asset(any) }
@@ -479,7 +483,6 @@ enum WebScreenshot {
     }
 
     private static func modified(_ url: URL) -> Date? { try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
-    private static let renderLock = NSLock()
 
     static let browser: String? = {
         if let configured = ProcessInfo.processInfo.environment["THINKNODES_CHROMIUM"], !configured.isEmpty {
@@ -555,25 +558,69 @@ enum WebScreenshot {
     /// vagy ha az oldal (index fájl, .web mappa) újabb nála.
     /// A képernyőkép a doboz méretében készül (az ablak = a doboz), 2× sűrűséggel a retina kijelzőkhöz;
     /// a kép legfeljebb 4096 px lehet a hosszabb oldalán.
-    static func image(of directory: URL, size: (width: Int, height: Int)) -> WebAsset? {
-        guard let browser else { return nil }
-        let (width, height) = size
-        let scale = max(1, min(2, 4096 / Double(max(width, height))))
-        let expected = (Int((Double(width) * scale).rounded()), Int((Double(height) * scale).rounded()))
+    private static func plan(_ size: (width: Int, height: Int)) -> (scale: Double, pixels: (Int, Int)) {
+        let scale = max(1, min(2, 4096 / Double(max(size.width, size.height))))
+        return (scale, (Int((Double(size.width) * scale).rounded()), Int((Double(size.height) * scale).rounded())))
+    }
+
+    private static func page(in directory: URL) -> URL? {
         let files = FileManager.default
-        let page = ["index.html", "index.htm"].map { directory.appendingPathComponent($0) }.first { files.fileExists(atPath: $0.path) }
+        return ["index.html", "index.htm"].map { directory.appendingPathComponent($0) }.first { files.fileExists(atPath: $0.path) }
             ?? ((try? files.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? [])
                 .first { ["html", "htm"].contains($0.pathExtension.lowercased()) }
-        guard let page else { return nil }
-        let parent = directory.deletingLastPathComponent()
-        let existing = generated(for: directory).filter(regularFile).first
+    }
 
-        renderLock.lock()
-        defer { renderLock.unlock() }
-        if let existing, let pixels = pixelSize(existing), abs(pixels.width - expected.0) <= 2, abs(pixels.height - expected.1) <= 2,
-           let cached = modified(existing), [page, directory].compactMap(modified).allSatisfy({ $0 <= cached }) {
-            return asset(existing)
+    /// A meglévő generált kép, ha a kért mérethez készült és újabb az oldalnál.
+    private static func fresh(_ directory: URL, size: (width: Int, height: Int)) -> URL? {
+        guard let page = page(in: directory), let existing = generated(for: directory).filter(regularFile).first,
+              let pixels = pixelSize(existing), let cached = modified(existing) else { return nil }
+        let expected = plan(size).pixels
+        guard abs(pixels.width - expected.0) <= 2, abs(pixels.height - expected.1) <= 2,
+              [page, directory].compactMap(modified).allSatisfy({ $0 <= cached }) else { return nil }
+        return existing
+    }
+
+    // Háttérsor: egyszerre egy Chromium fut; mappánként egy várakozó kérés (a legutóbbi méret nyer).
+    private static let queue = DispatchQueue(label: "thinknodes.web-screenshot", qos: .utility)
+    private static let stateLock = NSLock()
+    nonisolated(unsafe) private static var pending: [String: (width: Int, height: Int)] = [:]
+
+    /// Renderelés ütemezése a háttérben; a kérés sosem vár rá.
+    static func schedule(_ directory: URL, size: (width: Int, height: Int)) {
+        guard browser != nil, page(in: directory) != nil else { return }
+        let key = directory.path
+        let start: Bool = stateLock.withLock {
+            let waiting = pending[key] != nil
+            pending[key] = size
+            return !waiting
         }
+        guard start else { return }
+        queue.async {
+            while let next = stateLock.withLock({ pending[key] }) {
+                if fresh(directory, size: next) == nil { render(directory, size: next) }
+                let done: Bool = stateLock.withLock {
+                    guard let latest = pending[key], latest == next else { return false }
+                    pending[key] = nil
+                    return true
+                }
+                if done { break }
+            }
+        }
+    }
+
+    /// Fut-e (vagy vár-e) renderelés a mappára.
+    static func isPending(_ directory: URL) -> Bool { stateLock.withLock { pending[directory.path] != nil } }
+
+    /// A generált kép változata (módosítási idő), a kliens ezzel tölti újra a képet.
+    static func version(_ directory: URL) -> String {
+        generated(for: directory).filter(regularFile).first.flatMap(modified).map { String(Int($0.timeIntervalSince1970 * 1000)) } ?? "0"
+    }
+
+    private static func render(_ directory: URL, size: (width: Int, height: Int)) {
+        guard let browser, let page = page(in: directory) else { return }
+        let files = FileManager.default
+        let (scale, _) = plan(size)
+        let parent = directory.deletingLastPathComponent()
         // A Chromium közvetlenül WebP-be ment; ha az nem sikerül, JPG a tartalék.
         let profile = files.temporaryDirectory.appendingPathComponent("thinknodes-chromium-" + UUID().uuidString)
         defer { try? files.removeItem(at: profile) }
@@ -582,16 +629,15 @@ enum WebScreenshot {
             defer { try? files.removeItem(at: shot) }
             guard run(browser, ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--mute-audio", "--no-first-run",
                 "--disable-extensions", "--disable-background-networking", "--user-data-dir=" + profile.path,
-                "--virtual-time-budget=4000", "--window-size=\(width),\(height)", "--force-device-scale-factor=" + String(format: "%.3f", scale),
+                "--virtual-time-budget=4000", "--window-size=\(size.width),\(size.height)", "--force-device-scale-factor=" + String(format: "%.3f", scale),
                 "--screenshot=" + shot.path, page.absoluteString], timeout: 30),
                   pixelSize(shot) != nil else { continue }
-            // Csak egy kép marad: a régi (más arányú vagy formátumú) előnézet törlődik.
+            // Csak egy kép marad: a régi (más méretű vagy formátumú) előnézet törlődik.
             for old in generated(for: directory) { try? files.removeItem(at: old) }
             let target = parent.appendingPathComponent("." + directory.lastPathComponent + marker + "." + format)
-            guard (try? files.moveItem(at: shot, to: target)) != nil else { return nil }
-            return asset(target)
+            try? files.moveItem(at: shot, to: target)
+            return
         }
-        return existing.flatMap(asset)
     }
 }
 

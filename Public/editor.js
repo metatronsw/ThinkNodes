@@ -2738,6 +2738,14 @@ createApp({
     }
 
     const previewRatios = new Map();
+    // .web előnézet változata (a háttérben elkészült kép újratöltéséhez, web-preview-refresh.js).
+    const previewVersions = ref(new Map());
+    function trackWebPreview(id, source) {
+      awaitWebPreview(source).then(version => {
+        if (!version || previewVersions.value.get(id)?.source === source && previewVersions.value.get(id)?.version === version) return;
+        previewVersions.value = new Map(previewVersions.value).set(id, {source, version});
+      });
+    }
     function renderNode(node) {
       const drawn = node;
       const layout = nodeLayout(node);
@@ -2788,9 +2796,17 @@ createApp({
       const step = value => Math.round(Math.min(Math.max(value, 64), 4096) / 8) * 8;
       const previewSize = "?w=" + step(drawn.width) + "&h=" + step(drawn.height);
       if (!gesture.value || !previewRatios.has(node.id)) previewRatios.set(node.id, previewSize);
+      function webPreviewHref(node, destination) {
+        const source = destination.preview + previewRatios.get(node.id);
+        if (node.staticPreview) return source + "&live=0";
+        const known = previewVersions.value.get(node.id);
+        if (known?.source === source) return source + "&v=" + known.version;
+        queueMicrotask(() => trackWebPreview(node.id, source));
+        return source;
+      }
       const linkPreview = isBox(node) && destination?.preview && layout.webPreview ? h("g", {"pointer-events": "none"}, [
         h("clipPath", {id: webClip}, [h(...boxShapeGeometry(drawn))]),
-        h("image", {class: "node-link-preview node-site-preview", href: node.link.kind !== "web" ? destination.preview : destination.preview + previewRatios.get(node.id) + (node.staticPreview ? "&live=0" : ""),
+        h("image", {class: "node-link-preview node-site-preview", href: node.link.kind !== "web" ? destination.preview : webPreviewHref(node, destination),
           x: -drawn.width/2, y: -drawn.height/2, width: Math.max(1, drawn.width), height: Math.max(1, drawn.height),
           preserveAspectRatio: "xMidYMid slice", "clip-path": "url(#" + webClip + ")"})])
       : isBox(node) && destination?.preview && layout.previewSpace ? h("image", {class: "node-link-preview",
