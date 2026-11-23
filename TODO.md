@@ -6,6 +6,10 @@
  
  
  
+ [ **TELJESÍTMÉNY – MEGBESZÉLENDŐ** ]
+
++ Markdown a dobozokban (gépelés közbeni késés): a szerkesztő minden leütés után a szervertől kéri a doboz szövegének markdown-feldolgozását (`/api/text/canvas`, cmark-gfm), ez ~100 ms késést és leütésenként egy kérést jelent. A tördelés már most is kliensoldali (geometry.js `labelLayout`), a szerver csak a megtekintőhöz, előnézetekhez és exporthoz tördel (Rendering.swift, pontosan egyező szabályokkal). Kérdés: kerüljön-e a markdown-feldolgozás is a kliensre (pl. commonmark.js, ugyanazon CommonMark-specifikáció referencia-megvalósítása), és a szerver csak az előnézetekhez/megtekintőhöz dolgozzon? Ha igen: közös tesztkészlet (bemenet → elvárt blokkok) fusson a Swift- és a JS-oldalon is, hogy a kettő ne térjen el. Részletek: PLAN.md C5.
+
  [ **DESIGN** ]
 
 
