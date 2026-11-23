@@ -7,6 +7,13 @@ export function attachmentURL(path, name) {
   return "/api/attachment/" + path + "?name=" + encodeURIComponent(name);
 }
 
+// A fájlt tároló munkalap útvonala: `file.source` a projekten belüli másik lap ("" = projekt gyökere), nélküle a saját lap.
+export function fileSheet(path, file) {
+  if (file?.source == null) return path;
+  const project = path.split("/")[0];
+  return [project, ...(file.source ? file.source.split("/").map(part => encodeURIComponent(part)) : [])].join("/");
+}
+
 export function assetURL(path, asset) {
   return "/api/attachment/" + path + "?inline=1&name=" + encodeURIComponent(asset);
 }
@@ -195,4 +202,29 @@ export async function pngForClipboard(url) {
   canvas.height = image.naturalHeight;
   canvas.getContext("2d").drawImage(image, 0, 0);
   return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(Error("A kép másolása sikertelen.")), "image/png"));
+}
+
+// Tallózóból választott, már feltöltött fájl doboza (nincs feltöltés). `sheet`: a tulajdonos lap útvonala.
+export async function sharedFileBox(name, sheet, source, asset = name) {
+  const ext = name.includes(".") ? name.split(".").pop() : "";
+  const media = mediaType(ext);
+  const url = assetURL(sheet, asset);
+  if (media === "image") {
+    const image = new Image();
+    image.src = url;
+    let dimensions = {width: 320, height: 200};
+    try {
+      await image.decode();
+      const width = image.naturalWidth || 300, height = image.naturalHeight || 150, scale = 320 / Math.max(width, height);
+      dimensions = {width: Math.max(64, Math.round(width * scale)), height: Math.max(40, Math.round(height * scale))};
+    } catch { /* a méret alapértéken marad */ }
+    return {type: media, file: {asset, source, filename: name.replace(/\.[^.]+$/, ""), fileExtension: ext, showFilename: false}, ...dimensions};
+  }
+  if (media) return {type: media, file: {asset, source, filename: name, showFilename: true}, width: 320, height: 130};
+  const response = await fetch(url, {headers: {Range: "bytes=0-65535"}});
+  if (!response.ok && response.status !== 206) throw Error("A fájl nem olvasható.");
+  const type = classify(name, new Uint8Array(await response.arrayBuffer()));
+  return rootType(type) === "text"
+    ? {type, file: {asset: name, source, filename: name, showFilename: true}, fontSize: 13, width: 340, height: 240}
+    : {type, file: {asset: name, source, filename: name, showFilename: true}, width: 260, height: 120};
 }

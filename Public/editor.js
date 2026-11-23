@@ -1,8 +1,9 @@
 import {openPresentation, setWebPublic, trashWeb, webPresentationURL} from "./web-presentations.js";
 import {fetchPage, updateSection, watchPageUpdates} from "./page-updates.js";
 import {bindAudioPlayers} from "./audio-player.js";
-import {assetURL, attachmentURL, checkText, fileName, fileNameParts, importFile, nodeName, objectURL, pngForClipboard, validImageStem, writeText} from "./canvas-files.js";
+import {assetURL, attachmentURL, checkText, fileSheet, sharedFileBox, fileName, fileNameParts, importFile, nodeName, objectURL, pngForClipboard, validImageStem, writeText} from "./canvas-files.js";
 import {hasTrait, rootType, traits, typeLabel} from "./node-types.js";
+import {openFileBrowser} from "./file-browser.js";
 import {decodeWorksheet, encodeWorksheet} from "./worksheet-json.js";
 import {sharedMouse} from "./mouse.js";
 import {worksheetChanges, replayChanges, sameValue} from "./editor-history.js?v=2";
@@ -1069,7 +1070,7 @@ createApp({
           const copied = {type: item.type, text: item.text, link: item.link, width: item.width, height: item.height,
             alignment: item.alignment, hideText: item.hideText};
           if (sourcePath !== path) {
-            const url = ["image", "audio"].includes(rootType(item.type)) ? assetURL(sourcePath, item.file.asset) : "/api/box-file/" + sourcePath + "?id=" + encodeURIComponent(item.id);
+            const url = ["image", "audio"].includes(rootType(item.type)) ? assetURL(fileSheet(sourcePath, item.file), item.file.asset) : "/api/box-file/" + sourcePath + "?id=" + encodeURIComponent(item.id);
             const blob = await (await checked(await fetch(url))).blob();
             const imported = await importFile(new File([blob], fileName(item.file, isImage(item)), {type: blob.type}), path, csrf);
             if (!imported) return;
@@ -1105,6 +1106,26 @@ createApp({
       if (failures.length) throw Error(failures.join("\n"));
     }
 
+    // Tallózó: a projekt bármely lapjának fájlja vagy .web oldala beilleszthető (feltöltés nélkül, közös hivatkozással).
+    function insertFromBrowser() {
+      transfer(async () => {
+        const choice = await openFileBrowser(path);
+        if (!choice || !online.value) return;
+        const own = path.split("/").slice(1).map(decodeURIComponent).join("/");
+        // Saját mappa: belső azonosítóval a megszokott hivatkozás; azonosító nélküli kép/hang közösként, valódi névvel.
+        const source = choice.source === own && (choice.asset || !/\.(png|jpe?g|webp|gif|svg|mp3|wav|ogg|flac|m4a|aac)$/i.test(choice.name))
+          ? undefined : choice.source;
+        const position = worldAtCenter();
+        if (choice.kind === "web") {
+          const target = (choice.source ? choice.source + "/" : "") + choice.name;
+          addNode(position, {text: choice.name.replace(/\.web$/, ""), link: {kind: "web", target}, width: 320, height: 200});
+          return;
+        }
+        const sheet = [choice.project, ...(choice.source ? choice.source.split("/").map(encodeURIComponent) : [])].join("/");
+        addNode(position, await sharedFileBox(choice.name, sheet, source, choice.asset ?? choice.name));
+      });
+    }
+
     async function uploadAttachments(event) {
       const files = Array.from(event.target.files);
       event.target.value = "";
@@ -1131,7 +1152,7 @@ createApp({
     function copyBox(node) {
       if (!node) return;
       if (isImage(node) && navigator.clipboard?.write && window.ClipboardItem) {
-        return navigator.clipboard.write([new ClipboardItem({"image/png": pngForClipboard(assetURL(path,node.file.asset))})]);
+        return navigator.clipboard.write([new ClipboardItem({"image/png": pngForClipboard(assetURL(fileSheet(path, node.file), node.file.asset))})]);
       }
       return writeText(node.file ? objectURL(path,node.id) : node.text);
     }
@@ -2437,15 +2458,15 @@ createApp({
     // Kulcs: asset + változásszámláló; mentés után a `file.rev` nő, a többi kliens ebből tölti újra.
     const fileTexts = shallowRef(new Map());
     const fileSaveState = ref(new Map());
-    const fileTextKey = node => node.file.asset + "#" + (node.file.rev ?? 0);
+    const fileTextKey = (node, rev = node.file.rev ?? 0) => JSON.stringify([node.file.source ?? null, node.file.asset]) + "#" + rev;
     const pendingFileSaves = new Map();
     watch(() => (board.value?.nodes ?? []).filter(isTextFile).map(fileTextKey), async keys => {
       for (const key of new Set(keys)) {
         if (fileTexts.value.has(key)) continue;
-        const asset = key.slice(0, key.lastIndexOf("#"));
+        const [source, asset] = JSON.parse(key.slice(0, key.lastIndexOf("#")));
         fileTexts.value = new Map(fileTexts.value).set(key, null);
         try {
-          const text = await (await checked(await fetch(assetURL(path, asset)))).text();
+          const text = await (await checked(await fetch(assetURL(fileSheet(path, {source}), asset)))).text();
           fileTexts.value = new Map(fileTexts.value).set(key, text);
         } catch (error) {
           const next = new Map(fileTexts.value);
@@ -2466,10 +2487,10 @@ createApp({
         const current = nodeMap.value.get(node.id);
         if (!current?.file) return;
         const latest = fileTexts.value.get(fileTextKey(current)) ?? text;
-        await checked(await fetch(attachmentURL(path, current.file.asset), {method: "PUT",
+        await checked(await fetch(attachmentURL(fileSheet(path, current.file), current.file.asset), {method: "PUT",
           headers: {"X-CSRF-Token": csrf, "Content-Type": "text/plain; charset=utf-8"}, body: latest}));
         const rev = (current.file.rev ?? 0) + 1;
-        fileTexts.value = new Map(fileTexts.value).set(current.file.asset + "#" + rev, latest);
+        fileTexts.value = new Map(fileTexts.value).set(fileTextKey(current, rev), latest);
         if (held.value === current.id) updateItem(current, "file", {...current.file, rev});
         fileSaveState.value = new Map(fileSaveState.value).set(node.id, "Mentve");
       }), 1500));
@@ -2560,12 +2581,12 @@ createApp({
       const file = node.file, root = rootType(node.type);
       let content;
       if (root === "image") {
-        content = h("img", {src: assetURL(path, file.asset), alt: nodeName(node), draggable: false,
+        content = h("img", {src: assetURL(fileSheet(path, file), file.asset), alt: nodeName(node), draggable: false,
           class: file.asset.toLowerCase().endsWith(".svg") ? "is-svg" : undefined});
       } else if (root === "audio") {
         content = h("div", {"data-audio-player": "", class: "node-audio",
           onPointerdown: e => e.stopPropagation(), onDblclick: e => e.stopPropagation()}, [
-          h("audio", {src: assetURL(path, file.asset), preload: "metadata", hidden: true}),
+          h("audio", {src: assetURL(fileSheet(path, file), file.asset), preload: "metadata", hidden: true}),
           button("", null, {symbol: "play", "data-audio-toggle": "", "aria-label": "Lejátszás", title: "Lejátszás"}),
           h("input", {type: "range", min: 0, max: 0, step: "any", disabled: true, "data-audio-seek": "", "aria-label": "Lejátszási pozíció"}),
           h("small", {"data-audio-time": ""}, "0:00"),
@@ -3402,6 +3423,8 @@ createApp({
           h("option", {value: ""}, "Default · Munkalap SVG"), ...previewImages.value.map(name => h("option", {value: name}, name))
         ]), h("img", {class: "canvas-preview-thumbnail", alt: "Előnézet", loading: "lazy",
           src: "/api/preview/" + path + "?v=" + sheet.revision + "&image=" + encodeURIComponent(sheet.previewImage ?? "")})]),
+        h("div", {class: "property-inline file-actions"}, [button("Beillesztés – Tallózás", insertFromBrowser,
+          {symbol: "folder", disabled: !online.value, title: "Már feltöltött fájl vagy weboldal beillesztése a projektből"})]),
         h("div", {class: "property-inline file-actions"}, [button(uploading.value ? "Feltöltés…" : "Fájl feltöltése", event => {
           const bounds = event.currentTarget.getBoundingClientRect();
           uploadAnchor = {clientX: bounds.left + bounds.width / 2, clientY: bounds.bottom + 12};

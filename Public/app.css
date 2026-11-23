@@ -862,3 +862,10 @@ svg text { text-rendering: geometricPrecision; }
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
+
+/* Tallózó (Public/file-browser.js) */
+.file-browser-dialog { width: min(460px, 92vw); }
+.file-browser-list { max-height: 55vh; overflow: auto; gap: 4px; }
+.file-browser-row { display: flex; align-items: center; gap: 8px; justify-content: flex-start; width: 100%; text-align: left; }
+.file-browser-row span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-browser-path { margin: 0; font-family: monospace; }

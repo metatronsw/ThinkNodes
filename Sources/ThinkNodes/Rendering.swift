@@ -23,7 +23,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=37"></script>
+        <script type="module" src="/editor.js?v=39"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -34,7 +34,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=15">
+          <link rel="stylesheet" href="/app.css?v=16">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -841,7 +841,14 @@ func fileTextHTML(_ node: Idea, text: String?) -> String {
 /// Fájlt tároló objektum (szöveg, kép, hang, dokumentum) a vásznon: felül fájlnév, középen tartalom, alul megjegyzés.
 private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: Bool, exported: Bool, text: String?,
                      graphics: VisualTheme.Graphics?, siteHost: String?) -> String {
-    let url = escaped("/api/attachment" + base + "?inline=1&name=" + encodeQuery(file.asset))
+    // Közös fájl a projekt másik lapjáról: a tulajdonos lap címén töltődik be.
+    var fileBase = base
+    if let source = file.source {
+        let project: String = base.split(separator: "/").first.map(String.init) ?? ""
+        let folders: [String] = source.split(separator: "/").map { WorksheetPath.encodeSegment(String($0)) }
+        fileBase = "/" + ([project] + folders).joined(separator: "/")
+    }
+    let url = escaped("/api/attachment" + fileBase + "?inline=1&name=" + encodeQuery(file.asset))
     let filename = escaped(file.displayName(image: node.isImage))
     let download = escaped("/api/box-file" + base + "?id=" + encodeQuery(node.id))
     let packageIcon = uiIcon("package")

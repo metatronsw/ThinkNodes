@@ -57,6 +57,9 @@ struct NodeLink: Codable, Equatable, Sendable {
 /// A fájlt tároló objektumok (`text`, `code`, `csv`, `image`, `audio`, `document`) fájlja.
 struct CanvasFile: Codable, Equatable, Sendable {
     var asset: String
+    /// Másik munkalap mappájában lévő fájl a projekten belül: a munkalap útvonala a projekt után
+    /// ("" = a projekt gyökere). nil: a saját lap mappája. A mentés csak a saját mappás fájlokat kezeli.
+    var source: String?
     var filename: String?
     var showFilename: Bool?
     var fileExtension: String?
@@ -64,6 +67,16 @@ struct CanvasFile: Codable, Equatable, Sendable {
     @OptionalPaint var alphaBackground: String? = nil
     /// Szövegfájl változásszámlálója: mentés után nő, a többi kliens ebből tudja, hogy újra kell tölteni.
     var rev: Int?
+
+    static func validSource(_ source: String) -> Bool {
+        source.isEmpty || (try? WorksheetPath(["project"] + source.split(separator: "/", omittingEmptySubsequences: false).map(String.init))) != nil
+    }
+
+    /// A fájlt tároló munkalap útvonala; `own` a doboz saját lapja.
+    func sheet(from own: WorksheetPath) -> WorksheetPath? {
+        guard let source else { return own }
+        return try? WorksheetPath([own.parts[0]] + (source.isEmpty ? [] : source.split(separator: "/").map(String.init)))
+    }
 
     var imageStem: String {
         filename ?? (asset as NSString).deletingPathExtension
@@ -240,10 +253,13 @@ struct Idea: Codable, Equatable, Sendable {
         guard let kind = NodeTypes.fileKind(type) else { return file == nil }
         guard let file, validImageStem(file.asset), file.filename.map(validImageStem) ?? true,
               file.fileExtension.map({ !$0.isEmpty && !$0.contains(".") && validImageStem($0) }) ?? true,
-              (file.rev ?? 0) >= 0, file.alphaBackground.map(validColor) ?? true else { return false }
+              (file.rev ?? 0) >= 0, file.alphaBackground.map(validColor) ?? true,
+              file.source.map(CanvasFile.validSource) ?? true else { return false }
         switch kind {
         case "media":
-            return canvasAssetType(file.asset)?.hasPrefix(root + "/") == true
+            // Közös (másik lapról vagy tallózóból beillesztett) fájl valódi névvel is hivatkozhat.
+            let byName = file.source != nil ? canvasMediaTypes[(file.asset as NSString).pathExtension.lowercased()] : nil
+            return (canvasAssetType(file.asset) ?? byName)?.hasPrefix(root + "/") == true
         default:
             return canvasAssetType(file.asset) == nil && (file.asset as NSString).pathExtension.lowercased() != "thnode"
         }
@@ -555,6 +571,8 @@ struct BrowseListing: Content {
         let name: String
         let kind: String        // "folder", "file", "web"
         let publicAccess: Bool
+        /// Kép/hang belső azonosítója (a mappa mediaFiles táblájából), ha van; a doboz ezzel hivatkozik rá.
+        var asset: String? = nil
     }
     let path: String            // munkalap-útvonal, pl. "projekt/allap"
     let parent: String?         // a szülő munkalap útvonala; a projekt gyökerénél nil
@@ -893,11 +911,12 @@ final class WorksheetStore: @unchecked Sendable {
     }
 
     /// Szövegfájl-objektumok tartalma (asset → szöveg) a vászon rendereléséhez; legfeljebb 200 KB fájlonként.
-    private func textContents(_ sheet: Worksheet, url: URL, metadata: DocumentPolicy) -> [String: String] {
+    private func textContents(_ sheet: Worksheet, url: URL, metadata: DocumentPolicy, project: WorksheetPath? = nil) -> [String: String] {
         var result: [String: String] = [:]
         for node in sheet.nodes where node.isTextFile {
             guard let asset = node.file?.asset, result[asset] == nil,
-                  let file = try? attachments(at: url, named: asset, metadata: metadata).first,
+                  let file = node.file?.source == nil ? try? attachments(at: url, named: asset, metadata: metadata).first
+                      : project.flatMap({ node.file?.sheet(from: $0) }).flatMap({ try? sharedFile($0, named: asset) }),
                   let handle = try? FileHandle(forReadingFrom: file) else { continue }
             defer { try? handle.close() }
             let bytes = (try? handle.read(upToCount: 200_000)) ?? Data()
@@ -910,7 +929,7 @@ final class WorksheetStore: @unchecked Sendable {
         try lock.withLock {
             let ctx = try context(path)
             try authorize(accessLocked(ctx, user: user, unlocks: unlocks), user: user)
-            return textContents(sheet, url: try worksheetURL(path), metadata: ctx.local)
+            return textContents(sheet, url: try worksheetURL(path), metadata: ctx.local, project: path)
         }
     }
 
@@ -963,11 +982,11 @@ final class WorksheetStore: @unchecked Sendable {
                 try attachments(at: url, named: ref, metadata: metadata).first
             }
             let previous = Dictionary(uniqueKeysWithValues: current.nodes.map { ($0.id, $0) })
-            let currentRefs = Set(current.nodes.compactMap { $0.file?.asset })
+            let currentRefs = Set(current.nodes.compactMap { $0.file?.source == nil ? $0.file?.asset : nil })
             var renames: [String: String] = [:]
             for index in updated.nodes.indices {
                 let node = updated.nodes[index]
-                guard let file = node.file else { continue }
+                guard let file = node.file, file.source == nil else { continue }
                 let old = previous[node.id]
                 let ref = file.asset
                 guard let filename = file.filename, filename != old?.file?.filename else { continue }
@@ -986,7 +1005,7 @@ final class WorksheetStore: @unchecked Sendable {
                 }
                 updated.nodes[index].file?.asset = ref
             }
-            let nextRefs = Set(updated.nodes.compactMap { $0.file?.asset })
+            let nextRefs = Set(updated.nodes.compactMap { $0.file?.source == nil ? $0.file?.asset : nil })
             var moved: [(from: URL, to: URL)] = []
             func move(_ source: URL, _ destination: URL) throws {
                 try files.moveItem(at: source, to: destination)
@@ -1019,7 +1038,7 @@ final class WorksheetStore: @unchecked Sendable {
                 }
                 for index in updated.nodes.indices {
                     let node = updated.nodes[index]
-                    guard let ref = node.file?.asset, let name = renames[ref] else { continue }
+                    guard node.file?.source == nil, let ref = node.file?.asset, let name = renames[ref] else { continue }
                     updated.nodes[index].file?.filename = node.isImage ? (name as NSString).deletingPathExtension : name
                 }
                 let keep = Set(nextRefs.map { media[$0] ?? $0 })
@@ -1165,7 +1184,7 @@ final class WorksheetStore: @unchecked Sendable {
         var result = sheet
         for index in sheet.nodes.indices {
             let node = sheet.nodes[index]
-            guard let file = node.file, let name = metadata.mediaFiles?[file.asset] else { continue }
+            guard let file = node.file, file.source == nil, let name = metadata.mediaFiles?[file.asset] else { continue }
             result.nodes[index].file?.filename = node.isImage ? (name as NSString).deletingPathExtension : name
             if node.isImage { result.nodes[index].file?.fileExtension = (name as NSString).pathExtension }
         }
@@ -1192,7 +1211,7 @@ final class WorksheetStore: @unchecked Sendable {
     }
 
     private func copyReferencedAttachments(in sheet: Worksheet, from source: URL, metadata: DocumentPolicy, to folder: URL) throws -> DocumentPolicy {
-        var refs = Set(sheet.nodes.compactMap { $0.file?.asset })
+        var refs = Set(sheet.nodes.compactMap { $0.file?.source == nil ? $0.file?.asset : nil })
         if let preview = sheet.previewImage { refs.insert(preview) }
         var copied = Set<String>()
         var media: [String: String] = [:]
@@ -1213,7 +1232,7 @@ final class WorksheetStore: @unchecked Sendable {
         var metadata = ctx.local
         var media = metadata.mediaFiles ?? [:]
         let archived = metadata.archivedFiles ?? [:]
-        var referenced = Set(current.nodes.compactMap { $0.file?.asset }.map { media[$0] ?? $0 })
+        var referenced = Set(current.nodes.compactMap { $0.file?.source == nil ? $0.file?.asset : nil }.map { media[$0] ?? $0 })
         if let preview = current.previewImage { referenced.insert(media[preview] ?? preview) }
         var updated = current
         let x = current.nodes.isEmpty ? 0 : min(99_000, current.nodes.map { $0.position.x - $0.width / 2 }.min()! + 160)
@@ -1501,9 +1520,23 @@ final class WorksheetStore: @unchecked Sendable {
             guard let node = try read(url).nodes.first(where: { $0.id == id }), let file = node.file else {
                 throw Abort(.notFound)
             }
+            if file.source != nil {
+                // Közös fájl a projekt másik lapjáról: annak a lapnak a jogai érvényesek.
+                guard let owner = file.sheet(from: path) else { throw Abort(.notFound) }
+                let ownerContext = try context(owner)
+                try authorize(accessLocked(ownerContext, user: user, unlocks: unlocks), user: user)
+                guard let shared = try sharedFile(owner, named: file.asset) else { throw Abort(.notFound) }
+                return .disk(shared)
+            }
             guard let source = try attachments(at: url, named: file.asset, metadata: ctx.local).first else { throw Abort(.notFound) }
             return .disk(source)
         }
+    }
+
+    /// Másik lap mappájában lévő fájl (zár alatt hívandó).
+    private func sharedFile(_ owner: WorksheetPath, named name: String) throws -> URL? {
+        let ctx = try context(owner)
+        return try attachments(at: worksheetURL(owner), named: name, metadata: ctx.local).first
     }
 
     /// Tallózó: a munkalap mappájában lévő almappák (munkalapok), fájlok és .web oldalak.
@@ -1532,7 +1565,8 @@ final class WorksheetStore: @unchecked Sendable {
                         entries.append(.init(name: name, kind: "folder", publicAccess: false))
                     }
                 } else if info.isRegularFile == true, url.pathExtension.lowercased() != "thnode", validImageStem(name) {
-                    entries.append(.init(name: name, kind: "file", publicAccess: publicFiles.contains(name)))
+                    let ref = ctx.local.mediaFiles?.first(where: { $0.value == name })?.key
+                    entries.append(.init(name: name, kind: "file", publicAccess: publicFiles.contains(name), asset: ref))
                 }
             }
             let order = ["folder": 0, "web": 1, "file": 2]
