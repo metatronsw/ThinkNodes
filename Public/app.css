@@ -678,7 +678,8 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 .node-image .node-body img:not([src$=".svg"]) { border-radius: 6px; }
 /* A fájldoboz megjegyzése egysoros, formázás nélküli felirat; ami nem fér el, „…”-tal rövidül. */
 /* Megjegyzés a doboz alatt: sima szöveg, minden sora, a doboz szélességére tördelve. */
-.node-comment { flex: none; max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.35; }
+.node-comment { flex: none; max-width: 100%; overflow-wrap: anywhere; font-size: 13px; line-height: 1.35; }
+.node-comment p, .node-comment ul, .node-comment ol, .node-comment pre, .node-comment blockquote { margin: 0 0 .35em; }
 .node-comment.align-left { text-align: left; } .node-comment.align-center { text-align: center; } .node-comment.align-right { text-align: right; }
 .node-comment > :first-child, .node-comment .formatted-text > :first-child { margin-top: 0; }
 .node-comment > :last-child, .node-comment .formatted-text > :last-child { margin-bottom: 0; }

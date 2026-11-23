@@ -2625,8 +2625,9 @@ createApp({
         ]);
       }
       // A megjegyzés a legegyszerűbb formában: egy sor, formázás nélkül; a CSS rövidíti „…”-tal (Rendering.swift plainComment).
+      // Text a doboz alatt: markdown formázott (összecsukva első sor + „…”).
       const comment = node.text?.trim()
-        ? h("footer", {class: "node-comment align-" + (node.alignment ?? "center")}, visibleComment(node)) : null;
+        ? h("footer", {class: "node-comment align-" + (node.alignment ?? "center")}, [h(FormattedText, {source: visibleComment(node)})]) : null;
       const marker = node.link ? h("p", {class: "node-link-caption", "data-link-kind": node.link.kind,
         onPointerdown: e => { if (!e.altKey && !e.ctrlKey) e.stopPropagation(); },
         onClick: e => { e.stopPropagation(); if (destination) followBoxLink(destination); }},
@@ -2769,17 +2770,11 @@ createApp({
         onPointerenter: event => {
           // Buboréksúgó: túl hosszú doboz-szöveg, illetve összecsukott többsoros megjegyzés (fájl- és előnézetes doboz).
           const tooltip = node.file || node.type === "preview" ? commentCollapsed(node) : isBox(node) && layout.overflow;
-          if (!gesture.value && tooltip && node.text && (node.file || node.type === "preview")) {
-            // Megjegyzés: sima szöveg, sortörésekkel.
-            const plain = document.createElement("div");
-            plain.className = "plain-comment";
-            plain.textContent = node.text;
-            showTooltip(event, () => plain.outerHTML);
-          } else if (!gesture.value && tooltip && node.text) showTooltip(event, async signal => {
+          if (!gesture.value && tooltip && node.text) showTooltip(event, async signal => {
             const result = await checked(await fetch("/api/text", {method: "POST", signal,
               headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify({text: node.text})}));
             return result.text();
-          }, node.justified);
+          }, node.justified, {background: paint(node.fill, 2), color: paint(node.textColor, 1)});
         },
         onPointerleave: hideTooltip,
         onPointerdown: event => { hideTooltip(); pressNode(event, node); },
@@ -2815,7 +2810,7 @@ createApp({
           isBox(node) && node.link ? renderLinkMarker(drawn, destination, node.type === "preview") : null,
           node.type === "preview" && node.text?.trim() ? h("foreignObject", {x: -drawn.width/2, y: drawn.height/2, width: drawn.width, height: 4000,
             "pointer-events": "none"}, [h("div", {class: "node-below", style: {color: paint(node.textColor, 1)}}, [
-              h("footer", {class: "node-comment align-" + (node.alignment ?? "center")}, visibleComment(node))])]) : null,
+              h("footer", {class: "node-comment align-" + (node.alignment ?? "center")}, [h(FormattedText, {source: visibleComment(node)})])])]) : null,
         ]),
         ...(resizeTarget.value === node.id && gesture.value?.type !== "rectangle" && !occupied(node.id) && !ancestors(node, nodeMap.value).some(n => n.locked)
           ? [[-1,-1], [1,-1], [1,1], [-1,1]].map(([sx, sy]) => {
@@ -3297,7 +3292,7 @@ createApp({
         const nameMatch = matches(name);
         if (nameMatch || matches(n.text)) {
           (nameMatch ? titles : bodies).push({key: "node/" + n.id, kind: "node", id: n.id, title: name || typeLabel(n.type),
-            source: nameMatch ? "Cím" : n.file ? "Megjegyzés" : "Text"});
+            source: nameMatch ? "Cím" : "Text"});
         }
       }
       for (const e of board.value.edges) {
@@ -3621,12 +3616,12 @@ createApp({
 
       if (common.has("comment")) {
         const hidden = nodes.every(n => n.hideText);
-        panels.push(group("Megjegyzés", [
-          single ? markdownEditor(single.text ?? "", v => change("text", v), 3, "Megjegyzés") : null,
+        panels.push(group("Text", [
+          single ? markdownEditor(single.text ?? "", v => change("text", v), 3, "Text") : null,
           propertyTools(
             ...[["left", "Balra", "text-left"], ["center", "Középre", "text-center"], ["right", "Jobbra", "text-right"]].map(([align, label, symbol]) =>
               iconToggle(label, value("alignment", "center") === align, () => change("alignment", align), icon(symbol))),
-            iconToggle(hidden ? "Megjegyzés megjelenítése" : "Megjegyzés elrejtése", !hidden, () => change("hideText", hidden ? undefined : true),
+            iconToggle(hidden ? "Text megjelenítése" : "Text elrejtése", !hidden, () => change("hideText", hidden ? undefined : true),
               icon(hidden ? "eye-off" : "eye")),
           ),
         ]));

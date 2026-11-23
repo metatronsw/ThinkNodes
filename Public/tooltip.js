@@ -12,7 +12,8 @@ export function hideTooltip(event) {
   tooltip = null;
 }
 
-export function showTooltip(event, render, justified) {
+// `colors`: {background, color} – a doboz színe; ha hiányzik, a doboz rajzából olvassa ki (megtekintő).
+export function showTooltip(event, render, justified, colors) {
   hideTooltip();
   const {currentTarget} = event;
   const signal = (request = new AbortController()).signal;
@@ -28,6 +29,9 @@ export function showTooltip(event, render, justified) {
       if (justified) tooltip.classList.add("justified-text");
       tooltip.setAttribute("role", "tooltip");
       tooltip.innerHTML = html;
+      const {background, color} = colors ?? boxColors(currentTarget, anchor);
+      if (background) tooltip.style.background = background;
+      if (color) tooltip.style.color = color;
       // Méret: csak amennyi a szövegnek kell; felső határ a doboz mérete (de legalább olvasható), és a képernyő.
       // Ha a szöveg ennél hosszabb, görgethető. A doboz közepére kerül.
       const margin = 8;
@@ -43,4 +47,15 @@ export function showTooltip(event, render, justified) {
       tooltip.addEventListener("pointerdown", () => hideTooltip());
     } catch { /* Hover previews are optional when disconnected. */ }
   }, 350);
+}
+
+// A doboz kitöltő- és szövegszíne a rajzból (SVG felület vagy fájldoboz-teste).
+function boxColors(target, anchor) {
+  const usable = value => value && !/^(none|transparent|rgba\(0, 0, 0, 0\))$/.test(value) && !value.startsWith("url(") ? value : null;
+  const style = getComputedStyle(anchor);
+  const background = usable(anchor instanceof SVGElement ? style.fill : style.backgroundColor);
+  const ink = target.querySelector?.("[data-file-ink]")?.dataset.fileInk
+    ?? target.querySelector?.(".node-text tspan")?.getAttribute("fill")
+    ?? target.querySelector?.(".node-below")?.style.color;
+  return {background, color: usable(ink)};
 }

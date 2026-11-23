@@ -12,7 +12,7 @@ func escaped(_ value: String) -> String {
 
 func markdownHTML(_ source: String) -> String {
     source.withCString { bytes in
-        guard let html = cmark_markdown_to_html(bytes, source.utf8.count, CMARK_OPT_DEFAULT) else { return "" }
+        guard let html = cmark_markdown_to_html(bytes, source.utf8.count, CMARK_OPT_DEFAULT | CMARK_OPT_HARDBREAKS) else { return "" }
         defer { free(html) }
         return String(cString: html)
     }
@@ -23,7 +23,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=50"></script>
+        <script type="module" src="/editor.js?v=51"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -34,7 +34,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=24">
+          <link rel="stylesheet" href="/app.css?v=25">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -691,7 +691,7 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
     // Előnézetes doboz: a link felirata a doboz felett (mint a fájlnév), a megjegyzés alatta.
     let marker = node.link.map { linkMarker($0, node: node, bottom: node.type == "preview" ? -y - 6 : y + 20, width: node.width, siteHost: siteHost) } ?? ""
     let noteBelow = node.type == "preview" && !node.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        ? "<foreignObject x=\"\(number(-x))\" y=\"\(number(y))\" width=\"\(number(width))\" height=\"4000\" pointer-events=\"none\"><div xmlns=\"http://www.w3.org/1999/xhtml\" class=\"node-below\" style=\"color:\(escaped(node.textColor))\"><footer class=\"node-comment align-\(node.alignment.rawValue)\">\(escaped(visibleComment(node)))</footer></div></foreignObject>" : ""
+        ? "<foreignObject x=\"\(number(-x))\" y=\"\(number(y))\" width=\"\(number(width))\" height=\"4000\" pointer-events=\"none\"><div xmlns=\"http://www.w3.org/1999/xhtml\" class=\"node-below\" style=\"color:\(escaped(node.textColor))\"><footer class=\"node-comment formatted-text align-\(node.alignment.rawValue)\">\(markdownHTML(visibleComment(node)))</footer></div></foreignObject>" : ""
     let previewImage = preview.map { url in
         if node.fillsWithPreview {
             // Teljes kitöltés a doboz alakjára vágva; .web-nél az arányt a doboz határozza meg.
@@ -905,7 +905,7 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
         "<p class=\"node-link-caption\" data-link-kind=\"\(link.kind.rawValue)\">\(uiIcon(link.kind == .url ? "website" : "link"))<span>\(escaped(linkCaption(link)))</span></p>"
     } ?? ""
     let comment = node.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" :
-        "<footer class=\"node-comment align-\(node.alignment.rawValue)\">\(escaped(visibleComment(node)))</footer>"
+        "<footer class=\"node-comment formatted-text align-\(node.alignment.rawValue)\">\(markdownHTML(visibleComment(node)))</footer>"
     let below = marker + comment
     let geometry = boxGeometry(node, graphics: graphics)
     let chrome = elevationShadow(node, geometry: geometry, graphics: graphics) +
