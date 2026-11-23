@@ -417,20 +417,20 @@ enum WebArchive {
 }
 
 /// .web előnézet. Keresési sorrend (`find`):
-/// 1. saját, Chromiummal generált kép a .web mappa mellett: `.név.web.tn-preview-<arány>.png`
-///    (generálás bekapcsolva: az adott arányhoz renderel; kikapcsolva: a legutóbb generált kép);
-/// 2. a mappa gyökerében screen / screenshot / preview / thumbnail / thumb / site / cover / og-image / social nevű kép;
+/// 1. saját, Chromiummal generált kép a .web mappa mellett, mindig csak egy: `.név.web.tn-preview.webp` (tartalék: `.jpg`)
+///    (generálás bekapcsolva: más aránynál felülíródik; kikapcsolva: a meglévő kép vágódik);
+/// 2. a mappa gyökerében preview / screen / screenshot / thumbnail / thumb / site / cover / og-image / social nevű kép;
 /// 3. bármely kép a mappában (először a gyökérben);
 /// 4. nil: a szerver helyettes „nincs elérhető előnézet” SVG-t ad.
 enum WebScreenshot {
     static let width = 1280
-    static let marker = ".tn-preview-"
+    static let marker = ".tn-preview"
     static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "webp", "gif", "svg", "avif"]
-    static let previewNames = ["screen", "screenshot", "preview", "thumbnail", "thumb", "site", "cover", "og-image", "social", "poster"]
+    static let previewNames = ["preview", "screen", "screenshot", "thumbnail", "thumb", "site", "cover", "og-image", "social", "poster"]
 
     static func find(in directory: URL, ratio: Double?) -> WebAsset? {
         if let ratio, let image = image(of: directory, ratio: ratio) { return image }
-        if let generated = latestGenerated(for: directory) { return asset(generated) }
+        if let generated = generated(for: directory).filter(regularFile).first { return asset(generated) }
         if let named = namedImage(in: directory) { return asset(named) }
         if let any = anyImage(in: directory) { return asset(any) }
         return nil
@@ -445,13 +445,6 @@ enum WebScreenshot {
     private static func regularFile(_ url: URL) -> Bool {
         let info = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
         return info?.isRegularFile == true && info?.isSymbolicLink != true
-    }
-
-    private static func latestGenerated(for directory: URL) -> URL? {
-        let parent = directory.deletingLastPathComponent(), prefix = "." + directory.lastPathComponent + marker
-        let names = ((try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? []).filter { $0.hasPrefix(prefix) && $0.hasSuffix(".png") }
-        return names.map { parent.appendingPathComponent($0) }.filter(regularFile)
-            .max { (modified($0) ?? .distantPast) < (modified($1) ?? .distantPast) }
     }
 
     private static func images(in directory: URL) -> [URL] {
@@ -505,6 +498,59 @@ enum WebScreenshot {
         return (min(max(ratio, 0.25), 6) * 20).rounded() / 20
     }
 
+    /// Az egyetlen generált kép: `.név.web.tn-preview.webp` (tartalék: `.jpg`).
+    private static func generated(for directory: URL) -> [URL] {
+        let parent = directory.deletingLastPathComponent(), prefix = "." + directory.lastPathComponent + marker
+        return ((try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? [])
+            .filter { $0.hasPrefix(prefix) }.map { parent.appendingPathComponent($0) }
+    }
+
+    /// Képméret a fájl fejlécéből (PNG, WebP VP8 / VP8L / VP8X).
+    static func pixelSize(_ url: URL) -> (width: Int, height: Int)? {
+        guard let handle = try? FileHandle(forReadingFrom: url), let data = try? handle.read(upToCount: 65_536), data.count >= 30 else { return nil }
+        let b = [UInt8](data)
+        if b.starts(with: [0x89, 0x50, 0x4e, 0x47]) {
+            func be(_ o: Int) -> Int { b[o..<o+4].reduce(0) { $0 << 8 | Int($1) } }
+            return (be(16), be(20))
+        }
+        if b[0] == 0xff, b[1] == 0xd8 {
+            // JPEG: az első SOF szegmensben van a méret.
+            var o = 2
+            while o + 9 < b.count, b[o] == 0xff {
+                let kind = b[o + 1], length = Int(b[o + 2]) << 8 | Int(b[o + 3])
+                if (0xc0...0xcf).contains(kind) && ![0xc4, 0xc8, 0xcc].contains(kind) {
+                    return (Int(b[o + 7]) << 8 | Int(b[o + 8]), Int(b[o + 5]) << 8 | Int(b[o + 6]))
+                }
+                o += 2 + length
+            }
+            return nil
+        }
+        guard b[0..<4].elementsEqual("RIFF".utf8), b[8..<12].elementsEqual("WEBP".utf8) else { return nil }
+        switch String(decoding: b[12..<16], as: UTF8.self) {
+        case "VP8 ": return (Int(b[26]) | Int(b[27] & 0x3f) << 8, Int(b[28]) | Int(b[29] & 0x3f) << 8)
+        case "VP8L":
+            let bits = UInt32(b[21]) | UInt32(b[22]) << 8 | UInt32(b[23]) << 16 | UInt32(b[24]) << 24
+            return (Int(bits & 0x3fff) + 1, Int((bits >> 14) & 0x3fff) + 1)
+        case "VP8X": return (1 + (Int(b[24]) | Int(b[25]) << 8 | Int(b[26]) << 16), 1 + (Int(b[27]) | Int(b[28]) << 8 | Int(b[29]) << 16))
+        default: return nil
+        }
+    }
+
+    private static func run(_ tool: String, _ arguments: [String], timeout: TimeInterval) -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: tool)
+        process.arguments = arguments
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do { try process.run() } catch { return false }
+        let deadline = Date().addingTimeInterval(timeout)
+        while process.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
+        if process.isRunning { process.terminate(); return false }
+        return process.terminationStatus == 0
+    }
+
+    /// Az előnézet a doboz arányában. Csak egy kép van; új renderelés, ha nincs, ha más arányú,
+    /// vagy ha az oldal (index fájl, .web mappa) újabb nála.
     static func image(of directory: URL, ratio raw: Double) -> WebAsset? {
         guard let browser else { return nil }
         let ratio = quantized(raw)
@@ -514,32 +560,31 @@ enum WebScreenshot {
             ?? ((try? files.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? [])
                 .first { ["html", "htm"].contains($0.pathExtension.lowercased()) }
         guard let page else { return nil }
-        let cache = directory.deletingLastPathComponent()
-            .appendingPathComponent("." + directory.lastPathComponent + marker + String(format: "%.2f", ratio) + ".png")
+        let parent = directory.deletingLastPathComponent()
+        let existing = generated(for: directory).filter(regularFile).first
 
         renderLock.lock()
         defer { renderLock.unlock() }
-        let fresh = modified(cache).map { cached in [page, directory].compactMap(modified).allSatisfy { $0 <= cached } } ?? false
-        if !fresh {
-            let output = cache.deletingLastPathComponent().appendingPathComponent(".tn-shot-" + UUID().uuidString + ".png")
-            let profile = files.temporaryDirectory.appendingPathComponent("thinknodes-chromium-" + UUID().uuidString)
-            defer { try? files.removeItem(at: profile); try? files.removeItem(at: output) }
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: browser)
-            process.arguments = ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--mute-audio", "--no-first-run",
-                "--disable-extensions", "--disable-background-networking", "--user-data-dir=" + profile.path,
-                "--virtual-time-budget=4000", "--window-size=\(width),\(height)", "--screenshot=" + output.path, page.absoluteString]
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-            do { try process.run() } catch { return nil }
-            // Legfeljebb 20 másodperc; utána leállítjuk.
-            let deadline = Date().addingTimeInterval(20)
-            while process.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
-            if process.isRunning { process.terminate(); return nil }
-            guard files.fileExists(atPath: output.path) else { return nil }
-            try? files.removeItem(at: cache)
-            guard (try? files.moveItem(at: output, to: cache)) != nil else { return nil }
+        if let existing, let size = pixelSize(existing), quantized(Double(size.width) / Double(max(1, size.height))) == ratio,
+           let cached = modified(existing), [page, directory].compactMap(modified).allSatisfy({ $0 <= cached }) {
+            return asset(existing)
         }
-        return asset(cache)
+        // A Chromium közvetlenül WebP-be ment; ha az nem sikerül, JPG a tartalék.
+        let profile = files.temporaryDirectory.appendingPathComponent("thinknodes-chromium-" + UUID().uuidString)
+        defer { try? files.removeItem(at: profile) }
+        for format in ["webp", "jpg"] {
+            let shot = parent.appendingPathComponent(".tn-shot-" + UUID().uuidString + "." + format)
+            defer { try? files.removeItem(at: shot) }
+            guard run(browser, ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--mute-audio", "--no-first-run",
+                "--disable-extensions", "--disable-background-networking", "--user-data-dir=" + profile.path,
+                "--virtual-time-budget=4000", "--window-size=\(width),\(height)", "--screenshot=" + shot.path, page.absoluteString], timeout: 20),
+                  pixelSize(shot) != nil else { continue }
+            // Csak egy kép marad: a régi (más arányú vagy formátumú) előnézet törlődik.
+            for old in generated(for: directory) { try? files.removeItem(at: old) }
+            let target = parent.appendingPathComponent("." + directory.lastPathComponent + marker + "." + format)
+            guard (try? files.moveItem(at: shot, to: target)) != nil else { return nil }
+            return asset(target)
+        }
+        return existing.flatMap(asset)
     }
 }
