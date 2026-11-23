@@ -881,8 +881,8 @@ private func setupRequest(_ app: Application, _ method: HTTPMethod, _ path: Stri
     #expect(saved.textJustified == true)
     #expect(saved.nodes[0].justified == true)
     let svg = boardSVG(saved)
-    // Kényszerített sorkizárás: a sorok a böngésző által kimért teljes szélességre feszülnek.
-    #expect(svg.contains("lengthAdjust=\"spacing\"") && !svg.contains("word-spacing="))
+    // A tördelt sorok célszélességet kapnak; a szóközöket a böngésző tágítja (Public/justify.js), nem betűritkítás.
+    #expect(svg.contains("data-justify=") && !svg.contains("lengthAdjust=\"spacing\""))
 }
 
 @Test func compactWorksheetKeysRoundTrip() throws {

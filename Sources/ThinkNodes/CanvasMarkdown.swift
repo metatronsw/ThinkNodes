@@ -122,35 +122,46 @@ func canvasMarkdown(_ source: String) -> [MarkdownBlock] {
 }
 
 func wrapMarkdown(_ runs: [MarkdownRun], columns: Int, preformatted: Bool = false) -> [(pieces: [MarkdownRun], wrapped: Bool)] {
-    var rows: [(pieces: [MarkdownRun], wrapped: Bool)] = []
+    wrapMarkdown(runs, limit: Double(columns), preformatted: preformatted) { _, _ in 1 }.map { ($0.pieces, $0.wrapped) }
+}
+
+/// Tördelés becsült szélesség szerint (geometry.js wrapRuns párja; a két oldalnak pontosan egyeznie kell).
+/// `width(betű, formátum)` egy betű szélessége, `limit` a sor szélessége; a szóköz formátuma `nil`.
+func wrapMarkdown(_ runs: [MarkdownRun], limit: Double, preformatted: Bool = false,
+                  width: (Character, MarkdownFormat?) -> Double) -> [(pieces: [MarkdownRun], wrapped: Bool, width: Double)] {
+    var rows: [(pieces: [MarkdownRun], wrapped: Bool, width: Double)] = []
     var line: [MarkdownRun] = []
-    var word: [(Character, MarkdownFormat)] = []
-    var count = 0
+    var word: [(Character, MarkdownFormat, Double)] = []
+    var used = 0.0
 
     func endLine(wrapped: Bool = false) {
-        if !line.isEmpty { rows.append((line, wrapped)) }
+        if !line.isEmpty { rows.append((line, wrapped, used)) }
         line = []
-        count = 0
+        used = 0
     }
 
-    func append(_ character: Character, format: MarkdownFormat) {
+    func append(_ character: Character, format: MarkdownFormat?, size: Double) {
+        let format = format ?? MarkdownFormat()
         if let last = line.indices.last, line[last].format == format {
             line[last].text.append(character)
         } else {
             line.append(MarkdownRun(text: String(character), format: format))
         }
-        count += 1
+        used += size
     }
 
     func endWord() {
         guard !word.isEmpty else { return }
-        if count > 0 {
-            if count + word.count + 1 > columns { endLine(wrapped: true) }
-            else { append(" ", format: MarkdownFormat()) }
+        var wordWidth = 0.0
+        for (_, _, size) in word { wordWidth += size }
+        if used > 0 {
+            let space = width(" ", nil)
+            if used + space + wordWidth > limit { endLine(wrapped: true) }
+            else { append(" ", format: nil, size: space) }
         }
-        for (character, format) in word {
-            if count == columns { endLine(wrapped: true) }
-            append(character, format: format)
+        for (character, format, size) in word {
+            if used > 0 && used + size > limit { endLine(wrapped: true) }
+            append(character, format: format, size: size)
         }
         word.removeAll(keepingCapacity: true)
     }
@@ -162,8 +173,9 @@ func wrapMarkdown(_ runs: [MarkdownRun], columns: Int, preformatted: Bool = fals
                     if line.isEmpty { line.append(MarkdownRun(text: "", format: run.format)) }
                     endLine()
                 } else {
-                    if count == columns { endLine(wrapped: true) }
-                    append(character, format: run.format)
+                    let size = width(character, run.format)
+                    if used > 0 && used + size > limit { endLine(wrapped: true) }
+                    append(character, format: run.format, size: size)
                 }
             } else if character.isNewline {
                 endWord()
@@ -171,7 +183,7 @@ func wrapMarkdown(_ runs: [MarkdownRun], columns: Int, preformatted: Bool = fals
             } else if character.isWhitespace {
                 endWord()
             } else {
-                word.append((character, run.format))
+                word.append((character, run.format, width(character, run.format)))
             }
         }
     }

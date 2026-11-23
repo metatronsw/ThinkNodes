@@ -239,25 +239,6 @@ private func roundedWireCorners(_ vertices: [Point], wide: Bool) -> [(entry: Poi
     }
 }
 
-private func wrap(_ title: String, columns: Int) -> [String] {
-    var lines: [String] = []
-    var line = ""
-    for word in title.split(whereSeparator: \.isWhitespace).map(String.init) {
-        if !line.isEmpty && line.count + word.count + 1 > columns {
-            lines.append(line)
-            line = ""
-        }
-        var remaining = word
-        while remaining.count > columns {
-            lines.append(String(remaining.prefix(columns)))
-            remaining = String(remaining.dropFirst(columns))
-        }
-        line += line.isEmpty ? remaining : " " + remaining
-    }
-    if !line.isEmpty { lines.append(line) }
-    return lines
-}
-
 private struct IdeaLabelLine {
     var text: String
     let size: Double
@@ -268,6 +249,9 @@ private struct IdeaLabelLine {
     var justify = false
     var wrapped = false
     var indent: Double = 0
+    var code = false
+    /// Becsült sorszélesség (a tördelés mérte).
+    var width: Double = 0
 
     var step: Double { size * 1.25 + gap }
 }
@@ -284,23 +268,59 @@ private struct IdeaDrawing {
     var extentY: Double = 0
 }
 
-private func textWidth(_ value: String, size: Double) -> Double {
-    value.reduce(0.0) { sum, letter in
-        if "MW@#%&".contains(letter) { return sum + 0.95 }
-        if " ilI1.,:!|'".contains(letter) { return sum + 0.33 }
-        return sum + 0.65
-    } * size
+/// Becsült betűszélesség em-ben, kalibrált értékek kis ráhagyással (geometry.js letterWidth párja; pontosan egyezniük kell).
+private func letterWidth(_ letter: Character, monospace: Bool = false) -> Double {
+    if monospace { return 0.62 }
+    if letter == " " { return 0.28 }
+    if letter == "…" { return 0.85 }
+    if "ilIjf.,:;!|'`".contains(letter) { return 0.3 }
+    if "tr()[]-/\"".contains(letter) { return 0.38 }
+    if "MW@#%&".contains(letter) { return 0.88 }
+    if letter == "m" || letter == "w" { return 0.82 }
+    if ("0"..."9").contains(letter) { return 0.6 }
+    let value = String(letter), lower = value.lowercased(), upper = value.uppercased()
+    if lower != upper { return value == lower ? 0.55 : 0.7 }
+    return 0.65
 }
 
-private func shortenLine(_ line: IdeaLabelLine, width: Double) -> IdeaLabelLine {
+private let boldFactor = 1.07
+
+/// A téma betűcsaládja rögzített szélességű-e (geometry.js isMonospaceFont).
+func isMonospaceFont(_ family: String) -> Bool {
+    let first = (family.split(separator: ",").first.map(String.init) ?? family).lowercased()
+    return ["mono", "menlo", "courier", "consolas"].contains { first.contains($0) }
+}
+
+private func letterMeasure(size: Double, bold: Bool, monospace: Bool) -> (Character, MarkdownFormat?) -> Double {
+    { letter, format in letterWidth(letter, monospace: monospace || format?.code == true) * size * (bold || format?.bold == true ? boldFactor : 1) }
+}
+
+private func textWidth(_ value: String, size: Double) -> Double {
+    let measure = letterMeasure(size: size, bold: false, monospace: false)
+    var width = 0.0
+    for letter in value { width += measure(letter, nil) }
+    return width
+}
+
+/// Egysoros felirat (link, fájlnév, címke): ha nem fér el, „…”-tal rövidül (geometry.js fitCaption).
+func fitCaption(_ text: String, size: Double, available: Double) -> String {
+    if textWidth(text, size: size) <= available { return text }
+    let line = IdeaLabelLine(text: text, size: size, weight: 400, color: "")
+    return shortenLine(line, width: available, measure: letterMeasure(size: size, bold: false, monospace: false)).text
+}
+
+private func shortenLine(_ line: IdeaLabelLine, width: Double, measure: (Character, MarkdownFormat?) -> Double) -> IdeaLabelLine {
     var result = line
-    var remaining = width - textWidth("…", size: line.size)
+    var remaining = width - measure("…", nil)
     var runs: [MarkdownRun] = []
+    var used = 0.0
     for run in line.runs.isEmpty ? [MarkdownRun(text: line.text)] : line.runs {
         var prefix = ""
         for letter in run.text {
-            remaining -= textWidth(String(letter), size: line.size)
+            let size = measure(letter, run.format)
+            remaining -= size
             if remaining < 0 { break }
+            used += size
             prefix.append(letter)
         }
         if !prefix.isEmpty { runs.append(MarkdownRun(text: prefix, format: run.format)) }
@@ -310,6 +330,7 @@ private func shortenLine(_ line: IdeaLabelLine, width: Double) -> IdeaLabelLine 
     result.text = runs.map(\.text).joined()
     result.wrapped = false
     result.runs = runs
+    result.width = used + measure("…", nil)
     return result
 }
 
@@ -331,7 +352,7 @@ func linkCaption(_ link: NodeLink) -> String {
     }
 }
 
-private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
+private func ideaDrawing(_ idea: Idea, graphics: VisualTheme.Graphics? = nil) -> IdeaDrawing {
     var node = idea
     if node.isJunction {
         if ![.ellipse,.rectangle,.diamond].contains(node.shape) { node.shape = .ellipse }
@@ -346,6 +367,10 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
     let previewSpace: Double = node.link.map { $0.kind == .url ? 0 : node.height * 0.5 } ?? 0
     let labelHeight = node.height * heightRatio - 12 - iconSpace - previewSpace
     let strong = false  // a Félkövér gomb megszűnt
+    let monospace = isMonospaceFont((graphics ?? VisualTheme.Graphics()).fontFamily(node.font))
+    func measure(for line: IdeaLabelLine) -> (Character, MarkdownFormat?) -> Double {
+        letterMeasure(size: line.size, bold: line.weight >= 700, monospace: monospace || line.code)
+    }
 
     func makeLines(base: Double) -> [IdeaLabelLine] {
         var lines: [IdeaLabelLine] = []
@@ -355,23 +380,25 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
             if !fitText { size = size.rounded() }
             let weight = heading ? (strong ? 900 : 700) : (strong ? 650 : 400)
             let indent = Double(max(0, (block.indent ?? 0) - 1)) * base * 1.2
-            let columns = max(2, Int((labelWidth - indent) / (size * 0.65)))
+            let code = block.kind == .code
             var runs = block.runs
             if block.kind == .quote { runs.insert(MarkdownRun(text: "› "), at: 0) }
-            for (row, wrappedLine) in wrapMarkdown(runs, columns: columns, preformatted: block.kind == .code).enumerated() {
+            let measure = letterMeasure(size: size, bold: weight >= 700, monospace: monospace || code)
+            for (row, wrappedLine) in wrapMarkdown(runs, limit: labelWidth - indent, preformatted: code, width: measure).enumerated() {
                 let pieces = wrappedLine.pieces
                 // Ahány üres sor van a forrásban, annyi üres sor marad a dobozon is.
                 let gap = row == 0 ? Double(block.blankLines ?? 0) * base * 1.25 : 0
                 lines.append(IdeaLabelLine(text: pieces.map(\.text).joined(), size: size, weight: weight,
                                            color: node.textColor, runs: pieces, gap: gap,
-                                           justify: node.justified == true && block.kind != .code,
-                                           wrapped: wrappedLine.wrapped, indent: indent))
+                                           justify: node.justified == true && !code,
+                                           wrapped: wrappedLine.wrapped, indent: indent, code: code, width: wrappedLine.width))
             }
         }
         if node.hideText == true, lines.count > 1 {
             // Összecsukott állapot: az első sor marad, alatta egy sorközzel az ellipszis.
             let ellipsis = IdeaLabelLine(text: "…", size: lines[0].size, weight: lines[0].weight, color: node.textColor,
-                                         runs: [MarkdownRun(text: "…")], gap: 0, justify: false, wrapped: false, indent: 0)
+                                         runs: [MarkdownRun(text: "…")], gap: 0, justify: false, wrapped: false, indent: 0,
+                                         code: lines[0].code, width: measure(for: lines[0])("…", nil))
             return [lines[0], ellipsis]
         }
         return lines
@@ -386,7 +413,7 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
             let size = (low + high) / 2
             let candidate = makeLines(base: Double(size))
             if candidate.reduce(0, { $0 + $1.step }) <= labelHeight &&
-                candidate.allSatisfy({ textWidth($0.text, size: $0.size) + $0.indent <= labelWidth }) {
+                candidate.allSatisfy({ $0.width + $0.indent <= labelWidth }) {
                 lines = candidate
                 low = size + 1
             } else {
@@ -408,8 +435,8 @@ private func ideaDrawing(_ idea: Idea) -> IdeaDrawing {
     var overflow = omitted || (node.hideText == true && canvasMarkdown(node.text).count > 1)
     for index in visible.indices {
         let line = visible[index]
-        if textWidth(line.text, size: line.size) + line.indent > labelWidth || (omitted && index == visible.count - 1) {
-            visible[index] = shortenLine(line, width: labelWidth - line.indent)
+        if line.width + line.indent > labelWidth || (omitted && index == visible.count - 1) {
+            visible[index] = shortenLine(line, width: labelWidth - line.indent, measure: measure(for: line))
             overflow = true
         }
     }
@@ -429,6 +456,11 @@ func nodeClasses(_ node: Idea, hasChildren: Bool = false) -> String {
 
 func needsTextTooltip(_ node: Idea, overflow: @autoclosure () -> Bool) -> Bool {
     node.isBox && !node.text.isEmpty && overflow()
+}
+
+/// Fájldoboz megjegyzése a legegyszerűbb formában: egy sor, formázás nélkül (a CSS rövidíti „…”-tal).
+func plainComment(_ text: String) -> String {
+    text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
 }
 
 func needsTextTooltip(_ node: Idea) -> Bool {
@@ -550,12 +582,12 @@ private func boxSurface(_ node: Idea, geometry: String, graphics: VisualTheme.Gr
 private func linkMarker(_ link: NodeLink, node: Idea, bottom: Double, width: Double, siteHost: String?) -> String {
     let caption = linkCaption(link)
     let available = max(12, width - 22)
-    let fit = textWidth(caption, size: 13) > available ? " textLength=\"\(number(available))\" lengthAdjust=\"spacingAndGlyphs\"" : ""
-    let shown = min(available, textWidth(caption, size: 13))
+    // Egysoros felirat: ha nem fér el, „…”-tal rövidül (nincs tördelés, nincs összenyomás).
+    let shown = textWidth(fitCaption(caption, size: 13, available: available), size: 13)
     let icon = link.kind == .web ? WorksheetLink.globe : link.worksheetLink?.iconPath(siteHost: siteHost) ?? WorksheetLink.chain
     let left = -(shown + 18) / 2
     return """
-        <g class="node-link" data-link-kind="\(link.kind.rawValue)" pointer-events="none"><svg x="\(number(left))" y="\(number(bottom - 14))" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="\(escaped(node.textColor))" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="\(icon)"/></svg><text\(fit) x="\(number(left + 18))" y="\(number(bottom - 2))" font-size="13" fill="\(escaped(node.textColor))">\(escaped(caption))</text></g>
+        <g class="node-link" data-link-kind="\(link.kind.rawValue)" pointer-events="none"><svg x="\(number(left))" y="\(number(bottom - 14))" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="\(escaped(node.textColor))" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="\(icon)"/></svg><text x="\(number(left + 18))" y="\(number(bottom - 2))" font-size="13" fill="\(escaped(node.textColor))">\(escaped(fitCaption(caption, size: 13, available: available)))</text></g>
         """
 }
 
@@ -602,8 +634,9 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
         }
         var style = ""
         // Sorkizárás: csak a tördelt (nem bekezdés-záró) sorok érnek a doboz mindkét széléig; a rövid sor balra zárt marad.
-        if line.justify && line.wrapped && line.text.contains(" ") && textWidth(line.text, size: line.size) < labelWidth - line.indent {
-            style += " textLength=\"\(number(labelWidth - line.indent))\" lengthAdjust=\"spacing\""
+        if line.justify && line.wrapped && line.text.contains(" ") && line.width < labelWidth - line.indent {
+            // A szóközöket a böngésző tágítja (Public/justify.js); JavaScript nélkül a sor balra zárt marad.
+            style += " data-justify=\"\(number(labelWidth - line.indent))\""
         }
         let baseline = top + line.gap + line.size * (1.25 / 2 + 0.33)
         offset += line.step
@@ -822,7 +855,7 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
         "<p class=\"node-link-caption\" data-link-kind=\"\(link.kind.rawValue)\">\(uiIcon(link.kind == .url ? "website" : "link"))<span>\(escaped(linkCaption(link)))</span></p>"
     } ?? ""
     let comment = node.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || node.hideText == true ? "" :
-        "<footer class=\"node-comment formatted-text align-\(node.alignment.rawValue)\">\(markdownHTML(node.text))</footer>"
+        "<footer class=\"node-comment align-\(node.alignment.rawValue)\" title=\"\(escaped(node.text))\">\(escaped(plainComment(node.text)))</footer>"
     let below = marker + comment
     let geometry = boxGeometry(node, graphics: graphics)
     let chrome = elevationShadow(node, geometry: geometry, graphics: graphics) +
@@ -847,7 +880,7 @@ func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = n
 func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: String?, assetBase: String? = nil,
                            fileText: (Idea) -> String? = { _ in nil }) -> (svg: String, tooltipNodes: [Idea]) {
     let graphics = Themes.catalog.first { $0.id == board.appearance?.theme }?.graphics
-    let drawings = board.nodes.map(ideaDrawing)
+    let drawings = board.nodes.map { ideaDrawing($0, graphics: graphics) }
     let renderedIdeas = drawings.map(\.node)
     let nodes = Dictionary(uniqueKeysWithValues: renderedIdeas.map { ($0.id, $0) })
     // A kép kerete a tartalom tényleges széleihez igazodik (nem az origó köré szimmetrikus).

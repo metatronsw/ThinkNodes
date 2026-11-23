@@ -8,9 +8,10 @@ import {contextMenu, documentEntries} from "./cards.js";
 import {openExternalLink} from "./links.js";
 import {flashNode, flashPoint} from "./ping.js";
 import {hideTooltip, showTooltip} from "./tooltip.js";
+import {justifyRows} from "./justify.js";
 import {liveConnection} from "./collaboration.js";
 
-import {useWorksheetGeometry, arrowLength, arrowTransform, edgeGeometry, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireGradientValues, wireLabelLayout} from "./geometry.js?v=17";
+import {useWorksheetGeometry, arrowLength, arrowTransform, edgeGeometry, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireGradientValues, wireLabelLayout} from "./geometry.js?v=18";
 import {ancestors} from "./containers.js?v=3";
 
 let selection;
@@ -34,6 +35,7 @@ function bindCanvas() {
   for (const element of svg.querySelectorAll("[data-font-size]")) {
     element.style.fontSize = element.dataset.fontSize + "px";
   }
+  justifyRows(svg);
   for (const preview of svg.querySelectorAll(".node-web-preview")) {
     if (preview.complete && preview.naturalWidth) preview.dataset.ready = "";
     else preview.addEventListener("load", () => { preview.dataset.ready = ""; }, {once: true});

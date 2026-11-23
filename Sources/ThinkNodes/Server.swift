@@ -283,7 +283,7 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
 
     app.get { req async throws -> Response in
         let identity = try session(req, store: store)
-        if try store.settings().requireLogin && identity.user == nil { return redirect("/login") }
+        if try await req.application.threadPool.runIfActive({ try store.settings().requireLogin }) && identity.user == nil { return redirect("/login") }
         let updates = live.pages.subscribe(.index)
         let projects = try await req.application.threadPool.runIfActive {
             try store.list(user: identity.user, rootsOnly: true, unlocks: identity.unlocks).map { item -> ProjectCard in
@@ -323,12 +323,15 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         } catch let error as Abort where error.status == .locked {
             return unlockPage(req, path: path, identity: identity, editing: true, updates: live.pages.subscribe(.index))
         }
-        let access = try store.access(path, sheet: worksheet, user: user, unlocks: identity.unlocks)
+        let (access, local, storedPrefs) = try await req.application.threadPool.runIfActive {
+            (try store.access(path, sheet: worksheet, user: user, unlocks: identity.unlocks),
+             [assets + "vendor/vue.js", assets + "vendor/d3.js"].allSatisfy { FileManager.default.fileExists(atPath: $0) },
+             try user.flatMap { try store.settings().preferences?[$0.name] })
+        }
         guard access.editable else { return accessDeniedPage(identity, updates: live.pages.subscribe(.index)) }
-        let local = [assets + "vendor/vue.js", assets + "vendor/d3.js"].allSatisfy { FileManager.default.fileExists(atPath: $0) }
         let loading = local ? "Szerkesztő betöltése…" : "A szerkesztőhöz futtasd a teljes ./build.sh parancsot."
         let csrf = token(req)
-        let prefs = try user.flatMap { try store.settings().preferences?[$0.name] } ?? UserPreferences()
+        let prefs = storedPrefs ?? UserPreferences()
         let preferences = String(decoding: try JSONEncoder().encode(prefs), as: UTF8.self)
         return htmlPage(title: worksheet.title, body: """
             <div class="editor-root">
@@ -466,8 +469,11 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         }
         switch req.parameters.get("format") {
         case "svg":
-            return response("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + boardSVG(worksheet, siteHost: req.headers.first(name: .host), assetBase: "/" + path.url, mode: siteMode(req),
-                                                                            fileText: { $0.file.flatMap { texts[$0.asset] } }),
+            let host = req.headers.first(name: .host), mode = siteMode(req)
+            let svg = try await req.application.threadPool.runIfActive {
+                boardSVG(worksheet, siteHost: host, assetBase: "/" + path.url, mode: mode, fileText: { $0.file.flatMap { texts[$0.asset] } })
+            }
+            return response("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + svg,
                             type: "image/svg+xml; charset=utf-8", filename: "\(path.name).svg")
         case "thnode", "json":
             return try worksheetResponse(worksheet, filename: "\(path.name).thnode")
@@ -635,7 +641,7 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
 
     app.get("api", "attachment", "**") { req async throws -> Response in
         let identity = try session(req, store: store)
-        if try store.settings().requireLogin && identity.user == nil { throw Abort(.unauthorized) }
+        if try await req.application.threadPool.runIfActive({ try store.settings().requireLogin }) && identity.user == nil { throw Abort(.unauthorized) }
         let path = try WorksheetPath(req.parameters.getCatchall())
         guard let name = req.query[String.self, at: "name"] else { throw Abort(.badRequest) }
         let file: URL
@@ -707,14 +713,17 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         } catch let error as Abort where error.status == .locked {
             return unlockPage(req, path: path, identity: identity, updates: live.pages.subscribe(.index))
         }
-        let children = try await req.application.threadPool.runIfActive {
-            try store.list(user: identity.user, childrenOf: path, unlocks: identity.unlocks)
-        }
-        let access = try store.access(path, sheet: worksheet, user: identity.user, unlocks: identity.unlocks)
-        let files = try store.contents(path, user: identity.user, unlocks: identity.unlocks)
-        let texts = try store.fileTexts(path, sheet: worksheet, user: identity.user, unlocks: identity.unlocks)
-        let pages = try children.map { child in
-            (child.path, child.worksheet, try store.access(child.path, sheet: child.worksheet, user: identity.user, unlocks: identity.unlocks))
+        // Minden fájlművelet a thread poolon fut, nem az event loopon.
+        let (access, files, texts, pages) = try await req.application.threadPool.runIfActive {
+            let children = try store.list(user: identity.user, childrenOf: path, unlocks: identity.unlocks)
+            let access = try store.access(path, sheet: worksheet, user: identity.user, unlocks: identity.unlocks)
+            let files = try store.contents(path, user: identity.user, unlocks: identity.unlocks)
+            let texts = try store.fileTexts(path, sheet: worksheet, user: identity.user, unlocks: identity.unlocks)
+            let pages = try children.map { child in
+                (path: child.path, worksheet: child.worksheet,
+                 access: try store.access(child.path, sheet: child.worksheet, user: identity.user, unlocks: identity.unlocks))
+            }
+            return (access, files, texts, pages)
         }
         do {
             return try passivePage(req, path: path, worksheet: worksheet, session: identity, access: access, children: pages, files: files, texts: texts, updates: updates)

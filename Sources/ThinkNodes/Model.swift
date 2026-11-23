@@ -711,14 +711,15 @@ final class WorksheetStore: @unchecked Sendable {
     }
 
     func unlock(_ path: WorksheetPath, password: String, user: User?, attachment: String? = nil) throws -> [String] {
-        try lock.withLock {
+        let candidates = try lock.withLock {
             let ctx = try context(path)
             guard accessLocked(ctx, user: user, unlocks: []).locked else { throw Abort(.forbidden) }
-            let hashes = try (ctx.chain.compactMap { ctx.rules[$0]?.passwordHash } + [ctx.page.passwordHash].compactMap { $0 })
-                .filter { try Bcrypt.verify(password, created: $0) }
-            guard !hashes.isEmpty else { throw Abort(.forbidden) }
-            return hashes
+            return ctx.chain.compactMap { ctx.rules[$0]?.passwordHash } + [ctx.page.passwordHash].compactMap { $0 }
         }
+        // A bcrypt lassú; a záron kívül fut, hogy közben a többi kérés haladhasson.
+        let hashes = try candidates.filter { try Bcrypt.verify(password, created: $0) }
+        guard !hashes.isEmpty else { throw Abort(.forbidden) }
+        return hashes
     }
 
     func list(user: User?, childrenOf parent: WorksheetPath? = nil, rootsOnly: Bool = false, recursive: Bool = false, unlocks: Set<String> = []) throws -> [(path: WorksheetPath, worksheet: Worksheet)] {
@@ -1029,7 +1030,15 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    func manage(_ path: WorksheetPath, operation: DocumentAction, user: User, unlocks: Set<String>) throws -> WorksheetPath? {
+    /// A „password” művelet hash-ét a hívó a zárakon kívül számolja ki (`passwordHash(for:)`).
+    static func passwordHash(for operation: DocumentAction) throws -> String? {
+        guard operation.action == "password" else { return nil }
+        let password = operation.value ?? ""
+        guard password.utf8.count <= 72 else { throw Abort(.badRequest) }
+        return password.isEmpty ? nil : try Bcrypt.hash(password)
+    }
+
+    func manage(_ path: WorksheetPath, operation: DocumentAction, user: User, unlocks: Set<String>, passwordHash: String? = nil) throws -> WorksheetPath? {
         try lock.withLock {
             let ctx = try context(path)
             let rights = accessLocked(ctx, user: user, unlocks: unlocks)
@@ -1045,8 +1054,8 @@ final class WorksheetStore: @unchecked Sendable {
             case "password":
                 let password = operation.value ?? ""
                 guard password.utf8.count <= 72 else { throw Abort(.badRequest) }
-                let hash = password.isEmpty ? nil : try Bcrypt.hash(password)
-                next.rules[ctx.directory]?.passwordHash = hash
+                // Előre számolt hash hiányában (pl. tesztekből hívva) itt számolódik ki.
+                next.rules[ctx.directory]?.passwordHash = password.isEmpty ? nil : try passwordHash ?? Bcrypt.hash(password)
                 page.passwordHash = nil
             case "mode" where path.parts.count == 1:
                 guard let mode = operation.value, ["public", "internal"].contains(mode) else { throw Abort(.badRequest) }
@@ -1724,17 +1733,18 @@ extension WorksheetStore {
     }
 
     func unlockWeb(_ requests: [WebPresentationRequest], password: String, user: User?, unlocks: Set<String>) throws -> (WebPresentationRequest, [String]) {
-        try lock.withLock {
+        let (request, required) = try lock.withLock { () throws -> (WebPresentationRequest, Set<String>) in
             for request in requests {
                 guard let context = try webContext(project: request.project, reference: request.reference, user: user, unlocks: unlocks) else { continue }
                 guard context.access.readable else { throw Abort(.forbidden) }
-                let required = Set(context.access.hashes).subtracting(unlocks)
-                let matches = try required.filter { try Bcrypt.verify(password, created: $0) }
-                guard !matches.isEmpty else { throw Abort(.forbidden) }
-                return (request, Array(matches))
+                return (request, Set(context.access.hashes).subtracting(unlocks))
             }
             throw Abort(.notFound)
         }
+        // A bcrypt a záron kívül fut.
+        let matches = try required.filter { try Bcrypt.verify(password, created: $0) }
+        guard !matches.isEmpty else { throw Abort(.forbidden) }
+        return (request, Array(matches))
     }
 
     func webPresentations(in path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> [WebPresentationInfo] {
@@ -1772,6 +1782,9 @@ extension WorksheetStore {
     }
 
     func setWebPresentation(_ settings: WebPresentationSettings, in path: WorksheetPath, user: User, unlocks: Set<String>) throws {
+        guard settings.password.map({ (1...72).contains($0.utf8.count) }) ?? true else { throw Abort(.badRequest) }
+        // A bcrypt a záron kívül fut.
+        let newHash = try settings.password.map { try Bcrypt.hash($0) }
         try lock.withLock {
             let worksheet = try context(path)
             try authorize(accessLocked(worksheet, user: user, unlocks: unlocks), user: user)
@@ -1786,7 +1799,7 @@ extension WorksheetStore {
             policy.guestReadable = settings.membersOnly ? false : nil
             policy.editors = settings.editors.map { Set($0).sorted() }
             if settings.removePassword { policy.passwordHash = nil }
-            if let password = settings.password { policy.passwordHash = try Bcrypt.hash(password) }
+            if let newHash { policy.passwordHash = newHash }
             try write(policy, to: settingsURL(context.directory))
         }
     }

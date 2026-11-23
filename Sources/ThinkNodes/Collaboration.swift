@@ -331,8 +331,10 @@ final class Collaboration: @unchecked Sendable {
     }
 
     func manage(_ path: WorksheetPath, operation: DocumentAction, user: User, unlocks: Set<String>) throws -> WorksheetPath? {
-        try lock.withLock {
-            let result = try store.manage(path, operation: operation, user: user, unlocks: unlocks)
+        // A jelszó hash-e a zárakon kívül készül, különben a bcrypt idejére minden kérés megállna.
+        let passwordHash = try WorksheetStore.passwordHash(for: operation)
+        return try lock.withLock {
+            let result = try store.manage(path, operation: operation, user: user, unlocks: unlocks, passwordHash: passwordHash)
             invalidate(path)
             pages.publish(.structure, at: path)
             if let result, result.url != path.url { pages.publish(.structure, at: result) }

@@ -5,19 +5,35 @@ import {assetURL, attachmentURL, checkText, fileName, fileNameParts, importFile,
 import {hasTrait, rootType, traits, typeLabel} from "./node-types.js";
 import {decodeWorksheet, encodeWorksheet} from "./worksheet-json.js";
 import {sharedMouse} from "./mouse.js";
-import {worksheetChanges, replayChanges} from "./editor-history.js?v=1";
+import {worksheetChanges, replayChanges, sameValue} from "./editor-history.js?v=2";
 import {flashNode, flashPoint} from "./ping.js";
 import {showTooltip, hideTooltip} from "./tooltip.js";
+import {justifyRows} from "./justify.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {useWorksheetGeometry, automaticBorder, automaticGridColor, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=17";
+import {useWorksheetGeometry, automaticBorder, automaticGridColor, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=18";
 
 import {ancestors, overlapFraction} from "./containers.js?v=3";
 
 const mount = document.querySelector("#editor");
 const {path, csrf, user, motionRate} = mount.dataset;
 const d3 = window.d3;
-const {createApp, computed, h, nextTick, onMounted, onUnmounted, ref, shallowRef, watch} = window.Vue;
+const {createApp, computed, h, nextTick, onMounted, onUnmounted, onUpdated, ref, shallowRef, toRaw, watch} = window.Vue;
+
+// Az új munkalapállapotban a tartalmilag változatlan dobozok és vonalak a korábbi objektumot kapják vissza.
+// Az elrendezés- és vonalgeometria-gyorsítótárak objektumazonosság szerint működnek; enélkül minden mentés
+// és távoli frissítés után a teljes vászon újra tördelődne és újrarajzolódna.
+function keepUnchanged(previous, next) {
+  if (!previous) return next;
+  for (const group of ["nodes", "edges"]) {
+    const old = new Map((previous[group] ?? []).map(item => [item.id, item]));
+    next[group] = next[group].map(item => {
+      const before = old.get(item.id);
+      return before && sameValue(toRaw(before), item) ? before : item;
+    });
+  }
+  return next;
+}
 const endpoint = "/api/worksheet/" + path;
 
 function icon(name) {
@@ -623,7 +639,7 @@ createApp({
       if (latest.revision <= baseline.revision) return;
       if (latest.resetRevision > baseline.revision) { discardDrafts(latest); return; }
       historyBase = rebaseWorksheet(baseline, historyBase, latest);
-      board.value = rebaseWorksheet(baseline, copy(board.value), latest);
+      board.value = keepUnchanged(board.value, rebaseWorksheet(baseline, copy(board.value), latest));
       baseline = copy(latest);
       if ((gesture.value?.nodeID && !nodeMap.value.has(gesture.value.nodeID)) ||
           (gesture.value?.edgeID && !edgeMap.value.has(gesture.value.edgeID))) {
@@ -1144,7 +1160,7 @@ createApp({
         const after = copy(board.value);
         try { await commit(); recordChanges(); }
         catch (error) {
-          board.value = rebaseWorksheet(after, copy(board.value), before);
+          board.value = keepUnchanged(board.value, rebaseWorksheet(after, copy(board.value), before));
           if (!worksheetChanges(baseline, copy(board.value)).length) savedGeneration.value = generation.value;
           throw error;
         }
@@ -2071,7 +2087,7 @@ createApp({
           }
           const saved = decodeWorksheet(await (await checked(result)).json());
           historyBase = rebaseWorksheet(submitted, historyBase, saved);
-          board.value = rebaseWorksheet(submitted, copy(board.value), saved);
+          board.value = keepUnchanged(board.value, rebaseWorksheet(submitted, copy(board.value), saved));
           baseline = copy(saved);
           savedGeneration.value = version;
           problem.value = "";
@@ -2470,8 +2486,9 @@ createApp({
           renderFileDownload(node, "Letöltés", "node-download button small"),
         ]);
       }
+      // A megjegyzés a legegyszerűbb formában: egy sor, formázás nélkül; a CSS rövidíti „…”-tal (Rendering.swift plainComment).
       const comment = node.text?.trim() && !node.hideText
-        ? h("footer", {class: "node-comment align-" + (node.alignment ?? "center")}, [h(FormattedText, {source: node.text})]) : null;
+        ? h("footer", {class: "node-comment align-" + (node.alignment ?? "center"), title: node.text}, node.text.split(/\s+/).filter(Boolean).join(" ")) : null;
       const marker = node.link ? h("p", {class: "node-link-caption", "data-link-kind": node.link.kind,
         onPointerdown: e => { if (!e.altKey && !e.ctrlKey) e.stopPropagation(); },
         onClick: e => { e.stopPropagation(); if (destination) followBoxLink(destination); }},
@@ -2496,7 +2513,9 @@ createApp({
       const caption = linkCaption(node.link);
       // A link felirata a doboz alatt, a dobozon kívül áll.
       const available = Math.max(12, node.width - 22);
-      const shown = Math.min(available, textWidth(caption, 13));
+      // Egysoros felirat: ha nem fér el, „…”-tal rövidül (nincs tördelés, nincs összenyomás).
+      const shownCaption = fitCaption(caption, 13, available);
+      const shown = textWidth(shownCaption, 13);
       const left = -(shown + 18) / 2, bottom = node.height / 2 + 20;
       const color = paint(node.textColor, 1);
       const iconPath = node.link.kind === "web" ? linkIcons.web : linkIcons[destination?.kind ?? "worksheet"];
@@ -2508,8 +2527,7 @@ createApp({
         h("rect", {x: left - 4, y: bottom - 17, width: shown + 26, height: 20, fill: "transparent", stroke: "none"}),
         h("svg", {x: left, y: bottom - 14, width: 14, height: 14, viewBox: "0 0 24 24", fill: "none", stroke: color,
           "stroke-width": 1.8, "stroke-linecap": "round", "stroke-linejoin": "round"}, [h("path", {d: iconPath})]),
-        h("text", {x: left + 18, y: bottom - 2, "font-size": 13, fill: color, stroke: "none",
-          textLength: textWidth(caption, 13) > available ? available : undefined, lengthAdjust: "spacingAndGlyphs"}, caption),
+        h("text", {x: left + 18, y: bottom - 2, "font-size": 13, fill: color, stroke: "none"}, shownCaption),
       ]);
     }
 
@@ -2547,7 +2565,7 @@ createApp({
             },
             x: line.x + (textDrag ? textDrag.delta.x : 0),
             y: line.y + (textDrag ? textDrag.delta.y : 0), "text-anchor": line.anchor,
-            textLength: line.justifyWidth, lengthAdjust: line.justifyWidth ? "spacing" : undefined, fill: paint(line.color, 1), "font-size": line.size, "font-weight": line.weight,
+            "data-justify": line.justifyWidth, fill: paint(line.color, 1), "font-size": line.size, "font-weight": line.weight,
           }, line.runs.map(run => {
             const format = run.format || {};
             if (!format.bold && !format.italic && !format.code && !format.link) return run.text;
@@ -2745,7 +2763,12 @@ createApp({
     }
 
     const CanvasScene = {
-      setup: () => () => {
+      setup: () => {
+        // Sorkizárás: a szóközöket a böngészőben mért sorszélesség alapján tágítjuk (Public/justify.js).
+        const justify = () => justifyRows(canvas.value);
+        onMounted(justify);
+        onUpdated(justify);
+        return () => {
         const layers = wireLayers.value;
         const children = [], handles = [], activeHandles = [];
         const addEdge = edge => children.push(renderEdge(edge, handles, activeHandles));
@@ -2758,6 +2781,7 @@ createApp({
         children.push(h("g", {"data-editor-only": "", "data-endpoint-handles": ""}, [...handles, ...activeHandles]));
         children.push(renderJunctionHandles());
         return h("g", {"data-scene": ""}, children);
+        };
       },
     };
 

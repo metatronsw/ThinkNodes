@@ -7,6 +7,7 @@ const equal = (a, b) => {
   const keys = Object.keys(a);
   return keys.length === Object.keys(b).length && keys.every(k => equal(a[k], b[k]));
 };
+export {equal as sameValue};
 
 export function worksheetChanges(before, after) {
   const changes = [];

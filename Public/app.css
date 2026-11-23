@@ -668,7 +668,8 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 .node-body { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .node-image .node-body img { display: block; flex: 1; width: 100%; min-height: 0; object-fit: contain; background: transparent; }
 .node-image .node-body img:not([src$=".svg"]) { border-radius: 6px; }
-.node-comment { flex: none; max-height: 45%; overflow: auto; font-size: 13px; line-height: 1.35; }
+/* A fájldoboz megjegyzése egysoros, formázás nélküli felirat; ami nem fér el, „…”-tal rövidül. */
+.node-comment { flex: none; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; line-height: 1.35; }
 .node-comment.align-left { text-align: left; } .node-comment.align-center { text-align: center; } .node-comment.align-right { text-align: right; }
 .node-comment > :first-child, .node-comment .formatted-text > :first-child { margin-top: 0; }
 .node-comment > :last-child, .node-comment .formatted-text > :last-child { margin-bottom: 0; }
@@ -717,7 +718,7 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 .node-file-stack > :not(.node-file) > * { pointer-events: auto; }
 .node-above { flex: none; box-sizing: border-box; padding-bottom: 4px; display: flex; align-items: flex-end; justify-content: center; }
 .node-below { padding-top: 6px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.node-below .node-comment { max-height: none; overflow: visible; width: 100%; }
+.node-below .node-comment { width: 100%; }
 /* Hangló: az idő a csúszka alatt, külön sorban. */
 .node-audio [data-audio-time] { flex-basis: 100%; text-align: center; }
 /* Szöveg eszközei: két sor eszközgomb (1. sor: méret és betűtípus, 2. sor: szín, sorkizárás, összecsukás). */

@@ -20,6 +20,8 @@ const polygons = {
 
 // The viewer receives resolved geometry from the server. The editor supplies its reactive theme.
 let currentGraphics = () => ({});
+// A téma alapértelmezett betűtípusai (Theme.swift defaultFonts).
+const defaultFonts = ["system-ui, sans-serif", "Georgia, 'Times New Roman', serif", "'Chalkboard SE', 'Comic Sans MS', cursive"];
 export function useWorksheetGeometry(readGraphics) { currentGraphics = readGraphics; }
 export function displayShape(shape) { return shape === "rounded" ? currentGraphics().box ?? shape : shape; }
 function verticesFor(shape) {
@@ -476,47 +478,72 @@ export function canvasBounds(board) {
   return {x: -halfWidth, y: -halfHeight, width: halfWidth * 2, height: halfHeight * 2};
 }
 
-function textWidth(value, size) {
+// Becsült betűszélesség em-ben; a böngészőben mért rendszer-, talpas és kézírásos betűkhöz kalibrálva,
+// kis ráhagyással (Rendering.swift letterWidth párja; a két oldalnak pontosan egyeznie kell).
+function letterWidth(letter, monospace = false) {
+  if (monospace) return 0.62;
+  if (letter === " ") return 0.28;
+  if (letter === "…") return 0.85;
+  if ("ilIjf.,:;!|'`".includes(letter)) return 0.3;
+  if ("tr()[]-/\"".includes(letter)) return 0.38;
+  if ("MW@#%&".includes(letter)) return 0.88;
+  if (letter === "m" || letter === "w") return 0.82;
+  if (letter >= "0" && letter <= "9") return 0.6;
+  const lower = letter.toLowerCase(), upper = letter.toUpperCase();
+  if (lower !== upper) return letter === lower ? 0.55 : 0.7;
+  return 0.65;
+}
+const boldFactor = 1.07;
+// A téma betűcsaládja rögzített szélességű-e (az első megnevezett család alapján).
+export function isMonospaceFont(family) {
+  return /mono|menlo|courier|consolas/i.test(String(family ?? "").split(",")[0]);
+}
+function letterMeasure(size, bold, monospace) {
+  return (letter, format) => letterWidth(letter, monospace || !!format?.code) * size * (bold || format?.bold ? boldFactor : 1);
+}
+function textWidth(value, size, {bold = false, monospace = false} = {}) {
+  const measure = letterMeasure(size, bold, monospace);
   let width = 0;
-  for (const letter of value) {
-    if ("MW@#%&".includes(letter)) width += 0.95;
-    else if (" ilI1.,:!|'".includes(letter)) width += 0.33;
-    else width += 0.65;
-  }
-  return width * size;
+  for (const letter of value) width += measure(letter);
+  return width;
 }
 
 
-function wrapRuns(runs, columns, preformatted) {
+// Tördelés becsült szélesség szerint: `width(betű, formátum)` adja egy betű szélességét, `limit` a sor szélessége.
+// Alapértelmezésben minden betű 1 széles, így `limit` oszlopszám (CanvasMarkdown.swift wrapMarkdown párja).
+function wrapRuns(runs, limit, preformatted, width = () => 1) {
   const rows = [];
   let line = [];
   let word = [];
-  let count = 0;
+  let used = 0;
   let lastFormat;
 
   function endLine(wrapped = false) {
-    if (line.length) rows.push({pieces: line, wrapped});
+    if (line.length) rows.push({pieces: line, wrapped, width: used});
     line = [];
-    count = 0;
+    used = 0;
     lastFormat = undefined;
   }
 
-  function append(letter, format) {
+  function append(letter, format, size) {
     if (line.length && lastFormat === format) line.at(-1).text += letter;
     else line.push({text: letter, format});
     lastFormat = format;
-    count += 1;
+    used += size;
   }
 
   function endWord() {
     if (!word.length) return;
-    if (count > 0) {
-      if (count + word.length + 1 > columns) endLine(true);
-      else append(" ", undefined);
+    let wordWidth = 0;
+    for (const [, , size] of word) wordWidth += size;
+    if (used > 0) {
+      const space = width(" ", undefined);
+      if (used + space + wordWidth > limit) endLine(true);
+      else append(" ", undefined, space);
     }
-    for (const [letter, format] of word) {
-      if (count === columns) endLine(true);
-      append(letter, format);
+    for (const [letter, format, size] of word) {
+      if (used > 0 && used + size > limit) endLine(true);
+      append(letter, format, size);
     }
     word = [];
   }
@@ -528,8 +555,9 @@ function wrapRuns(runs, columns, preformatted) {
           if (!line.length) line.push({text: "", format: run.format});
           endLine();
         } else {
-          if (count === columns) endLine(true);
-          append(letter, run.format);
+          const size = width(letter, run.format);
+          if (used > 0 && used + size > limit) endLine(true);
+          append(letter, run.format, size);
         }
       } else if (letter === "\n") {
         endWord();
@@ -537,7 +565,7 @@ function wrapRuns(runs, columns, preformatted) {
       } else if (/\s/.test(letter)) {
         endWord();
       } else {
-        word.push([letter, run.format]);
+        word.push([letter, run.format, width(letter, run.format)]);
       }
     }
   }
@@ -546,21 +574,32 @@ function wrapRuns(runs, columns, preformatted) {
   return rows;
 }
 
-function shortenLine(line, width) {
-  let remaining = width - textWidth("…", line.size);
+function shortenLine(line, width, measure) {
+  let remaining = width - measure("…", undefined);
   const runs = [];
+  let used = 0;
   for (const run of line.runs ?? [{text: line.text}]) {
     let prefix = "";
     for (const letter of run.text) {
-      remaining -= textWidth(letter, line.size);
+      const size = measure(letter, run.format);
+      remaining -= size;
       if (remaining < 0) break;
+      used += size;
       prefix += letter;
     }
     if (prefix) runs.push({...run, text: prefix});
     if (remaining < 0) break;
   }
   runs.push({text: "…"});
-  return {...line, text: runs.map(run => run.text).join(""), runs: line.runs ? runs : undefined, wrapped: false};
+  return {...line, text: runs.map(run => run.text).join(""), runs: line.runs ? runs : undefined, wrapped: false,
+    width: used + measure("…", undefined)};
+}
+
+// Egysoros felirat (link, fájlnév, címke): ha nem fér el, „…”-tal rövidül. Nincs tördelés, nincs összenyomás.
+export function fitCaption(text, size, available) {
+  const measure = letterMeasure(size, false, false);
+  if (textWidth(text, size) <= available) return text;
+  return shortenLine({text, size}, available, measure).text;
 }
 
 // Címsor mérete az alapméret arányában (Rendering.swift headingScale).
@@ -576,6 +615,9 @@ export function labelLayout(node, blocks = []) {
   const previewSpace = node.link && node.link.kind !== "url" ? height * 0.5 : 0;
   const labelHeight = height * heightRatio - 12 - iconSpace - previewSpace;
   const strong = false;  // a Félkövér gomb megszűnt
+  const fonts = currentGraphics().fonts ?? defaultFonts;
+  const monospace = isMonospaceFont(fonts[Math.min(Math.max((node.font ?? 1) - 1, 0), fonts.length - 1)]);
+  const measureFor = line => letterMeasure(line.size, line.weight >= 700, monospace || line.code);
 
   function makeLines(base) {
     const lines = [];
@@ -585,19 +627,21 @@ export function labelLayout(node, blocks = []) {
       if (!node.fitText) size = Math.round(size);
       const weight = heading ? (strong ? 900 : 700) : (strong ? 650 : 400);
       const indent = Math.max(0, (block.indent ?? 0) - 1) * base * 1.2;
-      const columns = Math.max(2, Math.floor((labelWidth - indent) / (size * 0.65)));
+      const code = block.kind === "code";
       const runs = block.kind === "quote" ? [{text: "› "}, ...block.runs] : block.runs;
-      wrapRuns(runs, columns, block.kind === "code").forEach(({pieces, wrapped}, row) => {
+      const measure = letterMeasure(size, weight >= 700, monospace || code);
+      wrapRuns(runs, labelWidth - indent, code, measure).forEach(({pieces, wrapped, width}, row) => {
         // Ahány üres sor van a forrásban, annyi üres sor marad a dobozon is.
         const gap = row === 0 ? (block.blankLines ?? 0) * base * 1.25 : 0;
-        lines.push({justify: node.justified && block.kind !== "code", wrapped, runs: pieces, text: pieces.map(piece => piece.text).join(""),
-          size, weight, indent, color: node.textColor, step: size * 1.25 + gap, gap});
+        lines.push({justify: node.justified && !code, wrapped, runs: pieces, text: pieces.map(piece => piece.text).join(""),
+          size, weight, indent, code, width, color: node.textColor, step: size * 1.25 + gap, gap});
       });
     });
     if (node.hideText && lines.length > 1) {
       // Összecsukott állapot: az első sor marad, alatta egy sorközzel az ellipszis.
       const first = lines[0];
       return [first, {...first, runs: [{text: "…"}], text: "…", justify: false, wrapped: false, indent: 0, gap: 0,
+        width: measureFor(first)("…", undefined),
         step: first.size * 1.25}];
     }
     return lines;
@@ -611,7 +655,7 @@ export function labelLayout(node, blocks = []) {
       const size = Math.floor((low + high) / 2);
       const candidate = makeLines(size);
       if (candidate.reduce((sum, line) => sum + line.step, 0) <= labelHeight &&
-          candidate.every(line => textWidth(line.text, line.size) + line.indent <= labelWidth)) {
+          candidate.every(line => line.width + line.indent <= labelWidth)) {
         lines = candidate;
         low = size + 1;
       } else high = size - 1;
@@ -630,8 +674,8 @@ export function labelLayout(node, blocks = []) {
   let overflow = omitted || (node.hideText && blocks.length > 1);
   for (let i = 0; i < visible.length; i++) {
     const line = visible[i];
-    if (textWidth(line.text, line.size) + line.indent > labelWidth || (omitted && i === visible.length - 1)) {
-      visible[i] = shortenLine(line, labelWidth - line.indent);
+    if (line.width + line.indent > labelWidth || (omitted && i === visible.length - 1)) {
+      visible[i] = shortenLine(line, labelWidth - line.indent, measureFor(line));
       overflow = true;
     }
   }
@@ -645,7 +689,7 @@ export function labelLayout(node, blocks = []) {
     const align = line.justify || line.indent > 0 ? "left" : node.alignment ?? "center";
     const x = align === "left" ? -labelWidth / 2 + line.indent : align === "right" ? labelWidth / 2 : 0;
     // Sorkizárás: csak a tördelt (nem bekezdés-záró) sorok érnek a doboz mindkét széléig; a rövid sor balra zárt marad.
-    const justifyWidth = line.justify && line.wrapped && line.text.includes(" ") && textWidth(line.text, line.size) < labelWidth - line.indent
+    const justifyWidth = line.justify && line.wrapped && line.text.includes(" ") && line.width < labelWidth - line.indent
       ? labelWidth - line.indent : undefined;
     return {...line, x, y, anchor: {left: "start", center: "middle", right: "end"}[align], justifyWidth};
   });
@@ -659,4 +703,4 @@ export function linkCaption(link) {
   return link.target;
 }
 
-export {textWidth};
+export {textWidth, wrapRuns};
