@@ -20,7 +20,7 @@ Options:
   --help      Show this help.
 
 Environment:
-  THINKNODES_SWIFT   Swift 6 executable (default: ~/X-Code/Swift/6.0.3, swiftly, or swift in PATH).
+  THINKNODES_SWIFT   Swift 6 executable (default: ~/X-Code/RunTime/Swift/6.0.3, swiftly, or swift in PATH).
 EOF
 }
 
@@ -83,7 +83,7 @@ fi
 # --- Swift toolchain ---------------------------------------------------------------------
 swift_bin="${THINKNODES_SWIFT:-}"
 if [[ -z "$swift_bin" ]]; then
-    for candidate in "$HOME/X-Code/Swift/6.0.3/usr/bin/swift" "$HOME/.swiftly/bin/swift" \
+    for candidate in "$HOME/X-Code/RunTime/Swift/6.0.3/usr/bin/swift" "$HOME/.swiftly/bin/swift" \
                      "$HOME/.local/share/swiftly/bin/swift" "$(command -v swift || true)"; do
         if [[ -n "$candidate" && -x "$candidate" ]]; then swift_bin="$candidate"; break; fi
     done

@@ -43,7 +43,7 @@ sudo_cmd=()
 
 find_swift() {
     local candidate
-    for candidate in "${THINKNODES_SWIFT:-}" "$HOME/X-Code/Swift/$swift_version/usr/bin/swift" "$HOME/.swiftly/bin/swift" \
+    for candidate in "${THINKNODES_SWIFT:-}" "$HOME/X-Code/RunTime/Swift/$swift_version/usr/bin/swift" "$HOME/.swiftly/bin/swift" \
                      "$HOME/.local/share/swiftly/bin/swift" /usr/local/bin/swift "$(command -v swift || true)"; do
         if [[ -n "$candidate" && -x "$candidate" ]] &&
             "$candidate" --version 2>/dev/null | grep -Eq 'Swift version ([6-9]|[1-9][0-9])\.'; then
@@ -54,7 +54,7 @@ find_swift() {
 }
 
 node_ok() {
-    [[ -f "$HOME/X-Code/NodeJS/env.sh" ]] && source "$HOME/X-Code/NodeJS/env.sh"
+    [[ -f "$HOME/X-Code/RunTime/NodeJS/env.sh" ]] && source "$HOME/X-Code/RunTime/NodeJS/env.sh"
     command -v node >/dev/null && [[ "$(node -p 'process.versions.node.split(".")[0]')" -ge 22 ]]
 }
 

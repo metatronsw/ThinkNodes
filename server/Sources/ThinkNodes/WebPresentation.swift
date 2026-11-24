@@ -509,9 +509,9 @@ enum WebScreenshot {
         let candidates = ["/usr/lib64/chromium-browser/headless_shell", "/usr/bin/chromium-browser", "/usr/bin/chromium", "/usr/bin/google-chrome", "/usr/bin/headless_shell",
             "/Applications/Chromium.app/Contents/MacOS/Chromium", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
             "/opt/homebrew/bin/chromium", "/usr/local/bin/chromium",
-            // Helyi fejlesztés: Chrome for Testing headless shell a ~/X-Code alatt.
-            NSHomeDirectory() + "/X-Code/Chromium/chrome-headless-shell-mac-x64/chrome-headless-shell",
-            NSHomeDirectory() + "/X-Code/Chromium/chrome-headless-shell-mac-arm64/chrome-headless-shell"]
+            // Helyi fejlesztés: Chrome for Testing headless shell a ~/X-Code/RunTime alatt.
+            NSHomeDirectory() + "/X-Code/RunTime/Chromium/chrome-headless-shell-mac-x64/chrome-headless-shell",
+            NSHomeDirectory() + "/X-Code/RunTime/Chromium/chrome-headless-shell-mac-arm64/chrome-headless-shell"]
         return candidates.first(where: FileManager.default.isExecutableFile)
     }()
 
