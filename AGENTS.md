@@ -12,7 +12,7 @@
 
 # Ha teszteléshez (pl. szerkesztő böngészős ellenőrzése) szükséges, a szerver tesztmódban indítható: `server/run.sh --port:8888 --test` 
 
-# Minden munkamenet végén ír be a BUGS.md -be a nyitott hibákkat amik nem lettek megoldva vagy félre lettek rakva.
+# Minden munkamenet végén ír be a BUGS.md -be a nyitott hibákkat amik nem lettek megoldva vagy félre lettek rakva. Javított híbákat a DONE.md -be kell rakni
 
 # Félretett feladatokat a TODO.md -be rakjad, témák szerint csoportosítva.
 
