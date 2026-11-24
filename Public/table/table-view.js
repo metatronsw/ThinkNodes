@@ -150,7 +150,7 @@ export function tableToolbar(h, edit, {compact = false} = {}) {
   ]);
 }
 
-// Szerkesztési mód. `onExit`: kilépés (Esc). A vezérlő (TableEditor) állapotát rajzolja; a `version` mező
+// Szerkesztési mód: képletsor és rács (az eszközsor a panelen van, hogy kis dobozban is látsszon a rács). `onExit`: kilépés (Esc). A vezérlő (TableEditor) állapotát rajzolja; a `version` mező
 // változása váltja ki az újrarajzolást (a hívó olvassa).
 export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false} = {}) {
   const doc = edit.doc, sel = edit.sel, draft = edit.draft;
@@ -170,6 +170,8 @@ export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false
   const pressCell = (event, r, c) => {
     event.stopPropagation();
     if (event.button !== 0) return;
+    // A billentyűzet a táblázathoz menjen (a panel gombjáról vagy a vászonról idekattintva is).
+    if (edit.draft == null) focusSink(event.currentTarget);
     if (edit.pointing) { event.preventDefault(); edit.insertReference(r, c); edit.pointStart = {r, c}; return; }
     edit.select(r, c, event.shiftKey);
     dragging = true;
@@ -228,15 +230,21 @@ export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false
   if (rest > 0) bodyRows.push(h("tr", {class: "tn-spacer", style: {height: rest + "px"}}));
 
   const stop = e => e.stopPropagation();
-  return h("div", {class: "tn-table-editor", tabindex: 0, "data-table-editor": "",
-    onVnodeMounted: ({el}) => { if (focusGrid) el.focus(); },
+  return h("div", {class: "tn-table-editor", tabindex: -1, "data-table-editor": "",
+    onVnodeMounted: ({el}) => { if (focusGrid) focusSink(el); },
     onPointerdown: stop, onDblclick: stop, onClick: stop, onContextmenu: stop,
     onKeydown: event => {
       event.stopPropagation();
       if (event.key === "Escape" && edit.draft == null) { event.preventDefault(); onExit(); return; }
+      // Gyors gépelés: amíg a cella beviteli mezője meg nem jelenik, a betűk a vázlathoz fűződnek.
+      if (edit.draft != null && event.target.matches?.(".tn-sink, .tn-table-editor") && event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        edit.setDraft(edit.draft + event.key);
+        return;
+      }
       if (edit.keydown(event)) {
         event.preventDefault();
-        if (edit.draft == null) event.currentTarget.focus();
+        if (edit.draft == null) focusSink(event.currentTarget);
       }
     },
     onCopy: event => { if (edit.draft != null) return; event.stopPropagation(); event.preventDefault(); writeClip(event, edit.copy()); },
@@ -253,6 +261,11 @@ export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false
     },
     onWheel: stop,
   }, [
+    // Billentyűzet-nyelő: a fókusz itt van, amíg nincs cellaszerkesztés. A gépelést (IME, érintőbillentyűzet,
+    // szövegbeszúrás is) elkapja, és cellaszerkesztést indít vele.
+    h("input", {class: "tn-sink", "aria-label": "Táblázat, aktív cella: " + edit.activeName, autocomplete: "off", spellcheck: false,
+      onInput: e => { const text = e.target.value; e.target.value = ""; if (text && edit.draft == null) edit.startDraft(text); },
+      onPointerdown: stop}),
     h("div", {class: "tn-formula-bar"}, [
       h("span", {class: "tn-name"}, edit.activeName),
       h("span", {class: "tn-fx"}, "fx"),
@@ -260,7 +273,6 @@ export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false
         onFocus: () => { if (edit.draft == null) edit.startDraft(); },
         onInput: e => edit.setDraft(e.target.value), onPointerdown: stop}),
     ]),
-    tableToolbar(h, edit, {compact: true}),
     edit.problem ? h("p", {class: "tn-problem", role: "alert"}, edit.problem) : null,
     h("div", {class: "tn-table-scroll",
       onVnodeMounted: ({el}) => { edit.viewport = el.clientHeight || 400; el.scrollTop = edit.scrollTop; },
@@ -276,6 +288,12 @@ export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false
       ]),
     ]),
   ]);
+}
+
+// A fókusz a rejtett billentyűzet-nyelőre kerül (ha éppen nincs cellaszerkesztés).
+function focusSink(from) {
+  const root = from?.closest?.(".tn-table-editor") ?? from;
+  root?.querySelector?.(".tn-sink")?.focus({preventScroll: true});
 }
 
 function writeClip(event, data) {

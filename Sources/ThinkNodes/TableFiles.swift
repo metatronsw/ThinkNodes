@@ -45,6 +45,9 @@ enum TableFiles {
 }
 
 extension WorksheetStore {
+    /// Teszthez: a frissen feltöltött mellékletek 60 másodperces türelmi ideje lejár.
+    func forgetPendingAttachmentsForTesting() { lock.withLock { clearPendingAttachments() } }
+
     /// A melléklet tényleges fájlneve (a név lehet azonosító is: `file-…`).
     func attachmentFilename(_ path: WorksheetPath, named name: String, user: User?, unlocks: Set<String>) throws -> String {
         guard let url = try contents(path, user: user, unlocks: unlocks, named: name).first else { throw Abort(.notFound) }

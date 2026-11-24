@@ -415,4 +415,16 @@ Jelenleg nincs. A legutóbb lezártak (2026-11-24):
 - A `ROUND` / számformátum kerekítése a feleket nullától elfelé viszi, saját kiírással (a printf és a JS `toFixed` az egzakt feleknél eltér).
 - Forrásfájl a projekt másik lapjáról vagy a közös könyvtárból: előbb a saját lapra másolódik, onnan készül a táblázat.
 
-**Böngészőben még nem ellenőrzött:** a szerkesztési mód kezelése (kijelölés egérrel, oszlopszélesség húzása, vágólap Excellel, párbeszédablakok). A tesztlap: `MassTest/TablaTeszt` (helyi adat).
+**Böngészőben ellenőrizve (2026-11-24, `MassTest/TablaTeszt`, helyi adat):** olvasó nézet, cellaszerkesztés (beírás, képlet,
+hivatkozás-kiemelés, Enter), azonnali újraszámolás, sorbeszúrás, Shift+kattintásos tartomány, félkövér, pénznem, vastag külső keret,
+mentés és szerveres újraszámolás, megtekintő, üres táblázat létrehozása a helyi menüből.
+**Még nem ellenőrzött:** oszlopszélesség húzása, vágólap Excellel oda-vissza, CSV feltöltése a rákérdezéssel (fájlválasztó kell), forrásfájl cseréje.
+
+**A tesztelés közben javítva:**
+- A táblázat forrásfájlja nem kap automatikusan saját dobozt, és a táblázattal együtt kerül lomtárba; a csv-doboz törlésekor a forrás a táblázatnál marad (`WorksheetStore.tableSourceRefs`, `Tests/ThinkNodesTests/TableBoxTests.swift`).
+- A gépelés egy rejtett beviteli mezőn keresztül érkezik (IME, érintőbillentyűzet, szövegbeszúrás is cellaszerkesztést indít).
+- A vászon capture-fázisú `pointerdown` figyelője átengedi a szerkesztett táblázaton belüli kattintásokat (Shift+kattintás nem a doboz kijelölését váltja).
+- A dobozon belüli eszközsor kikerült (kis dobozban eltakarta a rácsot); a formázás a panelen és gyorsbillentyűkkel érhető el.
+- Sötét témában is olvasható fejléc és képletsor.
+
+**Apróság későbbre:** a már nem használt stílusok a `styles` tömbben maradnak (mentéskor tömöríthető).

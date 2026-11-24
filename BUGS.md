@@ -11,6 +11,10 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 ## Javítva
 
+- **Szövegfájl-doboz „…” maradt újratöltés után, ha a fájlt korábban szerkesztették** (2026-11-24, a táblázat tesztelésekor)
+  - Ok: a szöveget betöltő figyelő a `file.rev` régi értékével (0) kérte le a fájlt; a `rev` utána a figyelőn kívül változott meg (1), így az aktuális változat sosem töltődött be.
+  - Javítás: közös `loadFileText`; a kirajzolás is elindítja a hiányzó változat betöltését (`Public/editor.js`). Szöveg- és táblázatdobozra egyaránt érvényes.
+
 - **`ThemeTests.themeProjectRoundTrip` elbukott** (2026-11-24)
   - Ok: a teszt még a régi, 3-as vastagságú üvegkeretet várta; a renderelés szándékosan egységes, 1,6-os keretet ad („minden doboz kerete egyforma vastag”).
   - Javítás: a teszt elvárása frissítve (`Tests/ThinkNodesTests/ThemeTests.swift`).

@@ -2164,6 +2164,8 @@ createApp({
     }
 
     function pressCanvas(event) {
+      // Szerkesztett táblázaton belül a táblázat kezeli a kattintást (cellakijelölés, Shift+kattintás tartomány).
+      if (event.target?.closest?.("[data-table-editor]")) return;
       if (event.pointerType === "touch" && (!event.isPrimary || touchView)) {
         event.stopPropagation();
         return;
@@ -2666,21 +2668,24 @@ createApp({
     const fileSaveState = ref(new Map());
     const fileTextKey = (node, rev = node.file.rev ?? 0) => JSON.stringify([node.file.source ?? null, node.file.asset]) + "#" + rev;
     const pendingFileSaves = new Map();
-    watch(() => (board.value?.nodes ?? []).filter(isTextFile).map(fileTextKey), async keys => {
-      for (const key of new Set(keys)) {
-        if (fileTexts.value.has(key)) continue;
-        const [source, asset] = JSON.parse(key.slice(0, key.lastIndexOf("#")));
-        fileTexts.value = new Map(fileTexts.value).set(key, null);
-        try {
-          const text = await (await checked(await fetch(fileURL(path, {source: source ?? undefined, asset})))).text();
-          fileTexts.value = new Map(fileTexts.value).set(key, text);
-        } catch (error) {
-          const next = new Map(fileTexts.value);
-          next.delete(key);
-          fileTexts.value = next;
-          problem.value = error.message;
-        }
+    // Egy szövegfájl-változat betöltése (egyszer kulcsonként). A kirajzolás is hívja: ha a `file.rev` a figyelőn
+    // kívül változik meg (pl. betöltéskor a munkalap frissítésekor), a hiányzó változat így is betöltődik (BUGS.md).
+    async function loadFileText(key) {
+      if (fileTexts.value.has(key)) return;
+      const [source, asset] = JSON.parse(key.slice(0, key.lastIndexOf("#")));
+      fileTexts.value = new Map(fileTexts.value).set(key, null);
+      try {
+        const text = await (await checked(await fetch(fileURL(path, {source: source ?? undefined, asset})))).text();
+        fileTexts.value = new Map(fileTexts.value).set(key, text);
+      } catch (error) {
+        const next = new Map(fileTexts.value);
+        next.delete(key);
+        fileTexts.value = next;
+        problem.value = error.message;
       }
+    }
+    watch(() => (board.value?.nodes ?? []).filter(isTextFile).map(fileTextKey), keys => {
+      for (const key of new Set(keys)) loadFileText(key);
     }, {immediate: true});
 
     function editFileText(node, text) {
@@ -2920,7 +2925,10 @@ createApp({
 
     function renderFileText(node) {
       const text = fileTexts.value.get(fileTextKey(node));
-      if (text == null) return h("p", {class: "muted"}, "…");
+      if (text == null) {
+        if (!fileTexts.value.has(fileTextKey(node))) queueMicrotask(() => loadFileText(fileTextKey(node)));
+        return h("p", {class: "muted"}, "…");
+      }
       if (node.type === "table") {
         tableTick.value;
         if (tableEdit.value?.id === node.id) return renderTableEditor(h, tableEdit.value.editor, {onExit: stopTableEdit, focusGrid: tableFocus.value});
