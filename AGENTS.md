@@ -1,12 +1,33 @@
-# Mindig szólj ha a vapor szerver kódja változott és újra kell indítani
+# Csak akkor módosíts ha engedélyt adtam rá, vagy külön utasítottam az első parancsban.
 
-# Ne kérdezz feleslegesen script indítás engedély kérés miatt
+# Script futtatása tesztelés céljából mindig engedélyezett helyi mappákat érintő feladatban
 
-# A helyi fejlesztés és az éles működés külön kezelendő. A helyi `Projects` mappa nem azonos az éles szerver adatkönyvtárával (jelenleg `/var/lib/thinknodes/Projects`). Minden feladatnál tisztázd vagy állapítsd meg, melyik környezetre vonatkozik; a helyi fájlmódosítás nem jelenik meg automatikusan élesben. Éles szerverhez ne csatlakozz és ott ne módosíts adatot, hacsak a felhasználó ezt kifejezetten nem kéri.
+# Vapor szerver indítása helyben: mindig a 8888-as porton történjen: run.sh --port:8888
+
+# Vaport mindig csak egy szerver fusson egyszerre!
+
+# Mindig szólj ha a vapor szerver kódja változott, indítsd ujra ha van futó szerver!
+
+# A helyi fejlesztés és az éles működés külön kezelendő. A helyi `projects` mappa nem azonos az éles szerver adatkönyvtárával (jelenleg `/var/lib/thinknodes/Projects`). 
+
+# Ha teszteléshez (pl. szerkesztő böngészős ellenőrzése) szükséges, a szerver tesztmódban indítható: `server/run.sh --port:8888 --test` 
+
+# Minden munkamenet végén ír be a BUGS.md -be a nyitott hibákkat amik nem lettek megoldva vagy félre lettek rakva.
+
+# Félretett feladatokat a TODO.md -be rakjad, témák szerint csoportosítva.
+
+# Mappaszerkezet: a gyökérben csak `server/` (minden kód, szkript, teszt, dokumentáció) és `projects/` (helyi adat) van. Gyökér mappában a nagy betűs .md fileok neked szólnak, szerkeszthetes és olvashatod őket. Amit nem olvashatsz és nem szerkeszthetsz: `note.md`
+
+# Feladatok végeztével csinálj Git commitot, és mond el milyen commentet irtál hozzá. Írd be a CHANGES.md -be
+
+# Git commit sose tartalmazzon push -t, azt manuálisan kell, neked nincs rá jogod.
+
+# Külső szerverre csak külön utasításra, engedéllyel csatlakozhatsz. 
+
+# File törlése minden esetben engedély köteles.
 
 
-# Vapor szerver indítása helyben: mindig a 8888-as porton, 
 
-# Ha teszteléshez (pl. szerkesztő böngészős ellenőrzése) szükséges, a szerver tesztmódban indítható: `THINKNODES_HOST=:: ./run.sh --local --test --port:8888` (launch.json: `thinknodes-test`). Ilyenkor minden csatlakozó admin jogot kap; ez helyben rendben van, mert a helyi hálózaton más soha nincs. Élesben tilos.
 
-# Minden munkamenet elején nézd át a BUGS.md-t, és foglalkozz a nyitott hibákkal, mielőtt új feladatba kezdesz. A javított hibát vidd át a „Javítva” részbe.
+
+

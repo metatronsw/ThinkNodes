@@ -2,84 +2,49 @@
 
 Közös ötletvászon Swift 6.0.3 és Vapor szerverrel, Vue 3 szerkesztővel és D3 Zoom nagyítással. A megtekintő nézet szerveroldali HTML-t és SVG-t használ. JavaScripttel a jelenlétet és a vásznat is élőben frissíti.
 
+## Mappaszerkezet
+
+| Mappa | Tartalom |
+| --- | --- |
+| `server/` | A szerver és a kliens forrása (`Sources/`, `Public/`, `Tests/`, `docs/`, `tools/`, `Patches/`), a `run.sh` és a `deploy/` szkriptek; build után itt a `thinknodes` bináris |
+| `projects/` | Helyi projektadatok (Git-követésen kívül); élesben `/var/lib/thinknodes/Projects` |
+
+## Szkriptek
+
+Mindegyik önállóan futtatható, és a `--help` kiírja a kapcsolóit.
+
+| Szkript | Feladat |
+| --- | --- |
+| `server/deploy/install.sh` | Ellenőrzi és telepíti a fejlesztéshez és futtatáshoz szükséges környezetet (Swift 6, rendszerkönyvtárak, Node.js, Python, Chromium, Vapor-csomagok). Csak a hiányzót telepíti; `--force`: mindent újra. |
+| `server/deploy/build.sh` | `git pull`, majd build macOS-en vagy Fedorán. Ha a frissítés nem megy, vagy helyi változás van, felajánlja a GitHub-ág pontos másolatára állítást. A release bináris a `server/thinknodes` helyre kerül. `--debug`, `--no-pull`. |
+| `server/deploy/daemon.sh` | Fedorán: `thinknodes` felhasználó, adatmappák, checkout a `/opt/ThinkNodes` alá, build, systemd szolgáltatás; végül kiírja a teendőket. |
+| `server/run.sh` | A szerver indítása (helyben és élesben). `--update`: előtte `deploy/build.sh`; `--debug`: a debug bináris. A többi kapcsoló a `thinknodes` binárisé. |
+
 ## Indítás
 
-Futtasd a projekt könyvtárából.
-
 ~~~sh
-./build.sh --disable-automatic-resolution -j 2
-./run.sh
+server/deploy/install.sh
+server/deploy/build.sh --no-pull     # helyben, ha vannak még nem commitolt változások
+server/run.sh --http --port:8888 --test
 ~~~
 
-Nyisd meg a [https://localhost/admin](https://localhost/admin) oldalt. Az első helyi megnyitáskor itt hozható létre az adminfiók. Az adminoldalon állítható a hozzáférés és kezelhetők a felhasználók. Adminfiókot parancssorból is létrehozhatsz a **./run.sh user admin admin** paranccsal, amely jelszót kér.
+A `thinknodes` bináris kapcsolói (a `server/run.sh` ugyanezeket adja tovább; teljes lista: `server/thinknodes --help`):
 
-A build először a **~/X-Code/Swift/6.0.3/usr/bin/swift** binárist keresi. A **THINKNODES_SWIFT** változóval megadható másik útvonal. A **--disable-automatic-resolution** kapcsoló a **Package.resolved** fájlban rögzített csomagverziókat használja. Az első teljes build letölti a rögzített Vue- és D3-verziót a **Public/vendor/** könyvtárba. Utána a böngésző helyben tölti be őket. A **./build.sh --server-only** csak a szervert építi. A **THINKNODES_DATA**, **THINKNODES_HOST**, **THINKNODES_PORT** és **THINKNODES_CONFIGURATION** változók felülírják az alapértékeket. HTTPS mögött állítsd a **THINKNODES_SECURE_COOKIES=1** változót.
+| Kapcsoló | Jelentés |
+| --- | --- |
+| `--http` | HTTP HTTPS helyett |
+| `--port:N` | Port; alapból 443, `--http` mellett 80 |
+| `--host:CÍM` | Kötési cím; alapból `0.0.0.0`, IPv4 és IPv6 együtt: `::` |
+| `--rate:MS` | A húzás közbeni előnézet két küldése közötti minimális idő (alapból 33 ms) |
+| `--test` | Minden csatlakozó adminjogot kap (Tester1, Tester2…). Élesben tilos. |
+| `--project:MAPPA` | Projektadatok mappája; alapból `../projects` a `server/` mappához képest |
+| `--tls-dir:MAPPA` | A beépített LAN-tanúsítvány mappája (alapból `server/.thinknodes-tls`) |
+| `--tls-cert:FÁJL`, `--tls-key:FÁJL` | Saját tanúsítvány és kulcs (PEM) |
+| `--` | A többi argumentum változtatás nélkül a Vapor `serve` parancsához kerül |
 
-### Fedora Linux build
+HTTPS-nél a bináris maga készíti el a LAN-tanúsítványt: a `ca.crt` gyökértanúsítványt a klienseszközökön megbízhatóként kell telepíteni (a szerver indításkor kiírja az útvonalát). Adminfiók parancssorból: `server/run.sh user admin admin` (jelszót kér). Nyisd meg az `/admin` oldalt; az első helyi megnyitáskor itt is létrehozható az adminfiók.
 
-A release binárist Fedora Linuxon építsd, Swift 6 toolchainnel. A fordításhoz szükséges alapcsomagok: **clang**, **gcc-c++**, **git**, **pkgconf-pkg-config**, **curl**, **openssl** és **ca-certificates**. Telepítés:
-
-~~~sh
-sudo dnf install clang gcc-c++ git pkgconf-pkg-config curl openssl ca-certificates
-~~~
-
-A Swift 6 Linux toolchain külön telepítendő; a `swift --version` paranccsal ellenőrizd, hogy elérhető-e. Ezután a teljes alkalmazás buildje:
-
-~~~sh
-./build-fedora.sh
-~~~
-
-A szerver buildje böngészős függőségek letöltése nélkül:
-
-~~~sh
-./build-fedora.sh --server-only
-~~~
-
-A bináris a **.build/release/ThinkNodes** útvonalon készül. A buildszkript kiírja annak dinamikus könyvtárfüggőségeit is. A futtató Fedora rendszeren a Swift compiler nem kell, de a bináris által jelzett megosztott könyvtáraknak rendelkezésre kell állniuk; azonos vagy újabb Fedora kiadáson építs, mint a célrendszer. A futtatáshoz a bináris mellett a projekt **Public/** és **Projects/** állományai, valamint a TLS-beállítások szükségesek. A futó szolgáltatást korlátozott jogosultságú külön felhasználóként érdemes elindítani.
-
-#### Indítás systemd szolgáltatásként
-
-A `deploy/thinknodes.service` unit a `/opt/ThinkNodes` telepítési útvonalat és a `thinknodes` szolgáltatásfelhasználót használja. A launcher GitHubról frissíti a checkoutot, ezért ennek a felhasználónak írnia kell az alkalmazásmappát; a projektek és a TLS-kulcsok külön, a `/var/lib/thinknodes` alatt tárolódnak. A frissítés utáni buildhez Swift toolchain is kell a szerveren.
-
-~~~sh
-sudo useradd --system --home-dir /var/lib/thinknodes --create-home --shell /sbin/nologin thinknodes
-sudo chown -R thinknodes:thinknodes /opt/ThinkNodes
-sudo install -m 0644 /opt/ThinkNodes/deploy/thinknodes.service /etc/systemd/system/thinknodes.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now thinknodes
-sudo systemctl status thinknodes
-~~~
-
-A napló követése: `sudo journalctl -u thinknodes -f`. Leállítás: `sudo systemctl stop thinknodes`. A unit a 443-as porthoz szükséges jogosultságot rootként futás nélkül adja meg.
-
-### HTTPS a belső hálózaton
-
-Indítás a szervergépen:
-
-~~~sh
-./run.sh
-~~~
-
-A **./run.sh** alapértelmezésben a release binárist indítja, és szükség esetén release módban fordít. Debug indításhoz használd a **./run.sh --debug** parancsot.
-
-
-Macen LAN-os teszthez a **./run.sh --local** debug binárist indít HTTP-n, alapból a 80-as porton. Így a böngészőben elég az **http://** előtag és a Mac címe. A szkript ezen a porton csak a szerver indításához kér adminisztrátori jogosultságot. Sudo nélküli futtatáshoz használd a **./run.sh --local --port:8080** parancsot.
-
-A szerver alapból minden IPv4-hálózati interfészen a **443**-as porton figyel. A másik eszköz böngészőjében nyisd meg az indításkor kiírt, közös hálózathoz tartozó HTTPS-címet. A szervergépen a **https://localhost/admin** címen végezhető el az első adminisztrátori beállítás. A közös szerkesztés ugyanazon a porton használja a titkosított WebSocket-kapcsolatot.
-
-A szkript OpenSSL-lel helyi hitelesítőt hoz létre a **.thinknodes-tls/** könyvtárban. Az eléréshez használt eszközökön egyszer telepítsd a **ca.crt** fájlt megbízható gyökértanúsítványként. A **.key** fájlok a szerveren maradjanak. Az indításkor kiadott szervertanúsítvány a felismert LAN-címekre is érvényes. IP-címváltozás után indítsd újra a szervert.
-
-Saját PEM-tanúsítványlánc és hozzá tartozó, jelszó nélküli privát kulcs is használható:
-
-~~~sh
-THINKNODES_TLS_CERT=/utvonal/fullchain.pem THINKNODES_TLS_KEY=/utvonal/server.key ./run.sh
-~~~
-
-A **THINKNODES_HOST** és a **THINKNODES_PORT** mindkét módban felülírja a kötési címet és a portot. A **THINKNODES_TLS_DIR** a helyben előállított tanúsítványok könyvtárát adja meg. A **./run.sh --http** alapból minden IPv4-interfészen figyel a **80**-as porton, és kiírja a helyi és hálózati HTTP-címeket. A böngészőben ehhez elég az **http://** előtag és a szerver címe. Csak a szervert futtató gépről való eléréshez indítsd így: **THINKNODES_HOST=127.0.0.1 ./run.sh --http**. A **--port:8000** mindkét módban felülírja a portot, a **--rate:100** pedig milliszekundumban adja meg a húzás közbeni előnézet két küldése közötti minimális időt. Az alapérték **33 ms**.
-
-A szerkesztőben és a megtekintőben a bejelentkezett felhasználó a vászon bal alsó gombjával kapcsolhatja be saját mutatója megosztását. Az újonnan megnyitott lapon a megosztás ki van kapcsolva.
-
-A `./run.sh --test` indításkor minden új böngésző-munkamenet automatikusan adminisztrátori jogot kap, Tester1, Tester2 és további neveken. A tesztfelhasználó a fejléc **Bejelentkezés** gombjával saját fiókra válthat.
+Élesben (Fedora): `sudo server/deploy/install.sh`, majd `sudo server/deploy/daemon.sh`. Frissítés: a `daemon.sh` által kiírt `build.sh` parancs, majd `sudo systemctl restart thinknodes`.
 
 ## Munkalapok és fájlok
 
@@ -89,14 +54,14 @@ Az első indításkor a szerver a régi, közös mappában tárolt munkalapokat 
 
 | Útvonal | Adatfájl |
 |---|---|
-| /VisualDemo | Projects/VisualDemo/VisualDemo.thnode |
-| /VisualDemo/Jelmagyarazat | Projects/VisualDemo/Jelmagyarazat/Jelmagyarazat.thnode |
-| /Thinking | Projects/Thinking/Thinking.thnode |
-| /Thinking/Proba | Projects/Thinking/Proba/Proba.thnode |
+| /VisualDemo | projects/VisualDemo/VisualDemo.thnode |
+| /VisualDemo/Jelmagyarazat | projects/VisualDemo/Jelmagyarazat/Jelmagyarazat.thnode |
+| /Thinking | projects/Thinking/Thinking.thnode |
+| /Thinking/Proba | projects/Thinking/Proba/Proba.thnode |
 
 A munkalap JSON-formátumban tárolja a vásznat, a címét, a létrehozóját és a mentési revíziót. A projekt **.settings.json** fájljában vannak a tagság és a lapok láthatóságának beállításai. A rejtett lap közvetlen hivatkozással elérhető a jogosultaknak. A projekt főlapján beállított hozzáférést az összes allap örökli. A hozzáadott szerkesztők és az adminisztrátor kezelhetik a projektet. A vendégek nyilvános projektben szerkeszthetnek.
 
-A **Projects/.settings.json** tartalmazza az alkalmazás beállításait, a fiókokat és a bcrypt-jelszóhasheket. A beállításfájlokat és a munkalapokat a mellékletlista kihagyja. A munkalap saját letöltési gombja **.thnode** fájlt ad.
+Helyben a **projects/.settings.json** tartalmazza az alkalmazás beállításait, a fiókokat és a bcrypt-jelszóhasheket. A beállításfájlokat és a munkalapokat a mellékletlista kihagyja. A munkalap saját letöltési gombja **.thnode** fájlt ad.
 
 A fájldoboz alján a csomagikonra duplán kattintva lehet letölteni a fájlt. Új fájloknál a név alapból rejtett. A tulajdonságpanel **Megjelenés** részében kapcsolható be, a **Fájlnév** mezőben pedig a kiterjesztés előtti rész szerkeszthető. A jóváhagyott törlés a projekt **.trash/** mappájába helyezi a fájlt az eredeti projektbeli alkönyvtárral együtt.
 
@@ -116,7 +81,7 @@ A szerkesztő vásznának helyi menüjében a **Prezentáció beszúrása** para
 
 A megtekintő **Prezentációk** gombjánál projektjogosultsággal szűkíthető az olvasók köre és beállítható a prezentáció jelszava. Minden fájlra külön érvényes a projekt, az útvonalon lévő mappák és a prezentáció szabálya. Egy helyi beállítás csak szűkítheti az örökölt hozzáférést.
 
-A böngésző elkülönített környezetben futtatja a prezentációt. A prezentáció nem fér hozzá a ThinkNodes sütijeihez, böngészőtárhelyéhez és bejelentkezett munkamenetéhez, nem küldhet űrlapot és nem ágyazható más oldalba. A mappán belüli relatív CSS-, kép-, font-, média- és klasszikus JavaScript-fájlok, valamint a külső HTTPS-források (például Tailwind CDN, Google Fonts) betöltődnek. Ha a mappában nincs `index.html`, de pontosan egy HTML-fájl van (például `code.html`), az lesz a belépő. A védett prezentációk relatív erőforrásai a megnyitáskor kapott, munkamenethez kötött ideiglenes útvonalon töltődnek be. HTTPS-en ehhez egy prezentációra korlátozott biztonságos süti is szükséges, HTTP-n (`--local`, `--http`) az útvonal önmagában elég. A modulbetöltés és a ThinkNodes felé irányuló, programból indított hálózati kérések nem támogatottak; a prezentáción kívülre mutató relatív hivatkozások (`../`) 404-et adnak.
+A böngésző elkülönített környezetben futtatja a prezentációt. A prezentáció nem fér hozzá a ThinkNodes sütijeihez, böngészőtárhelyéhez és bejelentkezett munkamenetéhez, nem küldhet űrlapot és nem ágyazható más oldalba. A mappán belüli relatív CSS-, kép-, font-, média- és klasszikus JavaScript-fájlok, valamint a külső HTTPS-források (például Tailwind CDN, Google Fonts) betöltődnek. Ha a mappában nincs `index.html`, de pontosan egy HTML-fájl van (például `code.html`), az lesz a belépő. A védett prezentációk relatív erőforrásai a megnyitáskor kapott, munkamenethez kötött ideiglenes útvonalon töltődnek be. HTTPS-en ehhez egy prezentációra korlátozott biztonságos süti is szükséges, HTTP-n (`--http`) az útvonal önmagában elég. A modulbetöltés és a ThinkNodes felé irányuló, programból indított hálózati kérések nem támogatottak; a prezentáción kívülre mutató relatív hivatkozások (`../`) 404-et adnak.
 
 ## Közös szerkesztés
 
@@ -153,4 +118,4 @@ python3 tools/generate-guide.py --check
 
 Az első parancs elkészíti a kiszolgált `Public/utmutato.html` fájlt. A második ellenőrzi, hogy a verziózott HTML egyezik-e a forrásokkal.
 
-A munkalapok a rövid kulcsú, 2-es verziójú JSON-formátumban készülnek. A **Projects/** mappa tartalma helyi adatként a Git-követésen kívül marad.
+A munkalapok a rövid kulcsú, 2-es verziójú JSON-formátumban készülnek. A **projects/** mappa tartalma helyi adatként a Git-követésen kívül marad.

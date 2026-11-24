@@ -1,0 +1,979 @@
+:root {
+  color-scheme: light;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #202d41;
+  background: #edf2f8;
+  font-synthesis: none;
+  --ink: #202d41;
+  --muted: #536780;
+  --line: #d8e2ef;
+  --accent: #304ccc;
+  --accent-ink: #233ba4;
+  --paper: #f5f8fc;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100dvh; }
+button, input, textarea, select { font: inherit; }
+a { color: var(--accent-ink); text-decoration: none; }
+a:hover { text-decoration: none; }
+h1, h2, p { margin-top: 0; }
+h1 { font-weight: 700; line-height: 1.12; letter-spacing: -.038em; }
+h2 { letter-spacing: -.02em; }
+:focus-visible { outline: 2px solid #596ee7; outline-offset: 3px; }
+.muted { color: var(--muted); }
+.error, .danger { color: #9e2230; }
+.error { overflow-wrap: anywhere; }
+
+.site-header {
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);
+  min-height: 62px;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px clamp(16px, 3vw, 36px);
+  overflow: visible;
+  color: #e9effb;
+  background: #18253b;
+}
+.breadcrumbs, .account { display: flex; align-items: center; gap: 13px; }
+.breadcrumbs { flex: 1 1 auto; min-width: 145px; gap: var(--crumb-gap, 13px); }
+.header-user { flex: 0 0 auto; }
+.breadcrumbs a { color: #ebf1ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand-icon { width: 24px; height: 24px; position: relative; display: inline-block; }
+.brand-icon::before { content: ""; position: absolute; left: 10px; top: 6px; width: 10px; height: 12px; border: solid #aebdff; border-width: 0 0 1px 1px; transform: rotate(38deg); }
+.brand-icon span { position: absolute; width: 7px; height: 7px; border-radius: 2px; background: #aebdff; }
+.brand-icon span:nth-child(1) { left: 13px; top: 2px; }
+.brand-icon span:nth-child(2) { left: 4px; top: 15px; }
+.brand-icon span:nth-child(3) { left: 16px; top: 15px; background: #76d9c1; }
+.slash { color: #97a9c5; }
+.account { font-size: .9rem; }
+.site-header .button { color: #eef4ff; border-color: #526783; background: transparent; }
+.site-header .button:hover { background: #263953; text-decoration: none; }
+
+.button, .tab {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 7px 13px;
+  background: #fff;
+  color: var(--ink);
+  font-size: .9rem;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+}
+.button:hover, .tab:hover { background: #eaf0fa; text-decoration: none; }
+.button:disabled { opacity: .50; cursor: default; }
+.button.gesture-disabled:disabled { opacity: 1; }
+.button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.button.primary:hover:not(:disabled) { background: var(--accent-ink); }
+.button.soft, .button[aria-pressed="true"] { background: #e7ecff; color: var(--accent-ink); border-color: #bbc9f5; }
+.button.small { min-height: 34px; font-size: .85rem; }
+.button.danger { color: #9e2230; }
+.header-button { height: 36px; min-height: 0; flex: none; padding: 0 10px; font-size: .85rem; }
+.header-button.brand { font-size: 1.05rem; font-weight: 750; letter-spacing: -.03em; }
+.ui-icon { flex: 0 0 auto; width: 1.1em; height: 1.1em; }
+.icon-button { padding-inline: 10px; }
+.panel { border: 1px solid var(--line); background: #fff; border-radius: 12px; }
+.shell { width: min(1120px, calc(100% - 40px)); margin: 36px auto; }
+.shell.narrow { width: min(440px, calc(100% - 40px)); }
+.page-heading { display: flex; gap: 15px; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.page-heading h1 { margin: 0; font-size: clamp(1.9rem, 4vw, 2.65rem); }
+.project-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(275px, 100%), 1fr)); gap: 16px; }
+.project-card { display: flex; min-height: 102px; align-items: center; padding: 20px; gap: 16px; color: var(--ink); }
+.project-card:hover { border-color: #8c9adc; text-decoration: none; }
+.project-card h2 { margin: 0 0 5px; font-size: 1.16rem; }
+.project-glyph { display: grid; place-items: center; height: 46px; width: 46px; flex-shrink: 0; border-radius: 9px; background: #e7ecff; color: #334fc6; font-size: 1.9rem; }
+.new-project { margin-bottom: 20px; max-width: 430px; padding: 12px 16px; }
+summary { cursor: pointer; font-weight: 600; }
+.new-project form { margin-top: 16px; }
+.stack { display: grid; gap: 13px; }
+.narrow .panel { padding: 22px; }
+label { display: grid; gap: 5px; min-width: 0; font-weight: 550; font-size: .9rem; }
+input, textarea, select { min-width: 0; width: 100%; border: 1px solid #c6d4e6; border-radius: 7px; padding: 8px 9px; color: var(--ink); background: #fff; }
+textarea { resize: vertical; }
+input[type="color"] { height: 37px; padding: 3px; cursor: pointer; }
+.check { display: flex; align-items: center; gap: 8px; }
+.check input { width: auto; }
+.browse-bar, .exports { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; }
+.browse-bar { justify-content: space-between; margin-bottom: 12px; }
+.tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.tabs a, .tab { padding: 6px 10px; border-radius: 6px; color: var(--muted); font-size: .9rem; font-weight: 600; }
+.tabs [aria-current] { background: #dee7fd; color: #223d9f; }
+.passive-frame { overflow: hidden; background: var(--paper); }
+.passive-canvas { display: block; width: 100%; max-height: 75vh; }
+body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-select: none; }
+
+.passive-canvas a[data-node]:hover { text-decoration: none; }
+.passive-note { margin-top: 18px; padding: 22px; }
+.passive-note h2 { margin: 14px 0; }
+.formatted-text { line-height: 1.6; overflow-wrap: anywhere; }
+.justified-text { text-align: justify; }
+.justified-text pre { text-align: start; }
+.node-file small.justified-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.formatted-text pre { overflow: auto; padding: 12px; background: var(--paper); border-radius: 7px; }
+.formatted-text img { max-width: 100%; }
+.empty, .editor-loading { padding: 22px; margin: 0; }
+
+.editor-root {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-height: 360px;
+}
+.editor-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 60px;
+  padding: 7px clamp(12px, 2vw, 24px);
+  overflow-x: auto;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+}
+.editor-actions { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; overflow-x: auto; }
+.editor-actions > * { flex: 0 0 auto; }
+.editor-header .brand { color: var(--ink); margin-right: 5px; }
+.editor-header h1 { flex: 1 1 200px; min-width: 110px; margin: 0 8px 0 0; font-size: 1.18rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.editor-header select { width: auto; max-width: 155px; font-size: .9rem; }
+.editor-workspace { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); flex: 1; min-height: 260px; overflow: hidden; }
+.canvas-area { position: relative; min-width: 0; min-height: 0; background: var(--paper); }
+/* A háttérrács külön réteg a vászon alatt (editor.js GridLayer). */
+.canvas-grid-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+/* A vászonréteg minden irányban a látható terület felével nagyobb (editor.js overscan): pásztázáskor és kicsinyítéskor
+   a grafikus kártya már kirajzolt tartalmat tol be. Mindig külön réteg (will-change), hogy a szélek előre raszterizálódjanak. */
+.canvas-area { overflow: hidden; }
+.editor-canvas { position: absolute; left: calc(-100% * var(--overscan, .5)); top: calc(-100% * var(--overscan, .5)); display: block;
+  width: calc(100% * (1 + 2 * var(--overscan, .5))); height: calc(100% * (1 + 2 * var(--overscan, .5))); will-change: transform; touch-action: none; -webkit-user-select: none; user-select: none; cursor: default; }
+.editor-canvas :is(.node, .wire-handle, .wire-label, .wire-hit, .junction-handle) { cursor: pointer; }
+.sidebar-open { position: absolute; top: 8px; right: 12px; z-index: 5; box-shadow: 0 4px 14px #1c31531b; }
+.sidebar-open-canvas { right: auto; left: 12px; }
+.sidebar-open-canvas[aria-expanded="false"] svg { transform: rotate(180deg); }
+.canvas-controls { position: absolute; bottom: 14px; left: 14px; display: flex; align-items: center; gap: 4px; padding: 4px; background: #fff; border: 1px solid var(--line); border-radius: 9px; box-shadow: 0 4px 14px #1c31531b; }
+.canvas-controls .button { min-height: 32px; padding: 4px 9px; }
+.canvas-controls > span { min-width: 42px; color: var(--muted); font-size: .86rem; text-align: center; }
+.canvas-empty { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; padding: 10px 12px; color: var(--muted); background: #ffffffeb; border-radius: 7px; }
+.canvas-empty p { margin-bottom: 7px; }
+.inspector-column {
+  position: absolute;
+  inset: 48px 6px 48px auto;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(342px, calc(100% - 12px));
+  pointer-events: none;
+}
+.inspector {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  pointer-events: auto;
+}
+.canvas-inspector-column { inset: 48px auto 68px 6px; width: min(342px, calc(100% - 12px)); }
+.canvas-inspector { width: 100%; min-width: 0; }
+.inspector-content {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 6px;
+  gap: 8px;
+  align-content: start;
+}
+.inspector-content > :is(fieldset, p) {
+  min-width: 0;
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+.inspector-content > fieldset > legend {
+  padding: 1px 6px;
+  background: #fff;
+  border-radius: 4px;
+}
+.inspector-content > * {
+  box-shadow: 0 4px 14px #1c31531b;
+}
+.inspector-content h2, .inspector-content p { margin: 0; }
+.fields-three, .color-field { display: grid; gap: 7px; min-width: 0; }
+.fields-three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.color-field { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.color-field > .color-tools { grid-column: 1 / -1; }
+.color-field input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+.color-field input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 4px; }
+.canvas-status { position: absolute; inset: auto auto 90px 12px; max-width: calc(100% - 28px); padding: 6px 9px; margin: 0; border-radius: 5px; background: #fff; color: var(--muted); font-size: .85rem; pointer-events: none; }
+.canvas-status.error { color: #9e2230; }
+.worksheet-notes { margin-top: 18px; padding: 22px; }
+.context-menu { position: fixed; z-index: 8; width: 228px; padding: 7px; display: grid; gap: 3px; box-shadow: 0 10px 25px #1c315326; }
+.context-menu .button { justify-content: flex-start; border-color: transparent; white-space: normal; }
+
+@media (max-width: 680px) {
+  .site-header { padding-inline: 12px; }
+  .site-header .account span { display: none; }
+  .breadcrumbs { --crumb-gap: 7px; }
+  .brand { gap: 5px; }
+  .editor-header { padding-inline: 10px; }
+  .editor-header h1 { flex-basis: auto; max-width: 160px; }
+  .canvas-area { min-height: 260px; }
+  .shell { width: calc(100% - 24px); margin: 24px auto; }
+}
+
+.header-user { display: flex; align-items: center; gap: 10px; }
+.passive-canvas { height: auto; }
+.home-tools { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+.open-path { display: flex; align-items: end; gap: 10px; padding: 14px; width: min(100%, 480px); }
+.open-path label { flex: 1; }
+.guide-link { display: flex; align-items: center; gap: 9px; padding: 14px 19px; font-weight: 650; }
+.guide-link:hover { background: #eaf0fa; }
+.admin-shell { max-width: 860px; }
+.admin-panel { padding: 20px; margin-bottom: 16px; }
+.admin-panel h2 { margin-bottom: 14px; }
+.admin-panel .stack > button { justify-self: start; }
+.admin-path { display: block; overflow-wrap: anywhere; }
+.account-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: end; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.account-fields { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(125px, 1fr) minmax(130px, 1.2fr) auto; gap: 10px; align-items: end; }
+.account-fields strong { align-self: center; overflow-wrap: anywhere; }
+.new-account { margin-top: 15px; }
+.new-account form { margin-top: 10px; }
+
+@media (max-width: 760px) {
+  .account-row { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
+  .account-fields { grid-template-columns: minmax(0, 1fr); }
+  .account-row > form:last-child { grid-column: 2; }
+  .account-fields button, .account-row button { justify-self: start; }
+}
+
+.editor-canvas:is(.alt-held, .ctrl-held) { cursor: crosshair; }
+.editor-canvas.alt-held:not(.ctrl-held, [data-drag-cursor]) .node:not(.occupied) { cursor: copy; }
+.editor-canvas.ctrl-held:not([data-drag-cursor]) :is(.node, .wire-hit) { cursor: crosshair; }
+.editor-canvas[data-drag-cursor="grabbing"] { cursor: grabbing; }
+.editor-canvas[data-drag-cursor="move"] { cursor: move; }
+.editor-canvas[data-drag-cursor="crosshair"] { cursor: crosshair; }
+.editor-canvas[data-drag-cursor="nwse-resize"] { cursor: nwse-resize; }
+.editor-canvas[data-drag-cursor="nesw-resize"] { cursor: nesw-resize; }
+.editor-canvas[data-drag-cursor] :is([data-node], [data-edge], [cursor], .wire-hit, .wire-label) { cursor: inherit; }
+.property-group { margin: 0; border: 1px solid var(--line); border-radius: 8px; padding: 9px; min-width: 0; }
+.property-options { display: flex; flex-wrap: wrap; gap: 4px; }
+.line-appearance-options { justify-content: space-between; }
+.line-appearance-options > .option-icon { margin-inline-start: auto; }
+.property-options .option-icon { width: 32px; height: 32px; min-height: 0; padding: 0; }
+.property-options .option-icon .ui-icon { width: 22px; height: 22px; }
+.property-group legend { font-weight: 650; padding: 0 5px; }
+.object-inspector .inspector-content { gap: 5px; }
+.object-inspector .property-group { gap: 5px; padding: 5px 7px; }
+.object-inspector :is(input:not([type="range"]), textarea) { padding: 5px 7px; }
+.object-inspector input[type="number"]:disabled { color: var(--muted); background: #f1f4f9; }
+.property-tools { min-width: 0; align-items: center; }
+.property-tools > input[type="number"] { flex: 0 1 68px; width: 68px; }
+.property-inline, .typography-tools { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px; align-items: start; }
+.object-inspector .option-icon { display: inline-flex; width: 32px; height: 32px; min-height: 0; padding: 0; }
+.object-inspector .compact-color { display: contents; }
+.compact-color .color-tools { flex-basis: 100%; }
+.object-inspector .color-sample { height: 32px; }
+.color-sample, .color-presets button { padding: 3px; background: white; border: 1px solid #bbc8d8; border-radius: 5px; cursor: pointer; }
+.color-sample svg, .color-presets svg { display: block; width: 100%; aspect-ratio: 4 / 3; }
+.color-sample { width: 32px; }
+.color-sample:disabled { opacity: .5; cursor: default; }
+.color-tools { display: grid; gap: 5px; }
+.color-presets { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; }
+.color-tools input[type="range"] { padding: 0; }
+
+.participants { display: flex; align-items: center; gap: 12px; min-width: 0; overflow-x: auto; }
+.participants span { flex: none; display: inline-flex; align-items: center; gap: 5px; font-size: .83rem; font-weight: 650; }
+.node.occupied { cursor: default; }
+@media (max-width: 680px) {
+  .editor-header { flex-wrap: wrap; }
+}
+
+.quick-search { grid-template-columns: minmax(0, 1fr); position: absolute; z-index: 6; top: 0; border-top-left-radius: 0; border-top-right-radius: 0; left: 50%; transform: translateX(-50%); width: min(360px, 92%); max-height: 65%; overflow: auto; padding: 12px; }
+.editor-canvas [data-edge]:focus { outline: none; }
+.sidebar-open.active use { stroke: currentColor; stroke-width: 3; }
+.sidebar-open.active svg { filter: drop-shadow(1px 0 currentColor); }
+.canvas-controls { left: 12px; max-width: calc(100% - 76px); overflow-x: auto; scrollbar-width: none; }
+.canvas-controls::-webkit-scrollbar { display: none; }
+.passive-frame { position: relative; }
+.canvas-people { position: absolute; bottom: 8px; inset-inline: 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px; pointer-events: none; }
+.canvas-people > :is(.participants, .canvas-creator) { background: #fffffff0; padding: 4px 7px; border-radius: 5px; }
+.canvas-people .participants { margin-inline-start: auto; max-width: 47%; pointer-events: auto; white-space: nowrap; }
+.canvas-area .canvas-creator { position: absolute; bottom: 34px; right: 0; }
+.canvas-people .participants:empty { visibility: hidden; }
+.canvas-creator { flex: none; max-width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .83rem; font-weight: 650; }
+/* Buboréksúgó (Public/tooltip.js): a doboz helyén, a teljes szöveg görgethető (görgő és jobb oldali görgetősáv). */
+.canvas-tooltip { position: fixed; z-index: 20; box-sizing: border-box; padding: 10px 14px; background: white; border: 1px solid var(--line); border-radius: 7px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; box-shadow: 0 4px 16px #18233524; }
+.canvas-tooltip > :last-child { margin-bottom: 0; }
+
+.header-left, .header-actions, #editor-tools { display: flex; align-items: center; gap: 8px; }
+.header-left { gap: 20px; }
+.header-actions { justify-content: flex-end; }
+.header-parent { justify-self: center; }
+.header-actions a[href^="/edit/"] { margin-left: 12px; }
+.site-header .button.primary { color: white; background: var(--accent); }
+
+#editor { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* A doboz fókuszkerete sosem látszik: a kijelölést a glow jelzi, a fókuszkeret pedig a teljes csoportot (fájlnév, megjegyzés-sáv) befoglalná. */
+.node:focus { outline: none; }
+@media (max-width: 1100px) {
+  .site-header { grid-template-columns: 1fr auto 1fr; }
+  .header-left { grid-column: 1 / -1; flex-wrap: wrap; }
+  .header-left .breadcrumbs { flex: 0 1 auto; flex-wrap: wrap; }
+  .header-parent { grid-column: 2; }
+  .header-actions { grid-column: 3; flex-wrap: wrap; }
+  #editor-tools { flex-wrap: wrap; }
+}
+
+.card-meta { display: flex; gap: 1em; font-size: .85rem; }
+.sub-preview { display: grid; gap: .4rem; padding: .8rem; }
+.sub-preview.preview-link { grid-template-rows: auto auto auto; align-content: start; text-align: start; }
+.sub-preview img { width: 100%; height: 140px; object-fit: contain; }
+
+.project-card { position: relative; background: var(--sheet-color, var(--paper)); }
+.project-card.layers-1 { box-shadow: 3px 3px var(--sheet-color), 4px 4px var(--line); }
+.project-card.layers-2 { box-shadow: 3px 3px var(--sheet-color), 4px 4px var(--line), 7px 7px var(--sheet-color), 8px 8px var(--line); }
+.inspector :is(label > span, .color-field > span, legend) { font-family: inherit; font-size: .78rem; font-weight: 600; line-height: 1.3; color: var(--muted); }
+.node-ping { transform-box: fill-box; transform-origin: center; animation: node-ping 1.2s ease-out forwards; }
+@keyframes node-ping { 0% { transform: scale(.98); opacity: .9; } 18% { opacity: 1; } 100% { transform: scale(1.45); opacity: 0; } }
+
+.header-actions .header-user { margin-inline-start: 24px; }
+.context-menu :focus { outline: none; }
+.worksheet-section { margin-top: 2rem; }
+.sub-preview { min-height: 210px; }
+.new-worksheet, .import-package { place-items: center; align-content: center; color: inherit; font: inherit; cursor: pointer; }
+.locked-preview { min-height: 140px; display: grid; place-items: center; }
+.fullscreen { position: absolute; bottom: 8px; right: 8px; }
+.passive-frame:fullscreen { display: grid; place-items: center; }
+.passive-frame:fullscreen .passive-canvas { max-height: 100vh; }
+
+.password-dialog { padding: 1rem; width: min(400px, 90vw); }
+
+.canvas-background { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.passive-canvas { position: relative; }
+.viewer-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.viewer-heading h1 { margin: 0; min-width: 0; overflow-wrap: anywhere; font-size: clamp(1.2rem, 3vw, 1.8rem); }
+/* A létrehozó és a szerkesztők névsora a cím sorában, a vászon jobb felső sarka felett. */
+.viewer-heading-credits { margin-inline-start: auto; max-width: 60%; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0 1em; font-size: .85rem; line-height: 1.35; overflow-wrap: anywhere; }
+.viewer-heading-credits .card-meta { margin: 0; }
+#worksheet-view.shell { width: min(90%, 4096px); padding-inline: 0; }
+.viewer-downloads { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+.viewer-edit-slot { position: absolute; inset: 8px 8px auto auto; }
+.viewer-edit { font-weight: 750; }
+.viewer-meta, .viewer-credits { display: flex; align-items: center; gap: 6px 12px; }
+.viewer-meta { justify-content: space-between; flex-wrap: wrap; margin-top: 8px; }
+.viewer-meta .viewer-downloads { margin-top: 0; margin-inline-start: auto; }
+.viewer-credits { flex-wrap: wrap; min-width: 0; overflow-wrap: anywhere; }
+.viewer-credits .card-meta { margin: 0; }
+.viewer-new-worksheet { margin-top: 20px; }
+.worksheet-links { list-style: none; padding: 0; }
+.worksheet-links a { display: inline-flex; align-items: center; gap: 8px; padding-block: 3px; font-size: 1.1rem; overflow-wrap: anywhere; }
+.worksheet-links .ui-icon { flex: none; }
+:is(.box-effect-options, .image-alpha-options) > :is(.color-sample, .color-tools) { margin-inline-start: auto; }
+@media (max-width: 740px) {
+  #worksheet-view.shell { width: 99%; }
+  .canvas-area:has(.canvas-controls[data-open="true"]) .canvas-people { bottom: 46px; }
+}
+.project-badges { display: flex; gap: .5rem; }
+.project-badges:not(:empty) { margin-top: .5rem; }
+.project-list[data-current-sheet] { gap: 2rem; align-items: start; }
+.preview-link { padding: 0; min-height: 0; color: inherit; }
+.preview-link :is(img, .locked-preview) {
+  width: 100%; height: auto; aspect-ratio: 16 / 9; min-height: 0; border: 1px solid var(--line); border-radius: 8px;
+}
+.preview-link img { display: block; object-fit: cover; }
+.preview-link small { color: var(--muted); }
+.connection-lost, .participants.connection-lost { background: #a62739; color: white; border-radius: 5px; padding: 4px 7px; }
+/* Viewer canvas controls match the editor: 6px inset, 4px gap, compact buttons; users in the lower right corner. */
+.passive-frame > :is(.fullscreen, .mouse-share) { position: absolute; bottom: 6px; left: 6px; right: auto; z-index: 2; min-height: var(--tool-button-size, 32px); height: var(--tool-button-size, 32px); padding: 4px 9px; }
+.passive-frame:has(> .mouse-share) > .fullscreen { left: 46px; }
+.passive-frame > .participants { position: absolute; right: 12px; bottom: 8px; z-index: 2; max-width: min(47%, calc(100% - 110px)); padding: 4px 7px; border-radius: 5px; background: #fffffff0; white-space: nowrap; }
+.passive-frame > .participants:empty { display: none; }
+.mouse-share[aria-pressed="true"] { background: var(--accent); color: white; }
+
+[data-current-sheet] .new-worksheet { justify-self: start; }
+[data-node][data-link]:hover svg { stroke-width: 3; }
+
+.project-card { isolation: isolate; overflow: hidden; }
+.project-background { position: absolute; inset: -4%; width: 108%; height: 108%; object-fit: cover; filter: blur(1px); opacity: .38; z-index: -1; }
+.project-summary h2 { font-size: 1.35rem; line-height: 1.2; margin-bottom: .5rem; }
+.project-summary .card-meta { margin-top: .35rem; }
+.project-summary .project-badges { margin-top: .6rem; }
+[data-node]:hover .node-link, a:hover .node-link { text-decoration: underline; }
+
+.node-file { box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; height: 100%; padding: 10px; overflow: hidden; font: 14px/1.4 system-ui, sans-serif; color: #182335; }
+.node-file strong, .node-file small { flex: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.node-file pre, .node-file .formatted-text { margin: 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.node-audio { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.node-audio .button { flex: none; width: 34px; height: 34px; padding: 4px; justify-content: center; }
+.node-audio input { flex: 1; width: auto; padding: 0; cursor: pointer; accent-color: var(--accent); }
+.node-audio [data-audio-status] { flex-basis: 100%; color: #9e2230; }
+.node-audio [data-audio-status]:empty { display: none; }
+.passive-canvas [data-node]:target .node-file { border: 3px solid #4168e9; }
+.passive-canvas [data-node]:target .node-image img { outline: 3px solid #4168e9; outline-offset: -3px; }
+
+.node-image { display: flex; flex-direction: column; height: 100%; color: var(--ink); text-align: center; font: 14px/22px system-ui, sans-serif; }
+.node-image img { display: block; flex: 1; width: 100%; min-height: 0; object-fit: contain; background: transparent; }
+.node-image img:not([src$=".svg"]) { border-radius: 6px; }
+.image-alpha-options input[type="color"] { width: 32px; height: 32px; padding: 3px; }
+.image-alpha-options input[type="color"]:disabled { opacity: .45; }
+.node-image > :is(strong, span) { flex: none; height: 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* A 3 sor pozíciógomb magassága pontosan két sor eszközgomb (2 × 32px + 4px rés). */
+.alignment-picker { display: grid; grid-template-columns: repeat(3, 22px); grid-template-rows: repeat(3, 1fr); gap: 2px; height: 68px; }
+.alignment-picker button { height: auto; min-height: 0; padding: 0; color: inherit; background: var(--panel, white); border: 1px solid #a8b7cb; border-radius: 4px; cursor: pointer; }
+.alignment-picker button[aria-pressed="true"] { color: white; background: #3659b9; }
+
+.quick-search > input { position: sticky; top: 0; z-index: 1; }
+.search-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px; scroll-margin-top: 44px; }
+.search-row > :first-child { min-width: 0; overflow: hidden; justify-content: flex-start; }
+.search-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.search-row[data-active="true"] > :first-child { background: #fff3c4; }
+.search-history { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.search-history li { min-width: 0; scroll-margin-top: 44px; }
+.search-history .button { width: 100%; overflow: hidden; justify-content: flex-start; }
+.search-history [data-active="true"] .button { background: #e7ecff; border-color: #bbc9f5; }
+.search-row[data-candidate="true"] > :first-child { border: 2px dashed #cf8200; box-shadow: 0 0 8px #cf8200; }
+.search-candidate { color: #cf8200; fill: none; stroke: currentColor; stroke-dasharray: 6 3; pointer-events: none; }
+
+/* A kijelölés glow-ja SVG-szűrő (Public/glow.js): a Safari SVG elemen nem rajzolja ki a CSS drop-shadow()-t.
+   A más felhasználóé (.selection-glow, .wire-glow, .wire-selected) filter attribútumként érkezik. */
+.search-candidate { filter: var(--glow-search); }
+
+@keyframes container-drop-pulse {
+  50% { stroke-width: 10px; }
+}
+
+@keyframes container-drop-orbit {
+  to { stroke-dashoffset: -8px; }
+}
+
+@keyframes search-button-pulse {
+  50% { box-shadow: 0 0 16px #cf8200; }
+}
+/* Csak az átlátszóság pulzál: a szűrő (drop-shadow) animálása minden képkockán újra elmosná a glow-t. docs/PLAN.md C4. */
+@keyframes selection-pulse {
+  50% { opacity: .45; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .drop-target {
+    animation: container-drop-pulse 1.25s ease-in-out infinite,
+      container-drop-orbit 2s linear infinite;
+  }
+  .search-row[data-candidate="true"] > :first-child { animation: search-button-pulse 2s ease-in-out infinite; }
+  .selection-glow, .search-candidate { animation: selection-pulse 2s ease-in-out infinite; }
+}
+
+.worksheet-nav { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:8px; padding:4px 12px; }
+.worksheet-nav .breadcrumbs a { color:var(--ink); }
+.worksheet-nav .breadcrumbs { min-width:0; }
+.header-open, .worksheet-history, .avatar-picker { display:flex; align-items:center; gap:4px; }
+.header-open input { width:clamp(8rem,18vw,19rem); }
+.worksheet-history, .worksheet-close { position:absolute; top:8px; z-index:5; }
+.worksheet-history { right:58px; }
+.worksheet-close { left:58px; }
+body:has(#worksheet-view) .worksheet-nav { display:flex; }
+body:has(#worksheet-view) .worksheet-nav .header-left { flex:1; min-width:0; }
+body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
+.worksheet-nav .header-parent:empty { display:none; }
+.editor-root .worksheet-nav .header-parent { order:4; }
+.editor-canvas[data-drag-cursor="grab"] { cursor:grab; }
+.current-avatar { align-self: center; }
+.avatar-dialog { max-width: calc(100% - 24px); padding: 16px; color: var(--ink); }
+.avatar-dialog::backdrop { background: #18233580; }
+.avatar-picker { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 12px 0; }
+.avatar-picker img, .current-avatar img { width: 28px; height: 28px; display: block; }
+.avatar-picker button { padding:3px; border:1px solid var(--line); background:white; border-radius:4px; }
+.avatar-picker button[aria-pressed=true] { outline:2px solid var(--accent); }
+.peer-avatar { width:20px; height:20px; vertical-align:middle; }
+
+@media (max-width:1100px) {
+  .site-header:has(.header-open) .header-left { grid-column:1; }
+}
+@media (max-width:740px) {
+  .site-header:has(.header-open) { grid-template-columns:1fr auto; }
+  .site-header:has(.header-open) .header-parent { grid-area:2 / 1 / 3 / -1; }
+  .site-header:has(.header-open) .header-actions { grid-area:1 / 2; }
+}
+.canvas-controls { max-width:calc(100% - 28px); overflow-x:auto; }
+.canvas-controls > * { flex-shrink:0; }
+@media (max-width:1100px) {
+  .worksheet-nav { grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); }
+  .worksheet-nav .breadcrumbs { --crumb-gap:4px; overflow:hidden; }
+  .worksheet-nav .account span { display:none; }
+  .worksheet-nav .header-actions { grid-column:3; }
+  .worksheet-nav .header-left { grid-column:1; }
+}
+
+.canvas-controls { left:6px; bottom:6px; padding:0; background:transparent; border:0; box-shadow:none; }
+.canvas-controls[data-open="false"] > :not(:first-child) { display:none; }
+.editor-root { position:relative; }
+.editor-root > .worksheet-nav { position:absolute; z-index:5; inset:4px 4px auto; flex-wrap:nowrap; overflow:visible; padding:0; display:flex; justify-content:space-between; pointer-events:none; }
+.editor-root .worksheet-nav :is(a,button,form,.worksheet-history) { pointer-events:auto; }
+.editor-root .worksheet-nav .breadcrumbs { flex-wrap:nowrap; }
+.editor-root .header-left { min-width:0; }
+.editor-root .worksheet-nav > :is(.sidebar-open,.worksheet-history,.worksheet-close) { position:static; flex:none; }
+.editor-root .sidebar-open-canvas { order:-3; }
+/* A szerkesztő bezárása (X) az útvonal gombjai (és a szülő munkalap gomb) után áll. */
+.editor-root .worksheet-close { order:-1; }
+.editor-root .header-left { order:-1; flex:0 1 auto; }
+.editor-root .header-actions { flex:1; }
+.editor-root .worksheet-history { order:1; }
+.editor-root .sidebar-open:not(.sidebar-open-canvas) { order:2; }
+.editor-root .worksheet-nav .header-user { margin:0; }
+.editor-root .worksheet-nav { gap:4px; }
+.editor-root .worksheet-nav,
+.editor-root .worksheet-nav > :is(.header-left, .header-parent, .header-actions, .worksheet-history, .header-appearance) {
+  background: transparent;
+}
+.editor-root .worksheet-nav .button:not(:hover, :active, [aria-pressed="true"], .primary) {
+  background: color-mix(in srgb, var(--panel-surface, #fff) 36%, transparent);
+}
+@media (max-width:700px) {
+  .editor-root .worksheet-nav { pointer-events:auto; }
+  .editor-root .worksheet-nav .header-left { min-width:max-content; }
+}
+.node-note { flex:1; min-height:0; overflow:hidden; padding:8px 20px 8px 10px; text-align:left; border-radius:7px; }
+.node-note.with-fold { background: linear-gradient(45deg, transparent 50%, #0003 50%) top right / 16px 16px no-repeat; }
+.node-note pre { white-space:pre-wrap; margin:0; }
+
+
+
+.inline-edit :is(input,textarea) { width:100%; height:100%; border:0; border-radius:6px; padding:2px 5px; text-align:center; outline:0; }
+.node-note { overflow:auto; overscroll-behavior:contain; }
+.node-note pre { overflow:visible; }
+.editor-canvas :is(.node-file pre, .inline-edit textarea) { overscroll-behavior: contain; }
+.editor-root .sidebar-open:not(.sidebar-open-canvas) { order:3; }
+.file-actions > button { flex:1; }
+
+/* Panels share the site's colors and dimensions in every worksheet. */
+.header-appearance { display: flex; gap: 4px; align-items: center; flex: none; }
+.editor-root .worksheet-nav > .header-appearance { order: 2; }
+
+:root[data-display="dark"] {
+  color-scheme: dark;
+  background: #151c25;
+  color: #e4ecf7;
+  --ink: #e4ecf7;
+  --muted: #aebed1;
+  --line: #49596d;
+  --accent: #a7b8ff;
+  --accent-ink: #c6d1ff;
+  --paper: #19232f;
+  --panel-surface: #253140;
+  --control-hover: #303e50;
+}
+:root[data-display="dark"] :is(.panel, .passive-note, .inspector-content > fieldset, .inspector-content > fieldset > legend, .context-menu, .canvas-status, .canvas-tooltip, .canvas-empty, .canvas-people > :is(.participants, .canvas-creator), .passive-frame > .participants, .guide-nav a, .guide kbd) {
+  background-color: var(--panel-surface);
+  color: var(--ink);
+}
+:root[data-display="dark"] :is(.button, input, textarea, select, .color-sample, .color-presets button, .alignment-picker button, .option-icon, .object-inspector input[type="number"]:disabled) {
+  background-color: var(--panel-surface);
+  color: var(--ink);
+  border-color: var(--line);
+}
+:root[data-display="dark"] :is(.button, .guide-nav a):hover { background-color: var(--control-hover); }
+:root[data-display="dark"] .inspector button[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: -2px; }
+.color-sample, .color-presets button { width: 32px; height: 32px; padding: 3px; border-radius: 7px; }
+.palette-tile { display: block; width: 100%; height: 100%; border-radius: 4px; }
+.transparent-swatch { background: conic-gradient(#c3cbd7 25%, #fff 0 50%, #c3cbd7 0 75%, #fff 0) 0 0 / 10px 10px; }
+.color-tools.color-presets { grid-template-columns: repeat(auto-fill, 32px); gap: 4px; }
+.color-presets button[aria-pressed=true] .palette-tile::after { content: "✓"; color: white; text-shadow: 0 0 3px black; }
+
+.editor-workspace[data-glass] {
+  --ink: #282337;
+  --muted: #655975;
+  --line: #8370a13d;
+  --accent: #7049b8;
+  --accent-ink: #6540a4;
+  --glass-surface: #faf8ffb8;
+  --glass-field: #ffffff50;
+  --glass-highlight: #ffffffbd;
+  --glass-shadow: #30214925;
+}
+.editor-workspace[data-glass="dark"] {
+  --ink: #f2eff8;
+  --muted: #bcb1cb;
+  --line: #a99ac64a;
+  --accent: #c5a9fa;
+  --accent-ink: #dbc6ff;
+  --glass-surface: #252231b8;
+  --glass-field: #16141e48;
+  --glass-highlight: #e0ccff24;
+  --glass-shadow: #08060c80;
+}
+.editor-workspace[data-glass] :is(.inspector, .quick-search, .canvas-controls, .canvas-empty, .participants) {
+  color: var(--ink);
+  background: var(--glass-surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: inset 0 1px var(--glass-highlight), 0 8px 24px var(--glass-shadow);
+  -webkit-backdrop-filter: blur(16px) saturate(125%);
+  backdrop-filter: blur(16px) saturate(125%);
+}
+.editor-workspace[data-glass] .canvas-controls { padding: 4px; border-radius: 13px; }
+.editor-workspace[data-glass] :is(.inspector-content > fieldset, .inspector-content > p, .inspector-content legend, .canvas-controls .button) {
+  background-color: var(--glass-field);
+}
+.editor-workspace[data-glass] .canvas-controls .button:is(:hover, [aria-pressed="true"]) {
+  color: var(--accent-ink);
+  background-color: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.file-name-field > .muted { align-self: center; white-space: nowrap; }
+.node-download {
+  display: flex;
+  align-items: center;
+  align-self: flex-end;
+  flex: none;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  height: 22px;
+  margin-top: auto;
+  padding: 0 4px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  font: 13px/22px system-ui, sans-serif;
+  cursor: pointer;
+}
+.node-download span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node-download:hover span { text-decoration: underline; }
+.node-file pre { min-height: 0; }
+
+.editor-membership { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.editor-membership span { overflow-wrap: anywhere; }
+.password-dialog > div.stack { max-height: 60vh; overflow-y: auto; margin-block: 12px; }
+
+.node-web { flex: 1; display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; gap: 4px; }
+.node-web > span { display: flex; align-items: center; justify-content: center; gap: 6px; overflow-wrap: anywhere; }
+.node-web-preview { visibility: hidden; width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+.node-web-preview[data-ready] { visibility: visible; }
+.web-presentations-dialog { width: min(620px, 92vw); max-height: 85vh; padding: 16px; color: var(--ink); }
+.web-presentations-dialog > .stack { margin-block: 12px; }
+.web-presentation-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.web-presentation-row strong { flex: 1 1 12rem; overflow-wrap: anywhere; }
+:root .passive-frame > .participants.connection-lost { background-color: #a62739; color: white; }
+
+/* Egységes objektumtípusok (docs/node-types.md): fájlobjektum felül fájlnévvel, középen tartalommal, alul megjegyzéssel. */
+.node-file { box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; height: 100%; padding: 8px; overflow: hidden; font: 14px/1.4 system-ui, sans-serif; }
+.node-file.node-image { padding: 0; gap: 2px; text-align: center; }
+.node-file-name { flex: none; display: flex; justify-content: center; min-width: 0; }
+.node-file-name .node-download { align-self: center; margin: 0; max-width: 100%; }
+.node-body { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.node-image .node-body img { display: block; flex: 1; width: 100%; min-height: 0; object-fit: contain; background: transparent; }
+.node-image .node-body img:not([src$=".svg"]) { border-radius: 6px; }
+/* A fájldoboz megjegyzése egysoros, formázás nélküli felirat; ami nem fér el, „…”-tal rövidül. */
+/* Megjegyzés a doboz alatt: sima szöveg, minden sora, a doboz szélességére tördelve. */
+.node-comment { flex: none; max-width: 100%; overflow-wrap: anywhere; font-size: 13px; line-height: 1.35; }
+.node-comment p, .node-comment ul, .node-comment ol, .node-comment pre, .node-comment blockquote { margin: 0 0 .35em; }
+.node-comment.align-left { text-align: left; } .node-comment.align-center { text-align: center; } .node-comment.align-right { text-align: right; }
+.node-comment > :first-child, .node-comment .formatted-text > :first-child { margin-top: 0; }
+.node-comment > :last-child, .node-comment .formatted-text > :last-child { margin-bottom: 0; }
+.node-link-caption { flex: none; display: flex; align-items: center; justify-content: center; gap: 5px; margin: 0; font-size: 13px; cursor: pointer; }
+.node-link-caption .ui-icon { width: 14px; height: 14px; }
+.node-link-caption span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node-document { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+.node-document-icon { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.node-document-icon .ui-icon { width: 32px; height: 32px; opacity: .8; }
+.node-document .node-download.button { align-self: center; margin: 0; height: auto; }
+.node-code, .node-plain { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92em; line-height: 1.4; }
+.node-code { white-space: pre; overflow: auto; }
+.node-plain { white-space: pre-wrap; overflow-wrap: anywhere; }
+.node-note .node-code { overflow: visible; }
+.node-csv { border-collapse: collapse; font-size: .9em; line-height: 1.3; }
+.node-csv :is(th, td) { padding: 2px 6px; border: 1px solid color-mix(in srgb, currentColor 25%, transparent); text-align: left; white-space: nowrap; }
+.node-csv th { font-weight: 650; background: color-mix(in srgb, currentColor 8%, transparent); }
+.node-audio [data-audio-time] { flex: none; font-variant-numeric: tabular-nums; }
+.editor-canvas .node-link { cursor: pointer; }
+.editor-canvas .node-link:hover text, .passive-canvas a:hover .node-link text { text-decoration: underline; }
+.markdown-editor textarea { width: 100%; box-sizing: border-box; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.markdown-tools { flex-wrap: wrap; }
+.file-text-editor { width: 100%; box-sizing: border-box; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
+.link-group legend { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+/* Link sora: cél, mappa, megnyitás és törlés egy sorban, egységes eszközgomb-mérettel. */
+.link-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.link-row > input, .link-row > .link-target { flex: 1; min-width: 0; }
+.link-row > .option-icon { flex: none; width: 32px; height: 32px; min-height: 0; padding: 0; }
+.link-group .link-target { align-self: center; overflow-wrap: anywhere; }
+.endpoint-tools { width: 100%; }
+.endpoint-tools .endpoint-actions { display: flex; gap: 4px; margin-left: auto; }
+.canvas-preview-thumbnail { display: block; width: 100%; max-height: 120px; object-fit: contain; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); }
+
+/* Névtér-azonosító kapcsoló (Public/ui-names.js), csak adminoknak. */
+.ui-names-toggle .ui-icon { color: #f2b200; }
+.ui-names-toggle[aria-pressed="true"] { background: #f2b200; border-color: #f2b200; }
+.ui-names-toggle[aria-pressed="true"] .ui-icon { color: #1b1f27; }
+
+/* Fájlt tároló doboz: a tartalom a doboz belsejében van, a fájlnév a doboz felett, a link és a megjegyzés alatta. */
+.node-file .node-body { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.node-file.node-image .node-body img { display: block; flex: 1; width: 100%; height: 100%; min-height: 0; object-fit: cover; background: transparent; border-radius: 5px; }
+.node-file.node-image .node-body img.is-svg { border-radius: 0; }
+.node-file-frame { overflow: visible; pointer-events: none; }
+.node-file-stack { display: flex; flex-direction: column; font: 14px/1.4 system-ui, sans-serif; pointer-events: none; }
+.node-file-stack > .node-file { flex: none; pointer-events: auto; }
+.node-file-stack > :not(.node-file) > * { pointer-events: auto; }
+.node-above { flex: none; box-sizing: border-box; padding-bottom: 4px; display: flex; align-items: flex-end; justify-content: center; }
+.node-below { padding-top: 6px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.node-below .node-comment { width: 100%; }
+/* Hangló: az idő a csúszka alatt, külön sorban. */
+.node-audio [data-audio-time] { flex-basis: 100%; text-align: center; }
+/* Szöveg eszközei: két sor eszközgomb (1. sor: méret és betűtípus, 2. sor: szín, sorkizárás, összecsukás). */
+.typography-rows { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.typography-rows > .property-tools { flex-wrap: nowrap; }
+.font-sample { font-size: 15px; line-height: 1; }
+/* A vászon szövege nagyításkor arányosan skálázódik: a Safari (WebKit) enélkül minden nagyításon
+   kerekített betűméretet választ, ezért a szöveg mérete a dobozhoz képest ugrál. */
+svg text { text-rendering: geometricPrecision; }
+/* Saját kijelölés (szerkesztő saját nézete): világosabb szín, vastagabb keret/vonal, glow és pulzálás nélkül.
+   A többi felhasználó kijelölése továbbra is .selection-glow / .wire-glow. */
+.own-selected :is(.node-surface, .node-frame):not([data-locked-outline]) { stroke-width: 4px; }
+.own-selected .node-surface:not([filter]) { filter: var(--glow-own-surface); }
+.own-selected .node-frame { filter: var(--glow-own-frame); }
+.own-selected .junction-surface { filter: brightness(1.3); }
+/* Útvonal gombok: munkalaponként a mappa neve; az aktuális kiemelve, nem kattintható. */
+/* Elválasztó (›) a gombok közötti résben: nulla szélességű, így nem növeli a távolságot. */
+.crumb-sep { flex: none; width: 0; margin-inline: calc(var(--crumb-gap, 13px) / -2); display: inline-flex; justify-content: center; color: #97a9c5; font-size: 1rem; line-height: 1; pointer-events: none; user-select: none; }
+.breadcrumbs .crumb { max-width: 14em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.breadcrumbs .crumb[aria-current="page"] { background: #e7ecff; color: var(--accent-ink); border-color: #bbc9f5; cursor: default; }
+:root[data-display="dark"] .breadcrumbs .crumb[aria-current="page"] { background: #2b3a63; color: #dfe7ff; border-color: #4a5c92; }
+/* Mobilon a vászon teljes szélességű marad, a többi elem 90%-os szélességben, középre igazítva. */
+@media (max-width: 740px) {
+  #worksheet-view.shell > :not(.passive-frame) { width: 90%; margin-inline: auto; box-sizing: border-box; }
+  /* Gombsorok: egyforma szélességű gombok rácsban, a szerkesztő/prezentáció és a letöltés külön sorban. */
+  #worksheet-view .viewer-meta { flex-direction: column; align-items: stretch; gap: 8px; }
+  #worksheet-view .viewer-meta > * { width: 100%; }
+  #worksheet-view .viewer-credits { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; }
+  #worksheet-view .viewer-meta .viewer-downloads { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
+  #worksheet-view .viewer-meta :is(.viewer-credits, .viewer-downloads) .button { width: 100%; min-width: 0; justify-content: center; padding-inline: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #worksheet-view .viewer-credits:empty { display: none; }
+}
+/* További munkalapok: az „Új munkalap” kártya azonos méretű és stílusú, mint a munkalapkártyák. */
+[data-current-sheet] .new-sheet-card { justify-self: stretch; place-items: stretch; align-content: start; text-align: start; width: 100%; min-height: 0; margin: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; }
+[data-current-sheet] .new-sheet-card:disabled { cursor: default; opacity: .5; }
+.new-sheet-preview { border-style: dashed; color: var(--muted); }
+.new-sheet-card:hover .new-sheet-preview { border-color: #8c9adc; color: var(--accent-ink); }
+.new-sheet-preview .ui-icon { position: absolute; inset: 0; margin: auto; width: 34px; height: 34px; }
+/* Szerkesztő mobilon: alul a résztvevők és a létrehozó mindig az eszköztár felett, egy sorban állnak. */
+@media (max-width: 740px) {
+  .canvas-area .canvas-people { bottom: 46px; flex-wrap: wrap; justify-content: flex-end; }
+  .canvas-area .canvas-people .canvas-creator { position: static; max-width: 60%; }
+  .canvas-area .canvas-people .participants { margin-inline-start: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+}
+/* Munkalapkártyák: egyszerű blokk-elrendezés és fix magasságú előnézet-keret. A Safari rácsban a
+   százalékos (padding-top) és az aspect-ratio-s magasságot a sor méretezésekor 0-nak veszi, ezért a
+   kártyák egymásra csúsztak; fix magassággal ez nem fordulhat elő. Mobilon két oszlop, fele akkora előnézet. */
+[data-current-sheet] .sub-preview.preview-link { display: block; min-height: 0; padding: 0; }
+[data-current-sheet] .sub-preview.preview-link > :is(strong, small) { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview-frame { display: block; position: relative; width: 100%; height: 158px; margin: .4rem 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; box-sizing: border-box; }
+.preview-link .preview-frame > :is(img, .locked-preview) { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; aspect-ratio: auto; border: 0; border-radius: 0; }
+.preview-link .preview-frame > img { object-fit: cover; }
+.preview-link .preview-frame > .locked-preview { display: grid; place-items: center; }
+@media (max-width: 740px) {
+  .project-list[data-current-sheet] { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+  .preview-frame { height: 90px; }
+  [data-current-sheet] .sub-preview.preview-link > strong { font-size: .9rem; }
+  .new-sheet-preview .ui-icon { width: 26px; height: 26px; }
+}
+/* Fejléc fokozatos tömörítése (header-fit.js): görgetősáv helyett lépésenként
+   1. compact: a feliratos gombok (márka, fiók, megjelenés, admin) négyzetes ikonok;
+   2. numbered: az útvonal gombjain a mappa neve helyett a sorszám (1, 2, 3…), a név a súgóban;
+   3. stacked: két sor — felül menü, a széles márka, útvonal, szülő, bezárás; alatta jobbra a műveletek.
+   A két soros módban, ha az útvonal még mindig nem fér el, újra a sorszámok jönnek. */
+.worksheet-nav .breadcrumbs { overflow: hidden; }
+.crumb-number { display: none; }
+.worksheet-nav.numbered .crumb-name { display: none; }
+.worksheet-nav.numbered .crumb-number { display: inline; }
+.worksheet-nav.numbered .crumb { min-width: 34px; justify-content: center; padding-inline: 8px; }
+.worksheet-nav.compact :is(.header-actions, .header-appearance) .header-button,
+.worksheet-nav.compact > :is(.header-actions, .header-appearance, .sidebar-open),
+.worksheet-nav.compact .breadcrumbs .brand { font-size: 0; gap: 0; }
+.worksheet-nav.compact :is(.header-actions, .header-appearance) .header-button,
+.worksheet-nav.compact > .sidebar-open,
+.worksheet-nav.compact .breadcrumbs .brand { width: 34px; padding: 0; justify-content: center; }
+.worksheet-nav.compact .header-button .ui-icon { width: 18px; height: 18px; }
+.worksheet-nav.stacked { display: flex; flex-wrap: wrap; row-gap: 4px; justify-content: flex-start; }
+.worksheet-nav.stacked::after { content: ""; order: 0; flex-basis: 100%; height: 0; }
+.worksheet-nav.stacked > .header-left { order: -1; flex: 0 1 auto; min-width: 0; }
+.worksheet-nav.stacked > .worksheet-close { order: -1; }
+.worksheet-nav.stacked > .sidebar-open-canvas { order: -3; }
+.worksheet-nav.stacked > .header-actions { order: 1; flex: 0 0 auto; margin-inline-start: auto; }
+.worksheet-nav.stacked > .worksheet-history { order: 2; }
+.worksheet-nav.stacked > .header-appearance { order: 3; }
+.worksheet-nav.stacked > .sidebar-open:not(.sidebar-open-canvas) { order: 4; }
+.worksheet-nav.stacked > .header-parent { order: 5; }
+.worksheet-nav.stacked .breadcrumbs .brand { font-size: 1.05rem; gap: .45em; width: auto; padding: 0 10px; }
+.worksheet-nav.stacked .breadcrumbs .brand .brand-icon { width: 24px; height: 24px; }
+.worksheet-nav.stacked.narrow-brand .breadcrumbs .brand { font-size: 0; gap: 0; width: 34px; padding: 0; justify-content: center; }
+/* Két soros módban a műveleti gombok kissé kisebbek, hogy egy sorban elférjenek. */
+.worksheet-nav.stacked > :not(.header-left) :is(.header-button, .button),
+.worksheet-nav.stacked > .sidebar-open:not(.sidebar-open-canvas) { width: 30px; height: 30px; min-height: 0; padding: 0; justify-content: center; }
+.worksheet-nav.stacked > :not(.header-left), .worksheet-nav.stacked .account { gap: 3px; }
+.worksheet-nav.stacked { column-gap: 3px; }
+/* Főoldal fejléce (header-fit.js). Az Admin gomb soha nem csukódik ikonná, a ThinkNodes gomb mindig teljes méretű.
+   Egy sorban: a többi művelet ikonos. Két soros (mobil) módban:
+   1. sor: ThinkNodes balra, Admin jobbra; 2. sor: a többi művelet egyenlő széles gombokként a teljes szélességben;
+   3. sor: a munkalap-kereső széltől szélig. */
+.site-header.compact .header-actions .header-button:not([href="/admin"]) { font-size: 0; gap: 0; width: 34px; padding: 0; justify-content: center; }
+.site-header.compact .header-button .ui-icon { width: 18px; height: 18px; }
+.site-header.compact .account span { display: none; }
+.site-header.stacked { display: flex; flex-wrap: wrap; align-items: center; row-gap: 8px; column-gap: 6px; padding-inline: 12px; }
+.site-header.stacked :is(.header-actions, .header-user, .account, .header-appearance) { display: contents; }
+.site-header.stacked > .header-left { order: 0; flex: 0 1 auto; min-width: 0; }
+.site-header.stacked a[href="/admin"] { order: 1; margin-inline-start: auto; }
+.site-header.stacked::before { content: ""; order: 2; flex-basis: 100%; height: 0; }
+.site-header.stacked :is(.header-actions, .header-appearance) .header-button:not([href="/admin"]) { order: 3; flex: 1 1 0; width: auto; min-width: 0; }
+.site-header.stacked::after { content: ""; order: 4; flex-basis: 100%; height: 0; }
+.site-header.stacked > .header-parent { order: 5; flex: 1 0 100%; display: flex; }
+.site-header.stacked .header-open { flex: 1; width: 100%; max-width: none; }
+.site-header.stacked .header-open input { flex: 1; width: auto; min-width: 0; }
+/* Megtekintő: a vászon alatti gombsor ugyanakkora távolságra van a szövegdoboztól, mint a szövegdoboz a vászontól. */
+[data-viewer-notes]:has(.worksheet-notes) + .viewer-meta { margin-top: 18px; }
+/* Globális kis gomb (tool-button): a vászon eszköztárának gombjai és a jelenlévők gombjai ugyanazt a
+   méretet, belső margót és gombközt használják. */
+:root { --tool-button-size: 32px; --tool-button-gap: 4px; }
+.button.tool-button, .canvas-controls .button { flex: none; min-height: var(--tool-button-size); height: var(--tool-button-size); padding: 4px 9px; gap: 5px; white-space: nowrap; }
+.canvas-controls, .participants { gap: var(--tool-button-gap); }
+/* Jelenlévők: önálló gombok csoport-háttér nélkül (egyelőre funkció nélkül; később chatüzenet). */
+:is(.canvas-people, .passive-frame) > .participants,
+:root[data-display="dark"] :is(.canvas-people, .passive-frame) > .participants,
+.editor-workspace[data-glass] .canvas-people > .participants { background: none; border: 0; box-shadow: none; backdrop-filter: none; padding: 0; }
+.participants .tool-button .peer-avatar { width: 18px; height: 18px; }
+.canvas-people { bottom: 6px; inset-inline: 6px; }
+.passive-frame > .participants { right: 6px; bottom: 6px; }
+
+/* Mozgás közben (pásztázás, nagyítás, húzás) a drága szűrők ki vannak kapcsolva; a mozgás végén visszaállnak. docs/PLAN.md C4. */
+.editor-workspace[data-moving] .editor-canvas :is(.node-surface[filter], .selection-glow, .selection-own, .search-candidate, .wire-glow, .wire-selected) {
+  filter: none;
+  animation: none;
+}
+.editor-workspace[data-moving][data-glass] :is(.inspector, .quick-search, .canvas-controls, .canvas-empty, .participants) {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Tallózó (Public/file-browser.js) */
+.file-browser-dialog { width: min(460px, 92vw); }
+.file-browser-list { max-height: 55vh; overflow: auto; gap: 4px; }
+.file-browser-row { display: flex; align-items: center; gap: 8px; justify-content: flex-start; width: 100%; text-align: left; }
+.file-browser-row span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-browser-path { margin: 0; font-family: monospace; }
+.removal-dialog { width: min(420px, 92vw); }
+.removal-dialog ul { margin: 0 0 8px; padding-left: 20px; }
+.file-browser-menu { position: absolute; z-index: 5; }
+.context-menu { max-height: calc(100vh - 16px); overflow: auto; }
+/* A Link hozzáadása gomb a panelsor jobb szélén. */
+.property-options .link-add { margin-left: auto; }
+/* Vászonpanel fájlgombjai (Beillesztés – Tallózás, Fájl feltöltése): teljes szélesség, középre igazított felirat. */
+.property-inline.file-actions { display: flex; }
+.file-actions > button { flex: 1; justify-content: center; }
+/* Tallózó link módja: külső webcím sor. */
+.file-browser-url { display: flex; gap: 6px; margin-bottom: 8px; }
+.file-browser-url input { flex: 1; min-width: 0; }
+/* Linkes doboz: a link felirata a doboz bármely pontja fölött aláhúzott (nem csak a felirat fölött). */
+.editor-canvas [data-node][data-link]:hover .node-link text, .passive-canvas [data-node]:hover .node-link text,
+[data-node]:hover .node-link-caption span { text-decoration: underline; }
+.canvas-tooltip .plain-comment { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Buboréksúgó árnyéka: jól látható, világos és sötét módban is (a közös panelszabály után). */
+.canvas-tooltip, :root[data-display="dark"] .canvas-tooltip { box-shadow: 0 10px 30px rgb(0 0 0 / .35), 0 2px 8px rgb(0 0 0 / .25); }
+/* Buboréksúgó nyitva: a doboz alatti Text elhalványul; csökkentett mozgásnál animáció nélkül tűnik el. */
+.node-comment { transition: opacity .25s ease; }
+.tooltip-open .node-comment { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .node-comment { transition: none; } }
+/* Buboréksúgó áttűnése: ugyanaz az ütem, mint a doboz alatti Text elhalványulása. */
+.canvas-tooltip { transition: opacity .25s ease; }
+@media (prefers-reduced-motion: reduce) { .canvas-tooltip { transition: none; } }
+/* NAGYBETŰS Text (HTML-ben: doboz alatti Text, szövegfájl, buboréksúgó); a vásznon a tördelés előtt alakul. */
+.is-uppercase :is(.node-comment, .node-note, .node-plain, .formatted-text), .canvas-tooltip .is-uppercase, .canvas-tooltip.is-uppercase { text-transform: uppercase; }
+/* Nagyítás értéke a bal eszköztáron (csak nagyítás közben). */
+.canvas-controls .zoom-level { align-self: center; min-width: 74px; padding: 0 8px; font-size: 12px; font-variant-numeric: tabular-nums; text-align: center; white-space: nowrap; color: var(--ink); }
+
+/* Mentett állapotok listája (vászon tulajdonságpanel) */
+.version-list { list-style: none; margin: 0; padding: 0; max-height: 16rem; overflow-y: auto; display: grid; gap: 0.25rem; }
+.version-item { width: 100%; justify-content: flex-start; }
+
+/* Projektcsomag párbeszéd (package.js) */
+.package-dialog { width: min(460px, 92vw); }
+.package-dialog fieldset { border: 0; padding: 0; margin: 0; }
+.package-dialog legend { font-weight: 600; margin-bottom: 4px; }
+.package-choice { display: flex; align-items: center; justify-content: flex-start; gap: 8px; text-align: left; }
+.package-choice input { width: auto; flex: none; margin: 0; }
+.package-dialog [hidden] { display: none !important; }
+.package-status:empty { display: none; }
+.package-warnings ul { max-height: 30vh; overflow-y: auto; margin: 6px 0 0; padding-left: 18px; font-size: .9em; }
+.package-dialog .editor-membership select { width: auto; flex: 0 1 60%; }
+.package-dialog .editor-membership span { flex: 1 1 auto; min-width: 0; }
+
+/* Táblázat doboz (docs/EXCEL.md). A szerver (TableHTML.swift) és a szerkesztő (table/table-view.js) ugyanezt a szerkezetet adja. */
+.tn-table-wrap { min-width: max-content; }
+.tn-table { border-collapse: collapse; table-layout: fixed; font-size: .9em; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.tn-table :is(th, td) { padding: 2px 6px; height: 24px; box-sizing: border-box; border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left; font-weight: inherit; }
+.tn-table.no-grid :is(th, td) { border-color: transparent; }
+.tn-table thead th { font-weight: 650; background: color-mix(in srgb, currentColor 9%, transparent); }
+.tn-table td.num, .tn-table th.num { text-align: right; }
+.tn-table td.bool, .tn-table th.bool { text-align: center; }
+.tn-table td.err { color: #b00020; text-align: center; }
+.tn-table td.fixed { background-image: linear-gradient(225deg, #e39a2b 5px, transparent 5px); }
+.tn-table-more { margin: 4px 0 0; font-size: .8em; opacity: .7; }
+
+/* Szerkesztési mód */
+.node-note:has(.tn-table-editor) { overflow: hidden; padding: 0; }
+.tn-table-editor .tn-table thead th { background: #eef1f7; }
+.tn-sink { position: absolute; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; pointer-events: none; }
+.tn-table-editor { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; outline: none; color: #1d2433; background: #fff; font-size: 13px; }
+.tn-table-editor:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
+.tn-formula-bar { display: flex; align-items: center; gap: 4px; padding: 3px 4px; border-bottom: 1px solid #d9dfeb; background: #f6f8fc; }
+.tn-name { min-width: 46px; padding: 2px 4px; border: 1px solid #d9dfeb; border-radius: 4px; background: #fff; font: 600 12px/1.3 ui-monospace, monospace; text-align: center; }
+.tn-fx { color: var(--muted); font-style: italic; font-size: 12px; }
+.tn-formula { flex: 1; min-width: 0; padding: 2px 6px; border: 1px solid #d9dfeb; border-radius: 4px; font: 12px/1.4 ui-monospace, monospace; color: #1d2433; background: #fff; }
+.tn-name { color: #1d2433; }
+.tn-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; padding: 3px 4px; }
+.tn-toolbar.compact { border-bottom: 1px solid #d9dfeb; background: #fbfcfe; }
+.tn-tool { min-width: 26px; height: 24px; padding: 0 6px; font-size: 12px; line-height: 1; }
+.tn-tool-b { font-weight: 800; } .tn-tool-i { font-style: italic; } .tn-tool-u { text-decoration: underline; } .tn-tool-o { text-decoration: overline; }
+.tn-select { height: 24px; max-width: 120px; padding: 0 4px; border: 1px solid #d9dfeb; border-radius: 5px; background: #fff; font-size: 12px; }
+.tn-color { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 24px; border: 1px solid #d9dfeb; border-radius: 5px; background: #fff; font-weight: 700; font-size: 12px; cursor: pointer; }
+.tn-color input { position: absolute; inset: auto 2px 1px 2px; width: calc(100% - 4px); height: 5px; padding: 0; border: 0; cursor: pointer; }
+.tn-problem { margin: 0; padding: 3px 6px; color: #b00020; font-size: 12px; }
+.tn-table-scroll { flex: 1; min-height: 0; overflow: auto; }
+.tn-table.tn-editing { font-size: 13px; }
+.tn-table.tn-editing td { cursor: cell; user-select: none; }
+.tn-table.tn-editing .tn-colhead th, .tn-table.tn-editing .tn-rowhead { position: sticky; background: #eef1f7; color: #536780; font: 600 11px/1 system-ui, sans-serif; text-align: center; user-select: none; }
+.tn-table.tn-editing .tn-colhead th { top: 0; z-index: 2; }
+.tn-table.tn-editing .tn-rowhead { left: 0; z-index: 1; }
+.tn-table.tn-editing .tn-corner { left: 0; z-index: 3; }
+.tn-table.tn-editing :is(.tn-colhead th, .tn-rowhead).selected { background: #d7def5; color: #233ba4; }
+.tn-table.tn-editing .tn-colhead th { position: sticky; }
+.tn-resize { position: absolute; top: 0; right: -3px; width: 7px; height: 100%; cursor: col-resize; z-index: 4; }
+.tn-table.tn-editing td.selected { background-image: linear-gradient(#304ccc22, #304ccc22); }
+.tn-table.tn-editing td.active { outline: 2px solid #304ccc; outline-offset: -2px; }
+.tn-table.tn-editing td.header { font-weight: 650; }
+.tn-table.tn-editing td.tn-ref { outline: 2px dashed #1f8a4c; outline-offset: -2px; }
+.tn-table.tn-editing td.tn-ref-1 { outline-color: #b4561c; } .tn-table.tn-editing td.tn-ref-2 { outline-color: #7b3fb5; } .tn-table.tn-editing td.tn-ref-3 { outline-color: #0f6fa8; }
+.tn-table.tn-editing td:has(.tn-cell-input) { padding: 0; overflow: visible; }
+.tn-cell-input { width: 100%; height: 100%; box-sizing: border-box; padding: 2px 5px; border: 0; outline: 2px solid #304ccc; font: inherit; color: #1d2433; background: #fff; }
+.tn-spacer td, tr.tn-spacer { padding: 0; border: 0; }
+
+/* Panel */
+
+/* Párbeszédablakok (table/table-files.js) */
+.table-dialog { max-width: 420px; padding: 18px; display: grid; gap: 12px; }
+.table-dialog h3 { margin: 0; }
+.table-dialog p { margin: 0; }
+.table-dialog-options { display: grid; gap: 8px; }
+.table-dialog-options .button { justify-content: flex-start; text-align: left; }
+.table-dialog-modes { margin: 0; padding: 8px 10px; border: 1px solid #d9dfeb; border-radius: 6px; display: grid; gap: 8px; }
+.table-dialog-mode { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: start; cursor: pointer; }
+.table-dialog-mode span { display: grid; gap: 2px; }
+.table-dialog-mode small { color: var(--muted); }

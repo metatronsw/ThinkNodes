@@ -6,7 +6,7 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 - **A Swift `JSONDecoder` egyes lebegőpontos literálokat 1 ulp pontatlansággal olvas (macOS 13 Foundation)** (2026-11-24, tizedes-audit)
   - Példa: `0.0020293361140076467` → `0.0020293361140076476`. A `.tntable` értékei a szerveren az utolsó bináris jegyben elcsúszhatnak (a kiírt 15 jegyre nincs hatással).
-  - Teszt: `platformJSONDecoderDoublePrecision` (figyelmeztet). Teendő: ellenőrizni élesben (Fedora, swift-foundation); ha ott is pontatlan, saját számolvasó a `.tntable`-höz. Részletek: EXCEL.md 12. fejezet.
+  - Teszt: `platformJSONDecoderDoublePrecision` (figyelmeztet). Teendő: ellenőrizni élesben (Fedora, swift-foundation); ha ott is pontatlan, saját számolvasó a `.tntable`-höz. Részletek: server/docs/EXCEL.md 12. fejezet.
 
 - **Sötét kitöltésű szövegfájl- és táblázatdobozon a tartalom olvashatatlan** (2026-11-24, a táblázat tesztelésekor)
   - A `.node-note` szövegszíne rögzített sötét (`rgb(24, 35, 53)`), a doboz kitöltése viszont a palettából jön; a szerver által automatikusan felvett fájldobozok (`fill: "@2"`) sötét témában sötétek, így a tartalom nem látszik (pl. `MassTest/TablaTeszt`: `lista.csv`, `feltoltott.tntable`).
@@ -19,7 +19,7 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 ## Javítva
 
-- **Táblázat: tizedesjegyek és törtek kezelése** (2026-11-24, audit; részletek: EXCEL.md 12. fejezet)
+- **Táblázat: tizedesjegyek és törtek kezelése** (2026-11-24, audit; részletek: server/docs/EXCEL.md 12. fejezet)
   - `ROUND(1,005;2)` = 1 volt (lebegőpontos hiba), F2+Enter adatvesztés (10 jegyre kerekített érték), `0,1+0,2=0,3` HAMIS volt, `=1,5*2` hibát adott,
     10^21 fölötti formázott szám hibás volt, „1,5e3” szöveg maradt, magyar CSV-ben „1.234” = 1,234 lett.
   - Javítás Swiftben és JS-ben azonosan, közös tesztesetekkel és 3544 esetes differenciális fuzz-teszttel (`Tests/Editor/table-fuzz.mjs`). Új: tört bevitel és tört formátum.

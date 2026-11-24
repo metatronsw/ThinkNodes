@@ -1,10 +1,9 @@
-.build/
-.swiftpm/
-Public/vendor/
 .DS_Store
-/.thinknodes-tls/
-/Data/
-/Projects/*
-!/Projects/ThemeDemo/
-/Projects/ThemeDemo/.*.svg
 .claude/settings.local.json
+/projects/
+/Data/
+/server/thinknodes
+/server/.build/
+/server/.swiftpm/
+/server/Public/vendor/
+/server/.thinknodes-tls/
