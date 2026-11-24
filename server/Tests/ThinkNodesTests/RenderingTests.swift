@@ -49,6 +49,25 @@ import VaporTesting
     #expect(!outline.contains("box-background-blur"))
 }
 
+@Test func textFileBoxFrameCanBeSwitchedOffInEveryBackgroundMode() throws {
+    var note = Idea(id: "note", type: "text", file: CanvasFile(asset: "file-note", filename: "jegyzet.txt"), position: Point(x: 0, y: 0))
+    #expect(!boardSVG(Worksheet(title: "Keret", nodes: [note])).contains(#"class="node-surface" fill="\#(note.fill)" stroke="none""#))
+    note.frame = false
+    var board = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(Worksheet(title: "Keret", nodes: [note])))
+    try board.validate()
+    #expect(board.nodes[0].frame == false)
+    #expect(boardSVG(board).contains(#"class="node-surface" fill="\#(note.fill)" stroke="none""#))
+    board.nodes[0].backgroundMode = .translucent
+    let translucent = boardSVG(board)
+    #expect(translucent.contains(#"stroke="none" stroke-width="1.6" fill-opacity=".75""#))
+    board.nodes[0].backgroundMode = .blurred
+    #expect(boardSVG(board).contains(#"class="node-frame" fill="none" stroke="none""#))
+    // Közönséges dobozra a kapcsoló nem hat.
+    var box = Idea(id: "box", text: "Doboz", position: Point(x: 0, y: 0))
+    box.frame = false
+    #expect(!boardSVG(Worksheet(title: "Keret", nodes: [box])).contains(#"stroke="none" stroke-width="1.6""#))
+}
+
 @Test func maximumWireThicknessIncludesDottedAndAnimatedStrokes() throws {
     var edge = Connection(id: "wide", sourcePoint: Point(x: 0, y: 0), target: ConnectionTarget(point: Point(x: 200, y: 0)),
                           appearance: .dotted, animated: true, width: 32)

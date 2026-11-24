@@ -643,7 +643,9 @@ private func boxSurface(_ node: Idea, geometry: String, graphics: VisualTheme.Gr
     let glass = graphics?.glass == true && mode == .solid && !image
     let fill = node.fill
     // Üres doboz keretének színe a doboz színe; elmosottnál a háttér elmosódik, a keret nem.
-    let stroke = node.type == "preview" ? "none" : empty ? escaped(node.fill) : image ? "none" : glass ? "url(#glass-rim)" : escaped(node.border)
+    // Szövegfájl- és táblázatdoboz kerete kikapcsolható (frame: false), bármelyik háttérmód mellett.
+    let frameless = node.type == "preview" || (node.isTextFile && node.frame == false)
+    let stroke = frameless ? "none" : empty ? escaped(node.fill) : image ? "none" : glass ? "url(#glass-rim)" : escaped(node.border)
     // Minden doboz kerete sima és egyforma vastag (a zárolt konténer jelzése kivétel).
     let width = locked ? "6.4" : "1.6"
     let dash = ""
@@ -652,7 +654,7 @@ private func boxSurface(_ node: Idea, geometry: String, graphics: VisualTheme.Gr
     let pointer = empty && interactive ? " pointer-events=\"fill\"" : ""
     if blurred {
         return "<\(geometry) class=\"node-surface\" fill=\"\(escaped(fill))\" opacity=\".98\" filter=\"url(#box-background-blur)\" stroke=\"none\"/>"
-            + "<\(geometry) class=\"node-frame\" fill=\"none\" stroke=\"\(node.type == "preview" ? "none" : escaped(node.border))\" stroke-width=\"\(width)\"\(closed)\(dash)/>"
+            + "<\(geometry) class=\"node-frame\" fill=\"none\" stroke=\"\(frameless ? "none" : escaped(node.border))\" stroke-width=\"\(width)\"\(closed)\(dash)/>"
     }
     let surface = "<\(geometry) class=\"node-surface\" fill=\"\(empty ? "none" : escaped(fill))\" stroke=\"\(stroke)\" stroke-width=\"\(width)\"\(closed)\(dash)\(effect)\(pointer)/>"
     return surface + (glass ? "<\(geometry) fill=\"url(#glass-sheen)\" pointer-events=\"none\" aria-hidden=\"true\"/>" : "")

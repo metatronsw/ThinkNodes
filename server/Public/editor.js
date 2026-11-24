@@ -305,6 +305,8 @@ function elevationShadow(node) {
 const boxFrameWidth = 1.6;
 const framedType = node => isImage(node) || node.type === "preview";
 const hasFrame = node => isImage(node) ? node.frame === true : node.type === "preview" && node.frame !== false;
+// Szövegfájl- és táblázatdoboz: a felület kerete kikapcsolható (frame: false), bármelyik háttérmód mellett (Rendering.swift boxSurface).
+const frameless = node => isTextFile(node) && node.frame === false;
 function frameOutline(node) {
   if (!hasFrame(node)) return null;
   return h("rect", {x: -node.width/2, y: -node.height/2, width: node.width, height: node.height, rx: 5, fill: "none",
@@ -330,7 +332,7 @@ function shape(node, linked, dropTarget = false) {
   const glass = graphics.value.glass && mode === "solid" && !image;
   const fill = paint(node.fill, 2);
   // Üres doboz: csak a keret látszik, a keret színe a doboz színe. Elmosottnál a háttér elmosódik, a keret nem.
-  const frame = node.type === "preview" ? "none" : empty ? paint(node.fill, 2) : image && !empty ? "none" : glass ? "url(#glass-rim)" : automaticBorder(fill);
+  const frame = node.type === "preview" || frameless(node) ? "none" : empty ? paint(node.fill, 2) : image && !empty ? "none" : glass ? "url(#glass-rim)" : automaticBorder(fill);
   const translucent = mode === "translucent";
   const style = {fill: empty ? "none" : fill, stroke: frame, "fill-opacity": translucent ? .75 : undefined,
     "pointer-events": empty ? "fill" : undefined, class: "node-surface",
@@ -2957,7 +2959,9 @@ createApp({
         h("div", {class: "node-file-stack", style: {color: paint(node.textColor, 1)}}, [
           h("div", {class: "node-above", style: {height: fileNameSpace + "px"}},
             file.showFilename !== false ? [h("header", {class: "node-file-name"}, [renderFileDownload(node)])] : []),
-          h("div", {class: ["node-file", "node-" + root], style: {height: node.height + "px"}}, [h("div", {class: "node-body"}, [content])]),
+          // A tartalom szövegszíne a dobozé (a megjelenítőben: data-file-ink, viewer.js); --tn-paper: a táblázatszerkesztő háttere.
+          h("div", {class: ["node-file", "node-" + root], style: {height: node.height + "px", color: paint(node.textColor, 1), "--tn-paper": paint(node.fill, 2)}},
+            [h("div", {class: "node-body"}, [content])]),
           below ? h("div", {class: "node-below"}, [marker, comment]) : null,
         ]),
       ]);
@@ -4084,9 +4088,14 @@ createApp({
       ]));
       else if (common.has("surface")) {
         // Kép és előnézetes doboz: keret ki/be és vastagsága; a szín a keret és a buboréksúgó színe.
-        const framed = nodes.every(framedType);
-        const framing = nodes.every(hasFrame);
-        const frameTools = framed ? [
+        // Szövegfájl és táblázat: csak ki/be (a keret a felületé, vastagsága nem állítható).
+        const framed = nodes.every(framedType), textFiles = nodes.every(isTextFile);
+        const framing = textFiles ? !nodes.some(frameless) : nodes.every(hasFrame);
+        const frameTools = textFiles ? [
+          iconToggle(framing ? "Keret: be" : "Keret: ki", framing, () => change("frame", framing ? false : undefined), icon("box-empty")),
+          // A táblázatnak nincs Text panelje, a szövegszíne itt állítható.
+          common.has("fileText") ? null : color("Szövegszín", "textColor", 1),
+        ] : framed ? [
           iconToggle(framing ? "Keret: be" : "Keret: ki", framing,
             () => change("frame", node => isImage(node) ? (framing ? undefined : true) : (framing ? false : undefined)), icon("box-empty")),
           numeric(value("frameWidth", boxFrameWidth), v => change("frameWidth", v === boxFrameWidth ? undefined : v), .5, 32,

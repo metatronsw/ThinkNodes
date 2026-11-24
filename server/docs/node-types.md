@@ -181,6 +181,11 @@ Importált szöveges fájl: minden nem bináris fájl (UTF-8, NUL bájt nélkül
    látszik, a szerkesztés külső szerkesztőben történik (későbbi feladat, TODO.md).
 6. **Képességek:** `text` (betűméret, szín, sorkizárás; a félkövér/dőlt/aláhúzott itt nem kell), `comment`, `file`, `surface`, `elevation`, `size`. Link: nem (a kattintás görget).
 7. **Panel:** Fájlnév (+ mutatás) → Text → Megjegyzés → Megjelenés (háttér, kiemelés).
+8. **Színek és keret:** a tartalom szövegszíne a doboz szövegszíne (`textColor`, alapból a paletta 1-es színe), a háttér a doboz
+   kitöltése (`fill`, alapból a paletta 2-es színe), így a világos/sötét mód követi a témát. A Megjelenés panelen a háttérmódok
+   (Free, Üres, Elmosott, Áttetsző) mellett külön kapcsolható a keret (`frame: false` = keret nélkül), bármelyik móddal együtt.
+   A táblázat (`table`) szövegszíne is itt állítható; a táblázat szerkesztési módja (képletsor, fejlécek, kijelölés) a doboz
+   hátteréből és szövegszínéből kevert színeket használ (`--tn-paper`, `Public/app.css`).
 
 ### image
 

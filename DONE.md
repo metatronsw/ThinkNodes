@@ -6,6 +6,10 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **Sötét kitöltésű szövegfájl- és táblázatdobozon a tartalom olvashatatlan volt** (2026-11-24)
+  - Ok: a szerkesztőben a `.node-file` rögzített sötét szövegszíne (`#182335`) felülírta a doboz szövegszínét; a doboz kitöltése a palettából jött, így sötét témában sötét alapon sötét szöveg állt. A táblázat szerkesztési módja rögzített fehér volt.
+  - Javítás: a tartalom a doboz szövegszínét (`textColor`, paletta 1) használja a szerkesztőben is; a táblázatszerkesztő a doboz hátteréből és szövegszínéből kevert színeket kap. Új: Keret be/ki kapcsoló (`frame: false`) szövegfájl-, kódfájl- és táblázatdobozon, és Szövegszín választó a táblázat Megjelenés paneljén. Teszt: `textFileBoxFrameCanBeSwitchedOffInEveryBackgroundMode`. Böngészőben nem ellenőriztem (a helyi `projects` mappa üres volt).
+
 - **`run.sh`: a relatív `--project:` / `--tls-*` útvonal a `server/` mappához képest értelmeződött** (2026-11-24)
   - Ok: a `run.sh` `cd`-vel a `server/` mappába lép, mielőtt a kapcsolókat a binárisnak adja, így a relatív útvonal nem a hívó mappájához képest értendő, ahogy a súgó írja.
   - Javítás: a `run.sh` a `--project:`, `--tls-dir:`, `--tls-cert:`, `--tls-key:` relatív értékét (és a `~/`-t) a hívó mappája alapján abszolúttá teszi (`a651dbb`).
