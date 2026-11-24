@@ -1,5 +1,10 @@
 # Változások
 
+## 2026-11-24 – Más által fogott fájldoboz nem görgethető
+
+- Ha egy szövegfájl-, CSV- vagy táblázatdobozt másik felhasználó fog, a tartalma nem görgethető: sem a natív, sem a Safaris saját görgetősáv nem húzható (`Public/app.css`, `.node.occupied`). A görgő eddig is csak a saját kijelölt dobozon görgetett.
+- Két böngészőlappal ellenőrizve (Chromium); Safariban nem próbáltam ki külön.
+
 ## 2026-11-24 – Safari: saját görgetősáv a fájldobozokon, kattintható táblázatszerkesztő
 
 - Ok: Safariban (WebKit) az SVG-transzform alatti foreignObject-ben a natív görgetősáv nem húzható, és a sávra nyomott egér mozgását a lap sem kapja meg. Ezért WebKitben a szövegfájl-, CSV- és táblázatdoboz (megjelenítés és cellaszerkesztés) natív sávja rejtve van, helyette az elem mellett saját sávok állnak: a hüvelyk húzható, a sínre kattintva odaugrik (`Public/scrollbar-drag.js`; bekötve: `editor.js`, `table/table-view.js`, `viewer.js`; stílus: `app.css` `.tn-sb*`). Más böngészőben nincs változás.

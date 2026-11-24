@@ -302,6 +302,9 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .participants { display: flex; align-items: center; gap: 12px; min-width: 0; overflow-x: auto; }
 .participants span { flex: none; display: inline-flex; align-items: center; gap: 5px; font-size: .83rem; font-weight: 650; }
 .node.occupied { cursor: default; }
+/* Más által fogott doboz tartalma nem görgethető: a görgethető rész és a saját görgetősáv (scrollbar-drag.js) nem kap
+   egéreseményt, így a natív sáv sem húzható; a kattintás a doboz felületére esik, ahol a foglaltság kezelése van. */
+.node.occupied :is(.node-note, .tn-sb) { pointer-events: none; }
 @media (max-width: 680px) {
   .editor-header { flex-wrap: wrap; }
 }

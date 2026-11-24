@@ -6,6 +6,10 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **Más felhasználó által fogott szövegfájl- / táblázatdoboz görgethető volt** (2026-11-24)
+  - Ok: a foglaltság csak a doboz megfogását és a görgőt zárta; a görgetősáv (natív, illetve Safariban a saját) húzása nem ment át a foglaltság-ellenőrzésen.
+  - Javítás: foglalt dobozon a görgethető rész és a saját görgetősáv nem kap egéreseményt (`.node.occupied :is(.node-note, .tn-sb)`, `Public/app.css`). Két böngészőlappal ellenőrizve: a fogott táblázaton a sáv helyén a kattintás a doboz felületére esik, a szabad dobozon minden változatlan.
+
 - **Safari 18: a szövegfájl-, CSV- és táblázatdoboz görgetősávja egérrel nem volt húzható (a görgő működött)** (2026-11-24)
   - Ok: WebKit-hiba. SVG foreignObject-beli görgethető elem natív görgetősávja nem húzható, ha fölötte SVG-transzform áll (próbaoldallal igazolva: eltolásnál a függőleges, nagyításnál mindkét sáv halott). A sávra nyomott egér mozgását a WebKit a sávnak adja, a lap `pointermove`-ot sem kap, ezért kívülről nem pótolható. Az első két kísérlet (a sáv felismerése vászonkoordinátából, védelem a `pressNode`-ban) ezért nem segített.
   - Javítás: WebKitben a natív sáv rejtve van, a görgethető elem mellett saját, normál elrendezésű sávok állnak (`Public/scrollbar-drag.js`, `.tn-sb*` az `app.css`-ben); más böngészőben marad a natív sáv. Automatizált Safari 18.6-ban ellenőrizve (hüvelyk húzása, sínre kattintás, mindkét irány; CSV, táblázat, táblázatszerkesztő).
