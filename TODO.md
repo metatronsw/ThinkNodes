@@ -116,11 +116,3 @@ Ez reális és takarékos megoldás. A megvalósítás előtt tisztázandó terv
 + Hátra: a kérelmező értesítése a döntésről (most nincs; a szerver nem küld e-mailt).
 + Lehetőség: további adminisztrátori jelzések (AdminMessage.Kind), pl. lemezhely, hibás mentés.
 + Lehetőség: a felhasználó maga kösse össze / válassza le a Google-fiókját (most csak az admin teheti); a Google `sub` azonosítójának rögzítése az e-mail-cím mellé.
-
-
-# Megbeszélendő (a 2026-11-24-i lista „+” jelű tételei – még nincs megvalósítva)
-
-## Vászon
-+ Nagyítás utáni kirajzolás: az SVG, a táblázatok és a szövegek legyenek élesek 800%-on is. Kérdés: melyik böngészőben és mi életlen most (kép / SVG-fájl / táblázat / szövegfájl)? Lehetőségek: (a) kép- és SVG-fájl `<img>` helyett SVG `<image>` elemmel; (b) a HTML-tartalmú dobozok (táblázat, szövegfájl) a nagyításnak megfelelő felbontásban rajzolva (belül nagyítva, kívül visszakicsinyítve) – a nagyítás végi újrarajzolást lassítja; (c) csak lépcsőnként (pl. 200 / 400 / 800%) váltani felbontást.
-
-## Táblázat (teljesítményfüggő)

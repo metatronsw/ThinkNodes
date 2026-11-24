@@ -59,6 +59,7 @@ lenyomástól a következő kirajzolt képkockáig.
 | `grid` | `"css"` | `"separate"`: külön SVG-réteg (régi); `"canvas"`: a vászon rétegében; `"none"`: nincs rács. |
 | `coalesce` | `true` | `false`: minden egérmozdulat külön feldolgozva (régi). |
 | `pause` | `true` | `false`: az animációk mozgás közben is futnak (régi). |
+| `sharp` | `true` | `false`: 100% fölötti nagyításnál is megmarad az előre raszterizált réteg (gyorsabb mozdulatindítás, de a táblázat / CSV / szövegfájl életlen). |
 
 A régi viselkedéshez legközelebb: `{"rest":false,"layer":"svg","shield":false,"moving":"all","grid":"separate","coalesce":false,"pause":false}`
 (az A változat és a nagyítástól független fogantyúk nem kapcsolhatók ki).

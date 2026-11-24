@@ -35,7 +35,7 @@ const tally = name => window.__perf?.count(name);
 const timed = (name, run) => window.__perf ? window.__perf.time(name, run) : run();
 // Teljesítmény-kapcsolók kísérletezéshez (docs/PERF.md): localStorage.tnPerf = '{"overscan":0.5,"moving":"all",…}', majd újratöltés.
 // Alapértékek: a mérések szerint legjobb beállítás; a kapcsolókkal a korábbi viselkedés visszaállítható és összemérhető.
-const perfOptions = {overscan: 1, moving: "gesture", shield: true, rest: true, grid: "css", layer: "wrapper", coalesce: true, pause: true,
+const perfOptions = {overscan: 1, moving: "gesture", shield: true, rest: true, grid: "css", layer: "wrapper", coalesce: true, pause: true, sharp: true,
   ...(() => { try { return JSON.parse(localStorage.getItem("tnPerf") || "{}"); } catch { return {}; } })()};
 const {createApp, computed, getCurrentInstance, h, markRaw, nextTick, onMounted, onUnmounted, onUpdated, reactive, ref, shallowRef, toRaw, watch, watchEffect} = window.Vue;
 
@@ -1155,11 +1155,22 @@ createApp({
       mediaPlaying.value = playing.size;
     }, true);
     const resting = () => perfOptions.rest && !(perfOptions.rest !== "always" && htmlBusy.value) ? restingTransform : "none";
+    // Éles kirajzolás nagyítva (perfOptions.sharp): az előre raszterizált réteg (will-change) a görgethető HTML-tartalmat
+    // (táblázat, CSV, szövegfájl) a 100%-os felbontásában tartja, ezért 100% fölött életlen volt. Nyugalomban, 100% fölötti
+    // nagyításnál a réteg ezért nem marad külön réteg; a következő mozdulat elején visszakapja (ez ott egy rövid megakadás).
+    function restLayer(k = view.value.k) {
+      const style = layerElement()?.style;
+      if (!style) return;
+      const sharp = perfOptions.sharp && k > 1;
+      style.willChange = sharp ? "auto" : "";
+      style.transform = sharp ? "none" : resting();
+    }
     let pendingView = null;
     function previewView(transform) {
       pendingView = transform;
       const svg = layerElement(), current = view.value;
       if (!svg?.style) return;
+      if (svg.style.willChange) svg.style.willChange = "";
       const scale = transform.k / current.k;
       const shiftX = transform.x - scale * current.x, shiftY = transform.y - scale * current.y;
       // Az origó a látható terület bal felső sarka a (nagyobb) rétegen belül.
@@ -1217,7 +1228,7 @@ createApp({
       pendingView = null;
       // A réteg nyugalomban is transzformált (egységmátrix, app.css): Safariban a transzform be- és kikapcsolása
       // (none ↔ matrix) 40–70 ms-os megakadás, a mátrixról mátrixra váltás viszont ingyen van.
-      if (layerElement()?.style) layerElement().style.transform = resting();
+      restLayer((transform ?? view.value).k);
       if (transform && (transform.k !== view.value.k || transform.x !== view.value.x || transform.y !== view.value.y)) view.value = transform;
     }
 
@@ -4730,7 +4741,7 @@ createApp({
     }
     watchEffect(() => timed("syncUi", syncUi));
     // A nyugalmi transzform követi a HTML-szerkesztés állapotát (mozdulat közben nem nyúlunk hozzá: azt a commitView zárja).
-    watch(htmlBusy, () => { if (!pendingView && layerElement()?.style) layerElement().style.transform = resting(); }, {flush: "post"});
+    watch(htmlBusy, () => { if (!pendingView) restLayer(); }, {flush: "post"});
     watch(selected, () => { htmlTyping.value = false; });
     watch(() => perfOptions.shield ? dragCursor() : undefined, cursor => {
       if (capturing?.style && capturing !== canvas.value) capturing.style.cursor = cursor ?? "";

@@ -4,6 +4,9 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 ## Nyitott
 
+- **Éles kirajzolás nagyítva: Safariban nincs mérve** (2026-11-24)
+  - 100% fölött a nyugalmi réteg megszűnik (`restLayer`), hogy a táblázat / CSV / szövegfájl éles legyen. Safariban ellenőrizendő az élesség, és hogy a pásztázás / nagyítás indulásakor mekkora a megakadás (a réteg visszakapcsolása; PERF.md szerint 40–70 ms lehet).
+
 - **Más résztvevő cellakijelölése a CSV olvasó nézetében elcsúszhat** (2026-11-24)
   - A CSV olvasó nézete kihagyja az üres sorokat, és legfeljebb 200 sort / 30 oszlopot mutat; a kijelölés és a dupla kattintással megnyitott cella a szerkesztő sorszámai szerint megy, így üres sorokat tartalmazó fájlban egy sorral elcsúszhat. A megtekintőben a cellakijelölés nem látszik.
 

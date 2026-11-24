@@ -1,5 +1,11 @@
 # Változások
 
+## 2026-11-24 – Éles táblázat, CSV és szövegfájl nagyítva (800%-ig)
+
+- Ok: a vászon előre raszterizált rétege (`will-change: transform`, a pásztázás gyors indulásához) a görgethető HTML-tartalmat a 100%-os felbontásában tartotta, ezért belenagyítva életlen volt. Cellaszerkesztés közben a nyugalmi transzform eddig is kikapcsolt, ezért volt ott éles.
+- Javítás: nyugalomban, 100% fölötti nagyításnál a réteg nem marad külön réteg (`restLayer`, `editor.js`); a következő mozdulat elején visszakapja. Ára: 100% fölött a pásztázás / nagyítás indulásakor egy rövid megakadás lehet (docs/PERF.md 2. pont). Kikapcsolható: `localStorage.tnPerf = '{"sharp":false}'`.
+- Ellenőrizve Chromiumban 470%-on (előtte–utána összevetve), pásztázás utána is működik. Safariban nem mértem, sem az élességet, sem a megakadás mértékét. Csak kliensoldali változás.
+
 ## 2026-11-24 – Közös görgetési helyzet minden görgethető fájltartalomra
 
 - Aki egy szövegfájl-, CSV- vagy táblázatdobozt kijelölve görget (olvasó nézetben vagy cellaszerkesztés közben), annak a görgetési helyzetét a többi szerkesztő és a megtekintő élőben követi (új `scroll` üzenet az élő csatornán, legfeljebb 50 ms-onként; a szerver csak a dobozt fogó résztvevőtől fogadja el).
