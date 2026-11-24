@@ -32,9 +32,30 @@ final class Collaboration: @unchecked Sendable {
         }
     }
 
+    /// Egy résztvevő cellakijelölése a fogott táblázat- vagy CSV-dobozban (csak a kijelölés és az, hogy szerkeszt-e;
+    /// a gépelt szöveg nem megy át). Rövid életű, a munkalapba nem kerül.
+    private struct CellMark: Codable {
+        struct Range: Codable {
+            let r0: Int, c0: Int, r1: Int, c1: Int, r: Int, c: Int
+            let editing: Bool
+            var isValid: Bool {
+                [r0, r1, r].allSatisfy { (0..<1000).contains($0) } && [c0, c1, c].allSatisfy { (0..<100).contains($0) }
+            }
+        }
+        let cells: String
+        let node: String
+        let color: String
+        var range: Range?
+
+        var message: String {
+            String(decoding: try! JSONEncoder().encode(self), as: UTF8.self)
+        }
+    }
+
     private struct Peer {
         let cursorID = UUID().uuidString
         var cursor: Cursor?
+        var cells: CellMark?
 
         let name: String?
         let role: Role?
@@ -275,6 +296,7 @@ final class Collaboration: @unchecked Sendable {
             rooms[path.url]?.peers[client]?.socket = socket
             for (id, other) in rooms[path.url]?.peers ?? [:] where id != client {
                 if let cursor = other.cursor { socket.send(cursor.message) }
+                if let cells = other.cells, other.node == cells.node { socket.send(cells.message) }
             }
             return true
         }
@@ -290,6 +312,20 @@ final class Collaboration: @unchecked Sendable {
                     let cursor = Cursor(cursor: peer.cursorID, color: peer.color, point: pointer.point)
                     self?.rooms[path.url]?.peers[client]?.cursor = pointer.point == nil ? nil : cursor
                     let message = cursor.message
+                    for (id, other) in room.peers where id != client { other.socket?.send(message) }
+                }
+                return
+            }
+            struct Cells: Decodable { let cells: Bool; let node: String; let range: CellMark.Range? }
+            if let frame = try? JSONDecoder().decode(Cells.self, from: Data(text.utf8)) {
+                guard frame.cells, frame.range?.isValid != false else { return }
+                self?.lock.withLock {
+                    guard let room = self?.rooms[path.url], let sender = room.peers[client], sender.socket === socket,
+                          !sender.viewing, frame.range == nil || sender.node == frame.node,
+                          sender.seen.duration(to: .now) < .seconds(45) else { return }
+                    let mark = CellMark(cells: sender.cursorID, node: frame.node, color: sender.color, range: frame.range)
+                    self?.rooms[path.url]?.peers[client]?.cells = frame.range == nil ? nil : mark
+                    let message = mark.message
                     for (id, other) in room.peers where id != client { other.socket?.send(message) }
                 }
                 return
@@ -316,6 +352,12 @@ final class Collaboration: @unchecked Sendable {
                 if self?.rooms[path.url]?.peers[client]?.socket === socket {
                     self?.rooms[path.url]?.hideCursor(self?.rooms[path.url]?.peers[client])
                     self?.rooms[path.url]?.peers[client]?.cursor = nil
+                    if var cells = self?.rooms[path.url]?.peers[client]?.cells {
+                        cells.range = nil
+                        let message = cells.message
+                        for peer in (self?.rooms[path.url]?.peers ?? [:]).values { peer.socket?.send(message) }
+                        self?.rooms[path.url]?.peers[client]?.cells = nil
+                    }
                     self?.rooms[path.url]?.peers[client]?.socket = nil
                     if let room = self?.rooms[path.url], let node = room.peers[client]?.node {
                         let clear = "{\"node\":\"\(node)\",\"revision\":\(room.revision)}"

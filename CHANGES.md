@@ -1,5 +1,12 @@
 # Változások
 
+## 2026-11-24 – Táblázat / CSV: a többi résztvevő látja a cellakijelölést
+
+- Amíg valaki egy táblázat- vagy CSV-doboz celláit szerkeszti, a többi szerkesztő az olvasó nézetben látja a kijelölt tartományt (az illető színével árnyalva), az aktív cellát (keret) és azt, hogy éppen szerkesztés alatt áll-e (szaggatott keret). A gépelt szöveg nem megy át, az érték a szokásos mentéssel érkezik.
+- Új, rövid életű üzenet az élő csatornán (`cells`, `Collaboration.swift` `CellMark`; kliens: `live.cells`, `peerCells`, `peerMark`). Csak az küldheti, aki a dobozt fogja; a később csatlakozók megkapják az aktuális állapotot; kilépéskor, a doboz elengedésekor és a kapcsolat bontásakor törlődik. Legfeljebb 80 ms-onként megy ki.
+- Nem része: a megtekintő (csak a szerkesztőben látszik), és a görgetési helyzet követése (külön tétel a TODO.md-ben) – a kijelölt cella a másik félnél lehet a látható részen kívül.
+- Ellenőrizve két böngészőlappal (Chromium, mérő-adatmappa): szerkesztett cella, tartomány, törlés kilépéskor. A szerver kódja változott (újrafordítva, újraindítva). Tesztek: az érintett Swift tesztek és a három JS teszt rendben; `gestures.mjs` változatlanul bukik.
+
 ## 2026-11-24 – Táblázat / CSV: a kattintott cella nyílik meg, nincs villanás, gyorsabb frissítés
 
 - Dupla kattintásra az a cella nyílik meg szerkesztésre, amelyik fölött kattintottak, és a képernyőn a helyén marad (`clickedCell`, `gridOffset`). A cellát a doboz vászonbeli helyéből és a táblázat elrendezéséből számoljuk, nem találatvizsgálatból. A panelről vagy menüből indított szerkesztés az olvasó nézet görgetési helyzetét veszi át; kilépéskor az olvasó nézet ott folytatódik, ahol a szerkesztő állt.

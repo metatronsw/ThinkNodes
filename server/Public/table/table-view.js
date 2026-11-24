@@ -63,13 +63,25 @@ function colgroup(h, doc, withHeader) {
   return h("colgroup", cols);
 }
 
+// Más résztvevők cellakijelölése egy cellán (olvasó nézet): `marks` = [{color, range: {r0, c0, r1, c1, r, c, editing}}].
+// A kijelölt tartomány a résztvevő színével árnyalt, az aktív cella keretes; szerkesztés közben a keret szaggatott.
+export function peerMark(marks, r, c) {
+  if (!marks?.length) return null;
+  for (const {color, range} of marks) {
+    if (r < range.r0 || r > range.r1 || c < range.c0 || c > range.c1) continue;
+    const active = r === range.r && c === range.c;
+    return {class: ["tn-peer", {"tn-peer-active": active, "tn-peer-editing": active && range.editing}], color};
+  }
+  return null;
+}
+
 // Olvasó nézet: a szerver HTML-jével egyező szerkezet.
-export function renderTable(h, doc, {maxRows = previewRows} = {}) {
+export function renderTable(h, doc, {maxRows = previewRows, marks = null} = {}) {
   const rows = Math.min(doc.size.rows, maxRows), headerRows = Math.min(doc.header?.rows ?? 0, rows);
   const row = (r, tag) => h("tr", rowHeight(doc, r) === defaultRowHeight ? {} : {style: {height: rowHeight(doc, r) + "px"}},
     Array.from({length: doc.size.cols}, (_, c) => {
-      const cell = doc.cells[cellName(r, c)], style = styleOf(doc, cell);
-      return h(tag, {class: [kind(cell?.v), {fixed: cell?.fx != null}], style: cellStyle(style), title: cell?.fx ? "Rögzített érték: " + cell.fx : undefined},
+      const cell = doc.cells[cellName(r, c)], style = styleOf(doc, cell), mark = peerMark(marks, r, c);
+      return h(tag, {class: [kind(cell?.v), {fixed: cell?.fx != null}, mark?.class], style: mark ? {...cellStyle(style), "--tn-peer": mark.color} : cellStyle(style), title: cell?.fx ? "Rögzített érték: " + cell.fx : undefined},
         display(cell?.v, style.fmt));
     }));
   return h("div", {class: "tn-table-wrap"}, [

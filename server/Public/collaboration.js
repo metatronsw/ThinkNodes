@@ -70,7 +70,7 @@ export function rebaseWorksheet(base, local, remote) {
   return result;
 }
 
-export function liveConnection(path, csrf, onState, onError, {editing = false, onMotion, onCursor, rate = 33} = {}) {
+export function liveConnection(path, csrf, onState, onError, {editing = false, onMotion, onCursor, onCells, rate = 33} = {}) {
   const client = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, "0")).join("");
   const headers = {"Content-Type": "application/json", "X-CSRF-Token": csrf, "X-Worksheet-Client": client};
   let controller;
@@ -94,10 +94,24 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
     opened.onmessage = event => { if (socket !== opened) return;
       const frame = JSON.parse(event.data);
       if (frame.cursor) onCursor?.(frame);
+      else if (frame.cells) onCells?.(frame);
       else onMotion(frame); };
     opened.onclose = () => {
-      if (socket === opened) { socket = null; onMotion(null); onCursor?.(null); }
+      if (socket === opened) { socket = null; onMotion(null); onCursor?.(null); onCells?.(null); }
     };
+  }
+  // Cellakijelölés a fogott táblázatban (csak a kijelölés; a gépelt szöveg nem megy át). `range`: null = nincs.
+  // A gyors változásokból (húzás, nyilak) csak az utolsó megy ki, legfeljebb 80 ms-onként.
+  let cellFrame = null, cellTimer = null;
+  function cells(node, range) {
+    cellFrame = {cells: true, node, range};
+    if (cellTimer != null) return;
+    cellTimer = setTimeout(() => {
+      cellTimer = null;
+      const frame = cellFrame;
+      cellFrame = null;
+      if (frame && socket?.readyState === 1) socket.send(JSON.stringify(frame));
+    }, range ? 80 : 0);
   }
   function sendPending() {
     timer = null;
@@ -164,7 +178,7 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
     socket = null;
     request("leave", {}, {keepalive: true}).catch(() => {});
   }
-  return {client, start, stop, cursor, motion, flushMotion, endMotion, ping: target => request("ping", target), snapshot: () => request("poll", {editing}),
+  return {client, start, stop, cursor, cells, motion, flushMotion, endMotion, ping: target => request("ping", target), snapshot: () => request("poll", {editing}),
     checkpoint: (action, revision, checkpointRevision) => request(action, {revision, checkpointRevision}),
     viewSelect: node => request("view-select", {node}),
     select: (node, edge) => request("select", {node, edge})};

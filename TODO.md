@@ -124,5 +124,4 @@ Ez reális és takarékos megoldás. A megvalósítás előtt tisztázandó terv
 + Nagyítás utáni kirajzolás: az SVG, a táblázatok és a szövegek legyenek élesek 800%-on is. Kérdés: melyik böngészőben és mi életlen most (kép / SVG-fájl / táblázat / szövegfájl)? Lehetőségek: (a) kép- és SVG-fájl `<img>` helyett SVG `<image>` elemmel; (b) a HTML-tartalmú dobozok (táblázat, szövegfájl) a nagyításnak megfelelő felbontásban rajzolva (belül nagyítva, kívül visszakicsinyítve) – a nagyítás végi újrarajzolást lassítja; (c) csak lépcsőnként (pl. 200 / 400 / 800%) váltani felbontást.
 
 ## Táblázat (teljesítményfüggő)
-+ A többi felhasználó lássa, melyik cella van kijelölve és melyik áll szerkesztés alatt. Új, rövid életű üzenet kell a közös csatornán (mint az egérmutató); kérdés: csak a kijelölés és az aktív cella, vagy a gépelt szöveg is?
 + A többi felhasználó ugyanazt a görgetési pozíciót lássa, mint a szerkesztő – általános szabály minden görgethető tartalomra. Kérdés: csak élőben (amíg valaki görget), vagy a dobozhoz mentve is (a megtekintő és a később érkezők is azt lássák)?

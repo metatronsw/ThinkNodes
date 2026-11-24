@@ -21,7 +21,7 @@ import {glowFilter, glowId, glowReach, glowVNode} from "./glow.js";
 import {awaitWebPreview} from "./web-preview-refresh.js";
 import {cellName, columnName, decodeTable, encodeTable, limits as tableLimits} from "./table/table-document.js";
 import {TableEditor} from "./table/table-edit.js";
-import {gridOffset, renderTable, renderTableEditor, revealActive, tableToolbar} from "./table/table-view.js";
+import {gridOffset, peerMark, renderTable, renderTableEditor, revealActive, tableToolbar} from "./table/table-view.js";
 import {askNewTable, askReimport, createEmptyTable, createTableFromTSV, exportURL, extensionOf, importableExtensions, tableBoxProperties, tableFromSource, tableFromUpload} from "./table/table-files.js";
 import {looksTabular} from "./table/table-clipboard.js";
 import {detectSeparator, parseCSVRows, writeCSVRows} from "./table/table-csv.js";
@@ -507,6 +507,18 @@ createApp({
       else next.delete(frame.node);
       motions.value = next;
     }
+    // Más résztvevők cellakijelölése a fogott táblázat- / CSV-dobozokban, dobozonként (a doboz rajzolása csak a saját
+    // kulcsára iratkozik fel). Érték: [{peer, color, range}]. Csak a kijelölés jön át, a gépelt szöveg nem.
+    const peerCells = reactive(new Map());
+    function receiveCells(frame) {
+      if (!frame) { peerCells.clear(); return; }
+      for (const [id, marks] of [...peerCells]) {
+        const rest = marks.filter(mark => mark.peer !== frame.cells);
+        if (rest.length === marks.length) continue;
+        if (rest.length) peerCells.set(id, markRaw(rest)); else peerCells.delete(id);
+      }
+      if (frame.range) peerCells.set(frame.node, markRaw([...(toRaw(peerCells).get(frame.node) ?? []), {peer: frame.cells, color: frame.color, range: frame.range}]));
+    }
     const nodeLayouts = new WeakMap();
     const emptyBlocks = [];
     // Gépelés közben az új szöveg feldolgozásáig az objektum utolsó ismert szövege marad látható
@@ -774,7 +786,7 @@ createApp({
       if (gesture.value) finishPointer({pointerId: gesture.value.pointer}, true);
       if (inspector.value?.kind === "node") inspectNothing();
       problem.value = error.message;
-    }, {editing: true, onCursor: mouse?.receive, onMotion: receiveMotion, rate: Number(motionRate) || 33});
+    }, {editing: true, onCursor: mouse?.receive, onMotion: receiveMotion, onCells: receiveCells, rate: Number(motionRate) || 33});
 
     // Mentés ütemezése. Mezőszerkesztés (gépelés) közben a mentés a szünetre vár (0,5 mp), de legfeljebb 2 mp-et,
     // így nem megy ki minden leütés után a teljes munkalap; egyébként (húzás, gomb) 70 ms után ment. docs/PLAN.md C5.
@@ -3007,6 +3019,21 @@ createApp({
     }
 
     watch(held, id => { if (tableEdit.value && tableEdit.value.id !== id) stopTableEdit(); });
+    // A saját cellakijelölés a többi résztvevőnek: tartomány, aktív cella, és hogy éppen szerkesztés alatt áll-e.
+    let sentCells = null;
+    function shareCells() {
+      const active = tableEdit.value;
+      const editor = active?.editor;
+      const mark = editor ? {...editor.sel, r: editor.active.r, c: editor.active.c, editing: editor.draft != null} : null;
+      const key = mark ? active.id + JSON.stringify(mark) : null;
+      if (key === sentCells) return;
+      const node = active?.id ?? sentCells?.slice(0, sentCells.indexOf("{"));
+      sentCells = key;
+      if (node) live.cells(node, mark);
+    }
+    watch([tableTick, tableEdit], shareCells);
+    // Akinek a dobozát már senki nem fogja, annak a kijelölése sem látszik tovább.
+    watch(peers, () => { for (const id of [...peerCells.keys()]) if (!occupied(id)) peerCells.delete(id); });
     watch(tableTick, () => nextTick(() => {
       tableFocus.value = false;
       const editor = tableEdit.value?.editor;
@@ -3210,15 +3237,17 @@ createApp({
       }
       if (node.type === "table") {
         const doc = tableDocument(text);
-        return doc ? renderTable(h, doc) : h("p", {class: "muted"}, "A táblázat nem olvasható.");
+        return doc ? renderTable(h, doc, {marks: peerCells.get(node.id)}) : h("p", {class: "muted"}, "A táblázat nem olvasható.");
       }
       const preview = text.slice(0, 200000);
       const ext = (node.file.filename ?? "").split(".").pop().toLowerCase();
       if (node.type === "csv") {
         const [head = [], ...rows] = parseCSV(preview, detectSeparator(preview, ext));
+        const marks = peerCells.get(node.id);
+        const marked = (r, c) => { const mark = peerMark(marks, r, c); return mark ? {class: mark.class, style: {"--tn-peer": mark.color}} : null; };
         return h("table", {class: "node-csv"}, [
-          h("thead", [h("tr", head.map(cell => h("th", cell)))]),
-          h("tbody", rows.map(row => h("tr", row.map(cell => h("td", cell))))),
+          h("thead", [h("tr", head.map((cell, c) => h("th", marked(0, c), cell)))]),
+          h("tbody", rows.map((row, r) => h("tr", row.map((cell, c) => h("td", marked(r + 1, c), cell))))),
         ]);
       }
       if (node.type === "code") return h("pre", {class: "node-code"}, [h("code", preview)]);

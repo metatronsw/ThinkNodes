@@ -4,6 +4,9 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 ## Nyitott
 
+- **Más résztvevő cellakijelölése a CSV olvasó nézetében elcsúszhat** (2026-11-24)
+  - A CSV olvasó nézete kihagyja az üres sorokat, és legfeljebb 200 sort / 30 oszlopot mutat; a kijelölés és a dupla kattintással megnyitott cella a szerkesztő sorszámai szerint megy, így üres sorokat tartalmazó fájlban egy sorral elcsúszhat. A megtekintőben a cellakijelölés nem látszik.
+
 - **A 2026-11-24-i vászon-, táblázat- és CSV-módosítások Safariban nincsenek kipróbálva** (2026-11-24)
   - Chromiumban ellenőrizve. Safariban külön nézendő: CSV cellaszerkesztés (ugyanaz a szerkesztő, mint a táblázaté, a ragadó fejlécekkel), a „méretre igazítás” gomb mérése (a saját görgetősáv tartója mellett), a 800%-os nagyítás, a zoom-kijelző helye.
 
