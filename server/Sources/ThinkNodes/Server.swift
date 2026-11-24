@@ -81,6 +81,9 @@ enum ThinkNodes {
         let app = try await Application.make(environment)
         do {
             app.http.server.configuration.tlsConfiguration = tls
+            // Tömörített válaszok a szöveges típusokra (HTML, JS, CSS, JSON, SVG): a szerkesztő első betöltése
+            // tömörítés nélkül kb. 1 MB; a képek és más, eleve tömörített fájlok változatlanul mennek.
+            app.http.server.configuration.responseCompression = .enabledForCompressibleTypes
             store.reconcileAtStartup()
             store.cleanPackageStaging(all: true)
             configure(app, store: store, motionRate: options.rate, google: google)
@@ -707,7 +710,7 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         case "svg":
             let host = req.headers.first(name: .host), mode = siteMode(req)
             let svg = try await req.application.threadPool.runIfActive {
-                boardSVG(worksheet, siteHost: host, assetBase: "/" + path.url, mode: mode, fileText: { $0.file.flatMap { texts[$0.asset] } })
+                boardSVG(worksheet, siteHost: host, assetBase: "/" + path.url, mode: mode, fileText: { $0.file.flatMap { texts[$0.textKey] } })
             }
             return response("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + svg,
                             type: "image/svg+xml; charset=utf-8", filename: "\(path.name).svg")
@@ -1491,7 +1494,7 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
     let graphicsJSON = String(decoding: try JSONEncoder().encode(theme?.graphics), as: UTF8.self)
     let selectionSample = Worksheet(appearance: worksheet.appearance, title: "", background: "@\(theme?.graphics?.selection ?? 4)")
     let selectionColor = selectionSample.painted(mode: siteMode(req)).backgroundColor
-    let canvas = renderWorksheetCanvas(display, noteBase: base, siteHost: host, fileText: { $0.file.flatMap { texts[$0.asset] } })
+    let canvas = renderWorksheetCanvas(display, noteBase: base, siteHost: host, fileText: { $0.file.flatMap { texts[$0.textKey] } })
     let tooltips = canvas.tooltipNodes.map {
         let justification = $0.justified == true ? " data-justified" : ""
         // Text: mindenhol formázott markdown (a sima sortörés új sor).

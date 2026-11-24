@@ -81,6 +81,10 @@ package struct CanvasFile: Codable, Equatable, Sendable {
         return (try? WorksheetPath(segments)) != nil
     }
 
+    /// A szövegtartalom kulcsa (WorksheetStore.fileTexts): a forrással együtt, mert két lap mappájában lehet
+    /// azonos nevű fájl, és egy lapon mindkettőre mutathat doboz.
+    package var textKey: String { source.map { $0 + "\u{0}" + asset } ?? asset }
+
     var isCommon: Bool { source == Self.common || source?.hasPrefix(Self.common + "/") == true }
 
     /// Közös könyvtárbeli fájl címe (`/common/...`), nyilvános statikus fájlként.
@@ -1080,7 +1084,7 @@ package final class WorksheetStore: @unchecked Sendable {
             if let modified, let cached = try? cache.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
                cached > modified && cached > Themes.loadedAt { return .drawing(try String(contentsOf: cache, encoding: .utf8)) }
             let texts = textContents(sheet, url: url, metadata: ctx.local)
-            let svg = boardSVG(sheet, assetBase: "/" + path.url, mode: mode, fileText: { $0.file.flatMap { texts[$0.asset] } })
+            let svg = boardSVG(sheet, assetBase: "/" + path.url, mode: mode, fileText: { $0.file.flatMap { texts[$0.textKey] } })
             try Data(svg.utf8).write(to: cache, options: .atomic)
             return .drawing(svg)
         }
@@ -1091,7 +1095,7 @@ package final class WorksheetStore: @unchecked Sendable {
                               commonDirectory: String? = nil) -> [String: String] {
         var result: [String: String] = [:]
         for node in sheet.nodes where node.isTextFile {
-            guard let source = node.file, result[source.asset] == nil else { continue }
+            guard let source = node.file, result[source.textKey] == nil else { continue }
             let asset = source.asset
             // Közös könyvtár (Public/common): bárki olvashatja; a projekt fájljai a tulajdonos lap mappájából.
             let located: URL? = source.isCommon ? commonDirectory.flatMap { CommonLibrary.file(source, publicDirectory: $0) }
@@ -1102,7 +1106,7 @@ package final class WorksheetStore: @unchecked Sendable {
             defer { try? handle.close() }
             // A táblázat JSON-ja csak egészben olvasható; a többi szövegfájlnak elég az eleje.
             let bytes = (try? handle.read(upToCount: node.type == "table" ? TableLimits.maxBytes : 200_000)) ?? Data()
-            result[asset] = String(decoding: bytes, as: UTF8.self)
+            result[source.textKey] = String(decoding: bytes, as: UTF8.self)
         }
         return result
     }

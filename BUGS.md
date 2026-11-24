@@ -32,5 +32,5 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
   - Az ezen kívüli cellára eső társ-kijelölés nem jelenik meg az olvasó nézetben. (Az üres sorok miatti elcsúszás javítva.)
 
 - **Táblázatszerkesztő új fejlécsávjai: Chromiumban és CSV-n nincs kipróbálva** (2026-11-25)
-  - A ragadó fejlécek helyett külön fejlécsávok vannak (lásd DONE.md). Automatizált Safari 18.6-ban táblázaton ellenőrizve (megjelenés, oszlopszélesség húzása); Chromiumban, CSV-szerkesztésnél, egyedi sormagasságnál és a „méretre igazítás” gombbal még nézendő. A görgetés sebessége az új szerkezettel nincs mérve.
+  - A ragadó fejlécek helyett külön fejlécsávok vannak (lásd DONE.md). Automatizált Safari 18.6-ban táblázaton ellenőrizve (megjelenés, oszlopszélesség húzása); Chromiumban, CSV-szerkesztésnél, egyedi sormagasságnál és a „méretre igazítás” gombbal még nézendő. A görgetés sebessége az új szerkezettel nincs mérve (2026-11-25-én a `perf.py` nem futott le: az automatizált Safari időzítői álltak).
   - Ha a megnyitott cella a rács legfelső sorába esne, a fejlécsáv alá kerülhet (a korábbi ragadó fejlécnél is így volt).

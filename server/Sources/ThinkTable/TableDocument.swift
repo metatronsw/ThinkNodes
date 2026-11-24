@@ -21,9 +21,11 @@ public enum CellValue: Equatable, Sendable, Codable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        if let value = try? container.decode(Bool.self) { self = .bool(value) }
+        // A leggyakoribb típus elöl: minden sikertelen próba egy eldobott hiba (a megtekintő idejének nagy része ez volt).
+        // A JSON-típusok nem fedik egymást (szöveg, szám, logikai), így a sorrend az eredményt nem változtatja.
+        if let value = try? container.decode(String.self) { self = .text(value) }
         else if let value = try? container.decode(Double.self) { self = .number(value) }
-        else if let value = try? container.decode(String.self) { self = .text(value) }
+        else if let value = try? container.decode(Bool.self) { self = .bool(value) }
         else { self = .error(try container.decode(ErrorBox.self).err) }
     }
 

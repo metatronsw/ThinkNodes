@@ -34,3 +34,9 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 + Hátra: a kérelmező értesítése a döntésről (most nincs; a szerver nem küld e-mailt).
 + Lehetőség: további adminisztrátori jelzések (AdminMessage.Kind), pl. lemezhely, hibás mentés.
 + Lehetőség: a felhasználó maga kösse össze / válassza le a Google-fiókját (most csak az admin teheti); a Google `sub` azonosítójának rögzítése az e-mail-cím mellé.
+
+# Teljesítmény (server/docs/PERF.md „Betöltés és szerver – 2026-11-25”)
+
++ Szerver: HTTP/2 élesben, előre tömörített statikus fájlok, megtekintő oldal gyorsítótára, `usageLocked` és `reconcile` ritkítása.
++ Kliens: szűkített d3-csomag (külső letöltés), `modulepreload`, `commonmark.js` halasztott betöltése.
++ Mérés: a táblázatszerkesztő görgetése az új fejlécsávokkal (Safari, `perf.py --only table`); a `perf.py` `tabla` lapos futása javítandó (a keresett `n00005` doboz nincs meg).

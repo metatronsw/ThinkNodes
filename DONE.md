@@ -6,6 +6,10 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **Megtekintő: két lap azonos nevű szövegfájlja ugyanazt a tartalmat mutatta** (2026-11-25)
+  - Ok: a szövegfájlok tartalma fájlazonosító szerint volt kulcsolva; a tallózóból beillesztett, névvel hivatkozott fájloknál a saját és a másik lap azonos nevű fájlja ütközött.
+  - Javítás: a kulcs a forrással együtt egyedi (`CanvasFile.textKey`, `textContents`); teszt: `sameNamedFilesFromTwoSheetsKeepTheirOwnText`.
+
 - **Safari: a táblázatszerkesztő fejlécei görgetés után eltűntek, az oszlopszélesség-fogó nem volt kattintható** (2026-11-25)
   - Ok: a ragadó (`sticky`) fejléccellákat a Safari foreignObject-en belül görgetés után nem rajzolta ki, és a helyükön az alattuk lévő cella kapta a kattintást (automatizált Safari 18.6-ban mérve: a fejléc helyén `TD` a találat).
   - Javítás: az oszlopbetűk sora és a sorszámok oszlopa külön sávban áll a rács mellett, rácselrendezésben, és a rács görgetését követi (`tn-grid`, `syncHeads`, `table-view.js`); a fogó normál elrendezésű elem, és a fejléccella széle is fogóként működik. Safariban ellenőrizve: a fejlécek látszanak, a fogó a találat (`col-resize`), egy oszlop 69 → 109 képpontra húzható és vissza.

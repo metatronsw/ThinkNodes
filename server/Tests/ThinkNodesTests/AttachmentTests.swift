@@ -178,6 +178,30 @@ import VaporTesting
     #expect(try store.load(child, user: admin).nodes.first?.webPublic == nil)
 }
 
+/// Két lap azonos nevű fájlja egy lapon: mindkét doboz a saját fájlja tartalmát kapja (a kulcs a forrással együtt egyedi).
+@Test func sameNamedFilesFromTwoSheetsKeepTheirOwnText() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-samename-\(UUID().uuidString)")
+    let store = try WorksheetStore(root: root)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try store.setUser(name: "admin", role: .admin, passwordHash: try Bcrypt.hash("x", cost: 4))
+    let admin = try #require(try store.user(named: "admin"))
+    let project = try WorksheetPath(["nevek"]), child = try WorksheetPath(["nevek", "al"])
+    _ = try store.open(project, user: admin)
+    var sub = try store.open(child, user: admin)
+    // Azonosító nélküli (a fájlnévvel hivatkozott) fájlok, ahogy a tallózóból beillesztve keletkeznek.
+    try Data("szülő".utf8).write(to: root.appendingPathComponent("nevek/jegyzet.md"))
+    try Data("allap".utf8).write(to: root.appendingPathComponent("nevek/al/jegyzet.md"))
+    sub.nodes = [
+        Idea(id: "sajat", type: "text", file: CanvasFile(asset: "jegyzet.md", filename: "jegyzet.md"), position: Point(x: 0, y: 0), width: 340, height: 240),
+        Idea(id: "szulo", type: "text", file: CanvasFile(asset: "jegyzet.md", source: "", filename: "jegyzet.md"), position: Point(x: 400, y: 0), width: 340, height: 240),
+    ]
+    sub = try store.update(child, worksheet: sub, user: admin)
+    let texts = try store.fileTexts(child, sheet: sub, user: admin, unlocks: [])
+    let own = try #require(sub.nodes.first { $0.id == "sajat" }?.file), parent = try #require(sub.nodes.first { $0.id == "szulo" }?.file)
+    #expect(texts[own.textKey] == "allap")
+    #expect(texts[parent.textKey] == "szülő")
+}
+
 /// Közös fájl: másik lapról is hivatkozható; lomtárba tételkor a többi lap doboza üres dobozzá válik.
 @Test func sharedFileReleaseUnlinksOtherSheets() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-release-\(UUID().uuidString)")
@@ -224,7 +248,7 @@ import VaporTesting
         undone.nodes = [Idea(id: "childfile", type: "text", file: CanvasFile(asset: asset, source: "", filename: "jegyzet.md"), position: Point(x: 0, y: 0), width: 340, height: 240)]
         _ = try store.update(child, worksheet: undone, user: admin)
         #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("kozos/jegyzet.md").path))
-        #expect(try store.fileTexts(child, sheet: try store.load(child, user: admin), user: admin, unlocks: [])[asset] == "# Jegyzet")
+        #expect(try store.fileTexts(child, sheet: try store.load(child, user: admin), user: admin, unlocks: [])["\u{0}" + asset] == "# Jegyzet")
         #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("kozos/.trash/jegyzet.md").path))
     }
 }

@@ -1,5 +1,15 @@
 # Változások
 
+## 2026-11-25 – Gyorsabb tesztek, válasz-tömörítés, táblázat-gyorsítótár a megtekintőben
+
+- **Tesztelők:** a `gestures.mjs` gyorsított idővel fut (az időzítések és az óra nyolcszoros sebességgel; `TEST_SPEED=1` a valós idő): 11 mp → 2,9 mp, hat egymás utáni futás hibátlan. A `test.sh` a JS-teszteket a háttérben, párhuzamosan futtatja, miközben a Swift fordít.
+- **Válasz-tömörítés (gzip) a szöveges típusokra:** `editor.js` 280 → 80 KB, `d3.js` 280 → 93 KB, `app.css` 73 → 18 KB; a megtekintő oldala a helyi `a` lapon 159 → 20 KB, a mérő `tabla` lapon 433 → 66 KB. A feltételes kérés (304) változatlanul működik, a kicsomagolt tartalom bájtra egyezik.
+- **Megtekintő / előnézet:** a táblázat dobozok kész HTML-je a fájl tartalma szerint gyorsítótárazva (`RenderedTables`), a cellaérték dekódolása a leggyakoribb típussal kezd. A helyi `a` lap megtekintője 87–100 ms → 17 ms (a mintavétel szerint az idő ~70%-a a `.tntable` újradekódolása volt minden kérésnél).
+- **Hiba javítva:** két lap azonos nevű szövegfájlja egy lapon ugyanazt a tartalmat mutatta a megtekintőben és az exportban (a tartalom kulcsa csak a fájlnév volt; most a forrással együtt egyedi, `CanvasFile.textKey`).
+- Ellenőrzött, hibát nem találtam: útvonal-kijátszás a `/common`, a mellékletek, az előnézet és a tallózó címein (403 / 404); a linkelőnézet helyi és belső címre csak helyőrző képet ad.
+- Nem sikerült mérni: a táblázatszerkesztő görgetése az új fejlécsávokkal (az automatizált Safari időzítői leálltak, valószínűleg takarásban volt az ablak).
+- Szerverkód változott: újrafordítva és újraindítva. További gyorsítási lehetőségek: `server/docs/PERF.md` („Betöltés és szerver – 2026-11-25”).
+
 ## 2026-11-24 – TODO- és BUGS-tételek (`todo-bugs-2026-11-24` ág)
 
 - **Tesztek:** a `Tests/Editor/gestures.mjs` újra átmegy; a szerkesztő mostani működéséhez igazítva (részletek: DONE.md).

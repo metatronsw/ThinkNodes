@@ -163,12 +163,26 @@ if ((${#js_list[@]})); then
         echo "Node.js nem található (deploy/install.sh, vagy THINKNODES_NODE)." >&2
         failures+=("JS: nincs Node.js")
     else
+        # A JS-tesztek a háttérben, egymással párhuzamosan futnak, miközben a Swift fordít; a kimenetük a végén,
+        # tesztenként egyben jelenik meg (js_finish).
+        js_logs="$(mktemp -d -t thinknodes-test-js)"
         for test in "${js_list[@]}"; do
-            printf '\n== %s\n' "${test#Tests/Editor/}"
-            if ! "$node_bin" "$test"; then failures+=("${test#Tests/Editor/}"); fi
+            name="${test#Tests/Editor/}"
+            ( "$node_bin" "$test" >"$js_logs/$name.log" 2>&1; echo $? >"$js_logs/$name.status" ) &
         done
     fi
 fi
+js_finish() {
+    [[ -n "${js_logs:-}" ]] || return 0
+    wait
+    for test in "${js_list[@]}"; do
+        name="${test#Tests/Editor/}"
+        printf '\n== %s\n' "$name"
+        cat "$js_logs/$name.log"
+        [[ "$(cat "$js_logs/$name.status" 2>/dev/null)" == 0 ]] || failures+=("$name")
+    done
+    rm -rf "$js_logs"
+}
 
 # --- Swift -------------------------------------------------------------------------------------
 if ((swift_all || ${#swift_list[@]})); then
@@ -221,6 +235,7 @@ if ((swift_all || ${#swift_list[@]})); then
     fi
 fi
 
+js_finish
 printf '\nIdő: %d s\n' "$((SECONDS - started))"
 if ((${#failures[@]})); then
     printf 'HIBA: %s\n' "${failures[*]}"

@@ -3,6 +3,13 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {runInThisContext} from "node:vm";
 
+// Gyorsított idő: a szerkesztő és a teszt minden időzítése (mentés 70 ms, gépelési szünet, dupla kattintás ablaka …)
+// nyolcadannyi valós ideig tart, az óra (performance.now) pedig ugyanennyivel gyorsabban jár – az arányok így
+// megmaradnak, a teszt viszont töredék idő alatt lefut. TEST_SPEED=1 a valós idejű futás (hibakereséshez).
+const speed = Number(process.env.TEST_SPEED) || 8;
+const realSetTimeout = globalThis.setTimeout, realNow = performance.now.bind(performance);
+globalThis.setTimeout = (callback, delay = 0, ...rest) => realSetTimeout(callback, delay / speed, ...rest);
+performance.now = () => realNow() * speed;
 const read = name => readFileSync("Public/vendor/" + name + ".js", "utf8");
 globalThis.ThinkNodesNodeTypes = JSON.parse(readFileSync("Public/node-types.json", "utf8"));
 runInThisContext(read("vue"));

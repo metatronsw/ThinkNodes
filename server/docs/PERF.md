@@ -146,3 +146,36 @@ jel kell (pl. a képernyő mérete és a `devicePixelRatio`).
   lapon, a `tabla` projekt végső futása, Chromium (ott csak működési ellenőrzés volt).
 - **Szemmel ellenőrizendő:** a húzás közbeni kurzor (pajzs) Safariban és Chrome-ban; a CSS-rács kinézete a régihez képest;
   a saját kijelölés glow-jának eltűnése húzás közben.
+
+## Betöltés és szerver – 2026-11-25
+
+Mérés: release szerver helyben, `curl`; a megtekintőnél a folyamat mintavételezése (`sample`).
+
+### Elkészült
+
+- **Válasz-tömörítés** a szöveges típusokra (`responseCompression = .enabledForCompressibleTypes`): a szerkesztő első
+  betöltése kb. 1 MB-ról a harmadára csökken (`editor.js` 280 → 80 KB, `d3.js` 280 → 93 KB, `vue.js` 103 → 39 KB,
+  `app.css` 73 → 18 KB). Ára: `editor.js` kiadása 3 → 10 ms (menet közbeni tömörítés); a 304-es válaszokat nem érinti.
+- **Táblázat dobozok HTML-je gyorsítótárazva** (`RenderedTables`, a fájl szövege szerint, 32 tétel / 48 MiB): a megtekintő
+  a helyi `a` lapon 87–100 ms → 17 ms. Korábban minden kérés újradekódolta a `.tntable` fájlt (az idő ~70%-a).
+
+### Lehetőségek (nincs megvalósítva)
+
+Szerver:
+- **HTTP/2** (`supportVersions`): a szerkesztő kb. 35 fájlt kér (27 modul); HTTP/1.1-en ez böngészőnként 6 párhuzamos
+  kapcsolat. Élesben (TLS) kipróbálandó a WebSockettel együtt.
+- **Előre tömörített statikus fájlok** (ETag szerint megőrzött gzip): a menet közbeni tömörítés 7 ms / nagy fájl.
+- **Megtekintő oldal gyorsítótára** revízió, megjelenítési mód és jogosultság szerint: a maradék 15–17 ms a teljes vászon
+  újrarajzolása kérésenként.
+- **Fájldoboz törlése mentéskor:** a `usageLocked` a projekt minden munkalapját beolvassa törölt fájlonként; sok lapos
+  projektben érdemes egyszer beolvasni kérésenként.
+- **Munkalap megnyitása:** a `reconcile` minden betöltéskor kilistázza a mappa mellékleteit; mappa-módosítási idő
+  szerint kihagyható.
+
+Kliens:
+- **Szűkített d3-csomag:** a szerkesztő csak `zoom`, `zoomIdentity`, `select`, `pointer` hívást használ, mégis a teljes
+  d3 megy ki (280 KB, tömörítve 93 KB). Egy `d3-zoom` + `d3-selection` csomag ennek töredéke (külső letöltés kell hozzá).
+- **`modulepreload`** az `editor.js` importjaira: a modulok most lépcsőzetesen derülnek ki (2–3 körben).
+- **`commonmark.js` halasztva** (99 KB): csak markdown-szöveg megjelenítésekor kell.
+- A korábbi nyitott tételek változatlanok („Ami nem javult vagy nyitva maradt”); az új táblázat-fejlécsávok görgetési
+  sebessége nincs mérve.

@@ -894,6 +894,39 @@ func parseCSV(_ source: String, separator: Character = ",") -> [[String]] {
     return rows.filter { !($0.count == 1 && $0[0].isEmpty) }
 }
 
+/// Táblázat dobozok kész HTML-je a `.tntable` fájl szövege szerint (a legutóbb használt néhány táblázat).
+final class RenderedTables: @unchecked Sendable {
+    static let shared = RenderedTables()
+    private let lock = NSLock()
+    private var entries: [String: String] = [:]
+    private var order: [String] = []      // a legrégebben használt elöl
+    private var bytes = 0
+    private let maximumEntries = 32, maximumBytes = 48 * 1024 * 1024
+
+    func html(for text: String, render: () -> String) -> String {
+        lock.lock()
+        if let known = entries[text] {
+            if let index = order.firstIndex(of: text) { order.append(order.remove(at: index)) }
+            lock.unlock()
+            return known
+        }
+        lock.unlock()
+        let html = render()     // zár nélkül: a nagy táblázat rajzolása ne tartsa fel a többi kérést
+        lock.lock()
+        defer { lock.unlock() }
+        if entries[text] == nil {
+            entries[text] = html
+            order.append(text)
+            bytes += text.utf8.count + html.utf8.count
+            while order.count > maximumEntries || (bytes > maximumBytes && order.count > 1) {
+                let oldest = order.removeFirst()
+                if let removed = entries.removeValue(forKey: oldest) { bytes -= oldest.utf8.count + removed.utf8.count }
+            }
+        }
+        return html
+    }
+}
+
 /// Szövegfájl tartalmának HTML-je a vásznon: `.md` formázva, `code` egyenközű, `csv` táblázat, egyéb egyszerű szöveg.
 func fileTextHTML(_ node: Idea, text: String?) -> String {
     guard let text else { return "<p class=\"muted\">…</p>" }
@@ -902,8 +935,12 @@ func fileTextHTML(_ node: Idea, text: String?) -> String {
     switch node.type {
     case "table":
         // Táblázat doboz (docs/EXCEL.md): a szerver által számolt értékek, a teljes fájlból (nem csak az elejéből).
-        guard let document = try? TableDocument.decode(Data(text.utf8)) else { return "<p class=\"muted\">A táblázat nem olvasható.</p>" }
-        return "<div class=\"tn-table-wrap\">" + TableHTML.render(document) + "</div>"
+        // A kész HTML a fájl tartalma szerint gyorsítótárazva: a megtekintő és az előnézet minden kérésnél újradekódolta
+        // és újrarajzolta a táblázatot (egy nagy táblázatnál ez adta a kirajzolás idejének nagy részét).
+        return RenderedTables.shared.html(for: text) {
+            guard let document = try? TableDocument.decode(Data(text.utf8)) else { return "<p class=\"muted\">A táblázat nem olvasható.</p>" }
+            return "<div class=\"tn-table-wrap\">" + TableHTML.render(document) + "</div>"
+        }
     case "csv":
         let rows = parseCSV(preview, separator: TableCSV.detectSeparator(preview, ext: ext))
         guard let head = rows.first else { return "<table class=\"node-csv\"></table>" }

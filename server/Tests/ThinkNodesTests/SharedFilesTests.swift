@@ -148,7 +148,7 @@ import VaporTesting
     sheet.nodes = [Idea(id: "kozos", type: "text", file: CanvasFile(asset: "leiras.md", source: "@common/leirasok", filename: "leiras.md"),
                         position: Point(x: 0, y: 0), width: 340, height: 240)]
     sheet = try store.update(project, worksheet: sheet, user: owner)
-    #expect(try store.fileTexts(project, sheet: sheet, user: owner, unlocks: [], commonDirectory: assets.path) == ["leiras.md": "# Közös leírás"])
+    #expect(try store.fileTexts(project, sheet: sheet, user: owner, unlocks: [], commonDirectory: assets.path) == ["@common/leirasok\u{0}leiras.md": "# Közös leírás"])
     #expect(try store.fileTexts(project, sheet: sheet, user: owner, unlocks: []).isEmpty)
     #expect(CommonLibrary.file(CanvasFile(asset: "../kulso.md", source: "@common"), publicDirectory: assets.path) == nil)
     #expect(CommonLibrary.file(CanvasFile(asset: "kulso.md", source: "@common/.."), publicDirectory: assets.path) == nil)
