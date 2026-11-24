@@ -3,7 +3,7 @@ import ThinkTable
 import Vapor
 import cmark_gfm
 
-func escaped(_ value: String) -> String {
+package func escaped(_ value: String) -> String {
     value.replacingOccurrences(of: "&", with: "&amp;")
         .replacingOccurrences(of: "<", with: "&lt;")
         .replacingOccurrences(of: ">", with: "&gt;")
@@ -11,7 +11,7 @@ func escaped(_ value: String) -> String {
         .replacingOccurrences(of: "'", with: "&#39;")
 }
 
-func markdownHTML(_ source: String) -> String {
+package func markdownHTML(_ source: String) -> String {
     let source = preservingBlankLines(source)
     return source.withCString { bytes in
         guard let html = cmark_markdown_to_html(bytes, source.utf8.count, CMARK_OPT_DEFAULT | CMARK_OPT_HARDBREAKS) else { return "" }
@@ -42,7 +42,7 @@ func preservingBlankLines(_ source: String) -> String {
     return lines.joined(separator: "\n")
 }
 
-func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageUpdates.Subscription? = nil) -> Response {
+package func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageUpdates.Subscription? = nil) -> Response {
     let assets = scripts ? """
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
@@ -68,7 +68,7 @@ func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageU
 }
 
 /// `Content-Disposition` letöltéshez; nem ASCII névnél tartalék név + UTF-8 név.
-func attachmentDisposition(_ filename: String) -> String {
+package func attachmentDisposition(_ filename: String) -> String {
     let encoded = filename.utf8.map { byte in
         switch byte {
         case 48...57, 65...90, 97...122, 45, 46, 95: String(UnicodeScalar(byte))
@@ -79,7 +79,7 @@ func attachmentDisposition(_ filename: String) -> String {
     return "attachment; filename=\"\(fallback)\"; filename*=UTF-8''\(encoded)"
 }
 
-func response(_ content: String, type: String, filename: String? = nil) -> Response {
+package func response(_ content: String, type: String, filename: String? = nil) -> Response {
     var headers: HTTPHeaders = ["Content-Type": type, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"]
     headers.replaceOrAdd(name: "Content-Security-Policy",
                          value: "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob:; media-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
@@ -89,21 +89,21 @@ func response(_ content: String, type: String, filename: String? = nil) -> Respo
     return Response(status: .ok, headers: headers, body: .init(string: content))
 }
 
-func csrfInput(_ token: String) -> String {
+package func csrfInput(_ token: String) -> String {
     "<input type=\"hidden\" name=\"csrf\" value=\"\(escaped(token))\">"
 }
 
-func uiIcon(_ symbol: String) -> String {
+package func uiIcon(_ symbol: String) -> String {
     "<svg class=\"ui-icon\" aria-hidden=\"true\" viewBox=\"0 0 24 24\"><use href=\"/icons.svg#\(symbol)\"/></svg>"
 }
 
-let headerButtonClass = "button header-button"
+package let headerButtonClass = "button header-button"
 
-func buttonLink(_ url: String, _ label: String, symbol: String, classes: String) -> String {
+package func buttonLink(_ url: String, _ label: String, symbol: String, classes: String) -> String {
     "<a class=\"\(classes)\" href=\"\(escaped(url))\">\(uiIcon(symbol))\(escaped(label))</a>"
 }
 
-func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: String?, actions: String = "", centerAction: String = "", canEdit: Bool = false, editing: Bool = false, showAdminLogout: Bool = false) -> String {
+package func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: String?, actions: String = "", centerAction: String = "", canEdit: Bool = false, editing: Bool = false, showAdminLogout: Bool = false) -> String {
     let parts = path?.split(separator: "/").map(String.init) ?? []
     let base = editing ? "/edit/" : "/"
     // Útvonal: munkalaponként egy gomb a mappa (könyvtár) nevével; a gombok ugyanabban a módban
@@ -154,6 +154,11 @@ func siteHeader(path: String? = nil, project: String? = nil, user: User?, csrf: 
           \(crumb)\(parent)
         </nav></div><div class="header-parent">\(centerAction)</div><div class="header-actions">\(actions)<div class="header-user">\(session)</div>\(editing ? "" : appearanceActions)</div>\(editing ? appearanceActions : "")</\(tag)><script defer src="/header-fit.js?v=2"></script>
         """
+}
+
+/// URL-lekérdezés értéke: minden nem alfanumerikus karakter százalékkódolva.
+package func encodeQuery(_ value: String) -> String {
+    value.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
 }
 
 /// SVG-szám három tizedesjeggyel. A `String(format:locale:)` minden hívásnál ICU-számformázót hozott létre
@@ -278,7 +283,7 @@ private func roundedWireCorners(_ vertices: [Point], wide: Bool) -> [(entry: Poi
 }
 
 private struct IdeaLabelLine {
-    var text: String
+    package var text: String
     let size: Double
     let weight: Int
     let color: String
@@ -295,7 +300,7 @@ private struct IdeaLabelLine {
 }
 
 private struct IdeaDrawing {
-    var node: Idea
+    package var node: Idea
     let labelWidth: Double
     var iconSpace: Double = 0
     var previewSpace: Double = 0
@@ -975,13 +980,13 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
         """
 }
 
-func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = nil, assetBase: String? = nil, mode: String? = nil,
+package func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: String? = nil, assetBase: String? = nil, mode: String? = nil,
               fileText: (Idea) -> String? = { _ in nil }) -> String {
     renderWorksheetCanvas(board.painted(mode: mode), noteBase: noteBase, siteHost: siteHost, assetBase: assetBase, fileText: fileText).svg
 }
 
 /// - Parameter fileText: szövegfájl-objektum (`text`, `code`, `csv`) tartalma; a vásznon csak az eleje jelenik meg.
-func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: String?, assetBase: String? = nil,
+package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: String?, assetBase: String? = nil,
                            fileText: (Idea) -> String? = { _ in nil }) -> (svg: String, tooltipNodes: [Idea]) {
     let graphics = Themes.catalog.first { $0.id == board.appearance?.theme }?.graphics
     let drawings = board.nodes.map { ideaDrawing($0, graphics: graphics) }
@@ -1361,7 +1366,7 @@ func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: Stri
     return (svg, tooltipNodes)
 }
 
-func worksheetMarkdown(_ worksheet: Worksheet) -> String {
+package func worksheetMarkdown(_ worksheet: Worksheet) -> String {
     func inline(_ text: String) -> String {
         let syntax = "\\`*_{}[]<>()#+-.!|"
         return text.map { syntax.contains($0) ? "\\" + String($0) : String($0) }.joined()

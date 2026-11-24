@@ -1,20 +1,20 @@
 import Foundation
 import cmark_gfm
 
-struct MarkdownFormat: Codable, Equatable, Sendable {
+package struct MarkdownFormat: Codable, Equatable, Sendable {
     var bold = false
     var italic = false
     var code = false
-    var link = false
+    package var link = false
 }
 
-struct MarkdownRun: Codable, Sendable {
-    var text: String
+package struct MarkdownRun: Codable, Sendable {
+    package var text: String
     var format = MarkdownFormat()
 }
 
-struct MarkdownBlock: Codable, Sendable {
-    enum Kind: String, Codable, Sendable {
+package struct MarkdownBlock: Codable, Sendable {
+    package enum Kind: String, Codable, Sendable {
         case body, heading, code, quote
     }
 
@@ -28,7 +28,7 @@ struct MarkdownBlock: Codable, Sendable {
     var blankLines: Int? = nil
 }
 
-func canvasMarkdown(_ source: String) -> [MarkdownBlock] {
+package func canvasMarkdown(_ source: String) -> [MarkdownBlock] {
     let preview = String(source.prefix(6_000))
     return preview.withCString { bytes in
         guard let document = cmark_parse_document(bytes, preview.utf8.count, CMARK_OPT_DEFAULT) else { return [] }

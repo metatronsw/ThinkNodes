@@ -1,23 +1,25 @@
 import Foundation
 import Vapor
 
-final class PageUpdates: @unchecked Sendable {
-    enum Scope: Hashable {
+package final class PageUpdates: @unchecked Sendable {
+    package init() {}
+
+    package enum Scope: Hashable {
         case index, admin, viewer(String), editor(String)
     }
 
-    enum Change {
+    package enum Change {
         case content, attachments, structure
     }
 
-    struct Subscription {
+    package struct Subscription {
         let id: UUID
-        let version: UUID
+        package let version: UUID
     }
 
     private struct Feed {
-        let scope: Scope
-        var version = UUID()
+        package let scope: Scope
+        package var version = UUID()
         var waiters: [UUID: EventLoopPromise<Void>] = [:]
     }
 
@@ -25,7 +27,7 @@ final class PageUpdates: @unchecked Sendable {
     private var ids: [Scope: UUID] = [:]
     private var feeds: [UUID: Feed] = [:]
 
-    func subscribe(_ scope: Scope) -> Subscription {
+    package func subscribe(_ scope: Scope) -> Subscription {
         lock.withLock {
             let id = ids[scope] ?? UUID()
             if feeds[id] == nil {
@@ -36,7 +38,7 @@ final class PageUpdates: @unchecked Sendable {
         }
     }
 
-    func wait(_ id: UUID, since: UUID, on loop: any EventLoop) async throws -> UUID {
+    package func wait(_ id: UUID, since: UUID, on loop: any EventLoop) async throws -> UUID {
         let version = try await lock.withLock {
             guard let feed = feeds[id] else { throw Abort(.gone) }
             guard feed.version == since else { return loop.makeSucceededFuture(feed.version) }
@@ -62,7 +64,7 @@ final class PageUpdates: @unchecked Sendable {
         waiter?.succeed(())
     }
 
-    func publish(_ change: Change, at path: WorksheetPath) {
+    package func publish(_ change: Change, at path: WorksheetPath) {
         let parent = path.url.split(separator: "/").dropLast().joined(separator: "/")
         wake { scope in
             switch scope {
@@ -76,7 +78,7 @@ final class PageUpdates: @unchecked Sendable {
         }
     }
 
-    func publishAccountChange() {
+    package func publishAccountChange() {
         wake { _ in true }
     }
 

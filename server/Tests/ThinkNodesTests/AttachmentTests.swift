@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import VaporTesting
+@testable import ThinkCore
 @testable import ThinkNodes
 
 // Csatolmányok: átnevezés, mappahatárok, külső és közös fájlok, .web átnevezés.

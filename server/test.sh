@@ -63,21 +63,21 @@ all_topics="table markdown editor render worksheet collab access files web packa
 topics_for() {
     case "$1" in
         Sources/ThinkTable/*|Public/table/*|Tests/TableFixtures/*|Tests/ThinkTableTests/*|Tests/Editor/table-*) echo table ;;
-        Sources/ThinkNodes/TableFiles.swift) echo "table files" ;;
-        Sources/ThinkNodes/CanvasMarkdown.swift|Public/canvas-markdown.js|Tests/Fixtures/canvas-markdown.json) echo "markdown editor" ;;
+        Sources/*/TableFiles.swift) echo "table files" ;;
+        Sources/*/CanvasMarkdown.swift|Public/canvas-markdown.js|Tests/Fixtures/canvas-markdown.json) echo "markdown editor" ;;
         Tests/Editor/canvas-markdown.mjs|Tests/ThinkNodesTests/CanvasMarkdownTests.swift|Tests/ThinkNodesTests/TextNoteTests.swift) echo markdown ;;
         Tests/Editor/*|Public/*.js) echo editor ;;
-        Sources/ThinkNodes/Rendering.swift|Sources/ThinkNodes/Theme.swift|Public/themes/*|docs/theme.schema.json) echo render ;;
+        Sources/*/Rendering.swift|Sources/*/Theme.swift|Public/themes/*|docs/theme.schema.json) echo render ;;
         Tests/ThinkNodesTests/RenderingTests.swift|Tests/ThinkNodesTests/ThemeTests.swift) echo render ;;
-        Sources/ThinkNodes/Collaboration.swift|Sources/ThinkNodes/PageUpdates.swift) echo "collab access" ;;
+        Sources/*/Collaboration.swift|Sources/*/PageUpdates.swift) echo "collab access" ;;
         Tests/ThinkNodesTests/CollaborationTests.swift) echo collab ;;
         Tests/ThinkNodesTests/AccessTests.swift) echo access ;;
-        Sources/ThinkNodes/NodeTypes.swift) echo "files worksheet" ;;
+        Sources/*/NodeTypes.swift) echo "files worksheet" ;;
         Tests/ThinkNodesTests/AttachmentTests.swift|Tests/ThinkNodesTests/SharedFilesTests.swift) echo files ;;
-        Sources/ThinkNodes/WebPresentation.swift) echo "web files" ;;
+        Sources/*/WebPresentation.swift) echo "web files" ;;
         Tests/ThinkNodesTests/WebPresentationTests.swift) echo web ;;
-        Sources/ThinkNodes/ProjectPackage.swift|Tests/ThinkNodesTests/ProjectPackageTests.swift) echo package ;;
-        Sources/ThinkNodes/LinkPreview.swift|Tests/ThinkNodesTests/LinkPreviewTests.swift) echo link ;;
+        Sources/*/ProjectPackage.swift|Tests/ThinkNodesTests/ProjectPackageTests.swift) echo package ;;
+        Sources/*/LinkPreview.swift|Tests/ThinkNodesTests/LinkPreviewTests.swift) echo link ;;
         Tests/ThinkNodesTests/WorksheetTests.swift) echo worksheet ;;
         # Minden más Swift-forrás (Model, Server, WorksheetFile …), a csomagleírás és a közös tesztsegéd: minden Swift-teszt.
         Sources/*|Tests/*|Package.swift|Package.resolved|Patches/*|test.sh) echo core ;;

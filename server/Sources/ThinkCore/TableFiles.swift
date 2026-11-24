@@ -5,7 +5,7 @@ import Vapor
 // Táblázat doboz szerveroldali bekötése (docs/EXCEL.md). A táblázat logikája a ThinkTable modulban van;
 // itt csak a fájlkezelés és a végpontok vannak.
 
-enum TableFiles {
+package enum TableFiles {
     static let fileExtension = "tntable"
     /// Táblázattá alakítható forrásfájlok (első kör: CSV/TSV; a második körben xlsx, xls, ods).
     static let importable: Set<String> = ["csv", "tsv"]
@@ -56,10 +56,10 @@ extension WorksheetStore {
     }
 }
 
-struct TableImportResult: Content {
-    var asset: String
+package struct TableImportResult: Content {
+    package var asset: String
     var filename: String
-    var name: String?
+    package var name: String?
     var rows: Int
     var cols: Int
     var truncated: Bool
@@ -71,7 +71,7 @@ struct TableImportResult: Content {
 /// - mindkettő `&into=<meglévő .tntable>&mode=full|partial`: újraimportálás a meglévő táblázatba (`TableMerge`).
 /// - `GET /api/table-export/<lap>?name=<x.tntable>&format=csv`: letöltés.
 /// A táblázat és a forrásfájl között nincs kapcsolat: a táblázat a beolvasáskori tartalom másolata.
-func registerTableRoutes(_ app: any RoutesBuilder, store: WorksheetStore,
+package func registerTableRoutes(_ app: any RoutesBuilder, store: WorksheetStore,
                          identity: @escaping @Sendable (Request) throws -> (user: User?, unlocks: Set<String>),
                          verify: @escaping @Sendable (Request) throws -> Void,
                          changed: @escaping @Sendable (WorksheetPath) -> Void) {

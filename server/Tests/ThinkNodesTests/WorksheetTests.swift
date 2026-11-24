@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import VaporTesting
+@testable import ThinkCore
 @testable import ThinkNodes
 
 // Munkalap: teljes HTTP-körút, formátum, útvonalak, első adminisztrátor.

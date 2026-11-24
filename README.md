@@ -21,7 +21,17 @@ Mindegyik önállóan futtatható, és a `--help` kiírja a kapcsolóit.
 | `server/run.sh` | A szerver indítása (helyben és élesben). `--update`: előtte `deploy/build.sh`; `--debug`: a debug bináris. A többi kapcsoló a `thinknodes` binárisé. |
 | `server/test.sh` | Témakörönkénti tesztfuttatás: téma nélkül a commitolatlan módosításokból választja ki az érintett Swift- és JS-teszteket. `--all`: minden teszt; `--list`: csak kiírja, mit futtatna; témák (pl. `table`, `render`, `editor`): `--help`. Mindig debug buildet használ. |
 
-Fejlesztés közben a debug build sokkal gyorsabb: egy Swift-fájl módosítása után kb. 10 s, a release build ehhez képest kb. 85 s. Helyben ezért elég a `server/test.sh` (ez elkészíti a debug binárist is) és a `server/run.sh --debug --port:8888`; release build csak élesítés előtt kell.
+Fejlesztés közben a debug build sokkal gyorsabb: egy Swift-fájl módosítása után kb. 10 s, a release build ehhez képest 25–65 s. Helyben ezért elég a `server/test.sh` (ez elkészíti a debug binárist is) és a `server/run.sh --debug --port:8888`; release build csak élesítés előtt kell.
+
+A Swift-kód három modulból áll (`server/Sources/`):
+
+| Modul | Tartalom |
+| --- | --- |
+| `ThinkTable` | Táblázatmotor, Vapor nélkül |
+| `ThinkCore` | Munkalap-modell és tároló, renderelés, témák, prezentációk, csomagok |
+| `ThinkNodes` | A futtatható szerver: útvonalak, közös szerkesztés, linkelőnézet, indítás, LAN-tanúsítvány |
+
+A `ThinkCore` deklarációi, amelyeket a szerver használ, `package` láthatóságúak; új, a szerverből is használt típus, függvény vagy tag is így kell. A struktúrák szintetizált memberwise inicializálója modulhatáron túl nem látszik, ezért ilyenkor explicit `package init` kell. A szerverréteg módosítása után a release build kb. 25 s, a `ThinkCore` módosítása után kb. 65 s.
 
 ## Indítás
 

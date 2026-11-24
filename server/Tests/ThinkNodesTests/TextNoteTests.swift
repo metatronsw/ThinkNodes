@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import Vapor
+@testable import ThinkCore
 @testable import ThinkNodes
 
 @Test func textNoteSaveReplacesOnlyAnExistingTextAttachment() throws {

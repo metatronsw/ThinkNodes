@@ -5,11 +5,11 @@ import FoundationXML
 import ThinkTable
 import Vapor
 
-struct Point: Codable, Equatable, Sendable {
-    var x: Double
-    var y: Double
+package struct Point: Codable, Equatable, Sendable {
+    package var x: Double
+    package var y: Double
 
-    var isValid: Bool {
+    package var isValid: Bool {
         x.isFinite && y.isFinite && abs(x) <= 100_000 && abs(y) <= 100_000
     }
 }
@@ -25,28 +25,28 @@ private func automaticBorder(_ fill: String) -> String {
     return result
 }
 
-enum Shape: String, Codable, Sendable {
+package enum Shape: String, Codable, Sendable {
     case rounded, rectangle, ellipse, diamond
     case triangle, pentagon, hexagon, parallelogram
 }
 
-enum LabelAlignment: String, Codable, Sendable {
+package enum LabelAlignment: String, Codable, Sendable {
     case left, center, right
 }
 
-enum VerticalAlignment: String, Codable, Sendable { case top, middle, bottom }
+package enum VerticalAlignment: String, Codable, Sendable { case top, middle, bottom }
 
 /// Objektum hivatkozása (`link` képesség): külső cím, munkalap vagy .web mappa.
-enum NodeLinkKind: String, Codable, Sendable { case url, sheet, web }
+package enum NodeLinkKind: String, Codable, Sendable { case url, sheet, web }
 
-struct NodeLink: Codable, Equatable, Sendable {
+package struct NodeLink: Codable, Equatable, Sendable {
     var kind: NodeLinkKind
-    var target: String
+    package var target: String
 
-    var worksheetLink: WorksheetLink? { kind == .web ? nil : WorksheetLink(target) }
+    package var worksheetLink: WorksheetLink? { kind == .web ? nil : WorksheetLink(target) }
     var webReference: WebPresentationReference? { kind == .web ? try? WebPresentationReference(target) : nil }
 
-    var isValid: Bool {
+    package var isValid: Bool {
         switch (kind, WorksheetLink(target)) {
         case (.url, .website?), (.sheet, .worksheet?): true
         case (.web, _): webReference != nil
@@ -56,11 +56,11 @@ struct NodeLink: Codable, Equatable, Sendable {
 }
 
 /// A fájlt tároló objektumok (`text`, `code`, `csv`, `image`, `audio`, `document`) fájlja.
-struct CanvasFile: Codable, Equatable, Sendable {
-    var asset: String
+package struct CanvasFile: Codable, Equatable, Sendable {
+    package var asset: String
     /// Másik munkalap mappájában lévő fájl a projekten belül: a munkalap útvonala a projekt után
     /// ("" = a projekt gyökere). nil: a saját lap mappája. A mentés csak a saját mappás fájlokat kezeli.
-    var source: String?
+    package var source: String?
     var filename: String?
     var showFilename: Bool?
     var fileExtension: String?
@@ -93,7 +93,7 @@ struct CanvasFile: Codable, Equatable, Sendable {
     }
 
     /// A fájlt tároló munkalap útvonala; `own` a doboz saját lapja. Közös könyvtárnál nil.
-    func sheet(from own: WorksheetPath) -> WorksheetPath? {
+    package func sheet(from own: WorksheetPath) -> WorksheetPath? {
         guard !isCommon else { return nil }
         guard let source else { return own }
         var segments: [String] = [own.parts[0]]
@@ -121,7 +121,7 @@ func validImageStem(_ value: String) -> Bool {
         && !value.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) || "/\\:".unicodeScalars.contains($0) }
 }
 
-func canvasAssetType(_ name: String) -> String? {
+package func canvasAssetType(_ name: String) -> String? {
     let parts = name.split(separator: ".", omittingEmptySubsequences: false)
     guard parts.count == 2, let id = UUID(uuidString: String(parts[0])),
           id.uuidString.lowercased() == parts[0] else { return nil }
@@ -131,7 +131,7 @@ func canvasAssetType(_ name: String) -> String? {
 private final class SVGDocument: NSObject, XMLParserDelegate {
     private var hasSVGRoot = false
 
-    static func matches(_ bytes: Data) -> Bool {
+    package static func matches(_ bytes: Data) -> Bool {
         let document = SVGDocument()
         let parser = XMLParser(data: bytes)
         parser.shouldProcessNamespaces = true
@@ -192,21 +192,21 @@ private func matchesAttachmentType(_ bytes: Data, extension ext: String) -> Bool
     }
 }
 
-enum BoxAnimation: String, Codable, Sendable {
+package enum BoxAnimation: String, Codable, Sendable {
     case none, pulse, blink, rock, hop
 }
 
-enum BoxBackgroundMode: String, Codable, Sendable {
+package enum BoxBackgroundMode: String, Codable, Sendable {
     case solid, free, empty, blurred, translucent
 }
 
-struct Idea: Codable, Equatable, Sendable {
-    var id: String
+package struct Idea: Codable, Equatable, Sendable {
+    package var id: String
     /// Típus a regiszterből (`Public/node-types.json`): box, text, code, csv, image, audio, document, junction.
-    var type = "box"
+    package var type = "box"
     /// box: markdown szöveg; junction: címke; fájltípusok: megjegyzés.
-    var text = ""
-    var file: CanvasFile?
+    package var text = ""
+    package var file: CanvasFile?
     /// box: összecsukás (csak az első sor); fájltípus: megjegyzés elrejtése.
     var hideText: Bool?
     var position: Point
@@ -226,16 +226,16 @@ struct Idea: Codable, Equatable, Sendable {
     var underline: Bool?
     /// A téma három betűtípusa közül a választott (1 = alap; nil = 1).
     var font: Int?
-    var justified: Bool?
+    package var justified: Bool?
     var alignment: LabelAlignment = .center
     var verticalAlignment: VerticalAlignment?
-    var link: NodeLink?
+    package var link: NodeLink?
     /// junction: a címke elforgatása fokban a középpont körül.
     var angle: Double?
     var parent: String?
     /// box: konténer (egyszer belehúztak valamit); kiürülve is konténer marad.
     var container: Bool?
-    var locked: Bool?
+    package var locked: Bool?
     var elevated: Bool?
     /// .web doboz: true = nincs új előnézet-generálás, a meglévő kép vágódik a doboz arányára.
     /// Munkalap- és külső link: true = nincs előnézet, a doboz szövege látszik.
@@ -243,7 +243,7 @@ struct Idea: Codable, Equatable, Sendable {
     /// .web doboz: a mappa publikus (pillangó ikon a doboz felett); az igazság a .web mappa .settings.json-ja.
     var webPublic: Bool?
     /// Text NAGYBETŰS megjelenítése (doboz szövege, doboz alatti Text, szövegfájl); a tárolt szöveg nem változik.
-    var uppercase: Bool?
+    package var uppercase: Bool?
     /// Kép és előnézetes doboz kerete: kép alapból ki (true = be), előnézet alapból be (false = ki); színe a doboz színe.
     var frame: Bool?
     /// A keret vastagsága (nil = 1,6, mint minden doboz kerete).
@@ -264,7 +264,7 @@ struct Idea: Codable, Equatable, Sendable {
         guard let link else { return false }
         return link.kind == .web || staticPreview != true
     }
-    var isJunction: Bool { root == "junction" }
+    package var isJunction: Bool { root == "junction" }
     var isBox: Bool { root == "box" }
     var isContainer: Bool { isBox && container == true }
     var isImage: Bool { root == "image" }
@@ -273,12 +273,12 @@ struct Idea: Codable, Equatable, Sendable {
     func has(_ trait: String) -> Bool { NodeTypes.has(type, trait) }
 
     /// Rövid név (kereső, akadálymentes felirat, listák): fájlnév, illetve a szöveg első sora formázójelek nélkül.
-    var name: String {
+    package var name: String {
         if let file { return file.displayName(image: isImage) }
         return plainFirstLine(text)
     }
 
-    var isValid: Bool {
+    package var isValid: Bool {
         guard NodeTypes.isKnown(type), validSlug(id), position.isValid, text.utf8.count <= 100_000,
               isJunction ? (4...128).contains(width) && height == width : (64...4096).contains(width) && (40...4096).contains(height),
               elevated != true || (parent == nil && !isJunction),
@@ -314,7 +314,7 @@ func plainFirstLine(_ text: String) -> String {
     return String(value.trimmingCharacters(in: .whitespaces).prefix(120))
 }
 
-enum ConnectionType: String, Codable, CaseIterable, Sendable {
+package enum ConnectionType: String, Codable, CaseIterable, Sendable {
     case straight, sCurve, zigzag, lightning, arc, rope
 
     var label: String {
@@ -329,15 +329,15 @@ enum ConnectionType: String, Codable, CaseIterable, Sendable {
     }
 }
 
-enum ConnectionAppearance: String, Codable, CaseIterable, Sendable {
+package enum ConnectionAppearance: String, Codable, CaseIterable, Sendable {
     case plain, thick, dashed, dotted
 }
 
-struct ConnectionTarget: Equatable, Codable, Sendable {
-    var node: String?
+package struct ConnectionTarget: Equatable, Codable, Sendable {
+    package var node: String?
     var point: Point?
 
-    func isValid(in nodeIDs: Set<String>) -> Bool {
+    package func isValid(in nodeIDs: Set<String>) -> Bool {
         if let node {
             return point == nil && nodeIDs.contains(node)
         }
@@ -346,20 +346,20 @@ struct ConnectionTarget: Equatable, Codable, Sendable {
 }
 
 extension ConnectionTarget {
-    init(from decoder: Decoder) throws {
+    package init(from decoder: Decoder) throws {
         let fields = try decoder.container(keyedBy: CodingKeys.self)
         node = try? fields.decode(String.self, forKey: .node)
         point = try? fields.decode(Point.self, forKey: .point)
     }
 }
 
-struct Connection: Equatable, Codable, Sendable {
-    var id: String
-    var source: String?
+package struct Connection: Equatable, Codable, Sendable {
+    package var id: String
+    package var source: String?
     var sourcePoint: Point?
-    var target: ConnectionTarget
-    var type: ConnectionType = .straight
-    var appearance: ConnectionAppearance = .plain
+    package var target: ConnectionTarget
+    package var type: ConnectionType = .straight
+    package var appearance: ConnectionAppearance = .plain
     var animated: Bool?
     @OptionalPaint var color: String? = nil
     var width: Double?
@@ -387,7 +387,7 @@ extension Connection {
     private enum LegacyKey: String, CodingKey { case style }
     private enum LegacyStyle: String, Decodable { case arrow, both, solid, dashed, rope }
 
-    init(from decoder: Decoder) throws {
+    package init(from decoder: Decoder) throws {
         let fields = try decoder.container(keyedBy: CodingKeys.self)
         let legacy = try? decoder.container(keyedBy: LegacyKey.self).decodeIfPresent(LegacyStyle.self, forKey: .style)
         id = (try? fields.decode(String.self, forKey: .id)) ?? "line-\(decoder.codingPath.last?.intValue ?? 0)"
@@ -408,20 +408,40 @@ extension Connection {
     }
 }
 
-struct Worksheet: Content, Equatable {
-    var appearance: Appearance?
-    var schemaVersion = Worksheet.currentSchema
-    var revision = 1
-    var resetRevision: Int?
-    var title: String
-    var text: String?
+package struct Worksheet: Content, Equatable {
+    package var appearance: Appearance?
+    package var schemaVersion = Worksheet.currentSchema
+    package var revision = 1
+    package var resetRevision: Int?
+    package var title: String
+    package var text: String?
     var previewImage: String?
-    var textJustified: Bool?
+    package var textJustified: Bool?
     @OptionalPaint var background: String? = nil
     var gridSpacing: Double?
-    var creator: String?
-    var nodes: [Idea] = []
-    var edges: [Connection] = []
+    package var creator: String?
+    package var nodes: [Idea] = []
+    package var edges: [Connection] = []
+
+    // A memberwise inicializáló pontos mása: modulhatáron túl (ThinkNodes) a szintetizált `internal` maradna.
+    package init(appearance: Appearance? = nil, schemaVersion: Int = Worksheet.currentSchema, revision: Int = 1,
+                 resetRevision: Int? = nil, title: String, text: String? = nil, previewImage: String? = nil,
+                 textJustified: Bool? = nil, background: String? = nil, gridSpacing: Double? = nil,
+                 creator: String? = nil, nodes: [Idea] = [], edges: [Connection] = []) {
+        self.appearance = appearance
+        self.schemaVersion = schemaVersion
+        self.revision = revision
+        self.resetRevision = resetRevision
+        self.title = title
+        self.text = text
+        self.previewImage = previewImage
+        self.textJustified = textJustified
+        self.background = background
+        self.gridSpacing = gridSpacing
+        self.creator = creator
+        self.nodes = nodes
+        self.edges = edges
+    }
 
     private enum CodingKeys: String, CodingKey {
         case appearance, schemaVersion, revision, resetRevision, title, text, textJustified, background
@@ -432,7 +452,7 @@ struct Worksheet: Content, Equatable {
     /// 3: egységes objektumtípusok (docs/node-types.md). Régebbi munkalapot nem töltünk be, migráció nincs.
     static let currentSchema = 3
 
-    var backgroundColor: String { background ?? "#f5f8fc" }
+    package var backgroundColor: String { background ?? "#f5f8fc" }
 
     private var junctionDegrees: [String: Int] {
         var counts: [String: Int] = [:]
@@ -496,43 +516,67 @@ struct Worksheet: Content, Equatable {
     }
 }
 
-struct UserPreferences: Content {
+package struct UserPreferences: Content {
     var snap = false
     var showGrid = true
     var panLocked = false
-    var avatar: Int?
-    var theme: String?
+    package var avatar: Int?
+    package var theme: String?
+
+    // A memberwise inicializáló pontos mása (modulhatár).
+    package init(snap: Bool = false, showGrid: Bool = true, panLocked: Bool = false, avatar: Int? = nil, theme: String? = nil) {
+        self.snap = snap
+        self.showGrid = showGrid
+        self.panLocked = panLocked
+        self.avatar = avatar
+        self.theme = theme
+    }
 }
 
-func previewType(_ url: URL) -> String? {
+package func previewType(_ url: URL) -> String? {
     let ext = url.pathExtension.lowercased()
     let type = canvasMediaTypes[ext == "jpeg" ? "jpg" : ext]
     return type?.hasPrefix("image/") == true ? type : nil
 }
 
-struct SiteSettings: Codable, Sendable {
-    var requireLogin = false
-    var preferences: [String: UserPreferences]?
+package struct SiteSettings: Codable, Sendable {
+    package var requireLogin = false
+    package var preferences: [String: UserPreferences]?
     var users: [User]?
+
+    // A memberwise inicializáló pontos mása (modulhatár).
+    package init(requireLogin: Bool = false, preferences: [String: UserPreferences]? = nil, users: [User]? = nil) {
+        self.requireLogin = requireLogin
+        self.preferences = preferences
+        self.users = users
+    }
 }
 
-enum Role: String, Codable, Sendable {
+package enum Role: String, Codable, Sendable {
     case editor, admin, guest
 }
 
-struct User: Codable, Sendable {
-    var name: String
-    var role: Role
-    var passwordHash: String
-    var avatar: Int?
+package struct User: Codable, Sendable {
+    package var name: String
+    package var role: Role
+    package var passwordHash: String
+    package var avatar: Int?
+
+    // A memberwise inicializáló pontos mása (modulhatár).
+    package init(name: String, role: Role, passwordHash: String, avatar: Int? = nil) {
+        self.name = name
+        self.role = role
+        self.passwordHash = passwordHash
+        self.avatar = avatar
+    }
 }
 
-func isTesterName(_ value: String) -> Bool {
+package func isTesterName(_ value: String) -> Bool {
     guard value.hasPrefix("Tester"), let number = Int(value.dropFirst(6)), number > 0 else { return false }
     return value == "Tester" + String(number)
 }
 
-func validSlug(_ value: String) -> Bool {
+package func validSlug(_ value: String) -> Bool {
     !value.isEmpty && value.utf8.count <= 64 && value.utf8.allSatisfy {
         (97...122).contains($0) || (48...57).contains($0) || $0 == 45
     }
@@ -556,14 +600,14 @@ private func validColor(_ value: String) -> Bool {
     }
 }
 
-struct WorksheetPath: Sendable {
-    let parts: [String]
-    let name: String
-    let url: String
+package struct WorksheetPath: Sendable {
+    package let parts: [String]
+    package let name: String
+    package let url: String
 
     private static let reserved = ["admin", "api", "edit", "export", "login", "logout", "health", "open", "vendor"]
 
-    init(_ raw: [String]) throws {
+    package init(_ raw: [String]) throws {
         let parts = raw.map(\.precomposedStringWithCanonicalMapping)
         guard let name = parts.last, let first = parts.first, parts.count <= 12,
               !Self.reserved.contains(first.lowercased()),
@@ -589,13 +633,13 @@ struct WorksheetPath: Sendable {
     }
 }
 
-struct DocumentPolicy: Codable, Sendable, Equatable {
-    var hidden: Bool?
-    var frozen: Bool?
-    var owner: String?
+package struct DocumentPolicy: Codable, Sendable, Equatable {
+    package var hidden: Bool?
+    package var frozen: Bool?
+    package var owner: String?
     var editors: [String]?
-    var guestReadable: Bool?
-    var passwordHash: String?
+    package var guestReadable: Bool?
+    package var passwordHash: String?
     var mediaFiles: [String: String]?
     var archivedFiles: [String: String]?
     var worksheets: [String: PageSettings]?
@@ -604,56 +648,56 @@ struct DocumentPolicy: Codable, Sendable, Equatable {
 }
 
 /// Tallózó: egy munkalap mappájának tartalma (csak a projekten belül).
-struct BrowseListing: Content {
-    struct Entry: Content {
-        let name: String
+package struct BrowseListing: Content {
+    package struct Entry: Content {
+        package let name: String
         let kind: String        // "folder", "file", "web"
         let publicAccess: Bool
         /// Kép/hang belső azonosítója (a mappa mediaFiles táblájából), ha van; a doboz ezzel hivatkozik rá.
-        var asset: String? = nil
+        package var asset: String? = nil
     }
     let path: String            // munkalap-útvonal, pl. "projekt/allap"
     let parent: String?         // a szülő munkalap útvonala; a projekt gyökerénél nil
-    let manageable: Bool
+    package let manageable: Bool
     let entries: [Entry]
 }
 
-struct PageSettings: Codable, Sendable, Equatable {
-    var hidden = false
-    var frozen: Bool?
+package struct PageSettings: Codable, Sendable, Equatable {
+    package var hidden = false
+    package var frozen: Bool?
 }
 
-struct DocumentAccess: Sendable {
-    var readable = false
-    var editable = false
-    var manageable = false
+package struct DocumentAccess: Sendable {
+    package var readable = false
+    package var editable = false
+    package var manageable = false
     var listed = false
-    var locked = false
-    var hidden = false
-    var projectRule = DocumentPolicy()
-    var sheetRule = DocumentPolicy()
-    var editorNames: [String] = []
-    var protectedByPassword = false
-    var frozen = false
+    package var locked = false
+    package var hidden = false
+    package var projectRule = DocumentPolicy()
+    package var sheetRule = DocumentPolicy()
+    package var editorNames: [String] = []
+    package var protectedByPassword = false
+    package var frozen = false
     var passwordRequired = false
 }
 
-struct DocumentAction: Content {
-    var scope: String
+package struct DocumentAction: Content {
+    package var scope: String
     var action: String
     var value: String?
     var filename: String? = nil
 }
 
-final class WorksheetStore: @unchecked Sendable {
+package final class WorksheetStore: @unchecked Sendable {
     let root: URL
     /// A data könyvtár (gyorsítótárakhoz, pl. a külső link-előnézetekhez).
-    var dataRoot: URL { root }
-    var dataDirectoryPath: String { root.path }
-    let testMode: Bool
+    package var dataRoot: URL { root }
+    package var dataDirectoryPath: String { root.path }
+    package let testMode: Bool
     private var testerCount = 0
 
-    func nextTester() -> String {
+    package func nextTester() -> String {
         lock.withLock { testerCount += 1; return "Tester" + String(testerCount) }
     }
 
@@ -667,7 +711,7 @@ final class WorksheetStore: @unchecked Sendable {
         return encoder
     }()
 
-    init(root: URL, testMode: Bool = false) throws {
+    package init(root: URL, testMode: Bool = false) throws {
         self.testMode = testMode
         self.root = root.standardizedFileURL.resolvingSymlinksInPath()
         try files.createDirectory(at: self.root, withIntermediateDirectories: true)
@@ -702,7 +746,7 @@ final class WorksheetStore: @unchecked Sendable {
         return url
     }
 
-    struct Context {
+    package struct Context {
         var chain: [URL]
         var rules: [URL: DocumentPolicy]
         let key: String
@@ -779,7 +823,7 @@ final class WorksheetStore: @unchecked Sendable {
             editorNames: names.sorted(), protectedByPassword: protected, frozen: frozen, passwordRequired: locked)
     }
 
-    func access(_ path: WorksheetPath, sheet: Worksheet, user: User?, unlocks: Set<String> = []) throws -> DocumentAccess {
+    package func access(_ path: WorksheetPath, sheet: Worksheet, user: User?, unlocks: Set<String> = []) throws -> DocumentAccess {
         try lock.withLock { try accessLocked(context(path), user: user, unlocks: unlocks) }
     }
 
@@ -788,7 +832,7 @@ final class WorksheetStore: @unchecked Sendable {
         if !access.readable { throw Abort(user == nil ? .unauthorized : .forbidden) }
     }
 
-    func unlock(_ path: WorksheetPath, password: String, user: User?, attachment: String? = nil) throws -> [String] {
+    package func unlock(_ path: WorksheetPath, password: String, user: User?, attachment: String? = nil) throws -> [String] {
         let candidates = try lock.withLock {
             let ctx = try context(path)
             guard accessLocked(ctx, user: user, unlocks: []).locked else { throw Abort(.forbidden) }
@@ -800,7 +844,7 @@ final class WorksheetStore: @unchecked Sendable {
         return hashes
     }
 
-    func list(user: User?, childrenOf parent: WorksheetPath? = nil, rootsOnly: Bool = false, recursive: Bool = false, unlocks: Set<String> = []) throws -> [(path: WorksheetPath, worksheet: Worksheet)] {
+    package func list(user: User?, childrenOf parent: WorksheetPath? = nil, rootsOnly: Bool = false, recursive: Bool = false, unlocks: Set<String> = []) throws -> [(path: WorksheetPath, worksheet: Worksheet)] {
         try lock.withLock {
             var result: [(path: WorksheetPath, worksheet: Worksheet)] = []
             func visit(_ directory: URL, _ parts: [String]) throws {
@@ -824,11 +868,11 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    func settings() throws -> SiteSettings {
+    package func settings() throws -> SiteSettings {
         try lock.withLock { try readSettings() }
     }
 
-    func savePreferences(_ prefs: UserPreferences, for name: String) throws {
+    package func savePreferences(_ prefs: UserPreferences, for name: String) throws {
         guard prefs.avatar.map({ (1...12).contains($0) }) ?? true,
               prefs.theme.map(validSlug) ?? true else { throw Abort(.badRequest) }
         try lock.withLock {
@@ -842,7 +886,7 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    func assignAvatar(_ avatar: Int, to name: String) throws {
+    package func assignAvatar(_ avatar: Int, to name: String) throws {
         try lock.withLock {
             var settings = try readSettings()
             guard (1...12).contains(avatar), settings.users?.contains(where: { $0.name == name }) == true else { throw Abort(.badRequest) }
@@ -853,7 +897,7 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    func setSettings(_ settings: SiteSettings) throws {
+    package func setSettings(_ settings: SiteSettings) throws {
         try lock.withLock {
             try rejectLink(settingsFile)
             var next = settings
@@ -864,7 +908,7 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    func open(_ path: WorksheetPath, user: User?, createOnly: Bool = false, unlocks: Set<String> = []) throws -> Worksheet {
+    package func open(_ path: WorksheetPath, user: User?, createOnly: Bool = false, unlocks: Set<String> = []) throws -> Worksheet {
         try lock.withLock { try openLocked(path, user: user, createOnly: createOnly, unlocks: unlocks) }
     }
 
@@ -920,9 +964,9 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    enum Preview { case drawing(String), image(URL, String) }
+    package enum Preview { case drawing(String), image(URL, String) }
 
-    func preview(_ path: WorksheetPath, user: User?, unlocks: Set<String> = [], mode: String? = nil) throws -> Preview {
+    package func preview(_ path: WorksheetPath, user: User?, unlocks: Set<String> = [], mode: String? = nil) throws -> Preview {
         try lock.withLock {
             if try readSettings().requireLogin && user == nil { throw Abort(.unauthorized) }
             let url = try worksheetURL(path)
@@ -961,7 +1005,7 @@ final class WorksheetStore: @unchecked Sendable {
         return result
     }
 
-    func fileTexts(_ path: WorksheetPath, sheet: Worksheet, user: User?, unlocks: Set<String>) throws -> [String: String] {
+    package func fileTexts(_ path: WorksheetPath, sheet: Worksheet, user: User?, unlocks: Set<String>) throws -> [String: String] {
         try lock.withLock {
             let ctx = try context(path)
             try authorize(accessLocked(ctx, user: user, unlocks: unlocks), user: user)
@@ -969,14 +1013,14 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    func pageExists(_ path: WorksheetPath) -> Bool {
+    package func pageExists(_ path: WorksheetPath) -> Bool {
         lock.withLock {
             guard let url = try? worksheetURL(path) else { return false }
             return files.fileExists(atPath: url.path)
         }
     }
 
-    func load(_ path: WorksheetPath, user: User?, unlocks: Set<String> = []) throws -> Worksheet {
+    package func load(_ path: WorksheetPath, user: User?, unlocks: Set<String> = []) throws -> Worksheet {
         try lock.withLock {
             if try readSettings().requireLogin && user == nil { throw Abort(.unauthorized) }
             let ctx = try context(path)
@@ -985,7 +1029,7 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    func update(_ path: WorksheetPath, worksheet: Worksheet, user: User?, restoring: Bool = false, unlocks: Set<String> = [],
+    package func update(_ path: WorksheetPath, worksheet: Worksheet, user: User?, restoring: Bool = false, unlocks: Set<String> = [],
                 checkSelection: (Worksheet) throws -> Void = { _ in }) throws -> Worksheet {
         try lock.withLock {
             if try readSettings().requireLogin && user == nil { throw Abort(.unauthorized) }
@@ -1120,14 +1164,14 @@ final class WorksheetStore: @unchecked Sendable {
     }
 
     /// A „password” művelet hash-ét a hívó a zárakon kívül számolja ki (`passwordHash(for:)`).
-    static func passwordHash(for operation: DocumentAction) throws -> String? {
+    package static func passwordHash(for operation: DocumentAction) throws -> String? {
         guard operation.action == "password" else { return nil }
         let password = operation.value ?? ""
         guard password.utf8.count <= 72 else { throw Abort(.badRequest) }
         return password.isEmpty ? nil : try Bcrypt.hash(password)
     }
 
-    func manage(_ path: WorksheetPath, operation: DocumentAction, user: User, unlocks: Set<String>, passwordHash: String? = nil) throws -> WorksheetPath? {
+    package func manage(_ path: WorksheetPath, operation: DocumentAction, user: User, unlocks: Set<String>, passwordHash: String? = nil) throws -> WorksheetPath? {
         try lock.withLock {
             let ctx = try context(path)
             let rights = accessLocked(ctx, user: user, unlocks: unlocks)
@@ -1238,7 +1282,7 @@ final class WorksheetStore: @unchecked Sendable {
         return result
     }
 
-    func reconcileAtStartup() {
+    package func reconcileAtStartup() {
         lock.withLock {
             func visit(_ directory: URL, parts: [String]) {
                 let entries = (try? files.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
@@ -1338,7 +1382,7 @@ final class WorksheetStore: @unchecked Sendable {
         return updated
     }
 
-    func importWorksheet(_ bytes: Data, named name: String, at path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> WorksheetPath {
+    package func importWorksheet(_ bytes: Data, named name: String, at path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> WorksheetPath {
         try lock.withLock {
             guard bytes.count <= 12 * 1024 * 1024 else { throw Abort(.payloadTooLarge) }
             guard (name as NSString).pathExtension.lowercased() == "thnode",
@@ -1355,7 +1399,7 @@ final class WorksheetStore: @unchecked Sendable {
     }
 
     /// Weboldal-csomag (.zip) feltöltése a munkalap mappájába `név.web` néven; a hivatkozást adja vissza.
-    func importWebArchive(_ bytes: Data, named filename: String, at path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> WebPresentationInfo {
+    package func importWebArchive(_ bytes: Data, named filename: String, at path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> WebPresentationInfo {
         guard bytes.count <= WebArchive.maximumArchive else { throw Abort(.payloadTooLarge, reason: "A ZIP legfeljebb 100 MiB lehet.") }
         guard bytes.starts(with: [0x50, 0x4b, 0x03, 0x04]) else { throw Abort(.unsupportedMediaType, reason: "A fájl nem ZIP.") }
         let directory: URL = try lock.withLock {
@@ -1393,7 +1437,7 @@ final class WorksheetStore: @unchecked Sendable {
     }
 
     /// A .web mappa átnevezése (a mappa a saját .settings.json-jával együtt mozog); az új hivatkozást adja vissza.
-    func renameWeb(_ old: String, to newName: String, in path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> String {
+    package func renameWeb(_ old: String, to newName: String, in path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> String {
         try lock.withLock {
             let ctx = try context(path)
             guard accessLocked(ctx, user: user, unlocks: unlocks).editable else { throw Abort(.forbidden) }
@@ -1471,7 +1515,7 @@ final class WorksheetStore: @unchecked Sendable {
         return destination
     }
 
-    func storeMedia(_ bytes: Data, type: String, imageName: String? = nil, filename: String? = nil,
+    package func storeMedia(_ bytes: Data, type: String, imageName: String? = nil, filename: String? = nil,
                     at path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> String {
         try lock.withLock {
             if try readSettings().requireLogin && user == nil { throw Abort(.unauthorized) }
@@ -1512,7 +1556,7 @@ final class WorksheetStore: @unchecked Sendable {
     }
 
     @discardableResult
-    func storeAttachment(_ bytes: Data, named name: String, at path: WorksheetPath, user: User?, unlocks: Set<String>, replaceText: Bool = false) throws -> String {
+    package func storeAttachment(_ bytes: Data, named name: String, at path: WorksheetPath, user: User?, unlocks: Set<String>, replaceText: Bool = false) throws -> String {
         try lock.withLock {
             if try readSettings().requireLogin && user == nil { throw Abort(.unauthorized) }
             let ctx = try context(path)
@@ -1561,9 +1605,9 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    enum BoxFile { case disk(URL) }
+    package enum BoxFile { case disk(URL) }
 
-    func boxFile(_ path: WorksheetPath, id: String, user: User?, unlocks: Set<String>) throws -> BoxFile {
+    package func boxFile(_ path: WorksheetPath, id: String, user: User?, unlocks: Set<String>) throws -> BoxFile {
         try lock.withLock {
             if try readSettings().requireLogin && user == nil { throw Abort(.unauthorized) }
             let ctx = try context(path)
@@ -1591,7 +1635,7 @@ final class WorksheetStore: @unchecked Sendable {
     }
 
     /// Publikus jog ki/be egy fájlon (a lap mappájában, fájlnév szerint); a lap szerkesztői állíthatják.
-    func setFilePublic(_ name: String, publicAccess: Bool, in path: WorksheetPath, user: User?, unlocks: Set<String>) throws {
+    package func setFilePublic(_ name: String, publicAccess: Bool, in path: WorksheetPath, user: User?, unlocks: Set<String>) throws {
         try lock.withLock {
             let ctx = try context(path)
             guard accessLocked(ctx, user: user, unlocks: unlocks).editable else { throw Abort(.forbidden) }
@@ -1607,15 +1651,15 @@ final class WorksheetStore: @unchecked Sendable {
     }
 
     /// Közösen használható elem: egy lap mappájában lévő fájl (valódi fájlnévvel) vagy .web mappa (projekt-relatív hivatkozás).
-    enum SharedTarget: Equatable {
+    package enum SharedTarget: Equatable {
         case file(owner: String, name: String)   // owner: a tulajdonos lap URL-útvonala
         case web(reference: String)
     }
 
-    struct Usage: Content {
-        let sheet: String       // munkalap URL-útvonala
-        let title: String
-        let nodes: [String]
+    package struct Usage: Content {
+        package let sheet: String       // munkalap URL-útvonala
+        package let title: String
+        package let nodes: [String]
     }
 
     /// A projekt összes munkalapja.
@@ -1655,12 +1699,12 @@ final class WorksheetStore: @unchecked Sendable {
     }
 
     /// .web hivatkozás használata a projekt lapjain (átnevezéskor ezek linkjei frissülnek).
-    func webUsage(_ reference: String, project: String) -> [Usage] {
+    package func webUsage(_ reference: String, project: String) -> [Usage] {
         lock.withLock { usageLocked(.web(reference: reference), project: project) }
     }
 
     /// A doboz közös elemének használata (a projektben bárhol); `node` a saját lap egy doboza.
-    func usage(of nodeID: String, in path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> [Usage] {
+    package func usage(of nodeID: String, in path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> [Usage] {
         try lock.withLock {
             let ctx = try context(path)
             try authorize(accessLocked(ctx, user: user, unlocks: unlocks), user: user)
@@ -1671,7 +1715,7 @@ final class WorksheetStore: @unchecked Sendable {
     }
 
     /// A doboz közös elemét a lomtárba teszi (fájl a tulajdonos lap mappájából, vagy .web mappa).
-    func trashTarget(of nodeID: String, in path: WorksheetPath, user: User?, unlocks: Set<String>) throws {
+    package func trashTarget(of nodeID: String, in path: WorksheetPath, user: User?, unlocks: Set<String>) throws {
         let target: SharedTarget? = try lock.withLock {
             let ctx = try context(path)
             guard accessLocked(ctx, user: user, unlocks: unlocks).editable else { throw Abort(.forbidden) }
@@ -1695,7 +1739,7 @@ final class WorksheetStore: @unchecked Sendable {
     }
 
     /// A projekt lomtára (`projekt/.trash`): az elemek az eredeti, projekt-relatív helyükkel.
-    struct TrashEntry: Content {
+    package struct TrashEntry: Content {
         let path: String        // a lomtáron belüli relatív útvonal
         let original: String    // eredeti hely a projektben
         let kind: String        // "file", "web", "folder"
@@ -1710,7 +1754,7 @@ final class WorksheetStore: @unchecked Sendable {
     }
 
     /// Lomtár tartalma: fájlok, .web mappák és törölt munkalapok (mappák) az eredeti helyükkel.
-    func trashContents(_ project: String, user: User?, unlocks: Set<String>) throws -> [TrashEntry] {
+    package func trashContents(_ project: String, user: User?, unlocks: Set<String>) throws -> [TrashEntry] {
         try lock.withLock {
             let (trash, _) = try trashRoot(project, user: user, unlocks: unlocks)
             var result: [TrashEntry] = []
@@ -1744,7 +1788,7 @@ final class WorksheetStore: @unchecked Sendable {
     }
 
     /// Visszaállítás az eredeti helyre (ha a szülőmappa létezik és a hely szabad).
-    func restoreTrash(_ project: String, path: String, user: User?, unlocks: Set<String>) throws {
+    package func restoreTrash(_ project: String, path: String, user: User?, unlocks: Set<String>) throws {
         try lock.withLock {
             let (trash, ctx) = try trashRoot(project, user: user, unlocks: unlocks)
             let parts = path.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
@@ -1768,7 +1812,7 @@ final class WorksheetStore: @unchecked Sendable {
     /// Lomtár ürítése: végleges törlés. A lapok visszavonási hivatkozásai (archivedFiles) is törlődnek,
     /// kivéve azokat a fájlokat, amelyekre a lap valamelyik mentett állapota (`.version`) még hivatkozik:
     /// ezek a lomtárban maradnak, hogy a verzió visszaállításakor visszakerülhessenek.
-    func emptyTrash(_ project: String, user: User?, unlocks: Set<String>) throws {
+    package func emptyTrash(_ project: String, user: User?, unlocks: Set<String>) throws {
         try lock.withLock {
             let (trash, _) = try trashRoot(project, user: user, unlocks: unlocks)
             let kept = versionProtectedTrashLocked(project)
@@ -1830,7 +1874,7 @@ final class WorksheetStore: @unchecked Sendable {
 
     /// Tallózó: a munkalap mappájában lévő almappák (munkalapok), fájlok és .web oldalak.
     /// Csak a projekt fáján belül mozoghat: a WorksheetPath nem enged `..`-t, a linkeket a rejectLink kizárja.
-    func browse(_ path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> BrowseListing {
+    package func browse(_ path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> BrowseListing {
         try lock.withLock {
             if try readSettings().requireLogin && user == nil { throw Abort(.unauthorized) }
             let ctx = try context(path)
@@ -1865,7 +1909,7 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    func contents(_ path: WorksheetPath, user: User?, unlocks: Set<String>, named name: String? = nil) throws -> [URL] {
+    package func contents(_ path: WorksheetPath, user: User?, unlocks: Set<String>, named name: String? = nil) throws -> [URL] {
         try lock.withLock {
             let url = try worksheetURL(path)
             let ctx = try context(path)
@@ -1904,14 +1948,14 @@ final class WorksheetStore: @unchecked Sendable {
     // Minden lap a saját mappájában, a `.version` alkönyvtárban tárolja:
     // `0001_20261123-142530.thnode` (sorszám, UTC időbélyeg). Nincs darabszám-korlát.
 
-    struct VersionEntry: Content {
+    package struct VersionEntry: Content {
         let number: Int
         let created: Date
-        let user: String?
+        package let user: String?
     }
 
-    struct VersionList: Content {
-        let versions: [VersionEntry]
+    package struct VersionList: Content {
+        package let versions: [VersionEntry]
         let changed: Bool
     }
 
@@ -1961,7 +2005,7 @@ final class WorksheetStore: @unchecked Sendable {
         return ctx
     }
 
-    func versions(_ path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> VersionList {
+    package func versions(_ path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> VersionList {
         try lock.withLock {
             _ = try editableContext(path, user: user, unlocks: unlocks)
             let list = versionFiles(try versionFolder(path))
@@ -1972,7 +2016,7 @@ final class WorksheetStore: @unchecked Sendable {
     }
 
     /// A lap aktuális (lemezen lévő) állapotát új sorszámú másolatként menti.
-    func saveVersion(_ path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> VersionEntry {
+    package func saveVersion(_ path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> VersionEntry {
         try lock.withLock {
             _ = try editableContext(path, user: user, unlocks: unlocks)
             let directory = try versionFolder(path)
@@ -1989,7 +2033,7 @@ final class WorksheetStore: @unchecked Sendable {
     }
 
     /// Egy mentett állapot tartalma; a visszaállítást a hívó a szokásos mentéssel végzi (`restoring: true`).
-    func version(_ path: WorksheetPath, number: Int, user: User?, unlocks: Set<String>) throws -> Worksheet {
+    package func version(_ path: WorksheetPath, number: Int, user: User?, unlocks: Set<String>) throws -> Worksheet {
         try lock.withLock {
             _ = try editableContext(path, user: user, unlocks: unlocks)
             guard let entry = versionFiles(try versionFolder(path)).first(where: { $0.number == number }) else {
@@ -1999,7 +2043,7 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    func archive(_ path: WorksheetPath, expected: Int) throws {
+    package func archive(_ path: WorksheetPath, expected: Int) throws {
         try lock.withLock {
             let ctx = try context(path)
             guard try read(worksheetURL(path)).revision == expected else { throw Abort(.preconditionFailed) }
@@ -2007,11 +2051,11 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    func allUsers() throws -> [User] {
+    package func allUsers() throws -> [User] {
         try lock.withLock { try readUsers().sorted { $0.name < $1.name } }
     }
 
-    func user(named name: String) throws -> User? {
+    package func user(named name: String) throws -> User? {
         try lock.withLock {
             let settings = try readSettings()
             var user = settings.users?.first { $0.name == name }
@@ -2020,7 +2064,7 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    func setUser(name: String, role: Role, passwordHash: String?, initialOnly: Bool = false) throws {
+    package func setUser(name: String, role: Role, passwordHash: String?, initialOnly: Bool = false) throws {
         guard validSlug(name) else {
             throw Abort(.unprocessableEntity, reason: "A felhasználónév kisbetűket, számokat és kötőjelet tartalmazhat.")
         }
@@ -2037,7 +2081,7 @@ final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    func removeUser(named name: String) throws {
+    package func removeUser(named name: String) throws {
         try lock.withLock {
             let users = try readUsers()
             guard users.contains(where: { $0.name == name }) else { throw Abort(.notFound) }
@@ -2164,7 +2208,7 @@ final class WorksheetStore: @unchecked Sendable {
 }
 
 extension Idea {
-    init(from decoder: Decoder) throws {
+    package init(from decoder: Decoder) throws {
         let fields = try decoder.container(keyedBy: CodingKeys.self)
         id = try fields.decode(String.self, forKey: .id)
         type = try fields.decode(String.self, forKey: .type)
@@ -2213,7 +2257,7 @@ extension Idea {
 }
 
 extension Worksheet {
-    init(from decoder: Decoder) throws {
+    package init(from decoder: Decoder) throws {
         let fields = try decoder.container(keyedBy: CodingKeys.self)
         appearance = try fields.decodeIfPresent(Appearance.self, forKey: .appearance)
         schemaVersion = (try? fields.decode(Int.self, forKey: .schemaVersion)) ?? 0
@@ -2235,7 +2279,7 @@ extension Worksheet {
 }
 
 extension Point {
-    init(from decoder: Decoder) throws {
+    package init(from decoder: Decoder) throws {
         let fields = try decoder.container(keyedBy: CodingKeys.self)
         x = (try? fields.decode(Double.self, forKey: .x)) ?? 0
         y = (try? fields.decode(Double.self, forKey: .y)) ?? 0
@@ -2247,7 +2291,7 @@ extension WorksheetStore {
         let admin: Bool
         let projectMember: Bool
         let projectOwner: Bool
-        var readable: Bool
+        package var readable: Bool
         var publicRead: Bool
         var hashes: [String] = []
 
@@ -2271,8 +2315,8 @@ extension WorksheetStore {
     private struct WebContext {
         let directory: URL
         let policy: DocumentPolicy
-        let access: WebAccess
-        let manageable: Bool
+        package let access: WebAccess
+        package let manageable: Bool
     }
 
     private func webPolicy(at directory: URL) throws -> DocumentPolicy? {
@@ -2317,7 +2361,7 @@ extension WorksheetStore {
     }
 
     /// `size`: a doboz mérete; `live`: generálhat-e új előnézetet. Az előnézet keresési sorrendje: WebPreview.find.
-    func webAsset(_ request: WebPresentationRequest, user: User?, unlocks: Set<String>, size: (width: Int, height: Int)? = nil, live: Bool = true) throws -> (asset: WebAsset?, directory: Bool, publicRead: Bool)? {
+    package func webAsset(_ request: WebPresentationRequest, user: User?, unlocks: Set<String>, size: (width: Int, height: Int)? = nil, live: Bool = true) throws -> (asset: WebAsset?, directory: Bool, publicRead: Bool)? {
         var preview: (URL, Bool)?
         let found: (asset: WebAsset?, directory: Bool, publicRead: Bool)? = try lock.withLock {
             guard let context = try webContext(project: request.project, reference: request.reference, user: user, unlocks: unlocks) else { return nil }
@@ -2339,7 +2383,7 @@ extension WorksheetStore {
     }
 
     /// .web előnézet állapota: fut-e a háttérben renderelés, és a kész kép változata (a kliens ezzel tölti újra).
-    func webPreviewState(_ request: WebPresentationRequest, user: User?, unlocks: Set<String>) throws -> (pending: Bool, version: String)? {
+    package func webPreviewState(_ request: WebPresentationRequest, user: User?, unlocks: Set<String>) throws -> (pending: Bool, version: String)? {
         let directory: URL? = try lock.withLock {
             guard let context = try webContext(project: request.project, reference: request.reference, user: user, unlocks: unlocks) else { return nil }
             try context.access.authorize(user, unlocks: unlocks)
@@ -2348,7 +2392,7 @@ extension WorksheetStore {
         return directory.map { (WebScreenshot.isPending($0), WebScreenshot.version($0)) }
     }
 
-    func unlockWeb(_ requests: [WebPresentationRequest], password: String, user: User?, unlocks: Set<String>) throws -> (WebPresentationRequest, [String]) {
+    package func unlockWeb(_ requests: [WebPresentationRequest], password: String, user: User?, unlocks: Set<String>) throws -> (WebPresentationRequest, [String]) {
         let (request, required) = try lock.withLock { () throws -> (WebPresentationRequest, Set<String>) in
             for request in requests {
                 guard let context = try webContext(project: request.project, reference: request.reference, user: user, unlocks: unlocks) else { continue }
@@ -2363,7 +2407,7 @@ extension WorksheetStore {
         return (request, Array(matches))
     }
 
-    func webPresentations(in path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> [WebPresentationInfo] {
+    package func webPresentations(in path: WorksheetPath, user: User?, unlocks: Set<String>) throws -> [WebPresentationInfo] {
         try lock.withLock {
             if try readSettings().requireLogin && user == nil { throw Abort(.unauthorized) }
             let ctx = try context(path)
@@ -2397,7 +2441,7 @@ extension WorksheetStore {
     }
 
     /// Publikus jog ki/be (a .web mappa .settings.json-jában); csak a projekt adminja és szerkesztői állíthatják.
-    func setWebPresentation(_ settings: WebPresentationSettings, in path: WorksheetPath, user: User, unlocks: Set<String>) throws {
+    package func setWebPresentation(_ settings: WebPresentationSettings, in path: WorksheetPath, user: User, unlocks: Set<String>) throws {
         try lock.withLock {
             let reference = try WebPresentationReference(settings.reference)
             guard let context = try webContext(project: path.parts[0], reference: reference, user: user, unlocks: unlocks),
@@ -2409,7 +2453,7 @@ extension WorksheetStore {
     }
 
     /// A .web mappa a projekt lomtárába kerül (a dobozát törölték a lapról).
-    func trashWeb(_ reference: String, in path: WorksheetPath, user: User?, unlocks: Set<String>) throws {
+    package func trashWeb(_ reference: String, in path: WorksheetPath, user: User?, unlocks: Set<String>) throws {
         try lock.withLock {
             let ctx = try context(path)
             let web = try WebPresentationReference(reference)

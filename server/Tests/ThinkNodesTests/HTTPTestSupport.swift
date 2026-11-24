@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import VaporTesting
+@testable import ThinkCore
 @testable import ThinkNodes
 
 // Közös HTTP-segédfüggvények a tesztekhez (bejelentkezés, mentés, sütik).

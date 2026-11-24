@@ -1,6 +1,6 @@
 import Foundation
 
-enum WorksheetLink {
+package enum WorksheetLink {
     case website(String)
     case worksheet(String)
 
@@ -41,7 +41,7 @@ enum WorksheetLink {
         return parts.isEmpty ? "." : parts.joined(separator: "/")
     }
 
-    func destination(from path: WorksheetPath) -> String? {
+    package func destination(from path: WorksheetPath) -> String? {
         switch self {
         case .website(let url): return url
         case .worksheet(let value):
@@ -66,7 +66,7 @@ enum WorksheetLink {
         return iconPath
     }
 
-    func isExternal(siteHost: String?) -> Bool {
+    package func isExternal(siteHost: String?) -> Bool {
         if case .website = self { return iconPath(siteHost: siteHost) != Self.chain }
         return false
     }

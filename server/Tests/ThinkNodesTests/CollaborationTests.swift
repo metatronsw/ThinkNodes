@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import VaporTesting
+@testable import ThinkCore
 @testable import ThinkNodes
 
 // Közös szerkesztés: kijelölés, munkamenetek, élő frissítés, vendégek.

@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+@testable import ThinkCore
 @testable import ThinkNodes
 
 /// Külső link-előnézet: belső hálózati címet nem kér le, az og:image-et mindkét attribútum-sorrendben megtalálja.

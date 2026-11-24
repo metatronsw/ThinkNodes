@@ -1,4 +1,5 @@
 import Foundation
+import ThinkCore
 import NIOSSL
 import Vapor
 
@@ -1162,10 +1163,6 @@ private func serveWebPresentation(_ req: Request, candidates: [WebPresentationRe
         }
     }
     return nil
-}
-
-func encodeQuery(_ value: String) -> String {
-    value.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
 }
 
 private func unlockPage(_ req: Request, path: WorksheetPath, identity: SessionInfo, editing: Bool = false, attachment: String? = nil, updates: PageUpdates.Subscription? = nil) -> Response {

@@ -20,13 +20,27 @@ let package = Package(
     targets: [
         // Táblázat doboz (docs/EXCEL.md): Vapor-független modul, a natív kliens is használhatja.
         .target(name: "ThinkTable"),
-        .executableTarget(
-            name: "ThinkNodes",
+        // Mag: munkalap-modell és tároló, renderelés, témák, prezentációk, csomagok. A modulhatáron átlátszó
+        // deklarációk `package` láthatóságúak. Külön modul, hogy a szerverréteg módosításakor a release build
+        // ne fordítsa újra (lásd README, „Szkriptek”).
+        .target(
+            name: "ThinkCore",
             dependencies: [
                 "ThinkTable",
                 .product(name: "Vapor", package: "vapor"),
-                .product(name: "NIOSSL", package: "swift-nio-ssl"),
                 .product(name: "cmark-gfm", package: "swift-cmark"),
+                .product(name: "Crypto", package: "swift-crypto"),
+                .product(name: "_CryptoExtras", package: "swift-crypto")
+            ]
+        ),
+        // Szerver: útvonalak, közös szerkesztés, linkelőnézet, indítás, LAN-tanúsítvány.
+        .executableTarget(
+            name: "ThinkNodes",
+            dependencies: [
+                "ThinkCore",
+                "ThinkTable",
+                .product(name: "Vapor", package: "vapor"),
+                .product(name: "NIOSSL", package: "swift-nio-ssl"),
                 .product(name: "Crypto", package: "swift-crypto"),
                 .product(name: "_CryptoExtras", package: "swift-crypto"),
                 .product(name: "X509", package: "swift-certificates"),
@@ -35,7 +49,7 @@ let package = Package(
         ),
         .testTarget(
             name: "ThinkNodesTests",
-            dependencies: ["ThinkNodes", .product(name: "VaporTesting", package: "vapor")]
+            dependencies: ["ThinkNodes", "ThinkCore", .product(name: "VaporTesting", package: "vapor")]
         ),
         .testTarget(name: "ThinkTableTests", dependencies: ["ThinkTable"])
     ]

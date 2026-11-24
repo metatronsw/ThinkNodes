@@ -6,9 +6,9 @@ import Darwin
 import Glibc
 #endif
 
-struct WebPresentationReference: Sendable {
+package struct WebPresentationReference: Sendable {
     let folders: [String]
-    let name: String
+    package let name: String
 
     init(_ reference: String) throws {
         let parts: [String] = reference.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
@@ -25,36 +25,36 @@ struct WebPresentationReference: Sendable {
 
     var relativePath: String { (folders + [name + ".web"]).joined(separator: "/") }
 
-    func url(in project: String) -> String {
+    package func url(in project: String) -> String {
         "/" + ([project] + folders + ["web", name]).map(WorksheetPath.encodeSegment).joined(separator: "/") + "/"
     }
 }
 
-struct WebPresentationRequest: Sendable {
+package struct WebPresentationRequest: Sendable {
     let project: String
-    let reference: WebPresentationReference
-    let asset: [String]
-    let trailingSlash: Bool
-    let lease: UUID?
+    package let reference: WebPresentationReference
+    package let asset: [String]
+    package let trailingSlash: Bool
+    package let lease: UUID?
 
-    var scope: String { reference.url(in: project) }
+    package var scope: String { reference.url(in: project) }
 
-    func assetScope(_ lease: UUID) -> String { scope + "_tn-assets/" + lease.uuidString + "/" }
+    package func assetScope(_ lease: UUID) -> String { scope + "_tn-assets/" + lease.uuidString + "/" }
 
-    var url: String {
+    package var url: String {
         let base = scope
         if asset.isEmpty { return trailingSlash ? base : String(base.dropLast()) }
         return base + asset.map(Self.encodeAsset).joined(separator: "/") + (trailingSlash ? "/" : "")
     }
 
-    static func matches(_ raw: String) -> Bool {
+    package static func matches(_ raw: String) -> Bool {
         let parts = raw.split(separator: "/", omittingEmptySubsequences: false)
         guard parts.count > 3, parts.first?.isEmpty == true,
               let project = parts[1].removingPercentEncoding, (try? WorksheetPath([project])) != nil else { return false }
         return parts.dropFirst(2).dropLast().contains { $0.removingPercentEncoding == "web" }
     }
 
-    static func candidates(_ raw: String) throws -> [Self] {
+    package static func candidates(_ raw: String) throws -> [Self] {
         guard matches(raw), raw.utf8.count <= 4096 else { return [] }
         let trailingSlash = raw.hasSuffix("/")
         var pieces = raw.dropFirst().split(separator: "/", omittingEmptySubsequences: false)
@@ -81,7 +81,7 @@ struct WebPresentationRequest: Sendable {
         }
     }
 
-    static func encodeAsset(_ value: String) -> String {
+    package static func encodeAsset(_ value: String) -> String {
         WorksheetPath.encodeSegment(value).replacingOccurrences(of: "%2E", with: ".")
     }
 
@@ -93,26 +93,26 @@ struct WebPresentationRequest: Sendable {
     }
 }
 
-struct WebPresentationInfo: Content {
-    let reference: String
-    let title: String
-    let url: String
-    let preview: String?
-    let manageable: Bool
+package struct WebPresentationInfo: Content {
+    package let reference: String
+    package let title: String
+    package let url: String
+    package let preview: String?
+    package let manageable: Bool
     let publicWeb: Bool
 }
 
-struct WebPresentationSettings: Content {
-    let reference: String
+package struct WebPresentationSettings: Content {
+    package let reference: String
     let publicWeb: Bool
 }
 
-struct WebAsset: Sendable {
+package struct WebAsset: Sendable {
     let handle: FileHandle
     let size: Int
-    let name: String
+    package let name: String
 
-    static func open(in root: URL, folders: [String], asset: [String], trailingSlash: Bool) throws -> (WebAsset, directory: Bool) {
+    package static func open(in root: URL, folders: [String], asset: [String], trailingSlash: Bool) throws -> (WebAsset, directory: Bool) {
         var directory = root.path.withCString { systemOpen($0, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC) }
         guard directory >= 0 else { throw Abort(.notFound) }
         defer { close(directory) }
@@ -179,9 +179,9 @@ struct WebAsset: Sendable {
         return extensionTypes[(name as NSString).pathExtension.lowercased()] ?? "application/octet-stream"
     }
 
-    var isHTML: Bool { mime.hasPrefix("text/html") }
+    package var isHTML: Bool { mime.hasPrefix("text/html") }
 
-    func response(to req: Request, baseURL: String? = nil) async throws -> Response {
+    package func response(to req: Request, baseURL: String? = nil) async throws -> Response {
         let range = try baseURL == nil ? byteRange(for: req.headers) : nil
         let prefix: Data
         let consumed: Int
@@ -271,22 +271,22 @@ private func systemOpen(_ path: UnsafePointer<CChar>, _ flags: Int32) -> Int32 {
     #endif
 }
 
-final class WebPresentationSessions: @unchecked Sendable {
-    static let cookieName = "thinknodes_web_asset"
+package final class WebPresentationSessions: @unchecked Sendable {
+    package static let cookieName = "thinknodes_web_asset"
     private struct Grant {
-        let session: SessionID
-        let scope: String
+        package let session: SessionID
+        package let scope: String
         let secret: String
         let expires: Date
     }
 
-    let requireCookie: Bool
+    package let requireCookie: Bool
     private let lock = NSLock()
     private var grants: [UUID: Grant] = [:]
 
-    init(requireCookie: Bool = true) { self.requireCookie = requireCookie }
+    package init(requireCookie: Bool = true) { self.requireCookie = requireCookie }
 
-    func issue(session: SessionID, scope: String) -> (id: UUID, secret: String, expires: Date) {
+    package func issue(session: SessionID, scope: String) -> (id: UUID, secret: String, expires: Date) {
         lock.withLock {
             let now = Date()
             grants = grants.filter { $0.value.expires > now }
@@ -300,7 +300,7 @@ final class WebPresentationSessions: @unchecked Sendable {
         }
     }
 
-    func session(lease: UUID, scope: String, cookie: String?) -> SessionID? {
+    package func session(lease: UUID, scope: String, cookie: String?) -> SessionID? {
         lock.withLock {
             guard let grant = grants[lease], grant.expires > .now, grant.scope == scope,
                   !requireCookie || grant.secret == cookie else { return nil }
@@ -310,7 +310,7 @@ final class WebPresentationSessions: @unchecked Sendable {
 }
 
 /// Feltöltött weboldal-csomag (.zip) ellenőrzése és kicsomagolása. A `unzip` parancsot használja.
-enum WebArchive {
+package enum WebArchive {
     static let maximumArchive = 100 * 1024 * 1024
     static let maximumExtracted: Int64 = 300 * 1024 * 1024
     static let maximumEntries = 5_000
@@ -438,14 +438,14 @@ enum WebArchive {
 /// 2. a mappa gyökerében preview / screen / screenshot / thumbnail / thumb / site / cover / og-image / social nevű kép;
 /// 3. bármely kép a mappában (először a gyökérben);
 /// 4. nil: a szerver helyettes „nincs elérhető előnézet” SVG-t ad.
-enum WebScreenshot {
+package enum WebScreenshot {
     static let width = 1280
     static let marker = ".tn-preview"
     static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "webp", "gif", "svg", "avif"]
     static let previewNames = ["preview", "screen", "screenshot", "thumbnail", "thumb", "site", "cover", "og-image", "social", "poster"]
 
     /// Előnézet mérete: a doboz mérete vászonegységben (= CSS-pixel a 0-s szinten), 8-as lépésekre kerekítve.
-    static func boxSize(width: Double?, height: Double?) -> (width: Int, height: Int)? {
+    package static func boxSize(width: Double?, height: Double?) -> (width: Int, height: Int)? {
         guard let width, let height, width.isFinite, height.isFinite else { return nil }
         func step(_ value: Double) -> Int { Int((min(max(value, 64), 4096) / 8).rounded()) * 8 }
         return (step(width), step(height))
@@ -633,7 +633,7 @@ enum WebScreenshot {
     static func isPending(_ directory: URL) -> Bool { stateLock.withLock { pending[directory.path] != nil } }
 
     /// A generált kép változata (módosítási idő), a kliens ezzel tölti újra a képet.
-    static func version(_ directory: URL) -> String {
+    package static func version(_ directory: URL) -> String {
         generated(for: directory).filter(regularFile).first.flatMap(modified).map { String(Int($0.timeIntervalSince1970 * 1000)) } ?? "0"
     }
 
@@ -663,8 +663,8 @@ enum WebScreenshot {
 }
 
 /// Közös könyvtár (Public/common): ikonok, képek, hangok minden projektnek; csak olvasható.
-enum CommonLibrary {
-    static func list(_ folders: [String], publicDirectory: String) throws -> BrowseListing {
+package enum CommonLibrary {
+    package static func list(_ folders: [String], publicDirectory: String) throws -> BrowseListing {
         let root = URL(fileURLWithPath: publicDirectory).appendingPathComponent("common", isDirectory: true)
         var directory = root
         for folder in folders {

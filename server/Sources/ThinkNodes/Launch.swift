@@ -1,4 +1,5 @@
 import Foundation
+import ThinkCore
 #if canImport(Glibc)
 import Glibc
 #else

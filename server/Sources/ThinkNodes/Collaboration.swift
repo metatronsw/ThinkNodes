@@ -1,4 +1,5 @@
 import Foundation
+import ThinkCore
 import Vapor
 
 struct Participant: Content {

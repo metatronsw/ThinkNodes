@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+@testable import ThinkCore
 @testable import ThinkNodes
 
 /// A doboz-markdown szerveroldali feldolgozása egyezzen a közös tesztkészlettel; ugyanezt a fájlt ellenőrzi a

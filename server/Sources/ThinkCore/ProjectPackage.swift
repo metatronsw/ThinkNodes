@@ -13,9 +13,9 @@ import Vapor
 // MARK: - ZIP írás
 
 /// Tömörítés nélküli (stored) ZIP. A képek, hangok már tömörítettek; így nem kell külső program vagy zlib.
-enum ZipWriter {
-    enum Source { case file(URL), data(Data) }
-    struct Entry { let path: String; let source: Source }
+package enum ZipWriter {
+    package enum Source { case file(URL), data(Data) }
+    package struct Entry { let path: String; let source: Source }
 
     static func write(_ entries: [Entry], to destination: URL) throws {
         guard FileManager.default.createFile(atPath: destination.path, contents: nil) else {
@@ -84,14 +84,14 @@ private extension Data {
     mutating func le32(_ value: UInt32) { for shift in stride(from: 0, to: 32, by: 8) { append(UInt8((value >> UInt32(shift)) & 0xFF)) } }
 }
 
-enum CRC32 {
+package enum CRC32 {
     private static let table: [UInt32] = (0..<256).map { index in
         var value = UInt32(index)
         for _ in 0..<8 { value = value & 1 == 1 ? 0xEDB8_8320 ^ (value >> 1) : value >> 1 }
         return value
     }
 
-    static func update(_ crc: UInt32, _ bytes: some Sequence<UInt8>) -> UInt32 {
+    package static func update(_ crc: UInt32, _ bytes: some Sequence<UInt8>) -> UInt32 {
         var value = ~crc
         for byte in bytes { value = table[Int((value ^ UInt32(byte)) & 0xFF)] ^ (value >> 8) }
         return ~value
@@ -115,14 +115,14 @@ enum CRC32 {
 
 /// scrypt kulcsszármaztatás + AES-256-GCM, darabonként (1 MiB). A darab nonce-a: 4 véletlen bájt + 8 bájtos sorszám;
 /// az utolsó darabot a hitelesített adat jelöli, így a csonkítás is kiderül.
-enum PackageCrypto {
+package enum PackageCrypto {
     static let headerName = "thinknodes-encrypted.json"
     static let contentName = "content.bin"
-    static let version = 1
+    package static let version = 1
 
-    struct Header: Codable {
+    package struct Header: Codable {
         var format = "thinknodes-encrypted"
-        var version = PackageCrypto.version
+        package var version = PackageCrypto.version
         var kdf = "scrypt"
         var rounds = 1 << 15
         var blockSize = 8
@@ -221,25 +221,25 @@ enum PackageCrypto {
 
 // MARK: - Kérések és válaszok
 
-struct PackageExportRequest: Content {
+package struct PackageExportRequest: Content {
     /// "tree": a lap az allapjaival (alapértelmezett); "sheet": csak a lap.
-    var scope: String?
-    var versions: Bool?
+    package var scope: String?
+    package var versions: Bool?
     /// "copy": a csomagon kívüli fájlok bemásolása; "keep": hivatkozás marad (alapértelmezett).
     var external: String?
     var password: String?
 }
 
-struct PackageEditor: Content {
-    var name: String
+package struct PackageEditor: Content {
+    package var name: String
     var match: String?
 }
 
-struct PackageReport: Content {
+package struct PackageReport: Content {
     var token: String
     var needsPassword: Bool
-    var target: String
-    var name: String?
+    package var target: String
+    package var name: String?
     var sheets: Int?
     var files: Int?
     var bytes: Int64?
@@ -248,14 +248,14 @@ struct PackageReport: Content {
     var warnings: [String]?
 }
 
-struct PackageUnlock: Content {
+package struct PackageUnlock: Content {
     var token: String
     var password: String
 }
 
-struct PackageCommit: Content {
+package struct PackageCommit: Content {
     var token: String
-    var name: String
+    package var name: String
     /// Csomagbeli szerkesztőnév → célszerveri felhasználónév (üres: kihagyva).
     var editors: [String: String]?
     var projectPassword: String?
@@ -280,7 +280,7 @@ extension WorksheetStore {
     }
 
     /// Lejárt (vagy indításkor minden) ideiglenes csomag törlése.
-    func cleanPackageStaging(all: Bool = false) {
+    package func cleanPackageStaging(all: Bool = false) {
         let limit = Date().addingTimeInterval(-Self.stagingLifetime)
         for url in (try? files.contentsOfDirectory(at: stagingRoot, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [] {
             let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
@@ -291,7 +291,7 @@ extension WorksheetStore {
     // MARK: Export
 
     /// Elkészíti a csomagot egy ideiglenes fájlba; a hívó küldi el és törli.
-    func exportPackage(_ path: WorksheetPath, options: PackageExportRequest, user: User?, unlocks: Set<String>) throws -> URL {
+    package func exportPackage(_ path: WorksheetPath, options: PackageExportRequest, user: User?, unlocks: Set<String>) throws -> URL {
         guard let user, user.role != .guest else { throw Abort(.forbidden, reason: "Exportálni szerkesztő vagy admin tud.") }
         let scope = options.scope ?? "tree", external = options.external ?? "keep"
         guard ["tree", "sheet"].contains(scope), ["copy", "keep"].contains(external) else { throw Abort(.badRequest) }
@@ -511,8 +511,8 @@ extension WorksheetStore {
     // MARK: Import
 
     private struct PendingImport: Codable {
-        var user: String
-        var target: String?
+        package var user: String
+        package var target: String?
         var encrypted: Bool
     }
 
@@ -533,7 +533,7 @@ extension WorksheetStore {
     }
 
     /// Feltöltés és kicsomagolás ideiglenes mappába. Titkosított csomagnál a jelszót a `unlockPackage` kéri.
-    func uploadPackage(_ bytes: Data, target: WorksheetPath?, user: User?, unlocks: Set<String>) throws -> PackageReport {
+    package func uploadPackage(_ bytes: Data, target: WorksheetPath?, user: User?, unlocks: Set<String>) throws -> PackageReport {
         try checkImportRights(target, user: user, unlocks: unlocks)
         guard bytes.count <= Self.maximumPackage else { throw Abort(.payloadTooLarge, reason: "A csomag legfeljebb 200 MiB lehet.") }
         guard bytes.starts(with: [0x50, 0x4b, 0x03, 0x04]) else { throw Abort(.unsupportedMediaType, reason: "A fájl nem ZIP.") }
@@ -563,7 +563,7 @@ extension WorksheetStore {
         }
     }
 
-    func unlockPackage(_ request: PackageUnlock, user: User?, unlocks: Set<String>) throws -> PackageReport {
+    package func unlockPackage(_ request: PackageUnlock, user: User?, unlocks: Set<String>) throws -> PackageReport {
         let (directory, info, target) = try pending(request.token, user: user)
         try checkImportRights(target, user: user, unlocks: unlocks)
         guard info.encrypted, !files.fileExists(atPath: directory.appendingPathComponent("tree").path) else { throw Abort(.conflict) }
@@ -578,7 +578,7 @@ extension WorksheetStore {
         return try analyze(token: request.token, directory: directory, target: target, user: user!)
     }
 
-    func cancelPackage(_ token: String, user: User?) throws {
+    package func cancelPackage(_ token: String, user: User?) throws {
         let (directory, _, _) = try pending(token, user: user)
         try files.removeItem(at: directory)
     }
@@ -757,7 +757,7 @@ extension WorksheetStore {
     }
 
     /// Jóváhagyás: a csomag átírása az új helyre, majd áthelyezés egy lépésben.
-    func commitPackage(_ request: PackageCommit, user: User?, unlocks: Set<String>) throws -> WorksheetPath {
+    package func commitPackage(_ request: PackageCommit, user: User?, unlocks: Set<String>) throws -> WorksheetPath {
         let (directory, _, target) = try pending(request.token, user: user)
         try checkImportRights(target, user: user, unlocks: unlocks)
         let user = user!

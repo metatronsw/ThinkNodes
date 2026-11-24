@@ -1,4 +1,5 @@
 import Crypto
+import ThinkCore
 import _CryptoExtras
 import Foundation
 import SwiftASN1

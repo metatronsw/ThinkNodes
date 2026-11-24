@@ -3,16 +3,16 @@ import Vapor
 
 /// Vászonobjektum-típusok regisztere: `Public/node-types.json` (docs/node-types.md).
 /// Az alkategória (`base`) örökli az alaptípus képességeit; a `traits` felülírja, az `addTraits` bővíti.
-struct NodeTypeDefinition: Codable, Sendable {
+package struct NodeTypeDefinition: Codable, Sendable {
     var label: String?
     var base: String?
-    var file: String?
+    package var file: String?
     var extensions: [String]?
     var traits: [String]?
     var addTraits: [String]?
 }
 
-enum NodeTypes {
+package enum NodeTypes {
     private struct Registry: Codable { var types: [String: NodeTypeDefinition] }
 
     static let definitions: [String: NodeTypeDefinition] = {

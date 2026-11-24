@@ -2,15 +2,15 @@ import Foundation
 import Vapor
 
 // Color references travel as integers. Old documents may still contain literal colors.
-@propertyWrapper struct StoredPaint: Codable, Equatable, Sendable {
-    var wrappedValue: String
-    init(wrappedValue: String) { self.wrappedValue = wrappedValue }
-    init(from decoder: Decoder) throws {
+@propertyWrapper package struct StoredPaint: Codable, Equatable, Sendable {
+    package var wrappedValue: String
+    package init(wrappedValue: String) { self.wrappedValue = wrappedValue }
+    package init(from decoder: Decoder) throws {
         let field = try decoder.singleValueContainer()
         if let id = try? field.decode(Int.self), (0..<64).contains(id) { wrappedValue = "@\(id)" }
         else { wrappedValue = try field.decode(String.self) }
     }
-    func encode(to encoder: Encoder) throws {
+    package func encode(to encoder: Encoder) throws {
         var field = encoder.singleValueContainer()
         if let id = paintID(wrappedValue) { try field.encode(id) }
         else { try field.encode(wrappedValue) }
@@ -22,11 +22,11 @@ func paintID(_ value: String) -> Int? {
     return id
 }
 
-@propertyWrapper struct OptionalPaint: Codable, Equatable, Sendable {
-    var wrappedValue: String?
-    init(wrappedValue: String?) { self.wrappedValue = wrappedValue }
-    init(from decoder: Decoder) throws { wrappedValue = try StoredPaint(from: decoder).wrappedValue }
-    func encode(to encoder: Encoder) throws {
+@propertyWrapper package struct OptionalPaint: Codable, Equatable, Sendable {
+    package var wrappedValue: String?
+    package init(wrappedValue: String?) { self.wrappedValue = wrappedValue }
+    package init(from decoder: Decoder) throws { wrappedValue = try StoredPaint(from: decoder).wrappedValue }
+    package func encode(to encoder: Encoder) throws {
         if let wrappedValue { try StoredPaint(wrappedValue: wrappedValue).encode(to: encoder) }
         else { var field = encoder.singleValueContainer(); try field.encodeNil() }
     }
@@ -37,21 +37,21 @@ extension KeyedDecodingContainer {
     }
 }
 extension KeyedEncodingContainer {
-    mutating func encode(_ paint: OptionalPaint, forKey key: Key) throws {
+    package mutating func encode(_ paint: OptionalPaint, forKey key: Key) throws {
         if let value = paint.wrappedValue { try encode(StoredPaint(wrappedValue: value), forKey: key) }
     }
 }
 
-struct Appearance: Codable, Equatable, Sendable {
-    var theme = 1
+package struct Appearance: Codable, Equatable, Sendable {
+    package var theme = 1
     var palette = 1
 }
-struct VisualTheme: Content, Equatable {
-    struct Color: Codable, Equatable, Sendable { var id: Int; var name: String; var light: String?; var dark: String? }
-    struct Palette: Codable, Equatable, Sendable { var id: Int; var name: String; var colors: [Color] }
-    struct Graphics: Codable, Equatable, Sendable {
+package struct VisualTheme: Content, Equatable {
+    package struct Color: Codable, Equatable, Sendable { var id: Int; var name: String; var light: String?; var dark: String? }
+    package struct Palette: Codable, Equatable, Sendable { var id: Int; var name: String; var colors: [Color] }
+    package struct Graphics: Codable, Equatable, Sendable {
         var glow: Double?
-        var selection: Int?
+        package var selection: Int?
         // Clockwise convex contour in units of half the box dimensions.
         var contour: [Point]?
         var linePoints: [Point]?
@@ -82,12 +82,12 @@ struct VisualTheme: Content, Equatable {
         /// Három betűtípus (CSS font-family): alap, valamint két jól eltérő választható.
         var fonts: [String]?
     }
-    var version: Int
-    var id: Int
-    var name: String
+    package var version: Int
+    package var id: Int
+    package var name: String
     var modes: [String]
     var palettes: [Palette]
-    var graphics: Graphics?
+    package var graphics: Graphics?
     // Lépésenkénti guard: az egyetlen hosszú `&&`-lánc típusellenőrzése ~2 s fordítási időt vitt el.
     var valid: Bool {
         guard version == 1, !name.isEmpty, !modes.isEmpty, !palettes.isEmpty else { return false }
@@ -148,10 +148,10 @@ extension VisualTheme.Graphics {
     }
 }
 
-enum Themes {
+package enum Themes {
     // Theme files are reloaded on startup; previews from a previous catalog must be redrawn.
     static let loadedAt = Date()
-    static let catalog: [VisualTheme] = {
+    package static let catalog: [VisualTheme] = {
         let dir = URL(fileURLWithPath: DirectoryConfiguration.detect().publicDirectory).appendingPathComponent("themes")
         var result = [VisualTheme]()
         for url in ((try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []).sorted(by: { $0.path < $1.path }) where url.pathExtension == "json" {
@@ -179,13 +179,13 @@ extension VisualTheme {
 }
 
 extension Worksheet {
-    func resolvedBackground(mode: String?) -> String {
+    package func resolvedBackground(mode: String?) -> String {
         let appearance = self.appearance ?? Appearance()
         return Themes.catalog.first(where: { $0.id == appearance.theme })?
             .paintResolver(paletteID: appearance.palette, mode: mode)?(background, 0) ?? backgroundColor
     }
 
-    func painted(mode: String?, catalog: [VisualTheme] = Themes.catalog) -> Worksheet {
+    package func painted(mode: String?, catalog: [VisualTheme] = Themes.catalog) -> Worksheet {
         let appearance = self.appearance ?? Appearance()
         guard let theme = catalog.first(where: { $0.id == appearance.theme }),
               let resolve = theme.paintResolver(paletteID: appearance.palette, mode: mode) else { return self }
