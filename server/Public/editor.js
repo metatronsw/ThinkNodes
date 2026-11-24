@@ -30,7 +30,10 @@ import {attachScrollbars, detachScrollbars} from "./scrollbar-drag.js";
 const mount = document.querySelector("#editor");
 const {path, csrf, user, motionRate} = mount.dataset;
 const d3 = window.d3;
-const {createApp, computed, getCurrentInstance, h, nextTick, onMounted, onUnmounted, onUpdated, ref, shallowRef, toRaw, watch} = window.Vue;
+// Mérés (Tests/Perf): a mérőszkript által betöltött rögzítő számolja, melyik komponens hányszor rajzolódott újra.
+const tally = name => window.__perf?.count(name);
+const timed = (name, run) => window.__perf ? window.__perf.time(name, run) : run();
+const {createApp, computed, getCurrentInstance, h, markRaw, nextTick, onMounted, onUnmounted, onUpdated, reactive, ref, shallowRef, toRaw, watch, watchEffect} = window.Vue;
 
 // Az új munkalapállapotban a tartalmilag változatlan dobozok és vonalak a korábbi objektumot kapják vissza.
 // Az elrendezés- és vonalgeometria-gyorsítótárak objektumazonosság szerint működnek; enélkül minden mentés
@@ -511,7 +514,21 @@ createApp({
       }
       return layout.value;
     }
+    // Célzott állapot dobozonként és vonalanként (docs/PLAN.md C9). A dobozok és vonalak rajzolása korábban közvetlenül
+    // olvasta a közös állapotot (kijelölés, jelenlévők, mozdulat, keresés …), ezért bármelyik változására a teljes vászon
+    // újrarajzolódott. Most egy összesítő (syncUi) számolja ki elemenként a rájuk vonatkozó jelzőket, és csak annak a
+    // kulcsnak szól, amelyiknek a jelzői tényleg megváltoztak; a rajzolás a saját kulcsára iratkozik fel.
+    const nodeUi = reactive(new Map()), edgeUi = reactive(new Map());
+    const idleNodeUi = markRaw({claimed: false, peerColor: null, own: false, occupied: false, snap: false, candidate: false, editing: false,
+      container: false, drop: false, resize: false, textDrag: false, resizing: false, shifted: false});
+    const idleEdgeUi = markRaw({mine: false, local: false, peerColor: null, candidate: false, editing: false, dragged: false});
+    const nodeUiOf = id => nodeUi.get(id) ?? idleNodeUi;
+    const edgeUiOf = id => edgeUi.get(id) ?? idleEdgeUi;
+    // A dobozok kikeresése rajzolás közben: nem reaktív tükör (a nodeMap minden mentés után új objektum, és azzal minden
+    // vonal újrarajzolódna); a doboz cseréjét a nodeUi kulcsa jelzi. Az összesítő frissíti, a rajzolás előtt.
+    let nodeIndex = new Map();
     function displayPosition(node) {
+      if (!nodeUiOf(node.id).shifted) return node.position;
       const drag = gesture.value;
       if (drag?.type === "batch" && drag.members.has(node.id)) return shifted(node.position, drag.delta);
       if (motions.value.size) {
@@ -522,8 +539,9 @@ createApp({
       return node.position;
     }
     function drawnNode(id) {
-      const node = nodeMap.value.get(id);
-      return node && (motions.value.size || gesture.value?.type === "batch") ? {...node, position: displayPosition(node)} : node;
+      // Rajzolás közben a nem reaktív tükörből (lásd fent), egyébként a mindig friss nodeMap-ből.
+      const node = getCurrentInstance() ? nodeIndex.get(id) : nodeMap.value.get(id);
+      return node && nodeUiOf(id).shifted ? {...node, position: displayPosition(node)} : node;
     }
     const edgeGeometries = new WeakMap();
     const wireDrawings = new WeakMap();
@@ -2033,9 +2051,9 @@ createApp({
     const marqueeHits = computed(() => gesture.value?.type === "rectangle" ? rectangleMembers(gesture.value) : null);
 
     // A saját kijelölés színe: a felhasználó színe (ha a munkamenetben van), különben a témabeli kijelölési szín.
-    function selectionTint() {
-      return peers.value.find(p => p.mine)?.color ?? paint(graphics.value.selection ?? 4, 4);
-    }
+    // Számított érték: a jelenlévők listájának frissülése (ugyanazzal a színnel) nem rajzol újra semmit.
+    const ownTint = computed(() => peers.value.find(p => p.mine)?.color ?? paint(graphics.value.selection ?? 4, 4));
+    function selectionTint() { return ownTint.value; }
 
     // Kijelölés glow-ja SVG-szűrővel (Public/glow.js; a Safari a CSS drop-shadow()-t SVG elemen nem rajzolja ki).
     // Színenként egy szűrő; az első használat után kerül a vászon defs-ébe (renderelés közben nem írunk reaktív állapotot).
@@ -3039,24 +3057,22 @@ createApp({
       const drawn = node;
       const layout = nodeLayout(node);
       const position = displayPosition(node);
-      const selectors = peers.value.filter(p => p.node === node.id && (!p.mine || (selected.value?.kind === "node" && selected.value.id === node.id)));
-      const owner = selectors.find(p => !p.viewing) ?? selectors[0];
-      // Két eset: a saját kijelölés (világosabb doboz, vastagabb keret, glow nélkül) és a többi
-      // felhasználó kijelölése (az ő színükkel pulzáló glow, ahogy eddig).
-      const peerOwner = selectors.find(p => !p.mine && !p.viewing) ?? selectors.find(p => !p.mine);
-      const ownSelected = selectors.some(p => p.mine) || !!batch.value?.nodes.has(node.id) || !!marqueeHits.value?.nodes.has(node.id);
+      // A dobozra vonatkozó jelzők (syncUi): kijelölés, foglaltság, mozdulat. Két eset: a saját kijelölés (világosabb
+      // doboz, vastagabb keret, glow nélkül) és a többi felhasználó kijelölése (az ő színükkel pulzáló glow).
+      const ui = nodeUiOf(node.id);
+      const owner = ui.claimed, peerOwner = ui.peerColor ? {color: ui.peerColor} : null, ownSelected = ui.own;
       const destination = linkDestination(node.link);
       const junction = isJunction(node);
 
-      const textDrag = gesture.value?.type === "text" && gesture.value.nodeID === node.id ? gesture.value : null;
+      const textDrag = ui.textDrag ? gesture.value : null;
       const [, , inset] = shapeLabelRatios(node.shape);
       const [outline, dimensions] = selectionOutline(junction ? graphics.value.junction ?? "ellipse" : drawn.shape, drawn.width, drawn.height);
-      const snapTarget = (preview.value?.target ?? junctionTarget.value) === node.id;
+      const snapTarget = ui.snap;
       const strong = false;  // a Félkövér/Dőlt/Aláhúzott gombok megszűntek; a markdown formázás marad
       const labels = layout.lines.length ? h("text", {class: "node-text", "font-family": fontFamily(node.font), "pointer-events": "none"},
           layout.lines.map(line => h("tspan", {
             "data-body-row": "",
-            "pointer-events": "visiblePainted", cursor: alt.value && ctrl.value ? "text" : undefined,
+            "pointer-events": "visiblePainted",
             onPointerdown: e => {
               if (!e.ctrlKey || !e.altKey || ![0,2].includes(e.button) || occupied(node.id) || ancestors(node,nodeMap.value).some(n => n.locked)) return;
               const rows = Array.from(e.currentTarget.parentNode?.querySelectorAll?.("[data-body-row]") ?? [], row => row.getBBox());
@@ -3084,7 +3100,7 @@ createApp({
       // elengedéskor új renderelés.
       const step = value => Math.round(Math.min(Math.max(value, 64), 4096) / 8) * 8;
       const previewSize = "?w=" + step(drawn.width) + "&h=" + step(drawn.height);
-      if (!gesture.value || !previewRatios.has(node.id)) previewRatios.set(node.id, previewSize);
+      if (destination?.preview && (!gesture.value || !previewRatios.has(node.id))) previewRatios.set(node.id, previewSize);
       function webPreviewHref(node, destination) {
         const source = destination.preview + previewRatios.get(node.id);
         if (node.staticPreview) return source + "&live=0";
@@ -3104,7 +3120,7 @@ createApp({
         preserveAspectRatio: "xMidYMid meet", "pointer-events": "none"}) : null;
       // Publikus .web: pillangó ikon a doboz felett középen.
       // Átméretezés közben a képet tartalmazó dobozon (kép, előnézet) középen a méret, a kép 50%-kal sötétebb.
-      const resizing = gesture.value?.type === "resize" && gesture.value.nodeID === node.id && (isImage(node) || node.type === "preview");
+      const resizing = ui.resizing && (isImage(node) || node.type === "preview");
       const sizeBadge = resizing ? h("g", {class: "resize-size", "pointer-events": "none"}, [
         h(...(() => { const [tag, attrs] = boxShapeGeometry(drawn); return [tag, {...attrs, fill: "#000", "fill-opacity": .5, stroke: "none"}]; })()),
         h("text", {x: 0, y: 0, "text-anchor": "middle", "dominant-baseline": "central", fill: "#fff",
@@ -3118,7 +3134,7 @@ createApp({
       return h("g", {key: node.id, "data-node": node.id, "data-type": node.type, "data-width": drawn.width, "data-height": drawn.height, tabindex: 0,
         role: rootType(node.type) === "audio" ? "group" : "button",
         "aria-label": nodeName(node), "data-link": destination ? "" : undefined,
-        class: [nodeClasses(node, containerIDs.value.has(node.id)), {"editing-object": editingObject.value === node.id, occupied: occupied(node.id), claimed: !!owner, "own-selected": ownSelected}],
+        class: [nodeClasses(node, ui.container), {"editing-object": ui.editing, occupied: ui.occupied, claimed: owner, "own-selected": ownSelected}],
         transform: "translate(" + position.x + " " + position.y + ")",
         onPointerenter: event => {
           // Buboréksúgó: túl hosszú doboz-szöveg, illetve összecsukott többsoros megjegyzés (fájl- és előnézetes doboz).
@@ -3151,10 +3167,10 @@ createApp({
         // Saját kijelölés látható felület nélküli objektumon (Free doboz, átlátszó kép, csomópont): vékony, nyugodt körvonal.
         ownSelected && !peerOwner && (junction || backgroundMode(node) === "free" || isImage(node))
           ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-own", filter: glow("ownFrame", selectionTint()), fill: "none", stroke: selectionTint(), "stroke-width": 2.5, "pointer-events": "none"}) : null,
-        candidates.value.has("node/" + node.id) ? h(outline, {"data-editor-only": "", ...dimensions, class: "search-candidate", "stroke-width": 3}) : null,
+        ui.candidate ? h(outline, {"data-editor-only": "", ...dimensions, class: "search-candidate", "stroke-width": 3}) : null,
         ...animateBox(isBox(node) ? node.animation : undefined, [
           elevationShadow(drawn),
-          shape(drawn, !!destination, containerDropTargets.value.has(node.id)),
+          shape(drawn, !!destination, ui.drop),
           node.file ? renderFileBox(node, destination) : null,
           junctionLabel,
           linkPreview,
@@ -3163,7 +3179,7 @@ createApp({
           publicMark,
           // A szöveg közvetlenül a doboz csoportjában van (nincs dobozonkénti vágás): az elrendezés eleve a dobozon belül tartja.
           labels,
-          editingObject.value === node.id ? editOverlay(node, -drawn.width/2,
+          ui.editing ? editOverlay(node, -drawn.width/2,
             junction ? -14 : (layout.lines[0]?.y ?? (node.file ? drawn.height/2 - 20 : 0)) - 18,
             drawn.width, editKey.value === "text" && !junction ? Math.max(34, drawn.height/2) : 28) : null,
           isBox(node) && node.link ? renderLinkMarker(drawn, destination, node.type === "preview") : null,
@@ -3172,7 +3188,7 @@ createApp({
             "pointer-events": "none"}, [h("div", {class: "node-below", style: {color: paint(node.textColor, 1)}}, [
               h("footer", {class: "node-comment align-" + (node.alignment ?? "center")}, [h(FormattedText, {source: visibleComment(node)})])])]) : null,
         ]),
-        ...(resizeTarget.value === node.id && gesture.value?.type !== "rectangle" && !occupied(node.id) && !ancestors(node, nodeMap.value).some(n => n.locked)
+        ...(ui.resize && gesture.value?.type !== "rectangle" && !ui.occupied && !ancestors(node, nodeMap.value).some(n => n.locked)
           ? [[-1,-1], [1,-1], [1,1], [-1,1]].map(([sx, sy]) => {
             const r = 5 / zoomScale.value;
             return h("rect", {"data-editor-only": "", class: "node-handle", x: sx*drawn.width/2-r, y: sy*drawn.height/2-r,
@@ -3204,7 +3220,8 @@ createApp({
 
     function endpointHandle(edge, end, point) {
       return h("circle", {key: end + "/" + edge.id, transform: "translate(" + point.x + " " + point.y + ")",
-        r: 10 / zoomStep.value, fill: "transparent", tabindex: -1, "pointer-events": alt.value ? "none" : "all",
+        // A sugár nagyításfüggő része és az Alt alatti kikapcsolás CSS-ben van (app.css .wire-handle).
+        r: 10, fill: "transparent", tabindex: -1, "pointer-events": "all",
         "data-edge": edge.id, "data-endpoint": end, class: edgeEndpoint(edge, end).node ? "wire-handle is-attached" : "wire-handle",
         onPointerdown: event => pressEndpoint(event, edge, end),
         onContextmenu: event => context(event, "edge", edge.id),
@@ -3216,6 +3233,7 @@ createApp({
     // A vonal húzás közbeni (csoportos mozgatás, végpont húzása) megjelenített változata.
     function displayedEdge(original) {
       let edge = original;
+      if (!edgeUiOf(original.id).dragged) return edge;
       const drag = gesture.value;
       if (drag?.type === "batch" && batch.value?.edges.has(edge.id)) edge = moveBatchEdge(edge,drag);
       if (drag?.edgeID === edge.id && drag.endPosition) {
@@ -3237,11 +3255,12 @@ createApp({
       const label = edge.label?.trim() ? wireLabelLayout(geometry, edge.label, paint, edge.labelInLine) : null;
       const clipId = "editor-wire-gap-" + edge.id;
       const clipPath = label?.clip ? "url(#" + clipId + ")" : undefined;
-      const mine = selectedEdge(edge);
+      const ui = edgeUiOf(original.id);
+      const mine = ui.mine;
       const animatedArrows = edge.animated && edge.appearance === "thick";
       // Saját kijelölés: világosabb és vastagabb vonal; más felhasználó kijelölése: az ő színű glow.
-      const local = mine || batch.value?.edges.has(edge.id) || marqueeHits.value?.edges.has(edge.id);
-      const selectionColor = peers.value.find(peer => !peer.mine && peer.edge === edge.id)?.color;
+      const local = mine || ui.local;
+      const selectionColor = ui.peerColor;
       // Kijelöléskor a vonal és a nyilak megőrzik az eredeti színüket; a felhasználó színű glow az eredeti alakot követi.
       const color = paint.color;
       const animation = animatedWire(edge, {...paint, color}, from, to, taper, stroke.d);
@@ -3297,10 +3316,11 @@ createApp({
         label?.clip ? h("defs", [h("clipPath", {id: clipId}, [
           h("path", {d: label.clip, transform: label.transform}),
         ])]) : null,
-        candidates.value.has("edge/" + edge.id) ? h("path", {"data-editor-only": "", d: taper ? d : stroke.d, class: "search-candidate", "clip-path": clipPath,
+        ui.candidate ? h("path", {"data-editor-only": "", d: taper ? d : stroke.d, class: "search-candidate", "clip-path": clipPath,
           "stroke-width": paint.lineWidth + 9 / zoomScale.value}) : null,
         animation.gradient ? h("defs", [animation.gradient]) : null,
-        h("path", {"data-editor-only": "", d, stroke: "transparent", "stroke-width": Math.max(paint.lineWidth + 10, 14 / zoomStep.value),
+        // A találati szélesség nagyításfüggő része CSS-ben van (--zoom-step, app.css .wire-hit): nagyításkor nem kell újrarajzolni.
+        h("path", {"data-editor-only": "", d, stroke: "transparent", "stroke-width": paint.lineWidth + 10, style: {"--wire-hit": paint.lineWidth + 10 + "px"},
           "pointer-events": "stroke", class: "wire-hit"}),
         // Kijelölés: a meglévő vonal, nyilak és animáció kap árnyék alapú glow-t, így a jelzés pontosan az eredeti geometriát követi.
         h("g", {class: {"wire-own": local, "wire-glow": !!selectionColor},
@@ -3320,7 +3340,7 @@ createApp({
           "dominant-baseline": label.clip ? "central" : undefined,
           "font-family": "system-ui, sans-serif", "font-size": label.fontSize, "font-weight": label.fontWeight, "text-anchor": "middle",
           stroke: "none", fill: paint.color, class: "wire-label"}, edge.label) : null,
-        editingObject.value === edge.id ? editOverlay(original, geometry.labelPosition.x-80, geometry.labelPosition.y-30,160,28) : null,
+        ui.editing ? editOverlay(original, geometry.labelPosition.x-80, geometry.labelPosition.y-30,160,28) : null,
       ]);
     }
 
@@ -3334,14 +3354,14 @@ createApp({
         const justify = () => justifyRows(instance.proxy.$el);
         onMounted(justify);
         onUpdated(justify);
-        return () => renderNode(props.node);
+        return () => { tally("node"); return timed("nodeRender", () => renderNode(props.node)); };
       },
     };
 
     // Vonalanként külön komponens: húzáskor csak a mozgatott dobozhoz kötött vonalak rajzolódnak újra. docs/PLAN.md C1.
     const EdgeView = {
       props: {edge: Object},
-      setup: props => () => renderEdge(props.edge),
+      setup: props => () => { tally("edge"); return timed("edgeRender", () => renderEdge(props.edge)); },
     };
 
     // A végpontok és csomópontok fogantyúi a vonalak és dobozok fölött, külön komponensben:
@@ -3350,6 +3370,7 @@ createApp({
     const EdgeHandles = {
       props: {edge: Object},
       setup: props => () => {
+        tally("edgeHandles");
         const {from, to} = wireGeometry(displayedEdge(props.edge));
         return [endpointHandle(props.edge, "source", from), endpointHandle(props.edge, "target", to)];
       },
@@ -3357,6 +3378,7 @@ createApp({
     const JunctionHandles = {setup: () => () => renderJunctionHandles()};
     const HandleLayer = {
       setup: () => () => {
+        tally("handleLayer");
         const edges = wireLayers.value.flat();
         // A kijelölt vonal fogantyúi kerülnek legfelülre.
         const ordered = [...edges.filter(edge => !selectedEdge(edge)), ...edges.filter(selectedEdge)];
@@ -3368,6 +3390,7 @@ createApp({
 
     const CanvasScene = {
       setup: () => () => {
+        tally("scene");
         const layers = wireLayers.value;
         const children = [];
         const addEdge = edge => children.push(h(EdgeView, {key: "edge/" + edge.id, edge}));
@@ -3397,6 +3420,7 @@ createApp({
     // pásztázás nem rajzolja újra a teljes felületet (fejléc, panelek, ellenőrző). docs/PLAN.md C2/C3.
     const ViewLayer = {
       setup: () => () => {
+        tally("view");
         const [centerX, centerY] = center();
         const cable = preview.value?.edge;
         const shown = cable ? wireDrawing({...cable, color: "#4168e9"}, wireGeometry(cable)) : null;
@@ -3445,6 +3469,7 @@ createApp({
     };
 
     function renderCanvas() {
+      tally("root");
       const {grid, glass} = graphics.value;
       const lined = grid === "drafting" || grid === "lines";
       // A háttér a munkalap színe (a rács alatt); a vászonréteg átlátszó.
@@ -4213,6 +4238,7 @@ createApp({
     }
 
     function renderInspector() {
+      tally("inspector");
       if (!objectPanelOpen.value || !selected.value && !batch.value) return null;
       if (batch.value) {
         const nodes = board.value.nodes.filter(n => batch.value.nodes.has(n.id) && !occupied(n.id));
@@ -4249,7 +4275,66 @@ createApp({
       return h("div", {class: "worksheet-history"}, controls);
     }
 
-    return () => {
+    // Az elemenkénti jelzők összesítője (lásd nodeUi). A közös állapot bármely változására lefut, de olcsó (elemenként
+    // néhány összehasonlítás, virtuális DOM nélkül), és csak a megváltozott kulcsokat írja, így csak azok rajzolódnak újra.
+    const noPeers = [];
+    function applyUi(store, next) {
+      const current = toRaw(store);
+      for (const id of [...current.keys()]) if (!next.has(id)) store.delete(id);
+      for (const [id, record] of next) {
+        const old = current.get(id);
+        let same = !!old;
+        if (same) for (const key in record) if (record[key] !== old[key]) { same = false; break; }
+        if (!same) store.set(id, markRaw(record));
+      }
+    }
+    function syncUi() {
+      const drag = gesture.value, item = selected.value, group = batch.value, hits = marqueeHits.value;
+      const byNode = new Map(), byEdge = new Map();
+      for (const peer of peers.value) {
+        if (peer.node) byNode.set(peer.node, [...(byNode.get(peer.node) ?? noPeers), peer]);
+        if (peer.edge) byEdge.set(peer.edge, [...(byEdge.get(peer.edge) ?? noPeers), peer]);
+      }
+      const snap = preview.value?.target ?? junctionTarget.value;
+      const found = candidates.value, editing = editingObject.value, containers = containerIDs.value;
+      const drops = containerDropTargets.value, resize = resizeTarget.value, moving = motions.value;
+      const members = drag?.type === "batch" ? drag.members : null;
+      const index = nodeIndex = nodeMap.value;
+      const nodes = new Map(), edges = new Map();
+      for (const node of sceneNodes.value) {
+        const id = node.id, present = byNode.get(id) ?? noPeers;
+        const selectors = present.length ? present.filter(p => !p.mine || (item?.kind === "node" && item.id === id)) : noPeers;
+        const owner = selectors.find(p => !p.viewing) ?? selectors[0];
+        const peer = selectors.find(p => !p.mine && !p.viewing) ?? selectors.find(p => !p.mine);
+        nodes.set(id, {
+          node: toRaw(node), claimed: !!owner, peerColor: peer?.color ?? null,
+          own: selectors.some(p => p.mine) || !!group?.nodes.has(id) || !!hits?.nodes.has(id),
+          occupied: present.some(p => !p.mine && !p.viewing),
+          snap: snap === id, candidate: found.has("node/" + id), editing: editing === id,
+          container: containers.has(id), drop: drops.has(id), resize: resize === id,
+          textDrag: drag?.type === "text" && drag.nodeID === id, resizing: drag?.type === "resize" && drag.nodeID === id,
+          shifted: !!members?.has(id) || (moving.size > 0 && (moving.has(id) || (!!node.parent && ancestors(node, index).some(parent => moving.has(parent.id))))),
+        });
+      }
+      for (const edge of sceneEdges.value) {
+        const id = edge.id;
+        edges.set(id, {
+          edge: toRaw(edge), mine: item?.id === id && (item.kind === "edge" || item.kind === "endpoint"),
+          local: !!group?.edges.has(id) || !!hits?.edges.has(id),
+          peerColor: byEdge.get(id)?.find(p => !p.mine)?.color ?? null,
+          candidate: found.has("edge/" + id), editing: editing === id,
+          dragged: drag?.edgeID === id || (!!members && !!group?.edges.has(id)),
+        });
+      }
+      applyUi(nodeUi, nodes);
+      applyUi(edgeUi, edges);
+    }
+    watchEffect(() => timed("syncUi", syncUi));
+    // A nagyítási lépcső CSS-változóban: a fogantyúk és a vonalak találati szélessége ebből számol (app.css),
+    // így lépcsőváltáskor egyetlen stílusérték változik, nem rajzolódik újra minden vonal.
+    watchEffect(() => { canvas.value?.style?.setProperty("--zoom-step", zoomStep.value); });
+
+    return () => timed("rootRender", () => {
       if (!board.value) return h("p", {class: problem.value ? "error editor-loading" : "editor-loading"}, problem.value || "Szerkesztő betöltése…");
       const currentStatus = reconnect.value ? "Kattints az új célra vagy a vászonra. Esc a megszakításhoz."
         : "";
@@ -4285,6 +4370,6 @@ createApp({
         ]),
         renderMenu(),
       ];
-    };
+    });
   },
 }).mount(mount);

@@ -267,6 +267,11 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .editor-canvas:is(.alt-held, .ctrl-held) { cursor: crosshair; }
 .editor-canvas.alt-held:not(.ctrl-held, [data-drag-cursor]) .node:not(.occupied) { cursor: copy; }
 .editor-canvas.ctrl-held:not([data-drag-cursor]) :is(.node, .wire-hit) { cursor: crosshair; }
+/* Nagyításfüggő méretek CSS-ből (editor.js: --zoom-step a vásznon, --wire-hit a vonalon): nagyításkor nincs újrarajzolás. */
+.editor-canvas .wire-hit { stroke-width: max(var(--wire-hit, 14px), calc(14px / var(--zoom-step, 1))); }
+.editor-canvas .wire-handle { r: calc(10px / var(--zoom-step, 1)); }
+.editor-canvas.alt-held .wire-handle { pointer-events: none; }
+.editor-canvas.alt-held.ctrl-held [data-body-row] { cursor: text; }
 .editor-canvas[data-drag-cursor="grabbing"] { cursor: grabbing; }
 .editor-canvas[data-drag-cursor="move"] { cursor: move; }
 .editor-canvas[data-drag-cursor="crosshair"] { cursor: crosshair; }
