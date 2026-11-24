@@ -1158,18 +1158,31 @@ createApp({
     // Éles kirajzolás nagyítva (perfOptions.sharp): az előre raszterizált réteg (will-change) a görgethető HTML-tartalmat
     // (táblázat, CSV, szövegfájl) a 100%-os felbontásában tartja, ezért 100% fölött életlen volt. Nyugalomban, 100% fölötti
     // nagyításnál a réteg ezért nem marad külön réteg; a következő mozdulat elején visszakapja (ez ott egy rövid megakadás).
+    // Az élesítés nem a mozdulat végén, hanem utána, rövid nyugalom után történik: nagyítás közben a nézet többször is
+    // rögzül (görgőszünet, a kirajzolt réteg szélének elérése), és a réteg minden ki- és bekapcsolása megakadás – Safariban
+    // ettől ugrált a rács nagyítás közben.
+    let sharpTimer = null;
     function restLayer(k = view.value.k) {
       const style = layerElement()?.style;
       if (!style) return;
+      clearTimeout(sharpTimer);
       const sharp = perfOptions.sharp && k > 1;
-      style.willChange = sharp ? "auto" : "";
-      style.transform = sharp ? "none" : resting();
+      if (!sharp) { style.willChange = ""; style.transform = resting(); return; }
+      // Ha a réteg már éles állapotban van (nem volt közben mozdulat), úgy is marad.
+      if (style.willChange === "auto") { style.transform = "none"; return; }
+      style.transform = resting();
+      sharpTimer = setTimeout(() => {
+        if (pendingView || gesture.value || !(perfOptions.sharp && view.value.k > 1)) return;
+        style.willChange = "auto";
+        style.transform = "none";
+      }, 600);
     }
     let pendingView = null;
     function previewView(transform) {
       pendingView = transform;
       const svg = layerElement(), current = view.value;
       if (!svg?.style) return;
+      clearTimeout(sharpTimer);
       if (svg.style.willChange) svg.style.willChange = "";
       const scale = transform.k / current.k;
       const shiftX = transform.x - scale * current.x, shiftY = transform.y - scale * current.y;

@@ -1,5 +1,11 @@
 # Változások
 
+## 2026-11-24 – Safari: nagyítás közben ugrált a rács (az élesítés késleltetve)
+
+- Feltételezett ok: az „éles kirajzolás nagyítva” javítás a nézet minden rögzítésekor ki-, a következő mozdulatnál visszakapcsolta az előre raszterizált réteget. Nagyítás közben a nézet többször is rögzül (görgőszünet, a kirajzolt réteg széle), a réteg váltása pedig Safariban megakadás.
+- Javítás: a réteg a mozdulat alatt és közvetlenül utána megmarad; az élesítés csak 0,6 mp nyugalom után kapcsol be (`restLayer`, `sharpTimer`). A táblázat / CSV / szöveg így a nagyítás után 0,6 mp-cel lesz éles.
+- Chromiumban ellenőrizve a rétegállapot (mozdulat közben és után megmarad, nyugalomban élesít, új mozdulatnál visszaáll). Safariban nem tudtam megnézni; ha ott továbbra is ugrál, a `localStorage.tnPerf = '{"sharp":false}'` kapcsolóval eldönthető, hogy ez-e az ok. Csak kliensoldali változás.
+
 ## 2026-11-24 – Táblázat / CSV: cellaszerkesztés közben nincs lekerekített keret
 
 - Cellaszerkesztés közben a doboz nem kapja meg a saját kijelölés vastag, lekerekített, világító keretét (`syncUi`, `editor.js`); a többi résztvevő továbbra is látja, hogy a doboz foglalt.
