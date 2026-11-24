@@ -1,5 +1,12 @@
 # Változások
 
+## 2026-11-24 – Közös görgetési helyzet minden görgethető fájltartalomra
+
+- Aki egy szövegfájl-, CSV- vagy táblázatdobozt kijelölve görget (olvasó nézetben vagy cellaszerkesztés közben), annak a görgetési helyzetét a többi szerkesztő és a megtekintő élőben követi (új `scroll` üzenet az élő csatornán, legfeljebb 50 ms-onként; a szerver csak a dobozt fogó résztvevőtől fogadja el).
+- A görgetés végén (0,4 mp nyugalom után) a helyzet a dobozhoz mentődik (`scroll: {x, y}`, `Model.swift`), így a később érkezők és a megtekintő is ugyanott látják a tartalmat (a megtekintő a `data-scroll-x/y` mezőből állítja be). A görgetés nem kerül a visszavonási előzménybe.
+- A dobozt nem fogó résztvevő saját görgetése (pl. a görgetősáv húzásával) helyi marad, és a következő közös változás felülírja.
+- Ellenőrizve két böngészőlappal (Chromium, mérő-adatmappa): élő követés szerkesztőben és megtekintőben, mentés, visszatöltés. A szerver kódja változott (újrafordítva, újraindítva). 72 Swift teszt és a három JS teszt rendben; `gestures.mjs` változatlanul bukik. Safariban nem ellenőriztem.
+
 ## 2026-11-24 – Táblázat / CSV: a többi résztvevő látja a cellakijelölést
 
 - Amíg valaki egy táblázat- vagy CSV-doboz celláit szerkeszti, a többi szerkesztő az olvasó nézetben látja a kijelölt tartományt (az illető színével árnyalva), az aktív cellát (keret) és azt, hogy éppen szerkesztés alatt áll-e (szaggatott keret). A gépelt szöveg nem megy át, az érték a szokásos mentéssel érkezik.

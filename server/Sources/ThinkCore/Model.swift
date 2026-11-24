@@ -249,11 +249,14 @@ package struct Idea: Codable, Equatable, Sendable {
     var frame: Bool?
     /// A keret vastagsága (nil = 1,6, mint minden doboz kerete).
     var frameWidth: Double?
+    /// Görgethető tartalom (szövegfájl, CSV, táblázat) mentett görgetési helyzete képpontban: minden résztvevő és a
+    /// megtekintő is ezt látja. Az állítja, aki a dobozt kijelölve görget.
+    package var scroll: Point?
     var hasFrame: Bool { isImage ? frame == true : type == "preview" && frame != false }
 
     private enum CodingKeys: String, CodingKey {
         case id, type, text, file, hideText, fitText, shape, fill, backgroundMode, animation, bold, italic, underline, font, justified, link
-        case angle, parent, container, locked, elevated, staticPreview, webPublic, uppercase, frame, frameWidth
+        case angle, parent, container, locked, elevated, staticPreview, webPublic, uppercase, frame, frameWidth, scroll
         case position = "pos", width = "w", height = "h", textColor = "textCol"
         case fontSize = "fontSz", alignment = "align", verticalAlignment = "vAlign"
     }
@@ -284,6 +287,7 @@ package struct Idea: Codable, Equatable, Sendable {
               isJunction ? (4...128).contains(width) && height == width : (64...4096).contains(width) && (40...4096).contains(height),
               elevated != true || (parent == nil && !isJunction),
               frameWidth.map({ (0.5...32).contains($0) }) ?? true,
+              scroll.map({ $0.isValid && $0.x >= 0 && $0.y >= 0 }) ?? true,
               (1...10000).contains(fontSize), fontSize.rounded() == fontSize, (1...3).contains(font ?? 1),
               [fill, textColor, border].allSatisfy(validColor),
               link.map({ $0.isValid && has("link") }) ?? true,
@@ -2486,6 +2490,7 @@ extension Idea {
         uppercase = try? fields.decode(Bool.self, forKey: .uppercase)
         frame = try? fields.decode(Bool.self, forKey: .frame)
         frameWidth = try? fields.decode(Double.self, forKey: .frameWidth)
+        scroll = try? fields.decode(Point.self, forKey: .scroll)
         normalizePreview()
     }
 

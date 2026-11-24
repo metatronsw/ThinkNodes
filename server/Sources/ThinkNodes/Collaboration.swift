@@ -330,6 +330,18 @@ final class Collaboration: @unchecked Sendable {
                 }
                 return
             }
+            // Görgetés élő követése: aki a dobozt fogja, annak a görgetési helyzete megy a többieknek (a mentés külön, a
+            // munkalappal történik). Nem tárolódik.
+            struct Scroll: Codable { let scroll: Bool; let node: String; let x: Double; let y: Double }
+            if let frame = try? JSONDecoder().decode(Scroll.self, from: Data(text.utf8)) {
+                guard frame.scroll, frame.x.isFinite, frame.y.isFinite, (0...100_000).contains(frame.x), (0...100_000).contains(frame.y) else { return }
+                self?.lock.withLock {
+                    guard let room = self?.rooms[path.url], let sender = room.peers[client], sender.socket === socket,
+                          !sender.viewing, sender.node == frame.node, sender.seen.duration(to: .now) < .seconds(45) else { return }
+                    for (id, other) in room.peers where id != client { other.socket?.send(text) }
+                }
+                return
+            }
             struct Motion: Codable {
                 let node: String
                 let revision: Int

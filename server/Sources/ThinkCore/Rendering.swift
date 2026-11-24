@@ -47,7 +47,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=58"></script>
+        <script type="module" src="/editor.js?v=59"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -958,7 +958,9 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
             """
     case "text":
         let fold = node.resolvedBackgroundMode == .solid ? " with-fold" : ""
-        content = "<div class=\"node-note\(fold)\" data-font-size=\"\(number(node.fontSize))\">\(fileTextHTML(node, text: text))</div>"
+        // A mentett görgetési helyzetet a megtekintő szkriptje állítja be (viewer.js).
+        let scroll = node.scroll.map { " data-scroll-x=\"\(number($0.x))\" data-scroll-y=\"\(number($0.y))\"" } ?? ""
+        content = "<div class=\"node-note\(fold)\" data-font-size=\"\(number(node.fontSize))\"\(scroll)>\(fileTextHTML(node, text: text))</div>"
     default:
         content = "<div class=\"node-document\"><span class=\"node-document-icon\">\(packageIcon)<b>\(ext)</b></span>\(downloadControl("Letöltés", classes: "node-download button small"))</div>"
     }

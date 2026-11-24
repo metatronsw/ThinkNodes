@@ -188,7 +188,8 @@ export function tableToolbar(h, edit, {compact = false, icon = null} = {}) {
 // görgetés nem rajzol újra. A ráhagyásnak a küszöbnél nagyobbnak kell lennie, különben üres sáv látszana.
 const windowAbove = 480, windowBelow = 640, windowStep = 320;
 
-export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false} = {}) {
+// `onScroll(el)`: a rács görgetésekor hívódik (a görgetési helyzet megosztásához).
+export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false, onScroll = null} = {}) {
   const doc = edit.doc, sel = edit.sel, draft = edit.draft;
   const highlighted = referencedRanges(draft, doc);
   const inRange = (range, r, c) => r >= range.r0 && r <= range.r1 && c >= range.c0 && c <= range.c1;
@@ -320,6 +321,7 @@ export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false
       onVnodeUpdated: ({el}) => attachScrollbars(el), onVnodeBeforeUnmount: ({el}) => detachScrollbars(el),
       onScroll: e => {
         const el = e.currentTarget;
+        onScroll?.(el);
         edit.viewport = el.clientHeight || 400;
         if (Math.abs(el.scrollTop - edit.scrollTop) > windowStep) { edit.scrollTop = el.scrollTop; edit.touch(); }
       }}, [

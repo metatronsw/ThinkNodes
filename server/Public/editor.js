@@ -519,6 +519,45 @@ createApp({
       }
       if (frame.range) peerCells.set(frame.node, markRaw([...(toRaw(peerCells).get(frame.node) ?? []), {peer: frame.cells, color: frame.color, range: frame.range}]));
     }
+    // Közös görgetési helyzet (szövegfájl, CSV, táblázat): aki a dobozt kijelölve görget, annak a helyzetét a többiek
+    // élőben követik (receiveScroll), a görgetés végén pedig a dobozhoz mentődik (`scroll`), így a megtekintő és a később
+    // érkezők is azt látják. Általános szabály minden görgethető fájltartalomra.
+    function receiveScroll(frame) {
+      const note = fileNote(frame.node);
+      if (!note || held.value === frame.node) return;
+      note.scrollLeft = frame.x;
+      note.scrollTop = frame.y;
+    }
+    const scrollSaves = new Map();
+    function shareScroll(node, element) {
+      if (held.value !== node.id || selected.value?.id !== node.id) return;
+      const x = Math.round(element.scrollLeft), y = Math.round(element.scrollTop);
+      live.scroll(node.id, x, y);
+      clearTimeout(scrollSaves.get(node.id));
+      scrollSaves.set(node.id, setTimeout(() => {
+        scrollSaves.delete(node.id);
+        const current = nodeMap.value.get(node.id);
+        if (!current || held.value !== node.id) return;
+        const next = x || y ? {x, y} : undefined;
+        if ((current.scroll?.x ?? 0) === x && (current.scroll?.y ?? 0) === y) return;
+        current.scroll = next;
+        // A görgetés nem visszavonható lépés: a visszavonás alapállapota is megkapja.
+        const base = historyBase?.nodes.find(item => item.id === node.id);
+        if (base) { if (next) base.scroll = {...next}; else delete base.scroll; }
+        markDirty();
+      }, 400));
+    }
+    // A mentett helyzet érvényesítése a doboz görgethető elemén. A dobozt fogó résztvevőnél csak betöltéskor (ő a
+    // forrás); a többieknél minden változáskor. Ha a tartalom még nem töltődött be, a következő rajzoláskor újrapróbálja.
+    function applyScroll(node, element, mounted = false) {
+      const x = node.scroll?.x ?? 0, y = node.scroll?.y ?? 0, key = x + ":" + y;
+      if (element.__scrollKey === key) return;
+      if (!mounted && held.value === node.id) { element.__scrollKey = key; return; }
+      if (element.querySelector("[data-table-editor]")) return;
+      element.scrollLeft = x;
+      element.scrollTop = y;
+      if (Math.abs(element.scrollLeft - x) <= 1 && Math.abs(element.scrollTop - y) <= 1) element.__scrollKey = key;
+    }
     const nodeLayouts = new WeakMap();
     const emptyBlocks = [];
     // Gépelés közben az új szöveg feldolgozásáig az objektum utolsó ismert szövege marad látható
@@ -786,7 +825,7 @@ createApp({
       if (gesture.value) finishPointer({pointerId: gesture.value.pointer}, true);
       if (inspector.value?.kind === "node") inspectNothing();
       problem.value = error.message;
-    }, {editing: true, onCursor: mouse?.receive, onMotion: receiveMotion, onCells: receiveCells, rate: Number(motionRate) || 33});
+    }, {editing: true, onCursor: mouse?.receive, onMotion: receiveMotion, onCells: receiveCells, onScroll: receiveScroll, rate: Number(motionRate) || 33});
 
     // Mentés ütemezése. Mezőszerkesztés (gépelés) közben a mentés a szünetre vár (0,5 mp), de legfeljebb 2 mp-et,
     // így nem megy ki minden leütés után a teljes munkalap; egyébként (húzás, gomb) 70 ms után ment. docs/PLAN.md C5.
@@ -3233,7 +3272,7 @@ createApp({
       } else lastFileTexts.set(node.id, text);
       if (isGrid(node)) {
         tableTick.value;
-        if (tableEdit.value?.id === node.id) return renderTableEditor(h, tableEdit.value.editor, {onExit: stopTableEdit, focusGrid: tableFocus.value});
+        if (tableEdit.value?.id === node.id) return renderTableEditor(h, tableEdit.value.editor, {onExit: stopTableEdit, focusGrid: tableFocus.value, onScroll: element => shareScroll(node, element)});
       }
       if (node.type === "table") {
         const doc = tableDocument(text);
@@ -3275,7 +3314,8 @@ createApp({
       } else if (root === "text") {
         content = h("div", {class: ["node-note", {"with-fold": backgroundMode(node) === "solid"}], style: {fontSize: (node.fontSize ?? 13) + "px"},
           onPointerdown: e => scrollbarPress(e, node), onMousedown: e => scrollbarPress(e, node), onTouchstart: e => scrollbarPress(e, node), onWheel: e => stopScroll(e, node),
-          onVnodeMounted: ({el}) => attachScrollbars(el), onVnodeUpdated: ({el}) => attachScrollbars(el), onVnodeBeforeUnmount: ({el}) => detachScrollbars(el)},
+          onScroll: e => shareScroll(node, e.currentTarget),
+          onVnodeMounted: ({el}) => { attachScrollbars(el); applyScroll(node, el, true); }, onVnodeUpdated: ({el}) => { attachScrollbars(el); applyScroll(node, el); }, onVnodeBeforeUnmount: ({el}) => detachScrollbars(el)},
           [renderFileText(node)]);
       } else {
         const ext = (file.filename ?? file.asset).split(".").pop().toUpperCase();

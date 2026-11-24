@@ -47,12 +47,25 @@ function bindCanvas() {
     element.style.fontSize = element.dataset.fontSize + "px";
   }
   justifyRows(svg);
+  // Mentett görgetési helyzet (a szerkesztőben a dobozt kijelölve görgető résztvevő állítja).
+  for (const element of svg.querySelectorAll(".node-note[data-scroll-y]")) {
+    element.scrollLeft = Number(element.dataset.scrollX) || 0;
+    element.scrollTop = Number(element.dataset.scrollY) || 0;
+  }
   for (const preview of svg.querySelectorAll(".node-web-preview")) {
     if (preview.complete && preview.naturalWidth) preview.dataset.ready = "";
     else preview.addEventListener("load", () => { preview.dataset.ready = ""; }, {once: true});
   }
   hideTooltip();
   bindTooltips(svg);
+}
+
+// Élő görgetés: a szerkesztőben a dobozt fogó résztvevő görgetését a megtekintő is követi.
+function receiveScroll(frame) {
+  const note = main.querySelector('[data-node="' + CSS.escape(frame.node) + '"] .node-note');
+  if (!note) return;
+  note.scrollLeft = frame.x;
+  note.scrollTop = frame.y;
 }
 
 const tooltipBoxes = new WeakSet();
@@ -458,7 +471,7 @@ const live = liveConnection(path, csrf, async state => {
   rosterSignature = undefined;
   peers = [];
   if (!roster.isConnected) main.prepend(roster);
-}, {onMotion: receiveMotion, onCursor: mouse?.receive});
+}, {onMotion: receiveMotion, onCursor: mouse?.receive, onScroll: receiveScroll});
 window.addEventListener("pagehide", live.stop);
 window.addEventListener("pageshow", event => { if (event.persisted) live.start(); });
 live.start();
