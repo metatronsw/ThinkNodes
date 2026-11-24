@@ -45,7 +45,7 @@ func preservingBlankLines(_ source: String) -> String {
 package func htmlPage(title: String, body: String, scripts: Bool = false, updates: PageUpdates.Subscription? = nil) -> Response {
     let assets = scripts ? """
         <script defer src="/vendor/vue.js"></script>
-        <script defer src="/vendor/d3.js"></script>
+        <script defer src="/lib/d3-zoom.js?v=1"></script>
         <script defer src="/vendor/commonmark.js"></script>
         <script type="module" src="/editor.js?v=62"></script>
         """ : ""

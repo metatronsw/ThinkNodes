@@ -38,5 +38,5 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 # Teljesítmény (server/docs/PERF.md „Betöltés és szerver – 2026-11-25”)
 
 + Szerver: HTTP/2 élesben, előre tömörített statikus fájlok, megtekintő oldal gyorsítótára, `usageLocked` és `reconcile` ritkítása.
-+ Kliens: szűkített d3-csomag (külső letöltés), `modulepreload`, `commonmark.js` halasztott betöltése.
++ Kliens: `modulepreload`, `commonmark.js` halasztott betöltése. (A szűkített d3-csomag kész: 2026-11-25.)
 + Mérés: a táblázatszerkesztő görgetése az új fejlécsávokkal (Safari, `perf.py --only table`); a `perf.py` `tabla` lapos futása javítandó (a keresett `n00005` doboz nincs meg).

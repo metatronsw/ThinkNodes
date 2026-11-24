@@ -13,7 +13,8 @@ performance.now = () => realNow() * speed;
 const read = name => readFileSync("Public/vendor/" + name + ".js", "utf8");
 globalThis.ThinkNodesNodeTypes = JSON.parse(readFileSync("Public/node-types.json", "utf8"));
 runInThisContext(read("vue"));
-runInThisContext(read("d3"));
+// A d3 szűkített csomagja (zoom, zoomIdentity, select, pointer): Public/lib/d3-zoom.js, deploy/d3-slim.sh.
+runInThisContext(readFileSync("Public/lib/d3-zoom.js", "utf8"));
 const {Vue, d3} = globalThis;
 function element(tag, text) {
   return Vue.markRaw({tag, text, children: [], props: {}, style: {}, clientWidth: 1200, clientHeight: 800,

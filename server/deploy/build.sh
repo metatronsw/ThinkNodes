@@ -112,7 +112,7 @@ download() {
 }
 cdn=https://cdn.jsdelivr.net/npm
 download vue.js "$cdn/vue@3.5.24/dist/vue.runtime.global.prod.js"
-download d3.js "$cdn/d3@7.9.0/dist/d3.min.js"
+# d3: only the zoom and selection modules are used; the bundle is in the repository (Public/lib/d3-zoom.js, deploy/d3-slim.sh).
 # Same CommonMark spec as the server's cmark-gfm 0.29.
 download commonmark.js "$cdn/commonmark@0.29.3/dist/commonmark.min.js"
 

@@ -527,7 +527,7 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         }
         let (access, local, storedPrefs) = try await req.application.threadPool.runIfActive {
             (try store.access(path, sheet: worksheet, user: user, unlocks: identity.unlocks),
-             [assets + "vendor/vue.js", assets + "vendor/d3.js"].allSatisfy { FileManager.default.fileExists(atPath: $0) },
+             [assets + "vendor/vue.js", assets + "lib/d3-zoom.js"].allSatisfy { FileManager.default.fileExists(atPath: $0) },
              try user.flatMap { try store.settings().preferences?[$0.name] })
         }
         guard access.editable else { return accessDeniedPage(identity, updates: live.pages.subscribe(.index)) }

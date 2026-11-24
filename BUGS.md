@@ -34,3 +34,6 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 - **Táblázatszerkesztő új fejlécsávjai: Chromiumban és CSV-n nincs kipróbálva** (2026-11-25)
   - A ragadó fejlécek helyett külön fejlécsávok vannak (lásd DONE.md). Automatizált Safari 18.6-ban táblázaton ellenőrizve (megjelenés, oszlopszélesség húzása); Chromiumban, CSV-szerkesztésnél, egyedi sormagasságnál és a „méretre igazítás” gombbal még nézendő. A görgetés sebessége az új szerkezettel nincs mérve (2026-11-25-én a `perf.py` nem futott le: az automatizált Safari időzítői álltak).
   - Ha a megnyitott cella a rács legfelső sorába esne, a fejlécsáv alá kerülhet (a korábbi ragadó fejlécnél is így volt).
+
+- **Szűkített d3-csomag: a pásztázás kézzel ellenőrizendő** (2026-11-25)
+  - Automatizált Safariban a nagyítás működik, és a teljes d3-mal azonos eredményt ad; az automatizált húzás (üres vászonról és szóközzel) egyik csomaggal sem mozdította a nézetet, így a pásztázás, az érintéses nagyítás és a „Mind” gomb szemmel nézendő.
