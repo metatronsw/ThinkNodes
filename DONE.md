@@ -6,6 +6,13 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **Táblázat: szerkesztés elfogadása után lassan frissült, és a többi résztvevőnél az egész doboz villant** (2026-11-24)
+  - Ok: 1,5 mp-es mentési késleltetés; a többi kliens az új fájlváltozat betöltéséig „…”-ot rajzolt a tartalom helyett.
+  - Javítás: cellaszerkesztésnél 0,25 mp a késleltetés; betöltés közben a régi tartalom marad látható (`editor.js`, `editFileText`, `renderFileText`).
+
+- **Táblázat: dupla kattintásra mindig az A1 cella és a bal felső sarok jelent meg** (2026-11-24)
+  - Javítás: a kattintott cella nyílik meg szerkesztésre, a görgetési helyzet megmarad (belépéskor és kilépéskor is).
+
 - **Megtekintő: a szövegfájl-, CSV- és táblázatdoboz tartalma kilógott a dobozból** (2026-11-24)
   - Ok: az oldal tartalombiztonsági szabálya (`style-src 'self'`) nem engedi érvényesülni a szerver által beírt `style` attribútumot, így a doboz magassága, a táblázat oszlopszélességei és a cellák formázása elveszett.
   - Javítás: a `viewer.js` (`bindCanvas`) a fájldobozok `style` attribútumát szkriptből állítja be. Chromiumban ellenőrizve (a dobozok a saját méretükben, görgethető tartalommal).

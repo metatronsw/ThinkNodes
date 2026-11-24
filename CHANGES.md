@@ -1,5 +1,13 @@
 # Változások
 
+## 2026-11-24 – Táblázat / CSV: a kattintott cella nyílik meg, nincs villanás, gyorsabb frissítés
+
+- Dupla kattintásra az a cella nyílik meg szerkesztésre, amelyik fölött kattintottak, és a képernyőn a helyén marad (`clickedCell`, `gridOffset`). A cellát a doboz vászonbeli helyéből és a táblázat elrendezéséből számoljuk, nem találatvizsgálatból. A panelről vagy menüből indított szerkesztés az olvasó nézet görgetési helyzetét veszi át; kilépéskor az olvasó nézet ott folytatódik, ahol a szerkesztő állt.
+- Dupla kattintásnál a tulajdonságpanel fájlnév-mezője már nem veszi el a fókuszt a megnyitott cellától.
+- Más résztvevő mentése után a doboz nem villan üresre („…”): az új fájlváltozat betöltéséig a régi tartalom marad látható, a görgetési helyzettel együtt (`lastFileTexts`; szövegfájlra is érvényes).
+- Cellaszerkesztésnél a mentés késleltetése 1,5 mp helyett 0,25 mp. Két böngészőlappal mérve a másik résztvevőnél kb. 0,6 mp-en belül megjelent az új érték, üres állapot nélkül.
+- Ellenőrizve Chromiumban a mérő-adatmappán; Safariban nem. Csak kliensoldali változás (a szerver kódja nem változott).
+
 ## 2026-11-24 – Vászon nézetkorlátok, közvetlenül szerkeszthető CSV, táblázat- és dobozjavítások, főoldal
 
 A felhasználói lista „-” jelű tételei; a „+” jelűek megbeszélésre várnak (TODO.md „Megbeszélendő”).

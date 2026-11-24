@@ -21,7 +21,7 @@ import {glowFilter, glowId, glowReach, glowVNode} from "./glow.js";
 import {awaitWebPreview} from "./web-preview-refresh.js";
 import {cellName, columnName, decodeTable, encodeTable, limits as tableLimits} from "./table/table-document.js";
 import {TableEditor} from "./table/table-edit.js";
-import {renderTable, renderTableEditor, revealActive, tableToolbar} from "./table/table-view.js";
+import {gridOffset, renderTable, renderTableEditor, revealActive, tableToolbar} from "./table/table-view.js";
 import {askNewTable, askReimport, createEmptyTable, createTableFromTSV, exportURL, extensionOf, importableExtensions, tableBoxProperties, tableFromSource, tableFromUpload} from "./table/table-files.js";
 import {looksTabular} from "./table/table-clipboard.js";
 import {detectSeparator, parseCSVRows, writeCSVRows} from "./table/table-csv.js";
@@ -2077,7 +2077,10 @@ createApp({
         if (lastClick?.id === id && lastClick.kind === kind && time-lastClick.time < 450 &&
             Math.hypot(x-lastClick.x,y-lastClick.y) < 10) {
           lastClick = null;
-          editObject(kind,id,event.altKey && kind === "node" ? "text" : true);
+          // Táblázat és CSV: a dupla kattintás a cellaszerkesztést nyitja (a doboz dblclick-kezelője); itt nem nyúlunk a
+          // panelhez, különben a fájlnév mezője elvenné a fókuszt a megnyitott cellától.
+          if (kind === "node" && !event.altKey && isGrid(nodeMap.value.get(id))) { /* a dblclick kezeli */ }
+          else editObject(kind,id,event.altKey && kind === "node" ? "text" : true);
         } else {
           lastClick = {id,kind,time,x,y};
         }
@@ -2847,7 +2850,9 @@ createApp({
       for (const key of new Set(keys)) loadFileText(key);
     }, {immediate: true});
 
-    function editFileText(node, text) {
+    // `delay`: a mentés késleltetése. Gépelésnél (szövegfájl) 1,5 mp; cellaszerkesztésnél rövid, mert ott a változás
+    // már elfogadott érték, és a többi résztvevő csak a mentés után látja.
+    function editFileText(node, text, delay = 1500) {
       htmlTyping.value = true;
       const key = fileTextKey(node);
       fileTexts.value = new Map(fileTexts.value).set(key, text);
@@ -2864,7 +2869,7 @@ createApp({
         fileTexts.value = new Map(fileTexts.value).set(fileTextKey(current, rev), latest);
         if (held.value === current.id) updateItem(current, "file", {...current.file, rev});
         fileSaveState.value = new Map(fileSaveState.value).set(node.id, "Mentve");
-      }), 1500));
+      }), delay));
     }
 
     // Táblázat doboz (docs/EXCEL.md): olvasó nézet a fájl szövegéből, szerkesztési mód a TableEditor vezérlővel.
@@ -2922,7 +2927,25 @@ createApp({
       return writeCSVRows(rows, source.separator, source);
     }
 
-    async function startTableEdit(node) {
+    const fileNote = id => canvas.value?.querySelector?.('[data-node="' + id + '"] .node-note');
+    // Az olvasó nézetben (duplán) kattintott cella: sor, oszlop és a cella helye a táblázaton belül. A kattintás helyét
+    // a doboz vászonbeli helyéből és a táblázat elrendezéséből számoljuk, nem találatvizsgálatból: a mutatót a doboz
+    // fogja el (az esemény célpontja nem a cella), és Safariban a foreignObject-beli találatvizsgálat sem megbízható.
+    function clickedCell(event, node) {
+      const note = fileNote(node.id), table = note?.querySelector("table");
+      if (!table || note.querySelector("[data-table-editor]")) return null;
+      const pixels = (element, key) => parseFloat(getComputedStyle(element)[key]) || 0;
+      const frame = note.closest(".node-file"), point = world(event);
+      const x = point.x - (node.position.x - node.width / 2) - pixels(frame, "paddingLeft") - pixels(note, "paddingLeft") + note.scrollLeft;
+      const y = point.y - (node.position.y - node.height / 2) - pixels(frame, "paddingTop") - pixels(note, "paddingTop") + note.scrollTop;
+      const row = [...table.rows].find(item => y >= item.offsetTop && y < item.offsetTop + item.offsetHeight);
+      const cell = row && [...row.cells].find(item => x >= item.offsetLeft && x < item.offsetLeft + item.offsetWidth);
+      return cell ? {r: row.rowIndex, c: cell.cellIndex, top: cell.offsetTop, left: cell.offsetLeft} : null;
+    }
+
+    // `at`: a kattintott cella (clickedCell) – ez nyílik meg szerkesztésre, és a képernyőn a helyén marad.
+    // Cella nélkül (panel, menü) a szerkesztő az olvasó nézet görgetési helyzetét veszi át.
+    async function startTableEdit(node, at = null) {
       if (occupied(node.id) || !online.value) return;
       hideTooltip();
       if (!(await selectNode(node.id))) return;
@@ -2944,9 +2967,25 @@ createApp({
       }
       const editor = new TableEditor(doc, {plain, onChange: next => {
         const target = nodeMap.value.get(node.id);
-        if (target?.file && held.value === node.id) editFileText(target, encode(next));
+        if (target?.file && held.value === node.id) editFileText(target, encode(next), 250);
       }});
       editor.touch = () => { editor.version++; tableTick.value++; };
+      const note = fileNote(node.id);
+      const scroll = {top: note?.scrollTop ?? 0, left: note?.scrollLeft ?? 0};
+      if (at && at.r >= 0 && at.c >= 0) {
+        const r = Math.min(at.r, doc.size.rows - 1), c = Math.min(at.c, doc.size.cols - 1);
+        editor.active = {r, c};
+        editor.anchor = {r, c};
+        // A szerkesztőben a rács a képletsor alatt kezdődik, az olvasó nézetnek belső térköze van: ezekkel igazítva a
+        // cella ott marad, ahol a kattintás érte.
+        const target = gridOffset(doc, r, c);
+        editor.scrollTop = Math.max(0, Math.round(target.top + 20 - (at.top - scroll.top)));
+        editor.scrollLeft = Math.max(0, Math.round(target.left - 2 - (at.left - scroll.left)));
+        editor.startDraft();
+      } else {
+        editor.scrollTop = scroll.top;
+        editor.scrollLeft = scroll.left;
+      }
       revealedCell = null;
       tableFocus.value = true;
       tableEdit.value = {id: node.id, editor};
@@ -2956,8 +2995,15 @@ createApp({
       const active = tableEdit.value;
       if (!active) return;
       active.editor.commitDraft();
+      // Az olvasó nézet ott folytatódik, ahol a szerkesztő állt.
+      const scroller = fileNote(active.id)?.querySelector(".tn-table-scroll");
+      const position = scroller && {top: scroller.scrollTop, left: scroller.scrollLeft};
       tableEdit.value = null;
       tableFocus.value = false;
+      if (position) nextTick(() => {
+        const note = fileNote(active.id);
+        if (note) { note.scrollTop = position.top; note.scrollLeft = position.left; }
+      });
     }
 
     watch(held, id => { if (tableEdit.value && tableEdit.value.id !== id) stopTableEdit(); });
@@ -3148,12 +3194,16 @@ createApp({
     }
     const scrollbarPress = (e, node) => { if (onScrollbar(e, node, e.currentTarget)) e.stopPropagation(); };
 
+    // A fájl utolsó ismert tartalma dobozonként: amíg egy új változat (más résztvevő mentése után) töltődik, a régi
+    // tartalom marad látható, így a doboz nem villan üresre, és a görgetési helyzete is megmarad.
+    const lastFileTexts = new Map();
     function renderFileText(node) {
-      const text = fileTexts.value.get(fileTextKey(node));
+      let text = fileTexts.value.get(fileTextKey(node));
       if (text == null) {
         if (!fileTexts.value.has(fileTextKey(node))) queueMicrotask(() => loadFileText(fileTextKey(node)));
-        return h("p", {class: "muted"}, "…");
-      }
+        text = lastFileTexts.get(node.id);
+        if (text == null) return h("p", {class: "muted"}, "…");
+      } else lastFileTexts.set(node.id, text);
       if (isGrid(node)) {
         tableTick.value;
         if (tableEdit.value?.id === node.id) return renderTableEditor(h, tableEdit.value.editor, {onExit: stopTableEdit, focusGrid: tableFocus.value});
@@ -3388,7 +3438,7 @@ createApp({
           // Előnézetes (linkes) doboz: dupla kattintás megnyitja a linket; Alt-tal a szerkesztés marad.
           if (node.type === "preview" && destination && !event.altKey) { followBoxLink(destination); return; }
           // Táblázat és CSV: dupla kattintás a cellák szerkesztése (docs/EXCEL.md 6. fejezet); Alt-tal a tulajdonságpanel.
-          if (isGrid(node) && !event.altKey) { startTableEdit(node); return; }
+          if (isGrid(node) && !event.altKey) { startTableEdit(node, clickedCell(event, node)); return; }
           if (isGrid(node)) { editObject("node", node.id, true); return; }
           editObject("node", node.id, event.altKey ? "text" : true);
         },

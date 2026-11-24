@@ -48,6 +48,14 @@ export function tableWidth(doc, withHeader = false) {
   return width;
 }
 
+// Egy cella bal felső sarka a szerkesztő rácsán belül (az oszlopfejléc sora és a sorfejléc oszlopa után).
+export function gridOffset(doc, r, c) {
+  let top = defaultRowHeight, left = rowHeadWidth;
+  for (let row = 0; row < r; row++) top += rowHeight(doc, row);
+  for (let col = 0; col < c; col++) left += columnWidth(doc, col);
+  return {top, left};
+}
+
 function colgroup(h, doc, withHeader) {
   const cols = [];
   if (withHeader) cols.push(h("col", {style: {width: rowHeadWidth + "px"}}));
@@ -251,7 +259,7 @@ export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false
 
   const stop = e => e.stopPropagation();
   return h("div", {class: "tn-table-editor", tabindex: -1, "data-table-editor": "",
-    onVnodeMounted: ({el}) => { if (focusGrid) focusSink(el); },
+    onVnodeMounted: ({el}) => { if (focusGrid && edit.draft == null) focusSink(el); },
     onPointerdown: stop, onDblclick: stop, onClick: stop, onContextmenu: stop,
     onKeydown: event => {
       event.stopPropagation();
@@ -296,7 +304,7 @@ export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false
     edit.problem ? h("p", {class: "tn-problem", role: "alert"}, edit.problem) : null,
     // A görgethető rács külön tartóban áll: Safariban ide kerülnek mellé a saját görgetősávok (scrollbar-drag.js).
     h("div", {class: "tn-table-scroll-host"}, [h("div", {class: "tn-table-scroll",
-      onVnodeMounted: ({el}) => { edit.viewport = el.clientHeight || 400; el.scrollTop = edit.scrollTop; attachScrollbars(el); },
+      onVnodeMounted: ({el}) => { edit.viewport = el.clientHeight || 400; el.scrollTop = edit.scrollTop; el.scrollLeft = edit.scrollLeft ?? 0; attachScrollbars(el); },
       onVnodeUpdated: ({el}) => attachScrollbars(el), onVnodeBeforeUnmount: ({el}) => detachScrollbars(el),
       onScroll: e => {
         const el = e.currentTarget;
