@@ -1,6 +1,6 @@
 # A vászonszerkesztő teljesítménye – mérések és változatok (2026-11-24)
 
-Ág: `perf` (a `main` érintetlen). Mérés: Safari 18.6, release szerver, tesztmód, ideiglenes mérő-adatmappa
+A `perf` ágon készült, 2026-11-24-én beolvasztva a `main`-be az alapbeállításokkal. Mérés: Safari 18.6, release szerver, tesztmód, ideiglenes mérő-adatmappa
 (`server/.build/perf-data`, sosem a valódi `projects`). A mérőeszközök: `server/Tests/Perf/`.
 
 ## Hogyan mérünk

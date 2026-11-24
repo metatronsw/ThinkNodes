@@ -1,8 +1,8 @@
 # Változások
 
-## 2026-11-24 – Teljesítménykísérletek a vászonszerkesztőn (`perf` ág, nincs beolvasztva)
+## 2026-11-24 – Teljesítményjavítás a vászonszerkesztőn (a `perf` ág beolvasztva a `main`-be)
 
-- Négy egymásra épülő változat (A–D) a `perf` ágon, kapcsolható kísérleti beállításokkal (`localStorage.tnPerf`); mérések, okok, eredménytáblák: `server/docs/PERF.md`.
+- Négy egymásra épülő változat (A–D), mind beolvasztva az alapbeállításokkal (a mérésben leggyorsabb kombináció), kapcsolható kísérleti beállításokkal (`localStorage.tnPerf`); mérések, okok, eredménytáblák: `server/docs/PERF.md`.
 - Fő eredmények Safari 18.6-ban, release szerveren (300 / 1000 doboz): kijelölés késése 108 → 26 ms / 312 → 28 ms; gyors pásztázás 49 → 60 fps / 21 → 51 fps; lassú nagyítás 17 → 53 fps / 11 → 44 fps; csoport húzása 17 → 48 fps / 8 → 25 fps; másik felhasználó húzása közben 36 → 60 fps.
 - Nem javult eleget: a nagyítás végi újrafestés (80–190 ms) és a táblázat szerkesztési módjának görgetése (~50 fps).
 - Új mérőeszközök: `server/Tests/Perf/` (adatgenerátor, Safari-mérő, képkocka-rögzítő, második felhasználó); új indítási beállítás: `thinknodes-perf`.

@@ -26,7 +26,7 @@
 
 ### Kliens (C)
 
-- **C9 – Célzott újrarajzolás, réteg- és rácskezelés (kész a `perf` ágon, 2026-11-24).** Mérések, változatok, kapcsolók és nyitott tételek: `docs/PERF.md`.
+- **C9 – Célzott újrarajzolás, réteg- és rácskezelés (kész, 2026-11-24).** Mérések, változatok, kapcsolók és nyitott tételek: `docs/PERF.md`.
 - **C4 – Árnyékok és átlátszó dobozok (maradék).** A mozgás közbeni szűrő-kikapcsolás kész. Hátra: mérni, hogy a dobozonkénti elmosás (`feGaussianBlur`) festési költsége állandó nagyításnál jelentős-e. Ha igen, elmosott háttér helyett közös szűrő vagy előre elmosott alakzat.
 - **C7 – Kisebb d3.** A teljes d3 (280 KB) csak a zoom miatt töltődik be; saját `d3-zoom` + `d3-selection` build. Csak betöltési idő.
 - **C8 – Tooltip.** Átfedő szövegű dobozra minden rámutatáskor `/api/text` kérés megy; gyorsítótárazni kell.

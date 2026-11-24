@@ -4,8 +4,8 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 ## Nyitott
 
-- **Teljesítmény (perf ág): nagyítás végén 80–190 ms-os képkocka; táblázatszerkesztés görgetése ~50 fps** (2026-11-24)
-  - A `perf` ág mérései szerint ez a két terület nem javult eleget; részletek és a kipróbált megoldások: `server/docs/PERF.md` („Ami nem javult vagy nyitva maradt”).
+- **Teljesítmény: nagyítás végén 80–190 ms-os képkocka; táblázatszerkesztés görgetése ~50 fps** (2026-11-24)
+  - A mérések szerint ez a két terület nem javult eleget; részletek és a kipróbált megoldások: `server/docs/PERF.md` („Ami nem javult vagy nyitva maradt”).
   - A `contain: strict` gyorsította a táblázatgörgetést (42 → 54 fps), de Safariban a rétegződő elem foreignObject-ben nem kattintható, ezért kikerült.
 
 - **Safari: a táblázatszerkesztő oszlopszélesség-fogója (`.tn-resize`) nem kattintható, a ragadó fejlécek ellenőrizendők** (2026-11-24)
@@ -22,6 +22,6 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 - **`Tests/Editor/gestures.mjs` elbukik** – már a TODO.md-ben is szerepel (`ownUnderlay`); a táblázat munka előtt is így volt (2026-11-24, ellenőrizve az eredeti `editor.js`-szel).
   - `markdownEditor` `adjust`: a teszt hamis DOM-jában a `getComputedStyle` / `el.style` hiányzik (`reading 'height'`).
   - 311. sor: `button("Mentés")` nem található (a Mentés gomb azóta átalakult).
-  - A `perf` ágon a 253. sor állítása a kurzor-pajzshoz igazodott (`data-drag-cursor` húzás közben már nincs a vásznon); a teszt ugyanott bukik el, ahol a `main`-en.
+  - A 253. sor állítása a kurzor-pajzshoz igazodott (`data-drag-cursor` húzás közben már nincs a vásznon); a teszt ugyanott bukik el, ahol a teljesítményjavítás előtt.
 
 
