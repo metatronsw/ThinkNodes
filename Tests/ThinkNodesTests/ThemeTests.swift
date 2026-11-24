@@ -41,7 +41,7 @@ import VaporTesting
                                          target: ConnectionTarget(point: Point(x: 120, y: 140)), type: .sCurve))
     let glass = boardSVG(vectorStudio, mode: "dark")
     #expect(glass.contains(##"fill="url(#glass-sheen)" pointer-events="none""##))
-    #expect(glass.contains(##"fill="#282534" stroke="url(#glass-rim)" stroke-width="3" fill-opacity=".66""##))
+    #expect(glass.contains(##"fill="#282534" stroke="url(#glass-rim)" stroke-width="1.6" fill-opacity=".66""##))
     #expect(glass.contains("data-wire-taper"))
     var withoutArrows = vectorStudio
     withoutArrows.edges[0].startArrow = false

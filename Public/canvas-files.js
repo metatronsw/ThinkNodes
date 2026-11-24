@@ -109,7 +109,7 @@ function formatJSON(source) {
   return output.join("");
 }
 
-async function storeAttachment(blob, path, csrf, name) {
+export async function storeAttachment(blob, path, csrf, name) {
   if (blob.size > 12*1024*1024) throw Error("A fájl legfeljebb 12 MiB lehet.");
   const response = await fetch(attachmentURL(path, name), {
     method: "POST", headers: {"Content-Type": "application/octet-stream", "X-CSRF-Token": csrf}, body: blob,

@@ -77,6 +77,21 @@
         "tsv"
       ]
     },
+    "table": {
+      "label": "Táblázat",
+      "base": "text",
+      "extensions": [
+        "tntable"
+      ],
+      "traits": [
+        "file",
+        "table",
+        "comment",
+        "surface",
+        "elevation",
+        "size"
+      ]
+    },
     "image": {
       "label": "Kép",
       "file": "media",

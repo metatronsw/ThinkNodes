@@ -11,9 +11,12 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-crypto.git", "3.8.0"..<"5.0.0")
     ],
     targets: [
+        // Táblázat doboz (EXCEL.md): Vapor-független modul, a natív kliens is használhatja.
+        .target(name: "ThinkTable"),
         .executableTarget(
             name: "ThinkNodes",
             dependencies: [
+                "ThinkTable",
                 .product(name: "Vapor", package: "vapor"),
                 .product(name: "NIOSSL", package: "swift-nio-ssl"),
                 .product(name: "cmark-gfm", package: "swift-cmark"),
@@ -24,6 +27,7 @@ let package = Package(
         .testTarget(
             name: "ThinkNodesTests",
             dependencies: ["ThinkNodes", .product(name: "VaporTesting", package: "vapor")]
-        )
+        ),
+        .testTarget(name: "ThinkTableTests", dependencies: ["ThinkTable"])
     ]
 )

@@ -2,6 +2,7 @@ import Foundation
 #if canImport(FoundationXML)
 import FoundationXML
 #endif
+import ThinkTable
 import Vapor
 
 struct Point: Codable, Equatable, Sendable {
@@ -945,7 +946,8 @@ final class WorksheetStore: @unchecked Sendable {
                       : project.flatMap({ node.file?.sheet(from: $0) }).flatMap({ try? sharedFile($0, named: asset) }),
                   let handle = try? FileHandle(forReadingFrom: file) else { continue }
             defer { try? handle.close() }
-            let bytes = (try? handle.read(upToCount: 200_000)) ?? Data()
+            // A táblázat JSON-ja csak egészben olvasható; a többi szövegfájlnak elég az eleje.
+            let bytes = (try? handle.read(upToCount: node.type == "table" ? TableLimits.maxBytes : 200_000)) ?? Data()
             result[asset] = String(decoding: bytes, as: UTF8.self)
         }
         return result
@@ -1516,6 +1518,8 @@ final class WorksheetStore: @unchecked Sendable {
                 throw Abort(.payloadTooLarge, reason: "A fájl legfeljebb 12 MiB lehet.")
             }
             let ext = (name as NSString).pathExtension.lowercased()
+            // Táblázat: ellenőrzés és szerveres újraszámolás mentés előtt (EXCEL.md).
+            let bytes = ext == TableFiles.fileExtension ? try TableFiles.normalized(bytes) : bytes
             guard replaceText || matchesAttachmentType(bytes, extension: ext) else {
                 throw Abort(.unsupportedMediaType, reason: "A fájltípus nem támogatott, vagy a tartalom eltér a kiterjesztéstől.")
             }
@@ -1526,6 +1530,9 @@ final class WorksheetStore: @unchecked Sendable {
                 guard let existing = try attachments(at: worksheet, named: name, metadata: metadata).first,
                       canvasMediaTypes[existing.pathExtension.lowercased()] == nil, NodeTypes.isPlainText(bytes),
                       NodeTypes.isPlainText(try Data(contentsOf: existing)) else { throw Abort(.badRequest) }
+                // A név lehet azonosító (`file-…`); a táblázatot a tényleges fájlnév ismeri fel.
+                let bytes = existing.pathExtension.lowercased() == TableFiles.fileExtension && ext != TableFiles.fileExtension
+                    ? try TableFiles.normalized(bytes) : bytes
                 try bytes.write(to: existing, options: .atomic)
                 return name
             }

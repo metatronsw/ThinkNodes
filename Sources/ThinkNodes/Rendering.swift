@@ -1,4 +1,5 @@
 import Foundation
+import ThinkTable
 import Vapor
 import cmark_gfm
 
@@ -731,7 +732,8 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
     let inset = node.shape.labelRatios.link
     // Előnézetes doboz: a link felirata a doboz felett (mint a fájlnév), a megjegyzés alatta.
     let marker = node.link.map { linkMarker($0, node: node, bottom: node.type == "preview" ? -y - 6 : y + 20, width: node.width, siteHost: siteHost) } ?? ""
-    let noteBelow = node.type == "preview" && !node.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    // Kikapcsolt előnézetnél (`staticPreview`) a szöveg a dobozban van, alatta nem ismétlődik.
+    let noteBelow = node.type == "preview" && node.fillsWithPreview && !node.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         ? "<foreignObject x=\"\(number(-x))\" y=\"\(number(y))\" width=\"\(number(width))\" height=\"4000\" pointer-events=\"none\"><div xmlns=\"http://www.w3.org/1999/xhtml\" class=\"node-below\" style=\"color:\(escaped(node.textColor))\"><footer class=\"node-comment formatted-text align-\(node.alignment.rawValue)\">\(markdownHTML(visibleComment(node)))</footer></div></foreignObject>" : ""
     let previewImage = preview.map { url in
         if node.fillsWithPreview {
@@ -884,6 +886,10 @@ func fileTextHTML(_ node: Idea, text: String?) -> String {
     let preview = String(text.prefix(200_000))
     let ext = (node.file?.filename.map { ($0 as NSString).pathExtension } ?? "").lowercased()
     switch node.type {
+    case "table":
+        // Táblázat doboz (EXCEL.md): a szerver által számolt értékek, a teljes fájlból (nem csak az elejéből).
+        guard let document = try? TableDocument.decode(Data(text.utf8)) else { return "<p class=\"muted\">A táblázat nem olvasható.</p>" }
+        return "<div class=\"tn-table-wrap\">" + TableHTML.render(document) + "</div>"
     case "csv":
         let rows = parseCSV(preview, separator: ext == "tsv" ? "\t" : ",")
         guard let head = rows.first else { return "<table class=\"node-csv\"></table>" }

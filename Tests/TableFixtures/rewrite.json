@@ -1,0 +1,15 @@
+[
+  {"formula": "A1+B2", "op": "shift", "axis": "row", "at": 1, "count": 1, "expect": "A1+B3"},
+  {"formula": "SUM(A1:A5)", "op": "shift", "axis": "row", "at": 2, "count": 2, "expect": "SUM(A1:A7)"},
+  {"formula": "SUM(A1:A5)", "op": "shift", "axis": "row", "at": 1, "count": -2, "expect": "SUM(A1:A3)"},
+  {"formula": "SUM(A2:A3)", "op": "shift", "axis": "row", "at": 1, "count": -2, "expect": "SUM(#REF!)"},
+  {"formula": "A2*2", "op": "shift", "axis": "row", "at": 1, "count": -1, "expect": "#REF!*2"},
+  {"formula": "A3*2", "op": "shift", "axis": "row", "at": 1, "count": -1, "expect": "A2*2"},
+  {"formula": "$C$3 + szum(c1:d2)", "op": "shift", "axis": "col", "at": 0, "count": 1, "expect": "$D$3 + szum(D1:E2)"},
+  {"formula": "SUM(B:B)", "op": "shift", "axis": "col", "at": 1, "count": 1, "expect": "SUM(C:C)"},
+  {"formula": "'Bevétel'!A1+A1", "op": "shift", "axis": "row", "at": 0, "count": 1, "expect": "'Bevétel'!A1+A2"},
+  {"formula": "A1+$B$2+B$1", "op": "move", "rows": 1, "cols": 1, "expect": "B2+$B$2+C$1"},
+  {"formula": "SUM(A1:A3)", "op": "move", "rows": 0, "cols": 2, "expect": "SUM(C1:C3)"},
+  {"formula": "A1*2", "op": "move", "rows": -1, "cols": 0, "expect": "#REF!*2"},
+  {"formula": "\"A1\"&A1", "op": "move", "rows": 1, "cols": 0, "expect": "\"A1\"&A2"}
+]

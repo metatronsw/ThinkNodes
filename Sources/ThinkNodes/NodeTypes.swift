@@ -31,6 +31,8 @@ enum NodeTypes {
         "text": .init(file: "text", traits: ["file", "fileText", "comment", "surface", "elevation", "size"]),
         "code": .init(base: "text", extensions: ["json", "js", "mjs", "swift", "css"]),
         "csv": .init(base: "text", extensions: ["csv", "tsv"]),
+        "table": .init(label: "Táblázat", base: "text", extensions: ["tntable"],
+                       traits: ["file", "table", "comment", "surface", "elevation", "size"]),
         "image": .init(file: "media", extensions: ["png", "jpg", "jpeg", "gif", "webp", "svg"],
                        traits: ["file", "comment", "alpha", "surface", "elevation", "size", "link"]),
         "audio": .init(file: "media", extensions: ["mp3", "wav", "ogg", "flac", "m4a", "aac"],

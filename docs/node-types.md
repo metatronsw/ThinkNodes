@@ -20,6 +20,7 @@ A 2-es sémájú munkalap megnyitáskor és importáláskor a 3-as objektummodel
 |---|---|---|
 | Alap doboz / konténer | `box` | Konténer = doboz, amibe már húztak valamit. Konténer marad úgy, mint most: csak `box` lehet az. |
 | Szöveges fájl | `text` | Minden nem bináris fájl (.txt, .md, .json, .css, .js, .mjs, .swift, …) egy viselkedést követ. |
+| Táblázat | `table` | `base: text`, `.tntable` fájl; képletek, formázás, CSV-import. Terv és állapot: `EXCEL.md`. |
 | Kép | `image` | |
 | Dokumentum | `document` | Minden más (bináris) fájl: .pdf, .doc, .docx, .zip, … |
 | Hang | `audio` | Minden hangfájl egy viselkedést követ; a lejátszó egyelőre csak mp3-at játszik. |

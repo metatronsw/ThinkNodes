@@ -4,8 +4,20 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 ## Nyitott
 
+- **`Tests/Editor/gestures.mjs` elbukik** – már a TODO.md-ben is szerepel (`ownUnderlay`); a táblázat munka előtt is így volt (2026-11-24, ellenőrizve az eredeti `editor.js`-szel).
+  - `markdownEditor` `adjust`: a teszt hamis DOM-jában a `getComputedStyle` / `el.style` hiányzik (`reading 'height'`).
+  - 311. sor: `button("Mentés")` nem található (a Mentés gomb azóta átalakult).
+
 
 ## Javítva
+
+- **`ThemeTests.themeProjectRoundTrip` elbukott** (2026-11-24)
+  - Ok: a teszt még a régi, 3-as vastagságú üvegkeretet várta; a renderelés szándékosan egységes, 1,6-os keretet ad („minden doboz kerete egyforma vastag”).
+  - Javítás: a teszt elvárása frissítve (`Tests/ThinkNodesTests/ThemeTests.swift`).
+
+- **Linkes doboz szövege kétszer látszott, ha az előnézet ki volt kapcsolva** (2026-11-24)
+  - Ok: `staticPreview: true` mellett a szöveg a dobozban is kirajzolódott (`labelLayout`), és megjegyzésként a doboz alatt is.
+  - Javítás (döntés szerint a doboz alatti marad el): a doboz alatti megjegyzés csak akkor jelenik meg, ha az előnézeti kép tölti ki a dobozt (`Rendering.swift` `noteBelow` + `fillsWithPreview`, `Public/editor.js` ugyanígy). Teszt: `staticPreviewLinkBoxShowsTextOnlyOnce`.
 
 - **A szerkesztő `.web` előnézet-frissítése hibát dobott: `awaitWebPreview is not defined`** (2026-11-23)
   - Ok: a `168ca5b` commit az `editor.js`-ben használja az `awaitWebPreview`-t, de az importja kimaradt; minden `.web` dobozos lapon konzolhiba, a háttérben elkészült előnézet nem töltődött újra.

@@ -1395,3 +1395,14 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     let keys = Set(try store.unlock(child, password: "project-pass", user: member))
     #expect(try store.load(child, user: member, unlocks: keys).nodes.isEmpty)
 }
+
+/// BUGS.md: kikapcsolt előnézetnél (`staticPreview`) a linkes doboz szövege csak a dobozban látszik, alatta nem ismétlődik.
+@Test func staticPreviewLinkBoxShowsTextOnlyOnce() {
+    var withPreview = Idea(id: "kartya", type: "preview", text: "Egyszer látszik", position: Point(x: 0, y: 0),
+                           link: NodeLink(kind: .url, target: "https://example.com"))
+    #expect(boardSVG(Worksheet(title: "Link", nodes: [withPreview])).contains("node-below"))
+    withPreview.staticPreview = true
+    let svg = boardSVG(Worksheet(title: "Link", nodes: [withPreview]))
+    #expect(!svg.contains("node-below"))
+    #expect(svg.contains("Egyszer látszik"))
+}

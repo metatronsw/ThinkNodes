@@ -896,6 +896,14 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         return .noContent
     }
 
+    // Táblázat doboz (EXCEL.md): forrásfájlból táblázat, forrásfájl figyelése.
+    registerTableRoutes(app, store: store, identity: { req in
+        let identity = try session(req, store: store)
+        guard identity.user != nil || req.hasSession else { throw Abort(.unauthorized) }
+        return (identity.user, identity.unlocks)
+    }, verify: { req in try verify(req, token: req.headers.first(name: "X-CSRF-Token")) },
+       changed: { path in live.pages.publish(.attachments, at: path) })
+
     @Sendable func browseCommon(_ req: Request) async throws -> BrowseListing {
         _ = try session(req, store: store)
         let folders = req.parameters.getCatchall().map { $0.removingPercentEncoding ?? $0 }

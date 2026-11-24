@@ -913,3 +913,65 @@ svg text { text-rendering: geometricPrecision; }
 .package-warnings ul { max-height: 30vh; overflow-y: auto; margin: 6px 0 0; padding-left: 18px; font-size: .9em; }
 .package-dialog .editor-membership select { width: auto; flex: 0 1 60%; }
 .package-dialog .editor-membership span { flex: 1 1 auto; min-width: 0; }
+
+/* Táblázat doboz (EXCEL.md). A szerver (TableHTML.swift) és a szerkesztő (table/table-view.js) ugyanezt a szerkezetet adja. */
+.tn-table-wrap { min-width: max-content; }
+.tn-table { border-collapse: collapse; table-layout: fixed; font-size: .9em; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.tn-table :is(th, td) { padding: 2px 6px; height: 24px; box-sizing: border-box; border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left; font-weight: inherit; }
+.tn-table.no-grid :is(th, td) { border-color: transparent; }
+.tn-table thead th { font-weight: 650; position: sticky; top: 0; background: color-mix(in srgb, currentColor 7%, Canvas); z-index: 1; }
+.tn-table td.num, .tn-table th.num { text-align: right; }
+.tn-table td.bool, .tn-table th.bool { text-align: center; }
+.tn-table td.err { color: #b00020; text-align: center; }
+.tn-table td.fixed { background-image: linear-gradient(225deg, #e39a2b 5px, transparent 5px); }
+.tn-table-more { margin: 4px 0 0; font-size: .8em; opacity: .7; }
+.tn-table-box { position: relative; }
+.tn-source-badge { position: absolute; top: 2px; right: 2px; z-index: 2; padding: 0 5px; border-radius: 9px; background: #e39a2b; color: #fff; font-size: 12px; line-height: 18px; }
+
+/* Szerkesztési mód */
+.node-note:has(.tn-table-editor) { overflow: hidden; padding: 0; }
+.tn-table-editor { display: flex; flex-direction: column; height: 100%; min-height: 0; outline: none; color: #1d2433; background: #fff; font-size: 13px; }
+.tn-table-editor:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
+.tn-formula-bar { display: flex; align-items: center; gap: 4px; padding: 3px 4px; border-bottom: 1px solid #d9dfeb; background: #f6f8fc; }
+.tn-name { min-width: 46px; padding: 2px 4px; border: 1px solid #d9dfeb; border-radius: 4px; background: #fff; font: 600 12px/1.3 ui-monospace, monospace; text-align: center; }
+.tn-fx { color: var(--muted); font-style: italic; font-size: 12px; }
+.tn-formula { flex: 1; min-width: 0; padding: 2px 6px; border: 1px solid #d9dfeb; border-radius: 4px; font: 12px/1.4 ui-monospace, monospace; }
+.tn-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; padding: 3px 4px; }
+.tn-toolbar.compact { border-bottom: 1px solid #d9dfeb; background: #fbfcfe; }
+.tn-tool { min-width: 26px; height: 24px; padding: 0 6px; font-size: 12px; line-height: 1; }
+.tn-tool-b { font-weight: 800; } .tn-tool-i { font-style: italic; } .tn-tool-u { text-decoration: underline; } .tn-tool-o { text-decoration: overline; }
+.tn-select { height: 24px; max-width: 120px; padding: 0 4px; border: 1px solid #d9dfeb; border-radius: 5px; background: #fff; font-size: 12px; }
+.tn-color { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 24px; border: 1px solid #d9dfeb; border-radius: 5px; background: #fff; font-weight: 700; font-size: 12px; cursor: pointer; }
+.tn-color input { position: absolute; inset: auto 2px 1px 2px; width: calc(100% - 4px); height: 5px; padding: 0; border: 0; cursor: pointer; }
+.tn-problem { margin: 0; padding: 3px 6px; color: #b00020; font-size: 12px; }
+.tn-table-scroll { flex: 1; min-height: 0; overflow: auto; }
+.tn-table.tn-editing { font-size: 13px; }
+.tn-table.tn-editing td { cursor: cell; user-select: none; }
+.tn-table.tn-editing .tn-colhead th, .tn-table.tn-editing .tn-rowhead { position: sticky; background: #eef1f7; color: #536780; font: 600 11px/1 system-ui, sans-serif; text-align: center; user-select: none; }
+.tn-table.tn-editing .tn-colhead th { top: 0; z-index: 2; }
+.tn-table.tn-editing .tn-rowhead { left: 0; z-index: 1; }
+.tn-table.tn-editing .tn-corner { left: 0; z-index: 3; }
+.tn-table.tn-editing :is(.tn-colhead th, .tn-rowhead).selected { background: #d7def5; color: var(--accent-ink); }
+.tn-table.tn-editing .tn-colhead th { position: sticky; }
+.tn-resize { position: absolute; top: 0; right: -3px; width: 7px; height: 100%; cursor: col-resize; z-index: 4; }
+.tn-table.tn-editing td.selected { background-image: linear-gradient(#304ccc22, #304ccc22); }
+.tn-table.tn-editing td.active { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tn-table.tn-editing td.header { font-weight: 650; }
+.tn-table.tn-editing td.tn-ref { outline: 2px dashed #1f8a4c; outline-offset: -2px; }
+.tn-table.tn-editing td.tn-ref-1 { outline-color: #b4561c; } .tn-table.tn-editing td.tn-ref-2 { outline-color: #7b3fb5; } .tn-table.tn-editing td.tn-ref-3 { outline-color: #0f6fa8; }
+.tn-table.tn-editing td:has(.tn-cell-input) { padding: 0; overflow: visible; }
+.tn-cell-input { width: 100%; height: 100%; box-sizing: border-box; padding: 2px 5px; border: 0; outline: 2px solid var(--accent); font: inherit; background: #fff; }
+.tn-spacer td, tr.tn-spacer { padding: 0; border: 0; }
+
+/* Panel */
+.tn-source-changed { display: grid; gap: 6px; padding: 8px; border-radius: 6px; background: #fff4e0; color: #7a4b00; font-size: .88rem; }
+.tn-source { margin: 0; font-size: .85rem; overflow-wrap: anywhere; }
+
+/* Párbeszédablakok (table/table-files.js) */
+.table-dialog { max-width: 420px; padding: 18px; display: grid; gap: 12px; }
+.table-dialog h3 { margin: 0; }
+.table-dialog p { margin: 0; }
+.table-dialog-options { display: grid; gap: 8px; }
+.table-dialog-options .button { justify-content: flex-start; text-align: left; }
+.table-dialog-remember { font-size: .9rem; color: var(--muted); }
