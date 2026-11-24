@@ -35,7 +35,7 @@ const tally = name => window.__perf?.count(name);
 const timed = (name, run) => window.__perf ? window.__perf.time(name, run) : run();
 // Teljesítmény-kapcsolók kísérletezéshez (docs/PERF.md): localStorage.tnPerf = '{"overscan":0.5,"moving":"all",…}', majd újratöltés.
 // Alapértékek: a mérések szerint legjobb beállítás; a kapcsolókkal a korábbi viselkedés visszaállítható és összemérhető.
-const perfOptions = {overscan: 1, moving: "gesture", shield: true, rest: true, grid: "css",
+const perfOptions = {overscan: 1, moving: "gesture", shield: true, rest: true, grid: "css", layer: "wrapper",
   ...(() => { try { return JSON.parse(localStorage.getItem("tnPerf") || "{}"); } catch { return {}; } })()};
 const {createApp, computed, getCurrentInstance, h, markRaw, nextTick, onMounted, onUnmounted, onUpdated, reactive, ref, shallowRef, toRaw, watch, watchEffect} = window.Vue;
 
@@ -964,7 +964,7 @@ createApp({
 
     function measure() {
       // A látható terület a vászon szülője (a vászonréteg maga nagyobb, lásd overscan).
-      const area = canvas.value?.parentElement ?? canvas.value;
+      const area = zoomHost() ?? canvas.value;
       if (area) size.value = {width: area.clientWidth, height: area.clientHeight};
     }
 
@@ -1044,12 +1044,28 @@ createApp({
     // Nagyítás és pásztázás a grafikus kártyán (docs/PLAN.md C3/C6): mozdulat közben a teljes vászon-SVG egy CSS-transzformmal
     // skálázódik és tolódik, újrarajzolás és SVG-újraelrendezés nélkül; a valódi nézet a mozdulat végén egyszer frissül.
     // A pontkoordináták (world) közben is helyesek, mert a getScreenCTM a CSS-transzformot is tartalmazza.
-    function zoomHost() { return canvas.value?.parentElement; }
+    function zoomHost() { return canvas.value?.closest?.(".canvas-area") ?? canvas.value?.parentElement; }
+    // A réteg, amelyen a mozdulat közbeni CSS-transzform van.
+    function layerElement() { return perfOptions.layer === "svg" ? canvas.value : canvas.value?.parentElement; }
     const restingTransform = "matrix(1,0,0,1,0,0)";
+    // Nyugalmi transzform: egységmátrix, hogy a pásztázás és a nagyítás megakadás nélkül induljon. Kivétel, amíg a vásznon
+    // HTML-tartalom változik sűrűn (táblázat cellaszerkesztése, helyben szerkesztés, fájlszöveg gépelése, hanglejátszás):
+    // transzformált réteg alatt a Safari a foreignObject minden változására a teljes réteget újrafesti (táblázatgörgetés:
+    // 17 fps a 40 helyett), ezért ilyenkor nincs transzform – cserébe ott a pásztázás indulása akad meg egy pillanatra.
+    const htmlTyping = ref(false), mediaPlaying = ref(0);
+    const htmlBusy = computed(() => !!tableEdit.value || !!editingObject.value || htmlTyping.value || mediaPlaying.value > 0);
+    // A médiaesemények nem buborékolnak: elfogási fázisban figyeljük a vászon hanglejátszóit.
+    const playing = new Set();
+    for (const type of ["play", "pause", "ended", "emptied"]) document.addEventListener(type, event => {
+      if (!canvas.value?.contains?.(event.target)) return;
+      if (type === "play") playing.add(event.target); else playing.delete(event.target);
+      mediaPlaying.value = playing.size;
+    }, true);
+    const resting = () => perfOptions.rest && !(perfOptions.rest !== "always" && htmlBusy.value) ? restingTransform : "none";
     let pendingView = null;
     function previewView(transform) {
       pendingView = transform;
-      const svg = canvas.value, current = view.value;
+      const svg = layerElement(), current = view.value;
       if (!svg?.style) return;
       const scale = transform.k / current.k;
       const shiftX = transform.x - scale * current.x, shiftY = transform.y - scale * current.y;
@@ -1108,7 +1124,7 @@ createApp({
       pendingView = null;
       // A réteg nyugalomban is transzformált (egységmátrix, app.css): Safariban a transzform be- és kikapcsolása
       // (none ↔ matrix) 40–70 ms-os megakadás, a mátrixról mátrixra váltás viszont ingyen van.
-      if (canvas.value?.style) canvas.value.style.transform = perfOptions.rest ? restingTransform : "none";
+      if (layerElement()?.style) layerElement().style.transform = resting();
       if (transform && (transform.k !== view.value.k || transform.x !== view.value.x || transform.y !== view.value.y)) view.value = transform;
     }
 
@@ -2755,6 +2771,7 @@ createApp({
     }, {immediate: true});
 
     function editFileText(node, text) {
+      htmlTyping.value = true;
       const key = fileTextKey(node);
       fileTexts.value = new Map(fileTexts.value).set(key, text);
       fileSaveState.value = new Map(fileSaveState.value).set(node.id, "Mentés…");
@@ -3558,7 +3575,9 @@ createApp({
       return h("div", {class: "canvas-area", style: {background: paint(board.value.background, 0), "--overscan": overscan}}, [
         perfOptions.grid === "separate" ? h(GridLayer) : null,
         perfOptions.grid === "css" ? h("div", {class: "canvas-grid-css", ref: gridElement, "aria-hidden": "true", "data-editor-only": ""}) : null,
-        h("svg", {ref: canvas, class: ["canvas", "editor-canvas", {"ctrl-held": ctrl.value, "alt-held": alt.value}],
+        // A mozdulat közbeni CSS-transzform a vásznat körülvevő rétegen van ("wrapper", alap), nem magán az SVG-n: a
+        // transzformált SVG-gyökérben Safari minden HTML-változásra (táblázat, szövegfájl) a teljes réteget újrafestette.
+        h("div", {class: ["canvas-layer", {"is-layer": perfOptions.layer !== "svg"}]}, [h("svg", {ref: canvas, class: ["canvas", "editor-canvas", {"is-layer": perfOptions.layer === "svg", "ctrl-held": ctrl.value, "alt-held": alt.value}],
           "data-drag-cursor": perfOptions.shield ? (spacePan.value && gesture.value?.type !== "pan" ? "grab" : undefined) : dragCursor(), "aria-label": "Ötletvászon",
           onContextmenu: event => context(event),
           onClickCapture: event => { if (spacePan.value) { event.preventDefault(); event.stopPropagation(); } },
@@ -3621,7 +3640,7 @@ createApp({
           h("g", {ref: sceneOrigin, transform: "translate(" + margin().join(" ") + ")"}, [perfOptions.grid === "canvas" || perfOptions.grid === "none" ? h(GridLayer) : null, h(ViewLayer)]),
           spacePan.value ? h("rect", {width: "100%", height: "100%", fill: "none",
             "pointer-events": "all", "aria-hidden": "true", "data-editor-only": ""}) : null,
-        ]),
+        ])]),
         // A pajzs mindig a DOM-ban van (beszúrása és eltávolítása is megakadást okozna a nagy vászonréteg fölött);
         // nyugalomban nem kap egéreseményt, húzáskor csak a saját stílusa változik.
         perfOptions.shield ? h(DragShield) : null,
@@ -4416,6 +4435,9 @@ createApp({
       applyUi(edgeUi, edges);
     }
     watchEffect(() => timed("syncUi", syncUi));
+    // A nyugalmi transzform követi a HTML-szerkesztés állapotát (mozdulat közben nem nyúlunk hozzá: azt a commitView zárja).
+    watch(htmlBusy, () => { if (!pendingView && layerElement()?.style) layerElement().style.transform = resting(); }, {flush: "post"});
+    watch(selected, () => { htmlTyping.value = false; });
     watch(() => perfOptions.shield ? dragCursor() : undefined, cursor => {
       if (capturing?.style && capturing !== canvas.value) capturing.style.cursor = cursor ?? "";
       if (!cursor) capturing = null;
