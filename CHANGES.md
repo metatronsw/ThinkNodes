@@ -1,5 +1,10 @@
 # Változások
 
+## 2026-11-24 – Görgetősáv húzása fájldobozban (Safari 18)
+
+- A szövegfájl-, CSV- és táblázatdoboz görgetősávjának felismerése a doboz vászonbeli helyéből és az egér vászonkoordinátájából számol, nem a DOM-ból (`Public/editor.js` `scrollbarPress`); Safariban a foreignObject-beli elemek mérete/helye megbízhatatlan, ezért ott a doboz húzása kapta el a görgetősávot.
+- Chromiumban ellenőrizve (a görgetősáv-sávban a lenyomás nem indít dobozhúzást, a tartalmon igen); Safari 18-ban megerősítésre vár (BUGS.md). JS tesztek: `table-engine`, `canvas-markdown` rendben; a `gestures.mjs` a régi, ismert okból bukik.
+
 ## 2026-11-24 – Szövegfájl- és táblázatdoboz: palettát követő színek, keret nélküli módosító
 
 - A szövegfájl-, kódfájl- és táblázatdoboz tartalma a szerkesztőben is a doboz szövegszínét használja (alapból a paletta 1-es színe), a háttér a doboz kitöltése (paletta 2), így világos és sötét módban is olvasható (`Public/editor.js` `renderFileBox`; a megjelenítő eddig is így működött).

@@ -561,14 +561,29 @@ package struct User: Codable, Sendable {
     package var role: Role
     package var passwordHash: String
     package var avatar: Int?
+    /// A fiókhoz rendelt Google-fiók e-mail-címe (kisbetűs); ezzel a fiókkal jelszó nélkül is be lehet lépni.
+    package var google: String?
 
     // A memberwise inicializáló pontos mása (modulhatár).
-    package init(name: String, role: Role, passwordHash: String, avatar: Int? = nil) {
+    package init(name: String, role: Role, passwordHash: String, avatar: Int? = nil, google: String? = nil) {
         self.name = name
         self.role = role
         self.passwordHash = passwordHash
         self.avatar = avatar
+        self.google = google
     }
+}
+
+/// A Google-fiók e-mail-címe egységes alakban (szóközök nélkül, kisbetűvel); üres bemenetre `nil`.
+package func normalizedGoogleEmail(_ raw: String) throws -> String? {
+    let email = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    if email.isEmpty { return nil }
+    let parts = email.split(separator: "@", omittingEmptySubsequences: false)
+    guard email.utf8.count <= 254, parts.count == 2, !parts[0].isEmpty, parts[1].contains("."),
+          !email.contains(where: { $0.isWhitespace || $0 == "," || $0 == "<" || $0 == ">" || $0 == "\"" }) else {
+        throw Abort(.unprocessableEntity, reason: "A Google-fiók e-mail-címe érvénytelen.")
+    }
+    return email
 }
 
 package func isTesterName(_ value: String) -> Bool {
@@ -2064,19 +2079,39 @@ package final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    package func setUser(name: String, role: Role, passwordHash: String?, initialOnly: Bool = false) throws {
+    /// A Google-fiók e-mail-címe alapján keresi a fiókot (a cím egy fiókhoz tartozhat).
+    package func user(google email: String) throws -> User? {
+        guard let email = try? normalizedGoogleEmail(email) else { return nil }
+        return try lock.withLock {
+            let settings = try readSettings()
+            guard var user = settings.users?.first(where: { $0.google == email }) else { return nil }
+            user.avatar = settings.preferences?[user.name]?.avatar
+            return user
+        }
+    }
+
+    /// `google`: `nil` = a hozzárendelt Google-fiók változatlan; `.some(nil)` vagy üres szöveg = leválasztás;
+    /// e-mail-cím = hozzárendelés. Új fiók jelszó nélkül csak Google-fiókkal hozható létre (ekkor a jelszavas
+    /// belépés egy véletlen, senki által nem ismert jelszó miatt nem használható, amíg az admin nem ad jelszót).
+    package func setUser(name: String, role: Role, passwordHash: String?, google: String?? = nil, initialOnly: Bool = false) throws {
         guard validSlug(name) else {
             throw Abort(.unprocessableEntity, reason: "A felhasználónév kisbetűket, számokat és kötőjelet tartalmazhat.")
         }
+        let requested = try google.map { try $0.flatMap(normalizedGoogleEmail) }
         try lock.withLock {
             var users = try readUsers()
             if initialOnly && !users.isEmpty { throw Abort(.conflict) }
             let existing = users.first { $0.name == name }
-            guard let hash = passwordHash ?? existing?.passwordHash else {
-                throw Abort(.unprocessableEntity, reason: "Az új fiókhoz jelszót kell megadni.")
+            let email = requested ?? existing?.google
+            if let email, users.contains(where: { $0.name != name && $0.google == email }) {
+                throw Abort(.conflict, reason: "Ez a Google-fiók már egy másik felhasználóhoz tartozik.")
+            }
+            guard let hash = try passwordHash ?? existing?.passwordHash
+                    ?? (email == nil ? nil : Bcrypt.hash(Data([UInt8].random(count: 32)).base64EncodedString())) else {
+                throw Abort(.unprocessableEntity, reason: "Az új fiókhoz jelszót vagy Google-fiókot kell megadni.")
             }
             users.removeAll { $0.name == name }
-            users.append(User(name: name, role: role, passwordHash: hash))
+            users.append(User(name: name, role: role, passwordHash: hash, google: email))
             try writeUsers(users)
         }
     }

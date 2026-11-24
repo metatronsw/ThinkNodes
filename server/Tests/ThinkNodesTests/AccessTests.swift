@@ -114,3 +114,106 @@ import VaporTesting
     let keys = Set(try store.unlock(child, password: "project-pass", user: member))
     #expect(try store.load(child, user: member, unlocks: keys).nodes.isEmpty)
 }
+
+// Google-bejelentkezés: a tesztben a „code” maga az ID token, a kódbeváltás (a Google token-végpontja) helyett.
+
+private func googleToken(_ claims: [String: Any]) throws -> String {
+    let payload = try JSONSerialization.data(withJSONObject: claims)
+    return "e30." + GoogleSignIn.base64URL(payload) + ".alairas"
+}
+
+private func queryValue(_ name: String, in url: String) -> String? {
+    URLComponents(string: url)?.queryItems?.first { $0.name == name }?.value
+}
+
+@Test func googleSignInOpensTheLinkedAccount() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-google-\(UUID().uuidString)")
+    let store = try WorksheetStore(root: root)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try store.setUser(name: "admin", role: .admin, passwordHash: try Bcrypt.hash("titkos-jelszo"))
+    // Jelszó nélküli fiók csak Google-fiókkal jöhet létre; egy Google-fiók egy felhasználóhoz tartozhat.
+    #expect(throws: Abort.self) { try store.setUser(name: "anna", role: .editor, passwordHash: nil) }
+    try store.setUser(name: "anna", role: .editor, passwordHash: nil, google: " Anna@Example.com ")
+    #expect(try store.user(named: "anna")?.google == "anna@example.com")
+    #expect(throws: Abort.self) { try store.setUser(name: "admin", role: .admin, passwordHash: nil, google: "anna@example.com") }
+    #expect(throws: Abort.self) { try store.setUser(name: "admin", role: .admin, passwordHash: nil, google: "nem e-mail") }
+    // A hozzárendelés megmarad, ha a hívó nem nyúl hozzá (pl. szerepkörváltás).
+    try store.setUser(name: "anna", role: .guest, passwordHash: nil)
+    #expect(try store.user(google: "ANNA@example.com")?.role == .guest)
+
+    let google = GoogleSignIn(clientID: "kliens.apps.googleusercontent.com", clientSecret: "titok") { _, form in
+        #expect(form["client_secret"] == "titok")
+        #expect(form["redirect_uri"] == "http://localhost:8080/login/google/callback")
+        #expect(form["code_verifier"]?.isEmpty == false)
+        return form["code"] ?? ""
+    }
+    let host: HTTPHeaders = ["Host": "localhost:8080"]
+
+    try await withApp(configure: { app in configure(app, store: store, secureCookies: false, google: google) }) { app in
+        let browser = try app.testing()
+        #expect(try await browser.sendRequest(.GET, "/login").body.string.contains("/login/google?next="))
+
+        func start(next: String = "/") async throws -> (cookie: String, state: String, nonce: String) {
+            let started = try await browser.sendRequest(.GET, "/login/google?next=" + next, headers: host)
+            #expect(started.status == .seeOther)
+            let location = try #require(started.headers.first(name: .location))
+            #expect(location.hasPrefix("https://accounts.google.com/o/oauth2/v2/auth?"))
+            #expect(queryValue("client_id", in: location) == google.clientID)
+            #expect(queryValue("redirect_uri", in: location) == "http://localhost:8080/login/google/callback")
+            #expect(queryValue("code_challenge_method", in: location) == "S256")
+            return (try cookie(started), try #require(queryValue("state", in: location)), try #require(queryValue("nonce", in: location)))
+        }
+        func finish(_ flow: (cookie: String, state: String, nonce: String), claims: [String: Any], state: String? = nil) async throws -> TestingHTTPResponse {
+            var headers = host
+            headers.add(name: "Cookie", value: flow.cookie)
+            return try await browser.sendRequest(.GET, "/login/google/callback?state=\(state ?? flow.state)&code=\(try googleToken(claims))", headers: headers)
+        }
+        func claims(_ nonce: String, email: String = "Anna@example.com") -> [String: Any] {
+            ["iss": "https://accounts.google.com", "aud": google.clientID, "exp": Date().timeIntervalSince1970 + 600,
+             "nonce": nonce, "email": email, "email_verified": true]
+        }
+
+        // Sikeres belépés: új munkamenet, a kért oldalra jut.
+        var flow = try await start(next: "/admin")
+        let signedIn = try await finish(flow, claims: claims(flow.nonce))
+        #expect(signedIn.status == .seeOther)
+        #expect(signedIn.headers.first(name: .location) == "/admin")
+        let session = try cookie(signedIn)
+        #expect(session != flow.cookie)
+        #expect(try await browser.sendRequest(.GET, "/admin", headers: ["Cookie": session]).status == .forbidden)
+        // A kód nem váltható be újra ugyanazzal a state értékkel.
+        #expect(try await finish(flow, claims: claims(flow.nonce)).status == .unauthorized)
+
+        // Hibás state, nonce, címzett, lejárt token, nem igazolt cím, ismeretlen fiók: nincs belépés.
+        flow = try await start()
+        #expect(try await finish(flow, claims: claims(flow.nonce), state: "hamis").status == .unauthorized)
+        var rejected: [[String: Any]] = []
+        flow = try await start()
+        rejected.append(claims("masik-nonce"))
+        for (key, value) in [("aud", "idegen-kliens" as Any), ("exp", Date().timeIntervalSince1970 - 5), ("email_verified", false), ("iss", "https://evil.example")] {
+            var changed = claims("NONCE")
+            changed[key] = value
+            rejected.append(changed)
+        }
+        for var item in rejected {
+            flow = try await start()
+            if item["nonce"] as? String == "NONCE" { item["nonce"] = flow.nonce }
+            #expect(try await finish(flow, claims: item).status == .unauthorized)
+        }
+        flow = try await start()
+        let unknown = try await finish(flow, claims: claims(flow.nonce, email: "idegen@example.com"))
+        #expect(unknown.status == .unauthorized)
+        #expect(unknown.body.string.contains("idegen@example.com"))
+
+        // A Google-fiók leválasztása a Google-lal indult munkamenetet is lezárja.
+        try store.setUser(name: "anna", role: .guest, passwordHash: nil, google: .some(nil))
+        #expect(try await browser.sendRequest(.GET, "/admin", headers: ["Cookie": session]).status == .seeOther)
+    }
+
+    // Beállítás nélkül nincs Google-gomb és útvonal.
+    try await withApp(configure: { app in configure(app, store: store, secureCookies: false) }) { app in
+        let browser = try app.testing()
+        #expect(try await !browser.sendRequest(.GET, "/login").body.string.contains("/login/google"))
+        #expect(try await browser.sendRequest(.GET, "/login/google").status != .seeOther)
+    }
+}

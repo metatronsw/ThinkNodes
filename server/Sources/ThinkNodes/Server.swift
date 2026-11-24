@@ -69,6 +69,8 @@ enum ThinkNodes {
                 or open \(scheme)://localhost:\(port)/admin in a browser on this machine.
                 """)
         }
+        let google = options.test ? nil : GoogleSignIn.fromEnvironment()
+        if google != nil { print("Google sign-in: enabled (callback path \(GoogleSignIn.callbackPath))") }
         for address in addresses {
             print("\(options.http ? "HTTP" : "HTTPS"): \(NetworkAddresses.url(scheme: options.http ? "http" : "https", address: address, port: port))")
         }
@@ -81,7 +83,7 @@ enum ThinkNodes {
             app.http.server.configuration.tlsConfiguration = tls
             store.reconcileAtStartup()
             store.cleanPackageStaging(all: true)
-            configure(app, store: store, motionRate: options.rate)
+            configure(app, store: store, motionRate: options.rate, google: google)
             try await app.execute()
         } catch {
             try await app.asyncShutdown()
@@ -153,6 +155,8 @@ private func authenticatedUser(_ data: SessionData, store: WorksheetStore) throw
     if store.testMode, let name = data["tester"], isTesterName(name) { return User(name: name, role: .admin, passwordHash: "", avatar: try store.settings().preferences?[name]?.avatar) }
     guard let name = data["user"], let user = try store.user(named: name),
           data["credential"] == user.passwordHash else { return nil }
+    // Google-lal indult munkamenet: csak addig él, amíg ugyanaz a Google-fiók tartozik a felhasználóhoz.
+    if let google = data["google"], google != user.google { return nil }
     return user
 }
 
@@ -209,7 +213,7 @@ private func safeNext(_ value: String?) -> String {
     return "/" + path.url
 }
 
-private func signIn(_ req: Request, user: User) async throws {
+private func signIn(_ req: Request, user: User, google: String? = nil) async throws {
     if let oldID = req.session.id {
         try await req.application.sessions.driver.deleteSession(oldID, for: req).get()
         req.session.id = nil
@@ -217,13 +221,19 @@ private func signIn(_ req: Request, user: User) async throws {
     req.session.data = .init()
     req.session.data["user"] = user.name
     req.session.data["credential"] = user.passwordHash
+    req.session.data["google"] = google
     _ = token(req)
 }
 
 private let statusUpdatesScript = #"<script type="module" src="/status-updates.js"></script>"#
 
 private func loginPage(_ req: Request, next: String, message: String? = nil, noAccounts: Bool = false,
-                       updates: PageUpdates.Subscription? = nil) -> Response {
+                       google: Bool = false, updates: PageUpdates.Subscription? = nil) -> Response {
+    let googleLogin = !google ? "" : """
+        <div class="stack panel google-login">
+          <a class="button" href="/login/google?next=\(encodeQuery(next))">\(uiIcon("login"))Belépés Google-fiókkal</a>
+        </div>
+        """
     let problem = message.map { "<p class=\"error\" role=\"alert\">\(escaped($0))</p>" } ?? ""
     // Üres adatmappa (pl. új --project:): senki nem tud belépni, amíg nincs fiók.
     let setup = !noAccounts ? "" : localSetup(req)
@@ -242,6 +252,7 @@ private func loginPage(_ req: Request, next: String, message: String? = nil, noA
             <label>Jelszó<input name="password" type="password" autocomplete="current-password" required></label>
             <button class="button primary" type="submit">\(uiIcon("login"))Belépés</button>
           </form>
+          \(googleLogin)
         </main>
         \(updates == nil ? "" : statusUpdatesScript)
         """, updates: updates)
@@ -276,7 +287,8 @@ private func accessDeniedPage(_ identity: SessionInfo, updates: PageUpdates.Subs
     return page
 }
 
-func configure(_ application: Application, store: WorksheetStore, secureCookies: Bool? = nil, motionRate rate: Int = 33) {
+func configure(_ application: Application, store: WorksheetStore, secureCookies: Bool? = nil, motionRate rate: Int = 33,
+               google: GoogleSignIn? = nil) {
     let live = Collaboration(store: store)
     let assets = application.directory.publicDirectory
     let themeJSON = String(decoding: (try? JSONEncoder().encode(Themes.catalog)) ?? Data(), as: UTF8.self)
@@ -317,7 +329,51 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
     app.get("login") { req async throws -> Response in
         let next = safeNext(req.query[String.self, at: "next"])
         let updates = next == "/" || next == "/admin" ? nil : live.pages.subscribe(.index)
-        return loginPage(req, next: next, noAccounts: try await withoutAccounts(req), updates: updates)
+        return loginPage(req, next: next, noAccounts: try await withoutAccounts(req), google: google != nil, updates: updates)
+    }
+
+    // Google-bejelentkezés (GoogleSignIn.swift): indítás, majd visszatérés a Google-től.
+    let googleKeys = ["google-state", "google-nonce", "google-verifier", "google-next"]
+    app.get("login", "google") { req async throws -> Response in
+        guard let google else { throw Abort(.notFound) }
+        let state = GoogleSignIn.secret(), nonce = GoogleSignIn.secret(), verifier = GoogleSignIn.secret()
+        for (key, value) in zip(googleKeys, [state, nonce, verifier, safeNext(req.query[String.self, at: "next"])]) {
+            req.session.data[key] = value
+        }
+        return redirect(google.authorizationURL(redirect: google.redirect(for: req, secure: secure),
+                                                state: state, nonce: nonce, verifier: verifier))
+    }
+
+    app.get("login", "google", "callback") { req async throws -> Response in
+        guard let google else { throw Abort(.notFound) }
+        let pending = req.hasSession ? googleKeys.map { req.session.data[$0] } : [nil, nil, nil, nil]
+        if req.hasSession { googleKeys.forEach { req.session.data[$0] = nil } }
+        let next = safeNext(pending[3])
+        func failed(_ message: String) async throws -> Response {
+            let response = loginPage(req, next: next, message: message, noAccounts: try await withoutAccounts(req), google: true)
+            response.status = .unauthorized
+            return response
+        }
+        guard let state = pending[0], let nonce = pending[1], let verifier = pending[2],
+              req.query[String.self, at: "state"] == state else {
+            return try await failed("A Google-bejelentkezés lejárt vagy megszakadt. Próbáld újra.")
+        }
+        guard let code = req.query[String.self, at: "code"], !code.isEmpty else {
+            return try await failed("A Google-bejelentkezés megszakadt.")
+        }
+        let email: String
+        do {
+            let form = google.tokenRequest(code: code, redirect: google.redirect(for: req, secure: secure), verifier: verifier)
+            email = try google.verifiedEmail(idToken: try await google.exchange(req, form), nonce: nonce)
+        } catch {
+            req.logger.warning("Google sign-in failed: \((error as? any AbortError)?.reason ?? String(describing: error))")
+            return try await failed("A Google-bejelentkezés nem sikerült. Próbáld újra.")
+        }
+        guard let user = try await req.application.threadPool.runIfActive({ try store.user(google: email) }) else {
+            return try await failed("A(z) \(email) Google-fiókhoz nem tartozik ThinkNodes-fiók. Kérd meg az adminisztrátort, hogy rendelje hozzá a fiókodhoz.")
+        }
+        try await signIn(req, user: user, google: email)
+        return redirect(next)
     }
 
     app.post("login") { req async throws -> Response in
@@ -332,7 +388,7 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         }
         guard let user else {
             let response = loginPage(req, next: next, message: "Hibás felhasználónév vagy jelszó.",
-                                     noAccounts: try await withoutAccounts(req))
+                                     noAccounts: try await withoutAccounts(req), google: google != nil)
             response.status = .unauthorized
             return response
         }
@@ -369,7 +425,7 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         return redirect("/" + path.url)
     }
 
-    configureAdmin(app, store: store, live: live)
+    configureAdmin(app, store: store, live: live, google: google != nil)
 
     app.get("edit", "**") { req async throws -> Response in
         let identity = try session(req, store: store)
@@ -1416,6 +1472,8 @@ private struct AdminUserForm: Content {
     var name: String
     var role: Role?
     var password: String?
+    /// A fiókhoz rendelt Google-fiók e-mail-címe; hiányzó mező = változatlan, üres = leválasztás.
+    var google: String?
     var csrf: String
 }
 
@@ -1433,7 +1491,7 @@ private func hashPassword(_ input: String?) throws -> String? {
     return try Bcrypt.hash(input)
 }
 
-private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, live: Collaboration) {
+private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, live: Collaboration, google: Bool) {
     app.get("admin") { req async throws -> Response in
         let identity = try session(req, store: store)
         let updates = live.pages.subscribe(.admin)
@@ -1456,7 +1514,7 @@ private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, liv
         guard user.role == .admin else { throw Abort(.forbidden) }
         let settings = try store.settings()
         return adminPage(users: users, settings: settings, user: user, csrf: csrf,
-                         dataDirectoryPath: store.dataDirectoryPath, updates: updates)
+                         dataDirectoryPath: store.dataDirectoryPath, google: google, updates: updates)
     }
 
     app.post("admin", "setup") { req async throws -> Response in
@@ -1499,7 +1557,8 @@ private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, liv
         try verify(req, token: form.csrf)
         guard let role = form.role else { throw Abort(.badRequest) }
         try await req.application.threadPool.runIfActive {
-            try store.setUser(name: form.name, role: role, passwordHash: hashPassword(form.password))
+            try store.setUser(name: form.name, role: role, passwordHash: hashPassword(form.password),
+                              google: form.google.map { Optional($0) })
         }
         live.accountChanged()
         return redirect("/admin")
@@ -1527,7 +1586,12 @@ private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, liv
 }
 
 private func adminPage(users: [User], settings: SiteSettings, user: User, csrf: String,
-                       dataDirectoryPath: String, updates: PageUpdates.Subscription) -> Response {
+                       dataDirectoryPath: String, google: Bool, updates: PageUpdates.Subscription) -> Response {
+    // Google-fiók mező: csak akkor látszik, ha a szerveren be van állítva a Google-bejelentkezés.
+    func googleField(_ email: String?) -> String {
+        !google ? "" : "<label>Google-fiók<input name=\"google\" type=\"email\" autocomplete=\"off\" maxlength=\"254\" value=\"\(escaped(email ?? ""))\" placeholder=\"nincs hozzárendelve\"></label>"
+    }
+    let fieldsClass = google ? "account-fields with-google" : "account-fields"
     func roles(_ current: Role) -> String {
         """
         <select name="role"><option value="editor"\(current == .editor ? " selected" : "")>Szerkesztő</option>
@@ -1556,11 +1620,12 @@ private func adminPage(users: [User], settings: SiteSettings, user: User, csrf: 
                 <form class="avatar-picker" method="post" action="/admin/avatar">\(csrfInput(csrf))<input type="hidden" name="name" value="\(escaped(account.name))">\(avatars)</form>
                 <form method="dialog"><button class="button">Mégse</button></form>
               </dialog>
-              <form method="post" action="/admin/users" class="account-fields">
+              <form method="post" action="/admin/users" class="\(fieldsClass)">
                 \(csrfInput(csrf))<input type="hidden" name="name" value="\(escaped(account.name))">
                 <strong>\(escaped(account.name))</strong>
                 <label>Szerepkör\(roles(account.role))</label>
                 <label>Új jelszó<input name="password" type="password" autocomplete="new-password" minlength="10" placeholder="Változatlan"></label>
+                \(googleField(account.google))
                 <button class="button" type="submit">\(uiIcon("save"))Mentés</button>
               </form>
               \(delete)
@@ -1590,11 +1655,12 @@ private func adminPage(users: [User], settings: SiteSettings, user: User, csrf: 
             \(accountRows)
             <details class="new-account">
               <summary>Új felhasználó</summary>
-              <form method="post" action="/admin/users" class="account-fields">
+              <form method="post" action="/admin/users" class="\(fieldsClass)">
                 \(csrfInput(csrf))
                 <label>Név<input name="name" pattern="[a-z0-9-]+" required></label>
                 <label>Szerepkör\(roles(.editor))</label>
-                <label>Jelszó<input name="password" type="password" autocomplete="new-password" minlength="10" required></label>
+                <label>Jelszó<input name="password" type="password" autocomplete="new-password" minlength="10"\(google ? " placeholder=\"Google-fiókkal elhagyható\"" : " required")></label>
+                \(googleField(nil))
                 <button class="button primary" type="submit">\(uiIcon("plus"))Létrehozás</button>
               </form>
             </details>

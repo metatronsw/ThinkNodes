@@ -56,6 +56,11 @@ struct LaunchOptions {
 
         Environment:
           THINKNODES_CHROMIUM  Headless Chromium used for web previews (optional).
+          THINKNODES_GOOGLE_CLIENT_ID, THINKNODES_GOOGLE_CLIENT_SECRET
+                               OAuth client of the Google sign-in (optional; both are needed).
+                               Authorized redirect URI at Google: https://HOST[:PORT]/login/google/callback
+          THINKNODES_GOOGLE_REDIRECT
+                               Redirect URI if it differs from the address in the request (optional).
         """
 
     struct Problem: Error, CustomStringConvertible {

@@ -2876,15 +2876,17 @@ createApp({
       const el = e.currentTarget;
       if (el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth) e.stopPropagation();
     };
-    // A görgethető tartalom (pl. CSV) bárhol megfogva mozgatható; csak a görgetősávokon (a jobb és alsó
-    // ~14px-es sávban, ha van mit görgetni) marad a görgetés.
-    const scrollbarPress = e => {
-      const el = e.currentTarget, bounds = el.getBoundingClientRect();
-      const scale = bounds.width / (el.offsetWidth || 1), band = 14;
-      const point = e.touches?.[0] ?? e;
-      const x = (point.clientX - bounds.left) / scale, y = (point.clientY - bounds.top) / scale;
-      const vertical = el.scrollHeight > el.clientHeight && x >= el.offsetWidth - band;
-      const horizontal = el.scrollWidth > el.clientWidth && y >= el.offsetHeight - band;
+    // A görgethető tartalom (pl. CSV) bárhol megfogva mozgatható; csak a görgetősávokon (a tartalom jobb és alsó
+    // ~16px-es sávjában, ha van mit görgetni) marad a görgetés. A sávot a doboz vászonbeli helyéből számoljuk, nem a
+    // DOM-ból: Safariban a foreignObject-beli elemek getBoundingClientRect-je nem követi a vászon nagyítását és
+    // eltolását, így ott a doboz húzása elkapta a görgetősávot.
+    const scrollbarPress = (e, node) => {
+      const el = e.currentTarget, point = world(e.touches?.[0] ?? e), band = 16;
+      const inset = parseFloat(getComputedStyle(el.closest(".node-file")).paddingRight) || 0;
+      const x = point.x - node.position.x, y = point.y - node.position.y;
+      const right = node.width / 2 - inset, bottom = node.height / 2 - inset;
+      const vertical = el.scrollHeight > el.clientHeight && x >= right - band && x <= right;
+      const horizontal = el.scrollWidth > el.clientWidth && y >= bottom - band && y <= bottom;
       if (vertical || horizontal) e.stopPropagation();
     };
 
@@ -2933,7 +2935,7 @@ createApp({
         ]);
       } else if (root === "text") {
         content = h("div", {class: ["node-note", {"with-fold": backgroundMode(node) === "solid"}], style: {fontSize: (node.fontSize ?? 13) + "px"},
-          onPointerdown: scrollbarPress, onMousedown: scrollbarPress, onTouchstart: scrollbarPress, onWheel: stopScroll},
+          onPointerdown: e => scrollbarPress(e, node), onMousedown: e => scrollbarPress(e, node), onTouchstart: e => scrollbarPress(e, node), onWheel: stopScroll},
           [renderFileText(node)]);
       } else {
         const ext = (file.filename ?? file.asset).split(".").pop().toUpperCase();
