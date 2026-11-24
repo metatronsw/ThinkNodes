@@ -695,7 +695,8 @@ package struct WorksheetPath: Sendable {
     package let name: String
     package let url: String
 
-    private static let reserved = ["admin", "api", "edit", "export", "login", "logout", "health", "open", "vendor"]
+    /// Az első szegmensként foglalt nevek: a szerver saját címei, és a `common` (a közös könyvtár statikus címe, `/common/...`).
+    private static let reserved = ["admin", "api", "common", "edit", "export", "login", "logout", "health", "open", "vendor"]
 
     package init(_ raw: [String]) throws {
         let parts = raw.map(\.precomposedStringWithCanonicalMapping)
@@ -1836,6 +1837,78 @@ package final class WorksheetStore: @unchecked Sendable {
                 try files.moveItem(at: source, to: try trashDestination(source, in: ownerContext))
             }
         case nil: return
+        }
+    }
+
+    /// Törölt projekt a gyökér lomtárában (`.trash/<UUID>-<név>`); a projekt a saját beállításaival együtt kerül oda.
+    package struct DeletedProject: Sendable, Equatable {
+        package let id: String      // a lomtárbeli mappa neve
+        package let name: String    // az eredeti projektnév
+        package let date: Date?     // a mappa utolsó módosítása (tájékoztató)
+    }
+
+    private func deletedProjectURL(_ id: String) throws -> URL {
+        guard !id.isEmpty, !id.hasPrefix("."), !id.contains("/"), !id.contains("\\") else { throw Abort(.badRequest) }
+        let trash = root.appendingPathComponent(".trash", isDirectory: true)
+        try rejectLink(trash)
+        let url = trash.appendingPathComponent(id, isDirectory: true)
+        try rejectLink(url)
+        var isDirectory: ObjCBool = false
+        guard files.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue else { throw Abort(.notFound) }
+        return url
+    }
+
+    private static func deletedProjectName(_ id: String) -> String {
+        let prefix = String(id.prefix(36))
+        return id.count > 37 && UUID(uuidString: prefix) != nil ? String(id.dropFirst(37)) : id
+    }
+
+    /// A gyökér lomtárában lévő törölt projektek, név szerint. Csak adminisztrátornak (a hívó ellenőrzi).
+    package func deletedProjects() -> [DeletedProject] {
+        lock.withLock {
+            let trash = root.appendingPathComponent(".trash", isDirectory: true)
+            guard (try? rejectLink(trash)) != nil else { return [] }
+            let entries = (try? files.contentsOfDirectory(at: trash, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey, .contentModificationDateKey])) ?? []
+            return entries.compactMap { entry -> DeletedProject? in
+                guard let info = try? entry.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .contentModificationDateKey]),
+                      info.isDirectory == true, info.isSymbolicLink != true, !entry.lastPathComponent.hasPrefix(".") else { return nil }
+                let id = entry.lastPathComponent.precomposedStringWithCanonicalMapping
+                return DeletedProject(id: id, name: Self.deletedProjectName(id), date: info.contentModificationDate)
+            }.sorted { ($0.name, $0.id) < ($1.name, $1.id) }
+        }
+    }
+
+    /// Törölt projekt visszaállítása az eredeti nevén; ha a név közben foglalt lett vagy érvénytelen, hiba.
+    @discardableResult
+    package func restoreProject(_ id: String) throws -> WorksheetPath {
+        try lock.withLock {
+            let source = try deletedProjectURL(id)
+            let name = Self.deletedProjectName(source.lastPathComponent.precomposedStringWithCanonicalMapping)
+            guard let path = try? WorksheetPath([name]) else {
+                throw Abort(.conflict, reason: "A projekt neve (\(name)) már nem használható; a mappát kézzel kell átnevezni.")
+            }
+            let destination = root.appendingPathComponent(name, isDirectory: true)
+            guard !files.fileExists(atPath: destination.path) else {
+                throw Abort(.conflict, reason: "Már van „\(name)” nevű projekt; előbb azt kell átnevezni.")
+            }
+            guard files.fileExists(atPath: source.appendingPathComponent(name + ".thnode").path) else {
+                throw Abort(.conflict, reason: "A lomtárbeli mappa nem ThinkNodes-projekt.")
+            }
+            try files.moveItem(at: source, to: destination)
+            return path
+        }
+    }
+
+    /// Törölt projekt végleges törlése; `id` nélkül a gyökér lomtárának minden törölt projektje.
+    package func purgeDeletedProjects(_ id: String? = nil) throws {
+        try lock.withLock {
+            if let id { try files.removeItem(at: try deletedProjectURL(id)); return }
+            let trash = root.appendingPathComponent(".trash", isDirectory: true)
+            try rejectLink(trash)
+            for entry in (try? files.contentsOfDirectory(at: trash, includingPropertiesForKeys: nil)) ?? []
+            where !entry.lastPathComponent.hasPrefix(".") {
+                try files.removeItem(at: entry)
+            }
         }
     }
 

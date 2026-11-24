@@ -1598,7 +1598,7 @@ private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, liv
         guard user.role == .admin else { throw Abort(.forbidden) }
         let settings = try store.settings()
         return adminPage(users: users, settings: settings, requests: try store.accessRequests(),
-                         messages: try store.adminMessages(), user: user, csrf: csrf,
+                         messages: try store.adminMessages(), deleted: store.deletedProjects(), user: user, csrf: csrf,
                          dataDirectoryPath: store.dataDirectoryPath, google: google, updates: updates)
     }
 
@@ -1683,6 +1683,34 @@ private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, liv
         return redirect("/admin")
     }
 
+    // Törölt projektek (a gyökér lomtára): visszaállítás, végleges törlés, ürítés.
+    app.post("admin", "trash") { req async throws -> Response in
+        struct Form: Content { var id: String?; var action: String; var confirm: String?; var csrf: String }
+        _ = try requireAdmin(req, store: store)
+        let form = try req.content.decode(Form.self)
+        try verify(req, token: form.csrf)
+        // Végleges törlés csak a „Végleg” jelölőnégyzettel (a gombot a kliens addig tiltja).
+        guard form.action == "restore" || form.confirm == "on" else {
+            throw Abort(.badRequest, reason: "A végleges törléshez be kell jelölni a „Végleg” négyzetet.")
+        }
+        let restored = try await req.application.threadPool.runIfActive { () -> WorksheetPath? in
+            switch form.action {
+            case "restore":
+                guard let id = form.id else { throw Abort(.badRequest) }
+                return try store.restoreProject(id)
+            case "purge":
+                guard let id = form.id else { throw Abort(.badRequest) }
+                try store.purgeDeletedProjects(id)
+            case "empty": try store.purgeDeletedProjects()
+            default: throw Abort(.badRequest)
+            }
+            return nil
+        }
+        if let restored { live.pages.publish(.structure, at: restored) }
+        live.accountChanged()
+        return redirect("/admin#deleted-projects")
+    }
+
     app.delete("api", "worksheet", "**") { req async throws -> Response in
         _ = try requireAdmin(req, store: store)
         try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
@@ -1695,7 +1723,7 @@ private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, liv
 }
 
 private func adminPage(users: [User], settings: SiteSettings, requests: (pending: [AccessRequest], rejected: [String]),
-                       messages: [AdminMessage], user: User, csrf: String,
+                       messages: [AdminMessage], deleted: [WorksheetStore.DeletedProject], user: User, csrf: String,
                        dataDirectoryPath: String, google: Bool, updates: PageUpdates.Subscription) -> Response {
     // Google-fiók mező: csak akkor látszik, ha a szerveren be van állítva a Google-bejelentkezés.
     func googleField(_ email: String?) -> String {
@@ -1733,6 +1761,35 @@ private func adminPage(users: [User], settings: SiteSettings, requests: (pending
         </form>
         """
     }.joined()
+    // Törölt projektek: a gyökér lomtárából visszaállíthatók vagy véglegesen törölhetők (a jelölőnégyzet a megerősítés).
+    let deletedRows = deleted.map { project in
+        """
+        <form method="post" action="/admin/trash" class="rejected-request deleted-project">
+          \(csrfInput(csrf))<input type="hidden" name="id" value="\(escaped(project.id))">
+          <span><strong>\(escaped(project.name))</strong>\(project.date.map { " <small class=\"muted\">\(day.string(from: $0))</small>" } ?? "")</span>
+          <span class="deleted-actions">
+            <button class="button" type="submit" name="action" value="restore">\(uiIcon("restore"))Visszaállítás</button>
+            <label class="check"><input type="checkbox" name="confirm" data-enables="purge">Végleg</label>
+            <button class="button danger" type="submit" name="action" value="purge" data-purge disabled>\(uiIcon("trash"))Törlés</button>
+          </span>
+        </form>
+        """
+    }.joined()
+    let deletedPanel = deleted.isEmpty ? "" : """
+        <section class="panel admin-panel" id="deleted-projects">
+          <h2>Törölt projektek (\(deleted.count))</h2>
+          <p class="muted">A törölt projektek a projektmappa <code>.trash</code> mappájában vannak. A visszaállítás az eredeti néven történik; a végleges törlés nem vonható vissza.</p>
+          \(deletedRows)
+          <form method="post" action="/admin/trash" class="rejected-request deleted-project">
+            \(csrfInput(csrf))
+            <span>Minden törölt projekt</span>
+            <span class="deleted-actions">
+              <label class="check"><input type="checkbox" name="confirm" data-enables="purge">Végleg</label>
+              <button class="button danger" type="submit" name="action" value="empty" data-purge disabled>\(uiIcon("trash"))Lomtár ürítése</button>
+            </span>
+          </form>
+        </section>
+        """
     // Adminisztrátori jelzések (AdminMessage): a fejléc jelvénye ide vezet.
     let messagePanel = messages.isEmpty ? "" : """
         <section class="panel admin-panel admin-messages" id="admin-messages">
@@ -1808,6 +1865,7 @@ private func adminPage(users: [User], settings: SiteSettings, requests: (pending
             <p>Az aktív projektadatok teljes elérési útja:</p>
             <code class="admin-path">\(escaped(dataDirectoryPath))</code>
           </section>
+          \(deletedPanel)
           <section class="panel admin-panel">
             <h2>Felhasználók</h2>
             \(accountRows)

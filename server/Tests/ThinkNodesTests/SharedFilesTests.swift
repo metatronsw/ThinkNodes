@@ -51,6 +51,45 @@ import Vapor
     #expect(try store.trashContents("lomtar", user: owner, unlocks: []).isEmpty)
 }
 
+/// Törölt projekt: a gyökér lomtárába kerül, onnan visszaállítható (ha a név szabad) vagy véglegesen törölhető.
+@Test func deletedProjectsRestoreAndPurge() throws {
+    let directory = FileManager.default
+    let root = directory.temporaryDirectory.appendingPathComponent("thinknodes-deleted-\(UUID())")
+    defer { try? directory.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    try store.setUser(name: "owner", role: .admin, passwordHash: try Bcrypt.hash("x", cost: 4))
+    let owner = try #require(try store.user(named: "owner"))
+    for name in ["egyik", "masik"] {
+        let project = try WorksheetPath([name])
+        let sheet = try store.open(project, user: owner)
+        try store.archive(project, expected: sheet.revision)
+    }
+    #expect(store.deletedProjects().map(\.name) == ["egyik", "masik"])
+    #expect(!directory.fileExists(atPath: root.appendingPathComponent("egyik").path))
+
+    let first = try #require(store.deletedProjects().first)
+    #expect(throws: Abort.self) { try store.restoreProject("../" + first.id) }
+    #expect(throws: Abort.self) { try store.restoreProject("nincs-ilyen") }
+    // Foglalt név: a visszaállítás nem írja felül az azonos nevű új projektet.
+    _ = try store.open(try WorksheetPath(["egyik"]), user: owner)
+    #expect(throws: Abort.self) { try store.restoreProject(first.id) }
+    #expect(try store.restoreProject(store.deletedProjects()[1].id).url == "masik")
+    #expect(directory.fileExists(atPath: root.appendingPathComponent("masik/masik.thnode").path))
+    #expect(try store.open(try WorksheetPath(["masik"]), user: owner).revision >= 1)
+
+    try store.purgeDeletedProjects(first.id)
+    #expect(store.deletedProjects().isEmpty)
+}
+
+/// A `common` első szegmens foglalt: a közös könyvtár címe (`/common/...`), projekt nem kaphatja meg.
+@Test func commonIsNotAProjectName() {
+    #expect(throws: Abort.self) { try WorksheetPath(["common"]) }
+    #expect(throws: Abort.self) { try WorksheetPath(["Common", "lap"]) }
+    #expect((try? WorksheetPath(["commons"])) != nil)
+    #expect((try? WorksheetPath(["projekt", "common"])) != nil)
+    #expect(CanvasFile.validSource("@common/ikonok"))
+}
+
 /// Markdown HTML: a sima sortörés új sor, és ahány üres sor van a forrásban, annyi látszik (kódblokkon kívül).
 @Test func markdownKeepsLineBreaksAndBlankLines() {
     #expect(markdownHTML("a\nb").contains("a<br />"))

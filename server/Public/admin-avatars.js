@@ -5,6 +5,13 @@ document.addEventListener("click", event => {
   if (button) document.getElementById(button.dataset.avatarDialog)?.showModal();
 });
 
+// Törölt projektek: a végleges törlés gombja csak a „Végleg” négyzet bejelölése után használható.
+document.addEventListener("change", event => {
+  const box = event.target.closest?.("input[data-enables=purge]");
+  const button = box?.form?.querySelector("button[data-purge]");
+  if (button) button.disabled = !box.checked;
+});
+
 watchPageUpdates(async (signal, incoming) => {
   const {response, page} = incoming ?? await fetchPage(signal);
   if (signal.aborted) return;
