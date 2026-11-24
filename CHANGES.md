@@ -1,5 +1,12 @@
 # Változások
 
+## 2026-11-24 – Google-bejelentkezés: éles beállítási útmutató, daemon.sh
+
+- Új `server/deploy/GOOGLE.md`: a Google-bejelentkezés beállítása a Fedora szerveren (OAuth-kliens létrehozása, visszatérési cím, `thinknodes.env`, fiókok hozzárendelése, működés, hibakeresés, biztonság).
+- `server/deploy/daemon.sh`: létrehozza a `/var/lib/thinknodes/thinknodes.env` beállítófájlt kommentezett mintasorokkal (`0600`, `thinknodes`), ha még nincs; a meglévőt nem írja felül. A végén kiírja a beállítófájl helyét és a Google-bejelentkezés állapotát. Csak szintaxisellenőrzés futott (`bash -n`), Fedorán nem próbáltam ki.
+- Helyben a Google-bejelentkezés nem lesz használva; a helyi teszthez készített `server/.google.env` törölve.
+- TODO.md: hozzáférés-kérés Google-fiókkal (javaslat).
+
 ## 2026-11-24 – Google-bejelentkezés
 
 - Új `server/Sources/ThinkNodes/GoogleSignIn.swift`: OpenID Connect „authorization code” folyamat PKCE-vel, state és nonce ellenőrzéssel. Útvonalak: `GET /login/google` (átirányítás a Google-hoz), `GET /login/google/callback` (kódbeváltás, ID token ellenőrzése: kibocsátó, címzett, lejárat, nonce, igazolt e-mail).

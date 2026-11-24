@@ -71,7 +71,7 @@ Nem kötelező. Ha a szerver környezetében mindkét változó meg van adva, a 
 - A Google csak azonosít: új fiók nem jön létre. Az adminisztrátor a Beállítások oldalon (`/admin`) rendeli a felhasználóhoz a Google-fiók e-mail-címét; belépni csak hozzárendelt, a Google által igazolt címmel lehet. Egy cím egy felhasználóhoz tartozhat.
 - Új felhasználó jelszó nélkül is létrehozható, ha Google-fiókot kap; a jelszavas belépés ilyenkor addig nem használható, amíg az admin jelszót nem ad. A hozzárendelés törlése a Google-lal indult munkameneteket is lezárja.
 - Tesztmódban (`--test`) a Google-bejelentkezés ki van kapcsolva.
-- Élesben a `daemon.sh` által telepített szolgáltatás a `/var/lib/thinknodes/thinknodes.env` fájlból olvassa a változókat (`NÉV=érték` sorok; a fájl legyen csak a `thinknodes` felhasználó számára olvasható), utána `sudo systemctl restart thinknodes`.
+- Élesben a `daemon.sh` által telepített szolgáltatás a `/var/lib/thinknodes/thinknodes.env` fájlból olvassa a változókat; a fájlt a `daemon.sh` hozza létre. A teljes beállítás lépésről lépésre (Google Cloud Console, hozzárendelés, hibakeresés): `server/deploy/GOOGLE.md`.
 
 Élesben (Fedora): `sudo server/deploy/install.sh`, majd `sudo server/deploy/daemon.sh`. Frissítés: a `daemon.sh` által kiírt `build.sh` parancs, majd `sudo systemctl restart thinknodes`.
 

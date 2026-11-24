@@ -9,6 +9,8 @@ Usage: sudo server/deploy/daemon.sh [--dir:PATH] [--help]
 Sets up ThinkNodes as a systemd service on Fedora Linux:
   - creates the 'thinknodes' system user
   - creates the data folders /var/lib/thinknodes/Projects and /var/lib/thinknodes/tls
+  - creates the settings file /var/lib/thinknodes/thinknodes.env if it is missing (an existing one is kept);
+    the Google sign-in is switched on there, see server/deploy/GOOGLE.md
   - clones the repository to the install folder (default /opt/ThinkNodes) if it is not there yet
   - builds the release binary as the thinknodes user (deploy/build.sh)
   - installs, enables and (re)starts thinknodes.service (HTTPS on port 443)
@@ -43,6 +45,7 @@ fi
 source_dir="$(cd "$(dirname "$0")/../.." && pwd)"
 data_dir=/var/lib/thinknodes
 unit=/etc/systemd/system/thinknodes.service
+env_file="$data_dir/thinknodes.env"
 
 swift_bin="${THINKNODES_SWIFT:-}"
 for candidate in /usr/local/bin/swift "$(command -v swift || true)"; do
@@ -58,6 +61,22 @@ id thinknodes >/dev/null 2>&1 ||
     useradd --system --home-dir "$data_dir" --create-home --shell /sbin/nologin thinknodes
 install -d -o thinknodes -g thinknodes -m 0750 "$data_dir" "$data_dir/Projects"
 install -d -o thinknodes -g thinknodes -m 0700 "$data_dir/tls"
+# Settings of the service (secrets): readable by the thinknodes user only. An existing file is never overwritten.
+if [[ ! -e "$env_file" ]]; then
+    install -o thinknodes -g thinknodes -m 0600 /dev/null "$env_file"
+    cat > "$env_file" <<'EOF'
+# ThinkNodes service settings, read by systemd at start (NAME=value lines, no quotes, no spaces around =).
+# After a change: sudo systemctl restart thinknodes
+#
+# Google sign-in (server/deploy/GOOGLE.md). Both values are needed; remove the leading # to switch it on.
+#THINKNODES_GOOGLE_CLIENT_ID=
+#THINKNODES_GOOGLE_CLIENT_SECRET=
+# Only if users reach the server at another address than the server sees (e.g. behind a proxy):
+#THINKNODES_GOOGLE_REDIRECT=https://example.com/login/google/callback
+EOF
+fi
+chown thinknodes:thinknodes "$env_file"
+chmod 0600 "$env_file"
 
 printf '== Checkout: %s ==\n' "$install_dir"
 if [[ ! -d "$install_dir/.git" ]]; then
@@ -86,8 +105,8 @@ Group=thinknodes
 WorkingDirectory=$install_dir/server
 Environment=HOME=$data_dir
 ${chromium:+Environment=THINKNODES_CHROMIUM=$chromium}
-# Optional settings, e.g. THINKNODES_GOOGLE_CLIENT_ID / THINKNODES_GOOGLE_CLIENT_SECRET (Google sign-in).
-EnvironmentFile=-$data_dir/thinknodes.env
+# Settings and secrets, e.g. the Google sign-in (deploy/GOOGLE.md). Kept when daemon.sh runs again.
+EnvironmentFile=-$env_file
 ExecStart=$install_dir/server/run.sh --project:$data_dir/Projects --tls-dir:$data_dir/tls
 Restart=on-failure
 RestartSec=5s
@@ -113,10 +132,17 @@ systemctl enable thinknodes
 systemctl restart thinknodes
 systemctl --no-pager --lines=5 status thinknodes || true
 
+google_state="off (to switch it on: $install_dir/server/deploy/GOOGLE.md)"
+if grep -Eq '^THINKNODES_GOOGLE_CLIENT_ID=.+' "$env_file" && grep -Eq '^THINKNODES_GOOGLE_CLIENT_SECRET=.+' "$env_file"; then
+    google_state="on (the log shows 'Google sign-in: enabled' at start)"
+fi
+
 cat <<EOF
 
 ThinkNodes runs as a systemd service (HTTPS, port 443).
   Data:          $data_dir/Projects
+  Settings:      $env_file
+  Google sign-in: $google_state
   Certificates:  $data_dir/tls (trust ca.crt on client devices, or use your own: --tls-cert:/--tls-key: in $unit)
 
 Admin account:   sudo runuser -u thinknodes -- $install_dir/server/run.sh user admin admin --project:$data_dir/Projects
