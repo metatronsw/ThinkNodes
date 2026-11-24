@@ -95,7 +95,10 @@ window.__perf = (() => {
     },
     wheel(x, y, deltaY, ctrlKey = false) {
       // A vászon fölötti fedőelemek (pl. állapotsor) helyett mindig a vászon vagy annak egy eleme kapja az eseményt.
-      const target = hit(x, y);
+      // A célpont keresése (elementFromPoint) maga is ezredmásodpercekbe kerül: pontonként egyszer keressük meg.
+      const key = x + "," + y;
+      if (this.wheelKey !== key || !this.wheelTarget?.isConnected) { this.wheelKey = key; this.wheelTarget = hit(x, y); }
+      const target = this.wheelTarget;
       (target && canvas().contains(target) ? target : canvas()).dispatchEvent(new WheelEvent("wheel", {bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, deltaY, deltaMode: 0, ctrlKey}));
     },
     selectedCount() { return document.querySelectorAll("[data-node].own-selected").length; },

@@ -35,7 +35,7 @@ const tally = name => window.__perf?.count(name);
 const timed = (name, run) => window.__perf ? window.__perf.time(name, run) : run();
 // Teljesítmény-kapcsolók kísérletezéshez (docs/PERF.md): localStorage.tnPerf = '{"overscan":0.5,"moving":"all",…}', majd újratöltés.
 // Alapértékek: a mérések szerint legjobb beállítás; a kapcsolókkal a korábbi viselkedés visszaállítható és összemérhető.
-const perfOptions = {overscan: 1, moving: "gesture", shield: true, rest: true,
+const perfOptions = {overscan: 1, moving: "gesture", shield: true, rest: true, grid: "css",
   ...(() => { try { return JSON.parse(localStorage.getItem("tnPerf") || "{}"); } catch { return {}; } })()};
 const {createApp, computed, getCurrentInstance, h, markRaw, nextTick, onMounted, onUnmounted, onUpdated, reactive, ref, shallowRef, toRaw, watch, watchEffect} = window.Vue;
 
@@ -1065,7 +1065,44 @@ createApp({
       svg.style.transform = `matrix(${scale},0,0,${scale},${shiftX},${shiftY})`;
       // A rács nem skálázódik a réteggel: a mintája közvetlenül az élő nézetet követi.
       const [centerX, centerY] = center();
-      if (!perfOptions.debugNoGrid) zoomHost()?.querySelector?.("#worksheet-grid")?.setAttribute("patternTransform", transform + " translate(" + centerX + " " + centerY + ")");
+      if (perfOptions.grid === "separate") zoomHost()?.querySelector?.("#worksheet-grid")?.setAttribute("patternTransform", transform + " translate(" + centerX + " " + centerY + ")");
+      else if (perfOptions.grid === "css") applyGrid(transform);
+    }
+    // Háttérrács CSS-háttérként, saját rétegben (perfOptions.grid = "css", alap). Az SVG-minta festése Safariban drága:
+    // külön SVG-rétegként ("separate") minden képkockában újrafestődött, a vászon rétegében ("canvas") pedig a nézet minden
+    // rögzítését lassította. A csempézett CSS-háttér olcsó, és közvetlenül követi az élő nézetet.
+    const gridElement = ref(null);
+    const wrap = (value, size) => ((value % size) + size) % size;
+    function gridBackground(transform) {
+      const [centerX, centerY] = center();
+      const k = transform.k, spacing = gridSpacing.value, {grid, glass} = graphics.value;
+      const originX = transform.x + k * centerX, originY = transform.y + k * centerY;
+      const layers = [];
+      const lines = (alpha, step) => {
+        const width = Math.max(k, .5), color = "rgba(120,155,176," + alpha + ")";
+        for (const side of ["right", "bottom"])
+          layers.push(["linear-gradient(to " + side + ", " + color + " " + width + "px, transparent " + width + "px)", step * k, width / 2]);
+      };
+      if (grid === "drafting" || grid === "lines") {
+        lines(.22, grid === "drafting" ? spacing * 5 : spacing);
+        if (grid === "drafting") lines(.08, spacing);
+      } else {
+        const radius = (glass ? 1 : 1.1) * k, hex = glass ? "#a397bf" : gridColor.value;
+        const rgb = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(",");
+        const color = "rgba(" + rgb + "," + (glass ? .24 : .28) + ")";
+        layers.push(["radial-gradient(circle, " + color + " " + radius + "px, transparent " + (radius + .6) + "px)", spacing * k, spacing * k / 2]);
+      }
+      return {
+        backgroundImage: layers.map(layer => layer[0]).join(","),
+        backgroundSize: layers.map(layer => layer[1] + "px " + layer[1] + "px").join(","),
+        backgroundPosition: layers.map(layer => wrap(originX - layer[2], layer[1]) + "px " + wrap(originY - layer[2], layer[1]) + "px").join(","),
+      };
+    }
+    function applyGrid(transform) {
+      const style = gridElement.value?.style;
+      if (!style) return;
+      if (!gridVisible.value) { style.backgroundImage = "none"; return; }
+      Object.assign(style, gridBackground(transform));
     }
     function commitView(transform) {
       pendingView = null;
@@ -2156,6 +2193,7 @@ createApp({
     const zoomDisplay = ref(null);
     let zoomDisplayTimer, lastZoomScale;
     function showZoomLevel(k) {
+      if (perfOptions.debugNoZoomLabel) return;
       if (lastZoomScale !== undefined && Math.abs(k - lastZoomScale) < 1e-9) return;
       lastZoomScale = k;
       zoomDisplay.value = k;
@@ -3236,9 +3274,11 @@ createApp({
     }
 
     function endpointHandle(edge, end, point) {
-      return h("circle", {key: end + "/" + edge.id, transform: "translate(" + point.x + " " + point.y + ")",
-        // A sugár nagyításfüggő része és az Alt alatti kikapcsolás CSS-ben van (app.css .wire-handle).
-        r: 10, fill: "transparent", tabindex: -1, "pointer-events": "all",
+      // Nagyítástól független, 20 képpont átmérőjű fogantyú: nulla hosszú, kerek végű, nem skálázódó körvonalú vonal.
+      // Így nagyításkor sem a fogantyút, sem a stílusát nem kell frissíteni; Alt alatt a CSS kapcsolja ki (app.css).
+      return h("path", {key: end + "/" + edge.id, transform: "translate(" + point.x + " " + point.y + ")", d: "M0 0h.01",
+        fill: "none", stroke: "transparent", "stroke-width": 20, "stroke-linecap": "round", "vector-effect": "non-scaling-stroke",
+        tabindex: -1, "pointer-events": "stroke",
         "data-edge": edge.id, "data-endpoint": end, class: edgeEndpoint(edge, end).node ? "wire-handle is-attached" : "wire-handle",
         onPointerdown: event => pressEndpoint(event, edge, end),
         onContextmenu: event => context(event, "edge", edge.id),
@@ -3336,8 +3376,9 @@ createApp({
         ui.candidate ? h("path", {"data-editor-only": "", d: taper ? d : stroke.d, class: "search-candidate", "clip-path": clipPath,
           "stroke-width": paint.lineWidth + 9 / zoomScale.value}) : null,
         animation.gradient ? h("defs", [animation.gradient]) : null,
-        // A találati szélesség nagyításfüggő része CSS-ben van (--zoom-step, app.css .wire-hit): nagyításkor nem kell újrarajzolni.
-        h("path", {"data-editor-only": "", d, stroke: "transparent", "stroke-width": paint.lineWidth + 10, style: {"--wire-hit": paint.lineWidth + 10 + "px"},
+        // Találati sáv: nagyítástól független, 14 képpont széles (non-scaling-stroke), így nagyításkor semmit sem kell
+        // újrarajzolni vagy újrastílusozni. Erős nagyításnál a vonal maga szélesebb ennél: ott a látható vonal fogja a kattintást.
+        h("path", {"data-editor-only": "", d, stroke: "transparent", "stroke-width": 14, "vector-effect": "non-scaling-stroke",
           "pointer-events": "stroke", class: "wire-hit"}),
         // Kijelölés: a meglévő vonal, nyilak és animáció kap árnyék alapú glow-t, így a jelzés pontosan az eredeti geometriát követi.
         h("g", {class: {"wire-own": local, "wire-glow": !!selectionColor},
@@ -3349,7 +3390,7 @@ createApp({
             return h("rect", {x: point.x - reach, y: point.y - reach, width: 2 * reach, height: 2 * reach,
               fill: "none", stroke: "none", "pointer-events": "none", "aria-hidden": "true"});
           }) : []),
-          h("path", {class: "wire-line", ...stroke, ...(taper ? {fill: shaftColor} : {stroke: shaftColor}), "pointer-events": "none", "clip-path": clipPath}, animation.shaft ? [animation.shaft] : undefined),
+          h("path", {class: "wire-line", ...stroke, ...(taper ? {fill: shaftColor} : {stroke: shaftColor}), "pointer-events": "visiblePainted", "clip-path": clipPath}, animation.shaft ? [animation.shaft] : undefined),
           renderArrow(ends.source, color, animatedArrows),
           renderArrow(ends.target, color, animatedArrows),
         ]),
@@ -3487,7 +3528,13 @@ createApp({
         const gridSize = drafting ? spacing * 5 : spacing;
         const gridLine = at => `M0 ${at} H${gridSize} M${at} 0 V${gridSize}`;
         const gridStroke = {stroke: "#789bb0", fill: "none"};
-        return h("svg", {class: "canvas-grid-layer", "aria-hidden": "true", "data-editor-only": ""}, [
+        // A rács a vászon rétegében (alap): a mintát csak a nézet rögzítésekor kell újrafesteni; mozdulat közben a réteggel
+        // együtt mozog és skálázódik. Külön rétegben (régi mód, perfOptions.grid = "separate") minden képkockában újrafestődött,
+        // ami nagyításnál a fő lassító volt.
+        const inside = perfOptions.grid !== "separate";
+        const [marginX, marginY] = margin();
+        return h(inside ? "g" : "svg", inside ? {"aria-hidden": "true", "data-editor-only": "", "pointer-events": "none"}
+          : {class: "canvas-grid-layer", "aria-hidden": "true", "data-editor-only": ""}, [
           h("defs", [
             h("pattern", {id: "worksheet-grid", patternUnits: "userSpaceOnUse", x: -spacing/2, y: -spacing/2, width: gridSize, height: gridSize,
               patternTransform: view.value + " translate(" + centerX + " " + centerY + ")"}, [
@@ -3498,7 +3545,7 @@ createApp({
                   "fill-opacity": glass ? .24 : .28}),
             ]),
           ]),
-          gridVisible.value ? h("rect", {class: "canvas-grid", width: "100%", height: "100%", fill: "url(#worksheet-grid)"}) : null,
+          gridVisible.value && perfOptions.grid !== "none" ? h("rect", {class: "canvas-grid", ...(inside ? {x: -marginX, y: -marginY} : {}), width: "100%", height: "100%", fill: "url(#worksheet-grid)"}) : null,
         ]);
       },
     };
@@ -3509,7 +3556,8 @@ createApp({
       const lined = grid === "drafting" || grid === "lines";
       // A háttér a munkalap színe (a rács alatt); a vászonréteg átlátszó.
       return h("div", {class: "canvas-area", style: {background: paint(board.value.background, 0), "--overscan": overscan}}, [
-        h(GridLayer),
+        perfOptions.grid === "separate" ? h(GridLayer) : null,
+        perfOptions.grid === "css" ? h("div", {class: "canvas-grid-css", ref: gridElement, "aria-hidden": "true", "data-editor-only": ""}) : null,
         h("svg", {ref: canvas, class: ["canvas", "editor-canvas", {"ctrl-held": ctrl.value, "alt-held": alt.value}],
           "data-drag-cursor": perfOptions.shield ? (spacePan.value && gesture.value?.type !== "pan" ? "grab" : undefined) : dragCursor(), "aria-label": "Ötletvászon",
           onContextmenu: event => context(event),
@@ -3570,7 +3618,7 @@ createApp({
               ]),
             ] : []),
           ]),
-          h("g", {ref: sceneOrigin, transform: "translate(" + margin().join(" ") + ")"}, [h(ViewLayer)]),
+          h("g", {ref: sceneOrigin, transform: "translate(" + margin().join(" ") + ")"}, [perfOptions.grid === "canvas" || perfOptions.grid === "none" ? h(GridLayer) : null, h(ViewLayer)]),
           spacePan.value ? h("rect", {width: "100%", height: "100%", fill: "none",
             "pointer-events": "all", "aria-hidden": "true", "data-editor-only": ""}) : null,
         ]),
@@ -4374,7 +4422,8 @@ createApp({
     });
     // A nagyítási lépcső CSS-változóban: a fogantyúk és a vonalak találati szélessége ebből számol (app.css),
     // így lépcsőváltáskor egyetlen stílusérték változik, nem rajzolódik újra minden vonal.
-    watchEffect(() => { canvas.value?.style?.setProperty("--zoom-step", zoomStep.value); });
+    // A CSS-rács a rögzített nézetet, a rácsbeállításokat és a méretet követi (mozdulat közben a previewView frissíti).
+    watchEffect(() => { size.value; gridSpacing.value; gridColor.value; graphics.value; applyGrid(pendingView ?? view.value); }, {flush: "post"});
 
     return () => timed("rootRender", () => {
       if (!board.value) return h("p", {class: problem.value ? "error editor-loading" : "editor-loading"}, problem.value || "Szerkesztő betöltése…");
