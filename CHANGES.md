@@ -1,5 +1,10 @@
 # Változások
 
+## 2026-11-24 – Táblázat / CSV: az Enter szerkesztést indít
+
+- Kijelölt cellán az Enter szerkesztést indít (mint az F2), nem lép a következő sorra. Szerkesztés közben az Enter elfogadja a beírást, és a cella kijelölve marad; továbblépni a nyilakkal vagy Tabbal lehet (`table-edit.js`, `keydown`).
+- Ellenőrizve a vezérlő közvetlen próbájával (Node) és a táblázat-tesztekkel; böngészőben nem próbáltam külön. Csak kliensoldali változás.
+
 ## 2026-11-24 – Éles táblázat, CSV és szövegfájl nagyítva (800%-ig)
 
 - Ok: a vászon előre raszterizált rétege (`will-change: transform`, a pásztázás gyors indulásához) a görgethető HTML-tartalmat a 100%-os felbontásában tartotta, ezért belenagyítva életlen volt. Cellaszerkesztés közben a nyugalmi transzform eddig is kikapcsolt, ezért volt ott éles.

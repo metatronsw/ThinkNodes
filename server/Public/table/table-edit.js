@@ -402,7 +402,8 @@ export class TableEditor {
     const key = event.key, ctrl = event.ctrlKey || event.metaKey, shiftKey = event.shiftKey;
     if (this.draft != null) {
       if (key === "Escape") { this.cancelDraft(); return true; }
-      if (key === "Enter" && !event.altKey) { this.commitDraft(); this.moveBy(shiftKey ? -1 : 1, 0); return true; }
+      // Enter: elfogadja a beírást, a cella kijelölve marad (nem ugrik a következőre). Tovább a nyilakkal / Tabbal.
+      if (key === "Enter" && !event.altKey) { this.commitDraft(); return true; }
       if (key === "Tab") { this.commitDraft(); this.moveBy(0, shiftKey ? -1 : 1); return true; }
       return false;  // a szövegmező kezeli
     }
@@ -420,7 +421,8 @@ export class TableEditor {
     const arrows = {ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1]}[key];
     if (arrows) { this.moveBy(...arrows, shiftKey); return true; }
     if (key === "Tab") { this.moveBy(0, shiftKey ? -1 : 1); return true; }
-    if (key === "Enter") { this.moveBy(shiftKey ? -1 : 1, 0); return true; }
+    // Enter a kijelölt cellán: szerkesztés indítása (mint az F2).
+    if (key === "Enter") { this.startDraft(); return true; }
     if (key === "Home") { this.select(this.active.r, 0, shiftKey); return true; }
     if (key === "End") { this.select(this.active.r, this.doc.size.cols - 1, shiftKey); return true; }
     if (key === "F2") { this.startDraft(); return true; }

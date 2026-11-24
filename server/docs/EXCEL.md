@@ -209,7 +209,7 @@ ha a saját cellájának nincs (pl. `SUM` pénznemes cellákon pénznem lesz), a
 **Szerkesztési módban:**
 - A doboz tetején képletsor jelenik meg: a cella neve (pl. `B5`) és a nyers tartalma (`=SUM(B2:B4)`).
 - Kijelölés: kattintás, Shift+kattintás, húzás (tartomány), kattintás az oszlop- vagy sorfejlécre (egész oszlop vagy sor).
-- Mozgás: nyilak, Tab / Shift+Tab, Enter / Shift+Enter, Home / End, Ctrl+nyíl.
+- Mozgás: nyilak, Tab / Shift+Tab, Home / End, Ctrl+nyíl. Enter (vagy F2) a kijelölt cellán szerkesztést indít; szerkesztés közben Enter elfogad, és a cella kijelölve marad (2026-11-24 óta nem lép a következő sorra).
 - Beírás: gépeléskor a cella tartalma lecserélődik, F2 vagy dupla kattintás a meglévőt szerkeszti, Delete törli, Esc elveti a változást.
 - Képlet írásakor egy cellára kattintva vagy a nyilakkal a hivatkozás beszúródik, és a hivatkozott tartomány színes keretet kap.
 - Formázás: Ctrl+B / I / U. Az áthúzásnak és a színeknek nincs gyorsbillentyűje, ezek a panelen és a lebegő eszközsoron érhetők el.
