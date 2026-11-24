@@ -1632,6 +1632,9 @@ createApp({
     }
 
     function pressNode(event, node) {
+      // Görgetősáv fölött a doboz nem fogható meg, bárhonnan érkezik is az esemény (Safariban a sávra kattintás
+      // célpontja nem mindig a görgethető elem); a preventDefault ott a görgetősáv húzását is letiltaná.
+      if (isTextFile(node) && onScrollbar(event, node, event.currentTarget.querySelector?.(".node-note"))) return;
       finishField();
       if (event.altKey && !event.ctrlKey && event.button === 0 && !isJunction(node)) {
         if (!online.value || reconnect.value) return;
@@ -2880,15 +2883,17 @@ createApp({
     // ~16px-es sávjában, ha van mit görgetni) marad a görgetés. A sávot a doboz vászonbeli helyéből számoljuk, nem a
     // DOM-ból: Safariban a foreignObject-beli elemek getBoundingClientRect-je nem követi a vászon nagyítását és
     // eltolását, így ott a doboz húzása elkapta a görgetősávot.
-    const scrollbarPress = (e, node) => {
-      const el = e.currentTarget, point = world(e.touches?.[0] ?? e), band = 16;
+    function onScrollbar(e, node, el) {
+      if (!el) return false;
+      const point = world(e.touches?.[0] ?? e), band = 16;
       const inset = parseFloat(getComputedStyle(el.closest(".node-file")).paddingRight) || 0;
       const x = point.x - node.position.x, y = point.y - node.position.y;
       const right = node.width / 2 - inset, bottom = node.height / 2 - inset;
-      const vertical = el.scrollHeight > el.clientHeight && x >= right - band && x <= right;
-      const horizontal = el.scrollWidth > el.clientWidth && y >= bottom - band && y <= bottom;
-      if (vertical || horizontal) e.stopPropagation();
-    };
+      const vertical = el.scrollHeight > el.clientHeight && x >= right - band && x <= right && Math.abs(y) <= bottom;
+      const horizontal = el.scrollWidth > el.clientWidth && y >= bottom - band && y <= bottom && Math.abs(x) <= right;
+      return vertical || horizontal;
+    }
+    const scrollbarPress = (e, node) => { if (onScrollbar(e, node, e.currentTarget)) e.stopPropagation(); };
 
     function renderFileText(node) {
       const text = fileTexts.value.get(fileTextKey(node));

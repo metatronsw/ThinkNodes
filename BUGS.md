@@ -7,6 +7,7 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 - **Safari 18: a szövegfájl- / táblázatdoboz görgetősávja egérrel nem húzható (a görgő működik)** (2026-11-24) – javítás bent, Safariban megerősítésre vár
   - Feltételezett ok: a görgetősáv-felismerés (`scrollbarPress`) a DOM-ból (`getBoundingClientRect`) számolt, ami Safariban a foreignObject-beli elemeknél nem követi a vászon nagyítását/eltolását; így a doboz húzása (`pressNode`: `preventDefault` + pointer capture) elkapta a kattintást.
   - Javítás: a sáv a doboz vászonbeli helyéből és az egér vászonkoordinátájából számolódik (`Public/editor.js`). Chromiumban ellenőrizve; Safariban nem tudtam kipróbálni (a WebDriverhez a „Távoli automatizálás engedélyezése” kell). Ha Safariban továbbra sem megy, az ok más.
+  - 2. kísérlet (az első után Safariban továbbra sem ment): a védelem a `pressNode`-ban is benne van, így nem függ attól, melyik elemre érkezik a kattintás. Ha így sem megy: megfigyelni, mi történik húzáskor (a doboz mozdul / a vászon pásztáz / semmi), vagy Safariban engedélyezni a távoli automatizálást a hibakereséshez. Lehetséges, hogy WebKit-hiba (foreignObject-beli görgetősáv nagyított SVG-ben); akkor saját görgetősáv kell.
 
 - **A Swift `JSONDecoder` egyes lebegőpontos literálokat 1 ulp pontatlansággal olvas (macOS 13 Foundation)** (2026-11-24, tizedes-audit)
   - Példa: `0.0020293361140076467` → `0.0020293361140076476`. A `.tntable` értékei a szerveren az utolsó bináris jegyben elcsúszhatnak (a kiírt 15 jegyre nincs hatással).
