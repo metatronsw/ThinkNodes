@@ -1,5 +1,16 @@
 # Változások
 
+## 2026-11-24 – TODO- és BUGS-tételek (`todo-bugs-2026-11-24` ág)
+
+- **Tesztek:** a `Tests/Editor/gestures.mjs` újra átmegy; a szerkesztő mostani működéséhez igazítva (részletek: DONE.md).
+- **Törölt projektek lomtára:** az adminoldalon („Törölt projektek”) a gyökér `.trash` mappájának projektjei visszaállíthatók az eredeti néven, vagy – a „Végleg” négyzet bejelölése után – véglegesen törölhetők; „Lomtár ürítése” mindet törli (`/admin/trash`, `deletedProjects`, `restoreProject`, `purgeDeletedProjects`).
+- **`common` projektnév foglalt** (`WorksheetPath.reserved`).
+- **Közös fájlok:** az átnevezett fájlnév és a publikus (pillangó) állapot minden lapon a tulajdonos mappából jön olvasáskor; a közös könyvtár szövegfájljai a megtekintőben is megjelennek; a lomtárba tett közös fájl visszavonáskor visszaáll.
+- **Szerkesztő:** ugyanannak a projektnek másik lapjáról másolt fájldoboz beillesztéskor közös hivatkozás lesz (nem új feltöltés); a vászonra húzott `.thnode` az új allapra mutató laplinkes dobozt kap; a behúzott ThinkNodes-csomag ZIP-nél a szerkesztő felajánlja az importot allapként (`isPackageZip`, `package.js`).
+- **CSV olvasó nézet:** a társak cellakijelölése és a dupla kattintással megnyitott cella üres sorokat tartalmazó fájlban is a jó sorra esik.
+- **Táblázatszerkesztő (Safari):** a ragadó fejlécek helyett külön fejlécsávok (oszlopbetűk, sorszámok), amelyek a rács görgetését követik – Safariban a ragadó fejléc görgetés után nem látszott és nem volt kattintható; az oszlopszélesség-fogó így működik. A szerkesztő megnyitásakor a vászon nem ugrik el (a Safari a fókusz miatt elgörgette a vászonterületet). Automatizált Safariban ellenőrizve.
+- Szerverkód változott: újrafordítva és újraindítva.
+
 ## 2026-11-24 – Safari-mérés: görgős nagyítás és táblázathúzás gyorsítása; puffer- és memóriamérés
 
 Mérés: automatizált Safari 18.6, release szerver, mérő-adatmappa (`p300`: 376 doboz). Részletek: `server/docs/PERF.md` („2026-11-24 esti mérés”).

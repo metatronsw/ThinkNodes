@@ -78,7 +78,7 @@ Nem kötelező. Ha a szerver környezetében mindkét változó meg van adva, a 
 
 ## Munkalapok és fájlok
 
-A főoldal kártyái projektmappákat nyitnak meg. Minden munkalap a saját mappájában, a mappával azonos nevű **.thnode** fájlban található. Az **Új projekt** projektmappát, az **Új munkalap** almappát hoz létre. A szerkesztőbe feltöltött **.thnode** szintén külön almappába kerül. A szerver indításkor és a lap megnyitásakor ellenőrzi a mappába másolt képeket és egyéb csatolmányokat. A támogatott fájlok előnézetet kapnak, a többiek letölthető fájldobozként jelennek meg.
+A főoldal kártyái projektmappákat nyitnak meg. Minden munkalap a saját mappájában, a mappával azonos nevű **.thnode** fájlban található. Az **Új projekt** projektmappát, az **Új munkalap** almappát hoz létre. A szerkesztőbe feltöltött vagy a vászonra húzott **.thnode** szintén külön almappába kerül, a vásznon pedig rá mutató laplinkes doboz jelenik meg; a vászonra húzott ThinkNodes-csomag (ZIP) importálható allapként. A **common** projektnév foglalt (a közös könyvtár címe). A szerver indításkor és a lap megnyitásakor ellenőrzi a mappába másolt képeket és egyéb csatolmányokat. A támogatott fájlok előnézetet kapnak, a többiek letölthető fájldobozként jelennek meg.
 
 Az első indításkor a szerver a régi, közös mappában tárolt munkalapokat saját almappába rendezi. Átviszi a lapbeállításokat, átmásolja a használt csatolmányokat, és az eredeti lapfájlokat a projekt **.trash/** mappájába menti.
 
@@ -93,7 +93,7 @@ A munkalap JSON-formátumban tárolja a vásznat, a címét, a létrehozóját �
 
 Helyben a **projects/.settings.json** tartalmazza az alkalmazás beállításait, a fiókokat és a bcrypt-jelszóhasheket. A beállításfájlokat és a munkalapokat a mellékletlista kihagyja. A munkalap saját letöltési gombja **.thnode** fájlt ad.
 
-A fájldoboz alján a csomagikonra duplán kattintva lehet letölteni a fájlt. Új fájloknál a név alapból rejtett. A tulajdonságpanel **Megjelenés** részében kapcsolható be, a **Fájlnév** mezőben pedig a kiterjesztés előtti rész szerkeszthető. A jóváhagyott törlés a projekt **.trash/** mappájába helyezi a fájlt az eredeti projektbeli alkönyvtárral együtt.
+A fájldoboz alján a csomagikonra duplán kattintva lehet letölteni a fájlt. Új fájloknál a név alapból rejtett. A tulajdonságpanel **Megjelenés** részében kapcsolható be, a **Fájlnév** mezőben pedig a kiterjesztés előtti rész szerkeszthető. A jóváhagyott törlés a projekt **.trash/** mappájába helyezi a fájlt az eredeti projektbeli alkönyvtárral együtt. A törölt projektek a projektmappa gyökerének **.trash/** mappájába kerülnek; az adminisztrátor a **Beállítások** oldal **Törölt projektek** részében visszaállíthatja vagy véglegesen törölheti őket.
 
 A mentés atomi fájlcserét és revízióellenőrzést használ. Egy adatkönyvtárhoz egy futó szerverpéldány tartozik.
 

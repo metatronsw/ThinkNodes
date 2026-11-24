@@ -1008,13 +1008,21 @@ svg text { text-rendering: geometricPrecision; }
 .tn-sb:hover .tn-sb-thumb, .tn-sb:active .tn-sb-thumb { background: color-mix(in srgb, currentColor 65%, transparent); }
 .tn-table.tn-editing { font-size: 13px; }
 .tn-table.tn-editing td { cursor: cell; user-select: none; }
-.tn-table.tn-editing .tn-colhead th, .tn-table.tn-editing .tn-rowhead { position: sticky; background: var(--tn-head); color: color-mix(in srgb, currentColor 70%, transparent); font: 600 11px/1 system-ui, sans-serif; text-align: center; user-select: none; }
-.tn-table.tn-editing .tn-colhead th { top: 0; z-index: 2; }
-.tn-table.tn-editing .tn-rowhead { left: 0; z-index: 1; }
-.tn-table.tn-editing .tn-corner { left: 0; z-index: 3; }
+/* Szerkesztő: a fejlécek külön sávban állnak a görgethető rács mellett (table-view.js syncHeads), nem ragadó cellák:
+   Safariban a foreignObject-beli ragadó fejléc görgetés után nem rajzolódott ki, és nem volt kattintható. */
+.tn-grid { flex: 1; min-height: 0; display: grid; grid-template: auto minmax(0, 1fr) / auto minmax(0, 1fr); }
+.tn-grid > .tn-corner { grid-area: 1 / 1; box-sizing: border-box; width: 36px; height: 24px; background: var(--tn-head); border: 1px solid color-mix(in srgb, currentColor 22%, transparent); cursor: cell; }
+.tn-colstrip { grid-area: 1 / 2; min-width: 0; overflow: hidden; background: var(--tn-head); }
+.tn-rowstrip { grid-area: 2 / 1; min-height: 0; overflow: hidden; background: var(--tn-head); }
+.tn-grid > .tn-table-scroll-host { grid-area: 2 / 2; min-width: 0; }
+.tn-table.tn-editing .tn-colhead th, .tn-table.tn-editing .tn-rowhead { background: var(--tn-head); color: color-mix(in srgb, currentColor 70%, transparent); font: 600 11px/1 system-ui, sans-serif; text-align: center; user-select: none; }
 .tn-table.tn-editing :is(.tn-colhead th, .tn-rowhead).selected { background: var(--tn-mark); color: inherit; }
-.tn-table.tn-editing .tn-colhead th { position: sticky; }
-.tn-resize { position: absolute; top: 0; right: -3px; width: 7px; height: 100%; cursor: col-resize; z-index: 4; }
+/* Oszlopszélesség-fogó: a fejléccella jobb szélén, normál elrendezésben (flex), nem pozicionálva – Safariban a
+   foreignObject-beli pozicionált elem nem kattintható. A lenyomást a fejléccella is felismeri (table-view.js). */
+.tn-table.tn-editing .tn-colhead th.tn-col { padding: 0; }
+.tn-col-inner { display: flex; align-items: stretch; height: 22px; }
+.tn-col-name { flex: 1 1 auto; min-width: 0; padding: 0 0 0 6px; align-self: center; overflow: hidden; }
+.tn-resize { flex: 0 0 6px; cursor: col-resize; }
 .tn-table.tn-editing td.selected { background-image: linear-gradient(color-mix(in srgb, var(--accent) 16%, transparent), color-mix(in srgb, var(--accent) 16%, transparent)); }
 .tn-table.tn-editing td.active { outline: 2px solid var(--accent); outline-offset: -2px; }
 .tn-table.tn-editing td.header { font-weight: 650; }

@@ -6,6 +6,33 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **Safari: a táblázatszerkesztő fejlécei görgetés után eltűntek, az oszlopszélesség-fogó nem volt kattintható** (2026-11-25)
+  - Ok: a ragadó (`sticky`) fejléccellákat a Safari foreignObject-en belül görgetés után nem rajzolta ki, és a helyükön az alattuk lévő cella kapta a kattintást (automatizált Safari 18.6-ban mérve: a fejléc helyén `TD` a találat).
+  - Javítás: az oszlopbetűk sora és a sorszámok oszlopa külön sávban áll a rács mellett, rácselrendezésben, és a rács görgetését követi (`tn-grid`, `syncHeads`, `table-view.js`); a fogó normál elrendezésű elem, és a fejléccella széle is fogóként működik. Safariban ellenőrizve: a fejlécek látszanak, a fogó a találat (`col-resize`), egy oszlop 69 → 109 képpontra húzható és vissza.
+
+- **Safari: a táblázatszerkesztő megnyitásakor a vászon egy képernyőnyit elugorhatott** (2026-11-25)
+  - Ok: a szerkesztő fókuszálásakor a Safari elgörgette a (nem görgethető, `overflow: hidden`) vászonterületet (`.canvas-area` scrollLeft / scrollTop = a látható méret).
+  - Javítás: a vászonterület a görgetését azonnal visszaállítja (`keepUnscrolled`, `editor.js`); a cella beviteli mezője görgetés nélkül kap fókuszt. Safariban ellenőrizve: a doboz a helyén marad.
+
+- **Más résztvevő cellakijelölése a CSV olvasó nézetében elcsúszott az üres sorok miatt** (2026-11-24)
+  - Ok: az olvasó nézet kihagyja az üres sorokat, a kijelölés és a dupla kattintással megnyitott cella viszont a fájl sorai szerint számol.
+  - Javítás: a nézet sorai a fájlbeli sorszámukat viszik (`parseCSV` `index`, `data-row`); a társak kijelölése és a kattintott cella ebből számol (`editor.js`).
+
+- **`Tests/Editor/gestures.mjs` elbukott** (2026-11-24)
+  - Ok: a teszt a szerkesztő korábbi állapotát ellenőrizte (Mentés gomb és „Resign”, kurzor a vászon attribútumán, SVG-mintás rács, `confirm`-os fájltörlés, kör alakú végpontfogó, külön alátét a saját vonal-kijelöléshez).
+  - Javítás: a teszt a mostani működéshez igazodik (automatikus mentés, kurzor-pajzs, vászonra rajzolt rács, lomtár-párbeszéd, `wire-own` osztály); a hamis DOM megkapta a hiányzó részeket. A szerkesztő kódja emiatt nem változott. Új esetek: `.thnode` behúzás, csomag-ZIP felismerése, fájltörlés a lomtár-párbeszéddel.
+
+- **Közös fájlok: a pillangó ikon és az átnevezett fájlnév a többi lapon régi állapotot mutatott** (2026-11-24)
+  - Javítás: olvasáskor a szerver adja a tulajdonos mappa szerinti fájlnevet és publikus állapotot (`resolvedFileNames`, `Model.swift`); .web hivatkozásnál a .web mappa beállításából.
+
+- **Közös könyvtárbeli szövegfájl tartalma nem jelent meg a megtekintőben** (2026-11-24)
+  - Javítás: a `fileTexts` a `Public/common` fájljait is beolvassa (`CommonLibrary.file`).
+
+- **Lomtárba tett közös fájl visszavonással nem jött vissza** (2026-11-24)
+  - Javítás: a lomtárba tétel feljegyzi a fájl lomtárbeli helyét (`archivedFiles`), a visszakerülő doboz mentésekor a fájl visszaáll – saját és másik lapról hivatkozott doboznál is (`trashTarget`, `restoreArchivedShared`).
+
+- **`common` nevű projekt létrehozható volt** (2026-11-24) – a név foglalt (a `/common/` a közös könyvtár címe).
+
 - **Safari: nagyítás közben ugrált a háttérrács** (2026-11-24)
   - Ok: a rács csempézett CSS-háttér volt, a böngésző a csempe méretét egész képpontra kerekíti; tört rácsköznél ez csempénként összeadódik (kis nagyításnál nagy, nagy nagyításnál kicsi elcsúszás, lépésenként változva).
   - Javítás: a rács `<canvas>` elemre rajzolódik, pontos helyekre (`drawGrid`, `editor.js`; `perfOptions.grid = "draw"`). A felhasználó Safariban megerősítette, hogy az ugrálás megszűnt. A rajzolt rács sebessége Safariban nincs mérve.

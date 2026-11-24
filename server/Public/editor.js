@@ -199,9 +199,12 @@ function propertyTools(...controls) {
 
 
 // Egyszerű CSV/TSV feldolgozás a táblázatnézethez (Rendering.swift parseCSV).
+// A nézet kihagyja az üres sorokat; minden megmaradó sor `index` mezője a fájlbeli sorszáma (0-tól), mert a
+// cellakijelölés és a szerkesztő a fájl sorai szerint számol.
 function parseCSV(source, separator = ",") {
   const rows = [];
   let row = [], field = "", quoted = false;
+  const keep = cells => { const kept = cells.slice(0, 30); kept.index = rows.length; rows.push(kept); };
   for (let i = 0; i < source.length && rows.length < 200; i++) {
     const c = source[i];
     if (quoted) {
@@ -211,10 +214,10 @@ function parseCSV(source, separator = ",") {
     else if (c === separator) { row.push(field); field = ""; }
     else if (c === "\n" || c === "\r") {
       if (c === "\r" && source[i + 1] === "\n") i++;
-      row.push(field); field = ""; rows.push(row.slice(0, 30)); row = [];
+      row.push(field); field = ""; keep(row); row = [];
     } else field += c;
   }
-  if (field || row.length) { row.push(field); rows.push(row.slice(0, 30)); }
+  if (field || row.length) { row.push(field); keep(row); }
   return rows.filter(r => !(r.length === 1 && r[0] === ""));
 }
 
@@ -3116,7 +3119,9 @@ createApp({
       const y = point.y - (node.position.y - node.height / 2) - pixels(frame, "paddingTop") - pixels(note, "paddingTop") + note.scrollTop;
       const row = [...table.rows].find(item => y >= item.offsetTop && y < item.offsetTop + item.offsetHeight);
       const cell = row && [...row.cells].find(item => x >= item.offsetLeft && x < item.offsetLeft + item.offsetWidth);
-      return cell ? {r: row.rowIndex, c: cell.cellIndex, top: cell.offsetTop, left: cell.offsetLeft} : null;
+      // CSV: a nézet kihagyja az üres sorokat, a sor fájlbeli száma a data-row attribútumban van.
+      const index = row?.dataset.row === undefined ? row?.rowIndex : Number(row.dataset.row);
+      return cell ? {r: index, c: cell.cellIndex, top: cell.offsetTop, left: cell.offsetLeft} : null;
     }
 
     // `at`: a kattintott cella (clickedCell) – ez nyílik meg szerkesztésre, és a képernyőn a helyén marad.
@@ -3420,9 +3425,11 @@ createApp({
         return cachedGrid(node.id, text, peerCells.get(node.id), marks => {
           const [head = [], ...rows] = parseCSV(preview, detectSeparator(preview, ext));
           const marked = (r, c) => { const mark = peerMark(marks, r, c); return mark ? {class: mark.class, style: {"--tn-peer": mark.color}} : null; };
+          // A sorok a fájlbeli sorszámukat viszik (data-row): az üres sorok kimaradnak a nézetből, de a társak
+          // kijelölése és a dupla kattintással megnyitott cella a fájl sorai szerint számol.
           return h("table", {class: "node-csv"}, [
-            h("thead", [h("tr", head.map((cell, c) => h("th", marked(0, c), cell)))]),
-            h("tbody", rows.map((row, r) => h("tr", row.map((cell, c) => h("td", marked(r + 1, c), cell))))),
+            h("thead", [h("tr", {"data-row": head.index ?? 0}, head.map((cell, c) => h("th", marked(head.index ?? 0, c), cell)))]),
+            h("tbody", rows.map(row => h("tr", {"data-row": row.index}, row.map((cell, c) => h("td", marked(row.index, c), cell))))),
           ]);
         });
       }
@@ -3991,7 +3998,10 @@ createApp({
       const {grid, glass} = graphics.value;
       const lined = grid === "drafting" || grid === "lines";
       // A háttér a munkalap színe (a rács alatt); a vászonréteg átlátszó.
-      return h("div", {class: "canvas-area", style: {background: paint(board.value.background, 0), "--overscan": overscan}}, [
+      // A vászonterület nem görgethető (overflow: hidden), de a böngésző fókuszáláskor mégis elgörgetheti: Safariban a
+      // táblázatszerkesztő megnyitása (a foreignObject-beli fókusz) egy teljes képernyőnyit görgetett rajta, a nézet elugrott.
+      const keepUnscrolled = event => { const area = event.currentTarget; if (area.scrollLeft || area.scrollTop) { area.scrollLeft = 0; area.scrollTop = 0; } };
+      return h("div", {class: "canvas-area", onScroll: keepUnscrolled, style: {background: paint(board.value.background, 0), "--overscan": overscan}}, [
         perfOptions.grid === "separate" ? h(GridLayer) : null,
         perfOptions.grid === "css" ? h("div", {class: "canvas-grid-css", ref: gridElement, "aria-hidden": "true", "data-editor-only": ""}) : null,
         perfOptions.grid === "draw" ? h("canvas", {class: "canvas-grid-css canvas-grid-draw", ref: gridElement, "aria-hidden": "true", "data-editor-only": ""}) : null,

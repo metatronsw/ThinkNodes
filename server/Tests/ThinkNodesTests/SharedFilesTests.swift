@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import Vapor
+import VaporTesting
 @testable import ThinkCore
 @testable import ThinkNodes
 
@@ -79,6 +80,46 @@ import Vapor
 
     try store.purgeDeletedProjects(first.id)
     #expect(store.deletedProjects().isEmpty)
+}
+
+/// Adminoldal: a törölt projekt megjelenik a „Törölt projektek” panelen; visszaállítás és (megerősítéssel) végleges törlés.
+@Test func adminPageManagesDeletedProjects() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-admintrash-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    let password = UUID().uuidString
+    try store.setUser(name: "admin", role: .admin, passwordHash: try Bcrypt.hash(password, cost: 4))
+    let admin = try #require(try store.user(named: "admin"))
+    for name in ["marad", "torolt"] { _ = try store.open(try WorksheetPath([name]), user: admin) }
+    try store.archive(try WorksheetPath(["torolt"]), expected: 1)
+    let id = try #require(store.deletedProjects().first?.id)
+    struct Form: Content { var id: String?; var action: String; var confirm: String?; var csrf: String }
+
+    try await withApp(configure: { app in configure(app, store: store, secureCookies: false) }) { app in
+        let browser = try app.testing()
+        let session = try await login(browser, name: "admin", password: password, path: "marad")
+        func post(_ form: Form) async throws -> HTTPStatus {
+            try await browser.sendRequest(.POST, "/admin/trash", headers: ["Cookie": session.cookie]) { request in
+                try request.content.encode(form, as: .urlEncodedForm)
+            }.status
+        }
+        let page = try await browser.sendRequest(.GET, "/admin", headers: ["Cookie": session.cookie]).body.string
+        #expect(page.contains("Törölt projektek (1)") && page.contains("<strong>torolt</strong>"))
+        // Megerősítés nélkül nincs végleges törlés; hibás CSRF-fel semmi.
+        #expect(try await post(Form(id: id, action: "purge", confirm: nil, csrf: session.csrf)) == .badRequest)
+        #expect(try await post(Form(id: id, action: "restore", confirm: nil, csrf: "hibas")) != .seeOther)
+        #expect(store.deletedProjects().count == 1)
+        #expect(try await post(Form(id: id, action: "restore", confirm: nil, csrf: session.csrf)) == .seeOther)
+        let restored = try WorksheetPath(["torolt"])
+        #expect(store.deletedProjects().isEmpty && store.pageExists(restored))
+        let after = try await browser.sendRequest(.GET, "/admin", headers: ["Cookie": session.cookie]).body.string
+        #expect(!after.contains("Törölt projektek"))
+
+        try store.archive(restored, expected: try store.load(restored, user: admin).revision)
+        let again = try #require(store.deletedProjects().first?.id)
+        #expect(try await post(Form(id: again, action: "purge", confirm: "on", csrf: session.csrf)) == .seeOther)
+        #expect(store.deletedProjects().isEmpty && !store.pageExists(restored))
+    }
 }
 
 /// A `common` első szegmens foglalt: a közös könyvtár címe (`/common/...`), projekt nem kaphatja meg.

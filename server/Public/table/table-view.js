@@ -234,24 +234,35 @@ export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false
   };
 
   const cellInput = () => h("input", {class: "tn-cell-input", value: draft, spellcheck: false, "aria-label": "Cella " + edit.activeName,
-    onVnodeMounted: ({el}) => { el.focus(); el.setSelectionRange?.(el.value.length, el.value.length); },
+    onVnodeMounted: ({el}) => { el.focus({preventScroll: true}); el.setSelectionRange?.(el.value.length, el.value.length); },
     onInput: e => edit.setDraft(e.target.value), onPointerdown: e => e.stopPropagation()});
 
-  const headerRow = h("tr", {class: "tn-colhead"}, [
-    h("th", {class: "tn-corner", onPointerdown: e => { e.stopPropagation(); edit.anchor = {r: 0, c: 0}; edit.active = {r: doc.size.rows - 1, c: doc.size.cols - 1}; edit.touch(); }}),
-    ...Array.from({length: doc.size.cols}, (_, c) => h("th", {class: {selected: c >= sel.c0 && c <= sel.c1},
-      onPointerdown: e => { e.stopPropagation(); edit.selectColumn(c, e.shiftKey); }}, [
-      columnName(c), h("span", {class: "tn-resize", title: "Oszlopszélesség", onPointerdown: e => resizeColumn(e, c)}),
-    ])),
-  ]);
+  // Fejlécek: az oszlopbetűk sora és a sorszámok oszlopa külön sávban áll a görgethető rács mellett (rácselrendezésben),
+  // és a rács görgetését követi (syncHeads). Ragadó (sticky) cellákkal Safariban a foreignObject-en belül a fejléc
+  // görgetés után nem rajzolódott ki, és a helyén az alatta lévő cella kapta a kattintást.
+  const selectAll = e => { e.stopPropagation(); edit.anchor = {r: 0, c: 0}; edit.active = {r: doc.size.rows - 1, c: doc.size.cols - 1}; edit.touch(); };
+  // Oszlopszélesség: a fogó a fejléccella jobb szélén áll normál elrendezésben, és a lenyomást a fejléccella maga is
+  // felismeri a széle közelében (a következő oszlop bal szélén is).
+  const headerRow = h("tr", {class: "tn-colhead"},
+    Array.from({length: doc.size.cols}, (_, c) => h("th", {class: ["tn-col", {selected: c >= sel.c0 && c <= sel.c1}],
+      onPointerdown: e => {
+        const box = e.currentTarget.getBoundingClientRect(), scale = box.width / (e.currentTarget.offsetWidth || 1) || 1;
+        if (e.clientX >= box.right - 6 * scale) { resizeColumn(e, c); return; }
+        if (c > 0 && e.clientX <= box.left + 3 * scale) { resizeColumn(e, c - 1); return; }
+        e.stopPropagation(); edit.selectColumn(c, e.shiftKey);
+      }}, [h("div", {class: "tn-col-inner"}, [
+        h("span", {class: "tn-col-name"}, columnName(c)), h("span", {class: "tn-resize", title: "Oszlopszélesség"}),
+      ])])));
+  const headRows = [h("tr", {key: "top", class: "tn-spacer", style: {height: top + "px"}})];
 
   const bodyRows = [];
   // A sorok kulcsa a sorszám: görgetéskor a megmaradó sorok DOM-ja érintetlen marad, csak a belépő és kilépő sorok
   // jönnek létre, illetve tűnnek el. Kulcs nélkül minden látható cella tartalma kicserélődött (teljes újraelrendezés).
   bodyRows.push(h("tr", {key: "top", class: "tn-spacer", style: {height: top + "px"}}));
   for (let r = first; r < last; r++) {
-    const cells = [h("th", {class: ["tn-rowhead", {selected: r >= sel.r0 && r <= sel.r1}],
-      onPointerdown: e => { e.stopPropagation(); edit.selectRow(r, e.shiftKey); }}, String(r + 1))];
+    headRows.push(h("tr", {key: r, style: {height: rowHeight(doc, r) + "px"}}, [h("th", {class: ["tn-rowhead", {selected: r >= sel.r0 && r <= sel.r1}],
+      onPointerdown: e => { e.stopPropagation(); edit.selectRow(r, e.shiftKey); }}, String(r + 1))]));
+    const cells = [];
     for (let c = 0; c < doc.size.cols; c++) {
       const name = cellName(r, c), cell = doc.cells[name], style = styleOf(doc, cell);
       const isActive = r === edit.active.r && c === edit.active.c;
@@ -269,6 +280,8 @@ export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false
     bodyRows.push(h("tr", rowHeight(doc, r) === defaultRowHeight ? {key: r} : {key: r, style: {height: rowHeight(doc, r) + "px"}}, cells));
   }
   bodyRows.push(h("tr", {key: "bottom", class: "tn-spacer", style: {height: rest + "px"}}));
+  // A sávok alján / végén ráhagyás van, hogy a rács görgetősávja miatti többletet is követni tudják.
+  headRows.push(h("tr", {key: "bottom", class: "tn-spacer", style: {height: rest + headSlack + "px"}}));
 
   const stop = e => e.stopPropagation();
   return h("div", {class: "tn-table-editor", tabindex: -1, "data-table-editor": "",
@@ -315,23 +328,42 @@ export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false
         onInput: e => edit.setDraft(e.target.value), onPointerdown: stop}),
     ]),
     edit.problem ? h("p", {class: "tn-problem", role: "alert"}, edit.problem) : null,
-    // A görgethető rács külön tartóban áll: Safariban ide kerülnek mellé a saját görgetősávok (scrollbar-drag.js).
-    h("div", {class: "tn-table-scroll-host"}, [h("div", {class: "tn-table-scroll",
-      onVnodeMounted: ({el}) => { edit.viewport = el.clientHeight || 400; el.scrollTop = edit.scrollTop; el.scrollLeft = edit.scrollLeft ?? 0; attachScrollbars(el); },
-      onVnodeUpdated: ({el}) => attachScrollbars(el), onVnodeBeforeUnmount: ({el}) => detachScrollbars(el),
-      onScroll: e => {
-        const el = e.currentTarget;
-        onScroll?.(el);
-        edit.viewport = el.clientHeight || 400;
-        if (Math.abs(el.scrollTop - edit.scrollTop) > windowStep) { edit.scrollTop = el.scrollTop; edit.touch(); }
-      }}, [
-      h("table", {class: ["tn-table", "tn-editing", {"no-grid": doc.grid === false}], style: {width: tableWidth(doc, true) + "px"}}, [
-        colgroup(h, doc, true),
-        h("thead", [headerRow]),
-        h("tbody", bodyRows),
+    h("div", {class: "tn-grid"}, [
+      h("div", {class: "tn-corner", title: "Minden cella kijelölése", onPointerdown: selectAll}),
+      h("div", {class: "tn-colstrip"}, [h("div", {style: {width: tableWidth(doc) + headSlack + "px"}}, [
+        h("table", {class: ["tn-table", "tn-editing", {"no-grid": doc.grid === false}], style: {width: tableWidth(doc) + "px"}}, [
+          colgroup(h, doc, false), h("thead", [headerRow])]),
+      ])]),
+      h("div", {class: "tn-rowstrip"}, [
+        h("table", {class: ["tn-table", "tn-editing", {"no-grid": doc.grid === false}], style: {width: rowHeadWidth + "px"}}, [h("tbody", headRows)]),
       ]),
-    ])]),
+      // A görgethető rács külön tartóban áll: Safariban ide kerülnek mellé a saját görgetősávok (scrollbar-drag.js).
+      h("div", {class: "tn-table-scroll-host"}, [h("div", {class: "tn-table-scroll",
+        onVnodeMounted: ({el}) => { edit.viewport = el.clientHeight || 400; el.scrollTop = edit.scrollTop; el.scrollLeft = edit.scrollLeft ?? 0; attachScrollbars(el); syncHeads(el); },
+        onVnodeUpdated: ({el}) => { attachScrollbars(el); syncHeads(el); }, onVnodeBeforeUnmount: ({el}) => detachScrollbars(el),
+        onScroll: e => {
+          const el = e.currentTarget;
+          syncHeads(el);
+          onScroll?.(el);
+          edit.viewport = el.clientHeight || 400;
+          if (Math.abs(el.scrollTop - edit.scrollTop) > windowStep) { edit.scrollTop = el.scrollTop; edit.touch(); }
+        }}, [
+        h("table", {class: ["tn-table", "tn-editing", {"no-grid": doc.grid === false}], style: {width: tableWidth(doc) + "px"}}, [
+          colgroup(h, doc, false),
+          h("tbody", bodyRows),
+        ]),
+      ])]),
+    ]),
   ]);
+}
+
+// A fejlécsávok (oszlopbetűk, sorszámok) a rács görgetési helyzetét követik.
+const headSlack = 64;
+function syncHeads(scroller) {
+  const grid = scroller.parentElement?.closest(".tn-grid");
+  const cols = grid?.querySelector(".tn-colstrip"), rows = grid?.querySelector(".tn-rowstrip");
+  if (cols && cols.scrollLeft !== scroller.scrollLeft) cols.scrollLeft = scroller.scrollLeft;
+  if (rows && rows.scrollTop !== scroller.scrollTop) rows.scrollTop = scroller.scrollTop;
 }
 
 // A fókusz a rejtett billentyűzet-nyelőre kerül (ha éppen nincs cellaszerkesztés).
