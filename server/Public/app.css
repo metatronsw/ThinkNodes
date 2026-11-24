@@ -154,7 +154,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
    a grafikus kártya már kirajzolt tartalmat tol be. Mindig külön réteg (will-change), hogy a szélek előre raszterizálódjanak. */
 .canvas-area { overflow: hidden; }
 .editor-canvas { position: absolute; left: calc(-100% * var(--overscan, .5)); top: calc(-100% * var(--overscan, .5)); display: block;
-  width: calc(100% * (1 + 2 * var(--overscan, .5))); height: calc(100% * (1 + 2 * var(--overscan, .5))); will-change: transform; touch-action: none; -webkit-user-select: none; user-select: none; cursor: default; }
+  width: calc(100% * (1 + 2 * var(--overscan, .5))); height: calc(100% * (1 + 2 * var(--overscan, .5))); will-change: transform; transform: matrix(1,0,0,1,0,0); touch-action: none; -webkit-user-select: none; user-select: none; cursor: default; }
 .editor-canvas :is(.node, .wire-handle, .wire-label, .wire-hit, .junction-handle) { cursor: pointer; }
 .sidebar-open { position: absolute; top: 8px; right: 12px; z-index: 5; box-shadow: 0 4px 14px #1c31531b; }
 .sidebar-open-canvas { right: auto; left: 12px; }
@@ -272,6 +272,9 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .editor-canvas .wire-handle { r: calc(10px / var(--zoom-step, 1)); }
 .editor-canvas.alt-held .wire-handle { pointer-events: none; }
 .editor-canvas.alt-held.ctrl-held [data-body-row] { cursor: text; }
+/* Húzás közbeni kurzor: átlátszó pajzs a vászon fölött (editor.js dragCursor). A mutató el van fogva, így az események
+   továbbra is a húzott elemhez jutnak; a pajzs csak a kurzort adja, a vászon stílusának újraszámolása nélkül. */
+.drag-shield { position: absolute; inset: 0; z-index: 4; }
 .editor-canvas[data-drag-cursor="grabbing"] { cursor: grabbing; }
 .editor-canvas[data-drag-cursor="move"] { cursor: move; }
 .editor-canvas[data-drag-cursor="crosshair"] { cursor: crosshair; }

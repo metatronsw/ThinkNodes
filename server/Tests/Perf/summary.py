@@ -16,7 +16,18 @@ def line(name, d):
         ("  késés p50 %s max %s" % (lat.get("p50"), lat.get("max")) if lat else "") +
         ("  szkript p50 %s max %s" % (d["js"].get("p50"), d["js"].get("max")) if d.get("js") else ""), counts)
 
-if len(sys.argv) > 1:
+def timeline(d):
+    """A hosszú képkockák (kezdet → hossz) az események között, időrendben."""
+    rows = [(t, "ESEMÉNY " + name) for t, name in d.get("events", [])] + [(t, "LASSÚ KÉPKOCKA %d ms" % gap) for t, gap in d.get("slow", [])]
+    return "\n".join("      %6d ms  %s" % row for row in sorted(rows))
+
+if "--timeline" in sys.argv:
+    sys.argv.remove("--timeline")
+    for row in sys.stdin:
+        name, _, rest = row.partition(" ")
+        try: d = json.loads(rest); print(line(name, d)); print(timeline(d))
+        except Exception: print(row.rstrip()[:300])
+elif len(sys.argv) > 1:
     runs = [json.load(open(path, encoding="utf-8")) for path in sys.argv[1:]]
     names = [k for k in runs[0] if isinstance(runs[0][k], dict)]
     for name in names:

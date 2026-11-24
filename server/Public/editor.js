@@ -33,6 +33,10 @@ const d3 = window.d3;
 // Mérés (Tests/Perf): a mérőszkript által betöltött rögzítő számolja, melyik komponens hányszor rajzolódott újra.
 const tally = name => window.__perf?.count(name);
 const timed = (name, run) => window.__perf ? window.__perf.time(name, run) : run();
+// Teljesítmény-kapcsolók kísérletezéshez (docs/PERF.md): localStorage.tnPerf = '{"overscan":0.5,"moving":"all",…}', majd újratöltés.
+// Alapértékek: a mérések szerint legjobb beállítás; a kapcsolókkal a korábbi viselkedés visszaállítható és összemérhető.
+const perfOptions = {overscan: 1, moving: "gesture", shield: true, rest: true,
+  ...(() => { try { return JSON.parse(localStorage.getItem("tnPerf") || "{}"); } catch { return {}; } })()};
 const {createApp, computed, getCurrentInstance, h, markRaw, nextTick, onMounted, onUnmounted, onUpdated, reactive, ref, shallowRef, toRaw, watch, watchEffect} = window.Vue;
 
 // Az új munkalapállapotban a tartalmilag változatlan dobozok és vonalak a korábbi objektumot kapják vissza.
@@ -912,7 +916,7 @@ createApp({
     // A vászonréteg a látható területnél nagyobb (overscan); a jelenet origója a látható terület bal felső sarka.
     // A pontokat ehhez a csoporthoz mérjük, így az eltolás és a mozdulat közbeni CSS-transzform is benne van.
     // Puffer a látható terület körül, a látható méret arányában, oldalanként (CSS: --overscan).
-    const overscan = 1;
+    const overscan = Math.min(3, Math.max(0, Number(perfOptions.overscan) || 0));
     const sceneOrigin = ref(null);
     const margin = () => [size.value.width * overscan, size.value.height * overscan];
 
@@ -1036,6 +1040,7 @@ createApp({
     // skálázódik és tolódik, újrarajzolás és SVG-újraelrendezés nélkül; a valódi nézet a mozdulat végén egyszer frissül.
     // A pontkoordináták (world) közben is helyesek, mert a getScreenCTM a CSS-transzformot is tartalmazza.
     function zoomHost() { return canvas.value?.parentElement; }
+    const restingTransform = "matrix(1,0,0,1,0,0)";
     let pendingView = null;
     function previewView(transform) {
       pendingView = transform;
@@ -1055,11 +1060,13 @@ createApp({
       svg.style.transform = `matrix(${scale},0,0,${scale},${shiftX},${shiftY})`;
       // A rács nem skálázódik a réteggel: a mintája közvetlenül az élő nézetet követi.
       const [centerX, centerY] = center();
-      zoomHost()?.querySelector?.("#worksheet-grid")?.setAttribute("patternTransform", transform + " translate(" + centerX + " " + centerY + ")");
+      if (!perfOptions.debugNoGrid) zoomHost()?.querySelector?.("#worksheet-grid")?.setAttribute("patternTransform", transform + " translate(" + centerX + " " + centerY + ")");
     }
     function commitView(transform) {
       pendingView = null;
-      if (canvas.value?.style) canvas.value.style.transform = "";
+      // A réteg nyugalomban is transzformált (egységmátrix, app.css): Safariban a transzform be- és kikapcsolása
+      // (none ↔ matrix) 40–70 ms-os megakadás, a mátrixról mátrixra váltás viszont ingyen van.
+      if (canvas.value?.style) canvas.value.style.transform = perfOptions.rest ? restingTransform : "none";
       if (transform && (transform.k !== view.value.k || transform.x !== view.value.x || transform.y !== view.value.y)) view.value = transform;
     }
 
@@ -1675,7 +1682,7 @@ createApp({
         gesture.value.source = {node: node.id};
         preview.value = {edge: cablePreview(gesture.value.source, initial)};
       }
-      (cabling ? canvas.value : event.currentTarget).setPointerCapture(event.pointerId);
+      capturePointer((cabling ? canvas.value : event.currentTarget), event.pointerId);
       if (!cabling && !occupied(node.id)) claimGesture(node);
       else if (!cabling) gesture.value.locked = true;
     }
@@ -1719,7 +1726,7 @@ createApp({
       selected.value = {kind: "endpoint", id: edge.id, end};
       gesture.value = {type: "endpoint", original: {...original}, pointer: event.pointerId, edgeID: edge.id, end,
         position: {...position}, initial, screen: [event.clientX, event.clientY], moved: false};
-      canvas.value.setPointerCapture(event.pointerId);
+      capturePointer(canvas.value, event.pointerId);
     }
 
     function endpointAt(point, edge, end, commit = false, releaseFrom) {
@@ -1759,7 +1766,7 @@ createApp({
       gesture.value = {type: "resize", pointer: event.pointerId, nodeID: node.id, sx, sy,
         original: JSON.parse(JSON.stringify(node)), width: drawn.width, height: drawn.height,
         initial: world(event), screen: [event.clientX, event.clientY], moved: false};
-      canvas.value.setPointerCapture(event.pointerId);
+      capturePointer(canvas.value, event.pointerId);
       claimGesture(node);
     }
 
@@ -2156,7 +2163,12 @@ createApp({
       return percent + " · " + (level > 0 ? "+" + level : level);
     }
 
+    // A „mozgás” jelző (data-moving) kikapcsolja a szűrőket és az animációkat mozgás közben. Az attribútum váltása maga is
+    // megakadás (stílusszámítás + a szűrős elemek újrafestése), ezért pásztázásnál és nagyításnál – ahol mozdulat közben a
+    // réteg úgysem festődik újra – alapból nem kapcsol be, csak üveghatású témában (ott a panelek elmosása a drága).
     function markMoving(source, active) {
+      if (perfOptions.moving === "none") return;
+      if (source === "zoom" && perfOptions.moving !== "all" && !graphics.value.glass) return;
       if (active) movingSources.add(source); else movingSources.delete(source);
       const workspace = canvas.value?.closest?.(".editor-workspace");
       if (!workspace?.toggleAttribute) return;
@@ -2171,7 +2183,7 @@ createApp({
       const point = world(event);
       gesture.value = {type, initial: point, point, delta: {x:0,y:0}, screen: [event.clientX,event.clientY],
         pointer: event.pointerId, moved: false, ...extra};
-      (type === "clone" ? event.currentTarget : canvas.value).setPointerCapture(event.pointerId);
+      capturePointer((type === "clone" ? event.currentTarget : canvas.value), event.pointerId);
     }
 
     function pressCanvas(event) {
@@ -2227,7 +2239,7 @@ createApp({
           const source = {point: initial};
           gesture.value = {type: "cable", source, pointer: event.pointerId, initial, screen: [event.clientX, event.clientY], moved: false};
           preview.value = {edge: cablePreview(source, initial)};
-          canvas.value.setPointerCapture(event.pointerId);
+          capturePointer(canvas.value, event.pointerId);
           return;
         }
         canDeselectOnClick = event.button === 0 && !event.ctrlKey;
@@ -2495,7 +2507,7 @@ createApp({
           const screen = canvasPointer.value ? [canvasPointer.value.clientX, canvasPointer.value.clientY] : drag.screen;
           finishPointer({pointerId: drag.pointer}, true);
           gesture.value = {type: "pan", pointer: drag.pointer, screen, startView: view.value};
-          canvas.value.setPointerCapture(drag.pointer);
+          capturePointer(canvas.value, drag.pointer);
         }
         return;
       }
@@ -3404,12 +3416,30 @@ createApp({
       },
     };
 
+    // Húzás közbeni kurzor. A vászon gyökerén váltott attribútum (régi megoldás) Safariban a teljes vászon stílusát
+    // újraszámoltatja (30–60 ms megakadás a húzás elején és végén), ezért a kurzort egy átlátszó pajzs adja a vászon fölött
+    // (és maga a mutatót elfogó elem, ahol a böngésző annak a kurzorát használja). Egyszerű kattintásnál nincs pajzs,
+    // így a kattintás és a dupla kattintás a dobozhoz jut.
+    // A mutatót elfogó elem: ahol a böngésző elfogás közben ennek a kurzorát mutatja, ott ezen állítjuk be a húzás kurzorát.
+    let capturing = null;
+    function capturePointer(element, pointer) {
+      element.setPointerCapture(pointer);
+      capturing = element;
+    }
+    const DragShield = {
+      setup: () => () => {
+        const cursor = spacePan.value && gesture.value?.type !== "pan" ? undefined : dragCursor();
+        return h("div", {class: "drag-shield", "aria-hidden": "true", "data-editor-only": "",
+          style: {cursor: cursor ?? "auto", pointerEvents: cursor ? "auto" : "none"}});
+      },
+    };
     function dragCursor() {
+      if (perfOptions.debugNoCursor) return undefined;
       if (spacePan.value) return gesture.value?.type === "pan" ? "grabbing" : "grab";
       const active = gesture.value;
       if (active?.type === "resize") return active.sx === active.sy ? "nwse-resize" : "nesw-resize";
       if (active?.type === "rectangle") return "crosshair";
-      if (active?.type === "move") return active.locked ? undefined : "move";
+      if (active?.type === "move") return active.locked || (perfOptions.shield && !active.moved) ? undefined : "move";
       if (active?.moved && !active.locked && !active.waiting) {
         return ["move", "batch", "clone", "text", "split"].includes(active.type) ? "move" : "grabbing";
       }
@@ -3476,7 +3506,7 @@ createApp({
       return h("div", {class: "canvas-area", style: {background: paint(board.value.background, 0), "--overscan": overscan}}, [
         h(GridLayer),
         h("svg", {ref: canvas, class: ["canvas", "editor-canvas", {"ctrl-held": ctrl.value, "alt-held": alt.value}],
-          "data-drag-cursor": dragCursor(), "aria-label": "Ötletvászon",
+          "data-drag-cursor": perfOptions.shield ? (spacePan.value && gesture.value?.type !== "pan" ? "grab" : undefined) : dragCursor(), "aria-label": "Ötletvászon",
           onContextmenu: event => context(event),
           onClickCapture: event => { if (spacePan.value) { event.preventDefault(); event.stopPropagation(); } },
           onClick: event => {
@@ -3539,6 +3569,9 @@ createApp({
           spacePan.value ? h("rect", {width: "100%", height: "100%", fill: "none",
             "pointer-events": "all", "aria-hidden": "true", "data-editor-only": ""}) : null,
         ]),
+        // A pajzs mindig a DOM-ban van (beszúrása és eltávolítása is megakadást okozna a nagy vászonréteg fölött);
+        // nyugalomban nem kap egéreseményt, húzáskor csak a saját stílusa változik.
+        perfOptions.shield ? h(DragShield) : null,
         // A létrehozó neve nem jelenik meg a vásznon (a megtekintő cím sorában látszik); itt csak a jelenlévők.
         h("div", {class: "canvas-people"}, [
           h("div", {class: "participants", "aria-label": "Jelenlévők"},
@@ -4330,6 +4363,10 @@ createApp({
       applyUi(edgeUi, edges);
     }
     watchEffect(() => timed("syncUi", syncUi));
+    watch(() => perfOptions.shield ? dragCursor() : undefined, cursor => {
+      if (capturing?.style && capturing !== canvas.value) capturing.style.cursor = cursor ?? "";
+      if (!cursor) capturing = null;
+    });
     // A nagyítási lépcső CSS-változóban: a fogantyúk és a vonalak találati szélessége ebből számol (app.css),
     // így lépcsőváltáskor egyetlen stílusérték változik, nem rajzolódik újra minden vonal.
     watchEffect(() => { canvas.value?.style?.setProperty("--zoom-step", zoomStep.value); });

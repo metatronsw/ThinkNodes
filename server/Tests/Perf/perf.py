@@ -47,7 +47,10 @@ class Safari:
         """Promise-t adó kifejezés eredménye (aszinkron végrehajtás)."""
         return self.call("POST", "/execute/async", {"script": "const done = arguments[arguments.length - 1]; Promise.resolve((() => {" + code + "})()).then(done, e => done({error: String(e)}))", "args": list(args)})
 
-    def open(self, url):
+    def open(self, url, options=None):
+        # A teljesítmény-kapcsolók (editor.js perfOptions) a localStorage-ből jönnek: előbb egy könnyű oldal, beállítás, aztán a lap.
+        self.call("POST", "/url", {"url": url.split("/edit/")[0] + "/login"})
+        self.js("if (arguments[0]) localStorage.setItem('tnPerf', arguments[0]); else localStorage.removeItem('tnPerf'); return 1", options)
         self.call("POST", "/url", {"url": url})
         for _ in range(60):
             time.sleep(.5)
@@ -241,7 +244,7 @@ def table_edit_exit(s):
     s.js("document.querySelector('.tn-table-editor')?.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})); return 1")
     time.sleep(.6)
 
-def run(label, base, sheet, only):
+def run(label, base, sheet, only, options=None):
     s = Safari()
     results = {"label": label, "sheet": sheet, "time": time.strftime("%Y-%m-%d %H:%M:%S")}
     def step(name, fn, *args):
@@ -250,7 +253,8 @@ def run(label, base, sheet, only):
         except Exception as error: results[name] = {"error": str(error)[:300]}
         print(name, json.dumps(results[name], ensure_ascii=False), flush=True)
     try:
-        s.open(base + "/edit/" + sheet)
+        s.open(base + "/edit/" + sheet, options)
+        results["options"] = options
         results["agent"] = s.js("return navigator.userAgent")
         results["nodes"] = s.js("return [document.querySelectorAll('[data-node]').length, document.querySelectorAll('[data-edge]').length]")
         step("idle", idle)
@@ -292,4 +296,4 @@ if __name__ == "__main__":
     label = args[0] if args and not args[0].startswith("--") else "meres"
     option = lambda name, default: args[args.index(name) + 1] if name in args else default
     only = set(option("--only", "").split(",")) - {""}
-    run(label, option("--base", "http://localhost:8888"), option("--sheet", "p300"), only)
+    run(label, option("--base", "http://localhost:8888"), option("--sheet", "p300"), only, option("--perf", None))
