@@ -1,5 +1,6 @@
-// Táblázat doboz fájlműveletei és párbeszédablakai (EXCEL.md 7. fejezet):
-// rákérdezés feltöltéskor, új táblázat (üres / forrásfájlból), forrásfájl figyelése és újraolvasása, letöltés.
+// Táblázat doboz fájlműveletei és párbeszédablaka (EXCEL.md 7. fejezet): új táblázat (üres / fájlból), letöltés.
+// A feltöltött .csv önálló szöveges dokumentum; táblázat csak kifejezett kérésre készül belőle, és utána
+// nincs kapcsolat a fájl és a táblázat között (független másolat).
 
 import {storeAttachment} from "../canvas-files.js";
 import {cellName, emptyTable, encodeTable, setCell, styleIndex} from "./table-document.js";
@@ -22,10 +23,18 @@ export function tableBoxProperties({asset, filename, rows, cols}) {
     width: Math.round(Math.min(760, Math.max(240, 24 + cols * 80))), height: Math.round(Math.min(520, Math.max(140, 64 + Math.min(rows, 20) * 24)))};
 }
 
-// Forrásfájlból (a lap melléklete) táblázat a szerveren; `replace`: meglévő táblázat újraolvasása.
-export async function tableFromSource(path, csrf, from, {name = null, replace = false} = {}) {
-  const query = "?from=" + encodeURIComponent(from) + (name ? "&name=" + encodeURIComponent(name) : "") + (replace ? "&replace=1" : "");
-  const response = await fetch("/api/table/" + path + query, {method: "POST", headers: {"X-CSRF-Token": csrf}});
+// A lap egy mellékletéből (pl. .csv) új, független táblázat a szerveren.
+export async function tableFromSource(path, csrf, from) {
+  const response = await fetch("/api/table/" + path + "?from=" + encodeURIComponent(from), {method: "POST", headers: {"X-CSRF-Token": csrf}});
+  if (!response.ok) throw await failure(response, "A táblázat létrehozása sikertelen");
+  return response.json();
+}
+
+// Feltöltött (vagy máshonnan letöltött) fájlból új táblázat; maga a fájl nem tárolódik.
+export async function tableFromUpload(path, csrf, blob, name) {
+  if (blob.size > 12 * 1024 * 1024) throw Error("A fájl legfeljebb 12 MiB lehet.");
+  const response = await fetch("/api/table/" + path + "?name=" + encodeURIComponent(name), {method: "POST",
+    headers: {"X-CSRF-Token": csrf, "Content-Type": "application/octet-stream"}, body: blob});
   if (!response.ok) throw await failure(response, "A táblázat létrehozása sikertelen");
   return response.json();
 }
@@ -68,13 +77,6 @@ export async function createTableFromTSV(path, csrf, text) {
   return storeNewTable(path, csrf, doc, "Beillesztett táblázat");
 }
 
-// Megváltozott-e a forrásfájl az import óta: {source, changed, missing, edited}.
-export async function sourceStatus(path, name) {
-  const response = await fetch("/api/table-source/" + path + "?name=" + encodeURIComponent(name));
-  if (!response.ok) return null;
-  return response.json();
-}
-
 export const exportURL = (path, name, format = "csv") =>
   "/api/table-export/" + path + "?name=" + encodeURIComponent(name) + "&format=" + format;
 
@@ -95,38 +97,7 @@ function dialogShell(title) {
   return dialog;
 }
 
-// Feltöltéskor: táblázat legyen, vagy fájl maradjon. {choice: "table" | "file", remember} vagy null (Mégse).
-export function askTableImport(filename, multiple = false) {
-  return new Promise(resolve => {
-    const dialog = dialogShell("Táblázat vagy fájl?");
-    dialog.append(element("p", "„" + filename + "” táblázatként is beolvasható."));
-    const options = element("div", "", {className: "stack table-dialog-options"});
-    const choose = choice => { result = {choice, remember: remember?.checked ?? false}; dialog.close(); };
-    const tableButton = element("button", "Táblázat – szerkeszthető, számol", {type: "button", className: "button primary"});
-    tableButton.addEventListener("click", () => choose("table"));
-    const fileButton = element("button", "Fájl – ahogy eddig (" + (["csv", "tsv"].includes(extensionOf(filename)) ? "csak olvasható nézet" : "letöltés") + ")",
-      {type: "button", className: "button"});
-    fileButton.addEventListener("click", () => choose("file"));
-    options.append(tableButton, fileButton);
-    dialog.append(options);
-    let remember = null;
-    if (multiple) {
-      const label = element("label", "", {className: "table-dialog-remember"});
-      remember = element("input", "", {type: "checkbox"});
-      label.append(remember, document.createTextNode(" A többi fájlra is ugyanezt"));
-      dialog.append(label);
-    }
-    const cancel = element("button", "Mégse", {type: "button", className: "button"});
-    cancel.addEventListener("click", () => dialog.close());
-    dialog.append(cancel);
-    let result = null;
-    dialog.addEventListener("close", () => { dialog.remove(); resolve(result); });
-    dialog.showModal();
-    tableButton.focus();
-  });
-}
-
-// Új táblázat: {mode: "empty"} | {mode: "upload", file} | {mode: "browse"} vagy null (Mégse).
+// Új táblázat: {mode: "empty"} | {mode: "upload", file} | {mode: "browse"} | {mode: "link"} vagy null (Mégse).
 export function askNewTable() {
   return new Promise(resolve => {
     const dialog = dialogShell("Új táblázat");
@@ -134,13 +105,15 @@ export function askNewTable() {
     const options = element("div", "", {className: "stack table-dialog-options"});
     const empty = element("button", "Üres táblázat (5 × 10)", {type: "button", className: "button primary"});
     empty.addEventListener("click", () => { result = {mode: "empty"}; dialog.close(); });
-    const browse = element("button", "Forrásfájl a projektből…", {type: "button", className: "button"});
+    const browse = element("button", "Önálló másolat egy projektfájlból (CSV, TSV)…", {type: "button", className: "button"});
     browse.addEventListener("click", () => { result = {mode: "browse"}; dialog.close(); });
     const input = element("input", "", {type: "file", accept: [...importableExtensions].map(ext => "." + ext).join(","), hidden: true});
-    const upload = element("button", "Forrásfájl feltöltése a gépről (CSV, TSV)…", {type: "button", className: "button"});
+    const upload = element("button", "Önálló másolat a gépről (CSV, TSV)…", {type: "button", className: "button"});
     upload.addEventListener("click", () => input.click());
     input.addEventListener("change", () => { if (input.files?.[0]) { result = {mode: "upload", file: input.files[0]}; dialog.close(); } });
-    options.append(empty, browse, upload, input);
+    const link = element("button", "Linkelt táblázat egy dokumentumhoz (CSV, TSV)…", {type: "button", className: "button"});
+    link.addEventListener("click", () => { result = {mode: "link"}; dialog.close(); });
+    options.append(empty, browse, upload, link, input);
     const cancel = element("button", "Mégse", {type: "button", className: "button"});
     cancel.addEventListener("click", () => dialog.close());
     dialog.append(options, cancel);

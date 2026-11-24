@@ -17,18 +17,21 @@ public enum TableCSV {
         return String(data: bytes, encoding: .windowsCP1250) ?? String(decoding: bytes, as: UTF8.self)
     }
 
-    /// Elválasztó: tsv-nél tabulátor, egyébként az első sorban (idézőjelen kívül) leggyakoribb `,` `;` tab.
+    /// Elválasztó: tsv-nél tabulátor, egyébként az első sorban (idézőjelen kívül) leggyakoribb `,` `;` tab;
+    /// döntetlennél ebben a sorrendben az első (a JS párja ugyanígy dönt).
     public static func detectSeparator(_ text: String, ext: String) -> Character {
         if ext.lowercased() == "tsv" { return "\t" }
-        var counts: [Character: Int] = [",": 0, ";": 0, "\t": 0]
+        let candidates: [Character] = [",", ";", "\t"]
+        var counts = [0, 0, 0]
         var quoted = false
         for character in text {
             if character == "\"" { quoted.toggle() }
             else if !quoted && character.isNewline { break }
-            else if !quoted, counts[character] != nil { counts[character]! += 1 }
+            else if !quoted, let index = candidates.firstIndex(of: character) { counts[index] += 1 }
         }
-        let best = counts.max { a, b in a.value != b.value ? a.value < b.value : a.key == "," }
-        return (best?.value ?? 0) > 0 ? best!.key : ","
+        var best = 0
+        for index in 1..<3 where counts[index] > counts[best] { best = index }
+        return counts[best] > 0 ? candidates[best] : ","
     }
 
     /// Mezők soronként (idézőjeles mezők, `""` escape, CRLF).
@@ -57,9 +60,10 @@ public enum TableCSV {
         return rows
     }
 
-    /// CSV → táblázat. A mezők a beírt szöveghez hasonlóan értelmeződnek (szám, százalék, pénznem, dátum),
-    /// de `=`-vel kezdődő mezőből nem lesz képlet.
-    public static func importCSV(_ data: Data, name: String, ext: String = "csv") -> Imported {
+    /// CSV → táblázat. A mezők a beírt szöveghez hasonlóan értelmeződnek (szám, százalék, pénznem, dátum).
+    /// `formulas`: a `=`-vel kezdődő mező képlet (dokumentumhoz linkelt táblázat: a CSV maga a táblázat);
+    /// enélkül szöveg marad (önálló másolat importja, idegen fájl).
+    public static func importCSV(_ data: Data, name: String, ext: String = "csv", formulas: Bool = false) -> Imported {
         let text = decode(data)
         let separator = detectSeparator(text, ext: ext)
         let parsed = rows(text, separator: separator)
@@ -73,7 +77,8 @@ public enum TableCSV {
                 var cell = TableCell()
                 switch TableFormat.parseInput(field) {
                 case .empty: continue
-                case .formula: cell.v = .text(field.trimmingCharacters(in: .whitespaces))
+                case .formula(let formula):
+                    if formulas { cell.f = formula } else { cell.v = .text(field.trimmingCharacters(in: .whitespaces)) }
                 case .value(let value, let format):
                     cell.v = value
                     if let format { cell.s = document.styleIndex(CellStyle(fmt: format)) }
@@ -91,6 +96,7 @@ public enum TableCSV {
             let first = (0..<usedCols).compactMap { document[CellAddress(row: 0, col: $0)]?.v }
             let second = (0..<usedCols).compactMap { document[CellAddress(row: 1, col: $0)]?.v }
             let allText = !first.isEmpty && first.allSatisfy { if case .text = $0 { return true }; return false }
+                && (0..<usedCols).allSatisfy { document[CellAddress(row: 0, col: $0)]?.f == nil }
             let hasNumber = second.contains { if case .number = $0 { return true }; return false }
             if allText && hasNumber {
                 document.header = HeaderInfo(rows: 1, cols: 0)
@@ -134,4 +140,15 @@ public enum TableCSV {
         }
         return Data([0xEF, 0xBB, 0xBF]) + Data(lines.joined(separator: "\r\n").utf8)
     }
+}
+
+extension TableCSV {
+    /// Dokumentumhoz linkelt táblázat (EXCEL.md): a CSV/TSV maga a táblázat; a képleteket a szerver számolja ki.
+    public static func linkedTable(_ data: Data, name: String, ext: String) -> TableDocument {
+        var document = importCSV(data, name: name, ext: ext, formulas: true).document
+        TableEngine.recalculate(&document)
+        return document
+    }
+
+    public static func isLinkable(_ ext: String) -> Bool { ["csv", "tsv"].contains(ext.lowercased()) }
 }

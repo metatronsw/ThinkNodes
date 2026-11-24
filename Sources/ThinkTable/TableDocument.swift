@@ -141,14 +141,6 @@ public struct HeaderInfo: Codable, Equatable, Sendable {
     public init(rows: Int = 0, cols: Int = 0) { self.rows = rows; self.cols = cols }
 }
 
-/// A táblázat forrásfájlja (EXCEL.md 7. fejezet, „Forrásfájl figyelése”).
-public struct TableSource: Codable, Equatable, Sendable {
-    public var name: String
-    public var hash: String?
-    public var sheet: String?
-    public init(name: String, hash: String? = nil, sheet: String? = nil) { self.name = name; self.hash = hash; self.sheet = sheet }
-}
-
 public struct TableDocument: Codable, Equatable, Sendable {
     public var format = "thinknodes-table"
     public var version = 1
@@ -161,9 +153,8 @@ public struct TableDocument: Codable, Equatable, Sendable {
     public var grid: Bool?
     public var styles: [CellStyle]
     public var cells: [String: TableCell]
-    public var source: TableSource?
-    /// Az import óta szerkesztették-e (a forrás újraolvasásakor ez dönti el, elveszhet-e módosítás).
-    public var edited: Bool?
+    // Nincs forrásfájl-hivatkozás: az importált táblázat független másolat (EXCEL.md, 2026-11-24-i döntés).
+    // A régi fájlok `source` / `edited` mezőjét a dekódoló figyelmen kívül hagyja, a következő mentés elhagyja.
 
     public init(id: String = TableDocument.newID(), name: String? = nil, rows: Int = 10, cols: Int = 5) {
         self.id = id

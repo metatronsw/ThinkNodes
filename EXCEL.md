@@ -15,15 +15,21 @@ A típusrendszer szabályai: `docs/node-types.md`. **Állapot: az első kör elk
    hivatkozhatnak egymásra.
 4. **Több munkalapos fájl:** munkalaponként külön `table` doboz.
 5. **Ütemezés:** az első körben csak `.csv` / `.tsv` import. Az `.xlsx`, `.xls`, `.ods` a második körben jön.
-6. **A meglévő `csv` dobozok maradnak** csak olvasható szövegnézetek, nem alakulnak át. Fájl feltöltésekor vagy beemelésekor
-   a program rákérdez: táblázat doboz legyen belőle, vagy szövegfájl (7. fejezet). Új táblázat doboz létrehozásakor is
-   megadható forrásfájl.
+6. **A táblázat lehet önálló vagy dokumentumhoz linkelt** (2026-11-24, felülírja a korábbi „rákérdezés feltöltéskor” és
+   „forrásfájl figyelése” döntést):
+   - **A `.csv` önálló szöveges dokumentum.** Feltöltéskor nincs rákérdezés és nincs automatikus import.
+   - **Önálló táblázat** (`.tntable`): saját adat, képletek, formázás. A fájlból (CSV, TSV) importált táblázat is ilyen:
+     a beolvasáskori tartalom független másolata, a fájllal nincs kapcsolata (nincs figyelés, újraolvasás).
+   - **Dokumentumhoz linkelt táblázat:** maga a dokumentum (most CSV, TSV; a második körben xls) jelenik meg táblázatként.
+     A szerkesztés a dokumentumba íródik vissza, beírt alakban (képlet `=…`, formázott szám pl. `1 200 Ft`, `12%`).
+     A formázás (szín, keret, félkövér) itt nem menthető, mert a CSV nem tárolja. A CSV-doboz és a linkelt táblázat
+     ugyanaz a fájl, a nézet a helyi menüből vagy a panelről váltható.
+   - **Szerkesztés a vásznon:** dupla kattintás a táblázatra (Alt+dupla kattintás: tulajdonságpanel).
 7. **Számformátumok már az első körben** (tizedesjegyek, ezreselválasztó, pénznem, százalék, dátum; 3. fejezet).
 8. **Táblázatközi hivatkozás:** csak vonallal összekötött táblázatok hivatkozhatnak egymásra, kölcsönösen; a vonal iránya nem számít (9. fejezet).
 9. **`.xls`: saját Swift-importer**, egyszerűsített: az alapvető képleteket és a színeket hozza át (7. fejezet). Nincs LibreOffice-függőség.
 10. **Rácsvonalak (cellakeretek):** cellánként és oldalanként vastagíthatók és színezhetők, és az import ezeket is megpróbálja átvenni.
 11. **Export `.xls`-be is:** a saját táblázat letölthető `.xls`, `.xlsx` és `.csv` formátumban.
-12. **Forrásfájl figyelése:** ha a forrás megváltozik, a program felajánlja az újraolvasást; a kézi gomb is megmarad (7. fejezet).
 
 ## 1. Helye a típusrendszerben
 
@@ -92,7 +98,9 @@ A szövegfájlok mintáját követi: **a tartalom egy fájlban van**, nem a munk
 - **A böngésző azonnal számol**, hogy gépelés közben is látszódjon az eredmény. A tárolt értéket mindig a szerver írja.
   Ha a kettő eltér, az a közös tesztek hibája.
 - **Ütközés nincs**, mert a kijelölés zárol (egy dobozt egyszerre egy ember szerkeszt).
-- **Az eredeti importált fájl** (`.csv`, később `.xlsx`) megmarad forrásként (`file.source`), így letölthető. A szerkesztés csak a `.tntable`-t módosítja.
+- **Importált táblázat:** a forrásfájlból egyszeri, független másolat; a táblázat nem hivatkozik a fájlra.
+- **Linkelt táblázat:** nincs `.tntable`; a doboz `file` mezője magára a CSV/TSV-re mutat, a tárolt érték a CSV szövege.
+  A képletek eredményét a szerver (megjelenítéskor) és a böngésző (szerkesztéskor) számolja ki.
 
 ### Fájlformátum
 
@@ -220,45 +228,21 @@ B / I / U / O, betűszín, cellaszín, igazítás, számformátum, keret; Letöl
 
 ## 7. Létrehozás és import
 
-### Rákérdezés feltöltéskor
+### Új táblázat
 
-Táblázatként is beolvasható fájl (első körben `.csv`, `.tsv`; a második körben `.xlsx`, `.xls`, `.ods`) feltöltésekor,
-vászonra húzásakor vagy a közös könyvtárból beemelésekor egy kis párbeszéd jelenik meg:
+Helyi menü → Táblázat létrehozása. A párbeszédben:
+- **Üres:** 5 oszlop × 10 sor.
+- **Önálló másolat egy projektfájlból / a gépről (CSV, TSV):** független táblázat; a gépről feltöltött fájl nem tárolódik.
+- **Linkelt táblázat egy dokumentumhoz (CSV, TSV):** a projekt egy fájlja táblázatként (a fájl nem másolódik).
 
-- **Táblázat** (szerkeszthető, számol): `table` doboz, a fájl forrásként megmarad (`file.source`).
-- **Fájl** (ahogy most): `.csv` / `.tsv` → csak olvasható `csv` szövegnézet; `.xlsx` / `.xls` / `.ods` → `document` doboz (letöltés).
-- A „Megjegyzi erre a munkamenetre” jelölő több fájl egyszerre húzásakor ne kérdezzen fájlonként.
-- A meglévő `csv` és `document` dobozok nem változnak. A helyi menüben („Megnyitás táblázatként”) később egyenként átalakíthatók: új `table` doboz jön létre mellettük.
-
-### Új táblázat doboz forrásfájllal
-
-Helyi menü → Objektum létrehozása → Táblázat. A párbeszédben:
-- **Üres:** 5 oszlop × 10 sor, azonnal szerkesztési módban.
-- **Forrásfájlból:** a lap mellékletei vagy a közös könyvtár közül választható fájl, vagy feltöltés a gépről (ugyanaz a fájlválasztó, mint a .web mappánál).
-  Több munkalapos fájlnál munkalaponként egy doboz jön létre.
-
-A forrásfájl később a panelen is megadható vagy cserélhető („Forrásfájl” → Újraolvasás).
-Újraolvasáskor a program figyelmeztet, hogy a táblázatban végzett változtatások elvesznek.
-
-### Forrásfájl figyelése (döntés)
-
-A program figyeli, ha a forrásfájl megváltozik, és felajánlja az újraolvasást. A kézi „Újraolvasás” gomb is megmarad.
-- **Változásnak számít:** új verzió feltöltése ugyanazzal a névvel, a közös könyvtárbeli fájl cseréje, vagy egy szövegfájlként
-  (`csv` doboz) megnyitott forrás szerkesztése.
-- **Felismerés:** a táblázat importkor eltárolja a forrás tartalmi lenyomatát (`file.sourceHash`, SHA-256), mert az időbélyeg nem elég megbízható.
-  A szerver a forrás írásakor összeveti ezzel, és az eltérő táblázatoknak jelzést ad (`file.sourceChanged: true`).
-- **Megjelenés:** a dobozon egy kis jelzés, a panelen pedig sáv: „A forrásfájl megváltozott” – Újraolvasás / Figyelmen kívül hagyás.
-  A figyelmen kívül hagyás az új lenyomatot tárolja el, így ugyanarra a változásra nem kérdez újra.
-- **Nem olvas újra magától,** mert a táblázatban végzett szerkesztések elvesznének. Ha a táblázat az import óta nem változott,
-  a sáv ezt kiírja („nincs elvesző módosítás”), így a döntés könnyű.
-- **Több munkalapos forrás:** az újraolvasás az összes belőle készült dobozra vonatkozik. A dobozok a munkalap nevével párosulnak.
-  Az új munkalapból új doboz lesz, a megszűnt munkalap doboza megmarad, és jelzést kap.
+CSV-dobozon (helyi menü, panel): „Megjelenítés táblázatként (linkelt)” és „Önálló táblázat (másolat)”.
+Linkelt táblázaton: „Megjelenítés szövegként” és „Önálló táblázat (másolat)”.
 
 ### Első kör
 
 | Forrás | Módja |
 |---|---|
-| `.csv`, `.tsv` | Szerver (`TableCSV`): elválasztó felismerése (`,` `;` tab), BOM, Windows-1250 tartalék kódolás. Nincs 200×30-as korlát, csak a 3. fejezet korlátai. A számként értelmezhető mezők (`1 234,5`, `1234.5`, `12%`, `2026.11.24.`) számok lesznek, a formátumuk is beáll. Az `=`-vel kezdődő mező szöveg marad: CSV-ből nem jön képlet. |
+| `.csv`, `.tsv` (önálló másolat) | Szerver (`TableCSV`): elválasztó felismerése (`,` `;` tab), BOM, Windows-1250 tartalék kódolás. Nincs 200×30-as korlát, csak a 3. fejezet korlátai. A számként értelmezhető mezők (`1 234,5`, `1234.5`, `12%`, `2026.11.24.`) számok lesznek, a formátumuk is beáll. Az `=`-vel kezdődő mező szöveg marad: CSV-ből nem jön képlet. |
 | Beillesztés a vászonra | Ha a vágólapon legalább 2×2-es táblázat van (TSV vagy HTML), `table` doboz jön létre. Különben szöveges doboz, ahogy most. HTML-ből a színek, a félkövér/dőlt és a keretek is átjönnek, ha vannak. |
 | Export | Letöltés csv-ként (a megjelenített formátum nélkül, nyers értékek; képletnél az eredmény). |
 
@@ -345,8 +329,7 @@ Több munkalapos export: a vonallal összekötött táblázatok (9. fejezet) ké
 1. **ThinkTable alapok:** adatmodell, képletmotor és számformátumok Swiftben és JS-ben, közös tesztesetek (elemzés, kiértékelés, függőségek, körök, hivatkozás-eltolás, formázott kiírás).
 2. **Típus és megjelenítés:** regiszter, Swift modell és validálás, a mentéskori szerveres újraszámolás, `TableHTML`, `table-view.js` (cellakeretekkel), megtekintő.
 3. **Szerkesztési mód:** kijelölés, billentyűzet, képletsor, formázás, számformátum, keret, eszközsor, panel, vágólap, automatikus mentés.
-4. **Létrehozás és CSV:** új doboz párbeszéd (üres / forrásfájlból), rákérdezés feltöltéskor, CSV/TSV import, csv-export,
-   forrásfájl figyelése és újraolvasása, Swift-tesztek mintafájlokkal.
+4. **Létrehozás és CSV:** új doboz párbeszéd (üres / önálló másolat / linkelt), CSV/TSV import, linkelt CSV-táblázat, csv-export, Swift-tesztek mintafájlokkal.
 
 **Második kör**
 5. Közös köztes import-réteg, `.xlsx` és `.ods` import (keretekkel, számformátumokkal), több munkalap → több doboz.
@@ -389,7 +372,7 @@ táblázat is újraszámolódik, akár egy másik felhasználónál is.
 
 Jelenleg nincs. A legutóbb lezártak (2026-11-24):
 1. **A vonal iránya nem számít:** az összekötött táblázatok kölcsönösen hivatkozhatnak egymásra. A körkörös hivatkozás `#CIRC!` lesz (9. fejezet).
-2. **A forrásfájl változását a program figyeli** (7. fejezet, „Forrásfájl figyelése”). A kézi „Újraolvasás” gomb is megmarad.
+2. ~~A forrásfájl változását a program figyeli~~ – visszavonva: az importált táblázat független; helyette dokumentumhoz linkelt táblázat (0. fejezet, 6. pont).
 
 ## 11. Megvalósítás állapota
 
@@ -401,8 +384,8 @@ Jelenleg nincs. A legutóbb lezártak (2026-11-24):
 | Ugyanez JavaScriptben | `Public/table/table-document.js`, `table-formula.js`, `table-engine.js`, `table-format.js` |
 | Szerkesztési mód, vágólap, nézet, eszközsor | `Public/table/table-edit.js` (DOM nélküli vezérlő), `table-clipboard.js`, `table-view.js` |
 | Fájlműveletek, párbeszédablakok | `Public/table/table-files.js` |
-| Szerver | `Sources/ThinkNodes/TableFiles.swift`: mentéskor ellenőrzés + újraszámolás (`WorksheetStore.storeAttachment`), végpontok: `POST /api/table/…?from=` (forrásból / újraolvasás), `GET /api/table-source/…` (forrás figyelése), `GET /api/table-export/…?format=csv`; a megtekintő és az SVG a `TableHTML`-t rajzolja (`Rendering.swift` `fileTextHTML`) |
-| Szerkesztő bekötése | `Public/editor.js`: olvasó nézet, Alt+dupla kattintás → cellaszerkesztés, helyi menü („Táblázat létrehozása”, „Cellák szerkesztése”, CSV-dobozon „Megnyitás táblázatként”), rákérdezés feltöltéskor, táblázatos szöveg beillesztése → táblázat doboz, Táblázat panel (név, fejlécsor, alaprács, eszközsor, forrásfájl, újraolvasás, figyelmen kívül hagyás, CSV-letöltés) |
+| Szerver | `Sources/ThinkNodes/TableFiles.swift`: mentéskor ellenőrzés + újraszámolás (`WorksheetStore.storeAttachment`), végpontok: `POST /api/table/…?from=` (mellékletből) vagy `?name=` + törzs (feltöltésből, a fájl nem tárolódik), `GET /api/table-export/…?format=csv`; linkelt CSV: `TableCSV.linkedTable`; a megtekintő és az SVG a `TableHTML`-t rajzolja (`Rendering.swift` `fileTextHTML`) |
+| Szerkesztő bekötése | `Public/editor.js`: olvasó nézet, Alt+dupla kattintás → cellaszerkesztés, dupla kattintás → cellaszerkesztés, helyi menü („Táblázat létrehozása”, „Cellák szerkesztése”, CSV-dobozon / linkelt táblázaton nézetváltás és önálló másolat), táblázatos szöveg beillesztése → táblázat doboz, Táblázat panel (név, fejlécsor, alaprács, eszközsor, CSV-letöltés; linkeltnél a fájl neve és a nézetváltás). Linkelt CSV: `Public/table/table-csv.js` (beolvasás, visszaírás beírt alakban) |
 | Típusregiszter | `Public/node-types.json`: `table` (`base: text`, `.tntable`) |
 | Stílus | `Public/app.css` `.tn-*` |
 | Tesztek | közös esetek: `Tests/TableFixtures/*.json`; Swift: `Tests/ThinkTableTests` (`swift test --filter ThinkTableTests`); JS: `node Tests/Editor/table-engine.mjs` (közös esetek + szerkesztésvezérlő) |
@@ -413,15 +396,18 @@ Jelenleg nincs. A legutóbb lezártak (2026-11-24):
 - CSV-exportban az `=`, `+`, `-`, `@` kezdetű szöveg elé `'` kerül (CSV-befecskendezés ellen).
 - Egy cellára mutató hivatkozás függvényargumentumként tartományként viselkedik (Excel: `AVERAGE(A3)` szöveges cellánál `#DIV/0!`).
 - A `ROUND` / számformátum kerekítése a feleket nullától elfelé viszi, saját kiírással (a printf és a JS `toFixed` az egzakt feleknél eltér).
-- Forrásfájl a projekt másik lapjáról vagy a közös könyvtárból: előbb a saját lapra másolódik, onnan készül a táblázat.
+- Önálló másolat a projekt másik lapjáról vagy a közös könyvtárból: a fájl tartalmából készül, a fájl nem másolódik.
+- A CSV-elválasztó felismerése determinisztikus (`,` `;` tab sorrendben), és a CSV-szövegnézet is ezt használja.
+- Az utolsó sor/oszlop alá lépve (Enter, nyíl) a táblázat bővül.
 
 **Böngészőben ellenőrizve (2026-11-24, `MassTest/TablaTeszt`, helyi adat):** olvasó nézet, cellaszerkesztés (beírás, képlet,
 hivatkozás-kiemelés, Enter), azonnali újraszámolás, sorbeszúrás, Shift+kattintásos tartomány, félkövér, pénznem, vastag külső keret,
 mentés és szerveres újraszámolás, megtekintő, üres táblázat létrehozása a helyi menüből.
-**Még nem ellenőrzött:** oszlopszélesség húzása, vágólap Excellel oda-vissza, CSV feltöltése a rákérdezéssel (fájlválasztó kell), forrásfájl cseréje.
+**Linkelt táblázat böngészőben (2026-11-24):** CSV-doboz → „Megjelenítés táblázatként”, képletek kiszámolva, dupla kattintás → szerkesztés,
+a CSV-be visszaírva (képlet, `1 200 Ft`, `850,5`, CRLF megmaradt), a megtekintő a szerver által számolt értéket mutatja, visszaváltás szövegre.
+**Még nem ellenőrzött:** oszlopszélesség húzása, vágólap Excellel oda-vissza, a párbeszéd „Linkelt táblázat” és „a gépről” ága (fájlválasztó kell).
 
 **A tesztelés közben javítva:**
-- A táblázat forrásfájlja nem kap automatikusan saját dobozt, és a táblázattal együtt kerül lomtárba; a csv-doboz törlésekor a forrás a táblázatnál marad (`WorksheetStore.tableSourceRefs`, `Tests/ThinkNodesTests/TableBoxTests.swift`).
 - A gépelés egy rejtett beviteli mezőn keresztül érkezik (IME, érintőbillentyűzet, szövegbeszúrás is cellaszerkesztést indít).
 - A vászon capture-fázisú `pointerdown` figyelője átengedi a szerkesztett táblázaton belüli kattintásokat (Shift+kattintás nem a doboz kijelölését váltja).
 - A dobozon belüli eszközsor kikerült (kis dobozban eltakarta a rácsot); a formázás a panelen és gyorsbillentyűkkel érhető el.

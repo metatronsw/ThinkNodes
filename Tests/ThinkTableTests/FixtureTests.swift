@@ -101,6 +101,13 @@ private struct RewriteCase: Decodable {
     #expect(throws: (any Error).self) { try TableDocument.decode(Data(#"{"format":"thinknodes-table","version":1,"id":"a","size":{"rows":1,"cols":1},"styles":[],"cells":{"ZZZZ1":{"v":1}}}"#.utf8)) }
 }
 
+/// A táblázat független a forrásfájltól: a régi fájlok `source` / `edited` mezője beolvasáskor elmarad, mentéskor nem kerül vissza.
+@Test func oldSourceLinkIsDropped() throws {
+    let old = #"{"format":"thinknodes-table","version":1,"id":"tbl-1","size":{"rows":1,"cols":1},"styles":[{}],"cells":{"A1":{"v":1}},"source":{"name":"file-x","hash":"ab"},"edited":true}"#
+    let encoded = String(decoding: try TableDocument.decode(Data(old.utf8)).encoded(), as: UTF8.self)
+    #expect(!encoded.contains("source") && !encoded.contains("edited"))
+}
+
 @Test func csvImportDetectsSeparatorTypesAndHeader() {
     let csv = "\u{FEFF}Termék;Ár;Arány\r\nAlma;\"1 200\";12%\r\n\"Körte; sárga\";850,5;=1+1\r\n"
     let imported = TableCSV.importCSV(Data(csv.utf8), name: "lista", ext: "csv")
@@ -132,4 +139,24 @@ private struct RewriteCase: Decodable {
     #expect(html.contains("border-top:3px double #000"))
     #expect(!html.contains("javascript"))
     #expect(html.contains("&lt;b&gt;&amp;&lt;/b&gt;"))
+}
+
+private struct LinkedCase: Decodable { var name: String; var ext: String; var csv: String; var expect: [String: CellValue] }
+
+/// Dokumentumhoz linkelt táblázat: a CSV-ből a szerver ugyanazt számolja, mint a böngésző (Tests/Editor/table-engine.mjs).
+@Test func sharedLinkedFixtures() throws {
+    for test in try load("linked.json", as: [LinkedCase].self) {
+        let document = TableCSV.linkedTable(Data(test.csv.utf8), name: "t", ext: test.ext)
+        for (name, expected) in test.expect {
+            #expect(document.cells[name]?.v == expected, "\(test.name): \(name)")
+        }
+    }
+}
+
+@Test func separatorDetectionIsDeterministic() {
+    #expect(TableCSV.detectSeparator("a;b,c\n", ext: "csv") == ",")
+    #expect(TableCSV.detectSeparator("a;b;c,d\n", ext: "csv") == ";")
+    #expect(TableCSV.detectSeparator("a\tb\n", ext: "csv") == "\t")
+    #expect(TableCSV.detectSeparator("abc\n", ext: "csv") == ",")
+    #expect(TableCSV.detectSeparator("a,b\n", ext: "tsv") == "\t")
 }

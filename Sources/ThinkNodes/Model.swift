@@ -653,19 +653,7 @@ final class WorksheetStore: @unchecked Sendable {
     let files = FileManager.default
     let lock = NSLock()
     private var pendingAttachments: [String: Date] = [:]
-    func clearPendingAttachments() { pendingAttachments = [:] }
 
-    /// A lap táblázatainak forrásfájljai (azonosító vagy név, ahogy a táblázat tárolja). A forrás a táblázathoz tartozik:
-    /// nem kap automatikusan dobozt, és a táblázattal együtt kerül lomtárba (EXCEL.md 7. fejezet).
-    func tableSourceRefs(_ nodes: [Idea], url: URL, metadata: DocumentPolicy) -> Set<String> {
-        var refs = Set<String>()
-        for node in nodes where node.type == "table" && node.file?.source == nil {
-            guard let asset = node.file?.asset, let file = try? attachments(at: url, named: asset, metadata: metadata).first,
-                  let source = (try? TableDocument.decode(Data(contentsOf: file)))?.source else { continue }
-            refs.insert(source.name)
-        }
-        return refs
-    }
     let encoder: JSONEncoder = {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
@@ -1024,7 +1012,6 @@ final class WorksheetStore: @unchecked Sendable {
             }
             let previous = Dictionary(uniqueKeysWithValues: current.nodes.map { ($0.id, $0) })
             let currentRefs = Set(current.nodes.compactMap { $0.file?.source == nil ? $0.file?.asset : nil })
-                .union(tableSourceRefs(current.nodes, url: url, metadata: metadata))
             var renames: [String: String] = [:]
             for index in updated.nodes.indices {
                 let node = updated.nodes[index]
@@ -1047,9 +1034,7 @@ final class WorksheetStore: @unchecked Sendable {
                 }
                 updated.nodes[index].file?.asset = ref
             }
-            // A táblázatok forrásfájljai is „használt” fájlok (EXCEL.md): a táblázattal maradnak, illetve vele mennek lomtárba.
             let nextRefs = Set(updated.nodes.compactMap { $0.file?.source == nil ? $0.file?.asset : nil })
-                .union(tableSourceRefs(updated.nodes, url: url, metadata: metadata))
             var moved: [(from: URL, to: URL)] = []
             func move(_ source: URL, _ destination: URL) throws {
                 try files.moveItem(at: source, to: destination)
@@ -1289,8 +1274,6 @@ final class WorksheetStore: @unchecked Sendable {
         let archived = metadata.archivedFiles ?? [:]
         var referenced = Set(current.nodes.compactMap { $0.file?.source == nil ? $0.file?.asset : nil }.map { media[$0] ?? $0 })
         if let preview = current.previewImage { referenced.insert(media[preview] ?? preview) }
-        // A táblázat forrásfájlja (EXCEL.md) a táblázathoz tartozik: nem kap automatikusan saját dobozt.
-        for ref in tableSourceRefs(current.nodes, url: url, metadata: metadata) { referenced.insert(media[ref] ?? ref) }
         var updated = current
         let x = current.nodes.isEmpty ? 0 : min(99_000, current.nodes.map { $0.position.x - $0.width / 2 }.min()! + 160)
         var bottom = current.nodes.map { $0.position.y + $0.height / 2 }.max() ?? -140

@@ -1,4 +1,3 @@
-import Crypto
 import Foundation
 import ThinkTable
 import Vapor
@@ -24,10 +23,6 @@ enum TableFiles {
         }
     }
 
-    static func hash(_ data: Data) -> String {
-        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-    }
-
     /// Forrásfájl → táblázat(ok). Több munkalapos formátumnál (második kör) munkalaponként egy.
     static func convert(_ data: Data, filename: String) throws -> [(document: TableDocument, truncated: Bool)] {
         let ext = (filename as NSString).pathExtension.lowercased()
@@ -45,8 +40,6 @@ enum TableFiles {
 }
 
 extension WorksheetStore {
-    /// Teszthez: a frissen feltöltött mellékletek 60 másodperces türelmi ideje lejár.
-    func forgetPendingAttachmentsForTesting() { lock.withLock { clearPendingAttachments() } }
 
     /// A melléklet tényleges fájlneve (a név lehet azonosító is: `file-…`).
     func attachmentFilename(_ path: WorksheetPath, named name: String, user: User?, unlocks: Set<String>) throws -> String {
@@ -72,50 +65,33 @@ struct TableImportResult: Content {
     var truncated: Bool
 }
 
-struct TableSourceStatus: Content {
-    var source: String?
-    /// A forrásfájl tényleges neve (a `source` lehet azonosító is).
-    var filename: String?
-    var changed: Bool
-    var missing: Bool
-    var edited: Bool
-}
-
-/// Végpontok:
-/// - `POST /api/table/<lap>?from=<forrás>[&name=<cél.tntable>&replace=1]`: forrásfájlból táblázat (vagy újraolvasás).
-/// - `GET /api/table-source/<lap>?name=<x.tntable>`: megváltozott-e a forrásfájl az import óta.
+/// Végpontok (EXCEL.md 7. fejezet):
+/// - `POST /api/table/<lap>?from=<melléklet>`: a lap egy mellékletéből (pl. .csv) új, független táblázat.
+/// - `POST /api/table/<lap>?name=<fájlnév.csv>` + törzs: feltöltött fájlból új táblázat; a feltöltött fájl nem tárolódik.
+/// - `GET /api/table-export/<lap>?name=<x.tntable>&format=csv`: letöltés.
+/// A táblázat és a forrásfájl között nincs kapcsolat: a táblázat a beolvasáskori tartalom másolata.
 func registerTableRoutes(_ app: any RoutesBuilder, store: WorksheetStore,
                          identity: @escaping @Sendable (Request) throws -> (user: User?, unlocks: Set<String>),
                          verify: @escaping @Sendable (Request) throws -> Void,
                          changed: @escaping @Sendable (WorksheetPath) -> Void) {
-    app.post("api", "table", "**") { req async throws -> TableImportResult in
+    app.on(.POST, "api", "table", "**", body: .collect(maxSize: "12mb")) { req async throws -> TableImportResult in
         let who = try identity(req)
         try verify(req)
         let path = try WorksheetPath(req.parameters.getCatchall())
-        guard let from = req.query[String.self, at: "from"] else { throw Abort(.badRequest) }
-        let replace = req.query[String.self, at: "replace"] == "1"
-        let target = req.query[String.self, at: "name"]
-        if replace && target == nil { throw Abort(.badRequest) }
+        let from = req.query[String.self, at: "from"]
+        let uploadName = req.query[String.self, at: "name"]
+        let body = req.body.data.map { Data($0.readableBytesView) }
         let result = try await req.application.threadPool.runIfActive { () throws -> TableImportResult in
-            let data = try store.attachmentData(path, named: from, user: who.user, unlocks: who.unlocks)
-            let sourceName = try store.contents(path, user: who.user, unlocks: who.unlocks, named: from).first?.lastPathComponent ?? from
-            guard var (document, truncated) = try TableFiles.convert(data, filename: sourceName).first else { throw Abort(.unprocessableEntity) }
-            document.source = TableSource(name: from, hash: TableFiles.hash(data))
-            if replace, let target {
-                guard TableFiles.isTable(try store.attachmentFilename(path, named: target, user: who.user, unlocks: who.unlocks)) else {
-                    throw Abort(.badRequest, reason: "A cél csak .tntable lehet.")
-                }
-                // Újraolvasás: az azonosító és a név marad (a későbbi táblázatközi hivatkozások miatt).
-                if let old = try? TableDocument.decode(store.attachmentData(path, named: target, user: who.user, unlocks: who.unlocks)) {
-                    document.id = old.id
-                    document.name = old.name ?? document.name
-                }
-                document.edited = nil
-                try store.storeAttachment(document.encoded(), named: target, at: path, user: who.user, unlocks: who.unlocks, replaceText: true)
-                return TableImportResult(asset: target, filename: target, name: document.name, rows: document.size.rows,
-                                         cols: document.size.cols, truncated: truncated)
-            }
-            let stem = target.map { ($0 as NSString).deletingPathExtension }.flatMap { $0.isEmpty ? nil : $0 } ?? (sourceName as NSString).deletingPathExtension
+            let data: Data, sourceName: String
+            if let from {
+                data = try store.attachmentData(path, named: from, user: who.user, unlocks: who.unlocks)
+                sourceName = try store.attachmentFilename(path, named: from, user: who.user, unlocks: who.unlocks)
+            } else if let uploadName, let body, !body.isEmpty {
+                data = body
+                sourceName = (uploadName as NSString).lastPathComponent
+            } else { throw Abort(.badRequest) }
+            guard let (document, truncated) = try TableFiles.convert(data, filename: sourceName).first else { throw Abort(.unprocessableEntity) }
+            let stem = (sourceName as NSString).deletingPathExtension
             let bytes = try document.encoded()
             for attempt in 1...50 {
                 let filename = (attempt == 1 ? stem : stem + " " + String(attempt)) + "." + TableFiles.fileExtension
@@ -148,24 +124,5 @@ func registerTableRoutes(_ app: any RoutesBuilder, store: WorksheetStore,
         let encoded = filename.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "table.csv"
         headers.replaceOrAdd(name: .contentDisposition, value: "attachment; filename=\"table.csv\"; filename*=UTF-8''" + encoded)
         return Response(status: .ok, headers: headers, body: .init(data: data))
-    }
-
-    app.get("api", "table-source", "**") { req async throws -> TableSourceStatus in
-        let who = try identity(req)
-        let path = try WorksheetPath(req.parameters.getCatchall())
-        guard let name = req.query[String.self, at: "name"] else { throw Abort(.badRequest) }
-        return try await req.application.threadPool.runIfActive {
-            guard TableFiles.isTable(try store.attachmentFilename(path, named: name, user: who.user, unlocks: who.unlocks)) else { throw Abort(.badRequest) }
-            let document = try TableDocument.decode(store.attachmentData(path, named: name, user: who.user, unlocks: who.unlocks))
-            guard let source = document.source else {
-                return TableSourceStatus(source: nil, filename: nil, changed: false, missing: false, edited: document.edited == true)
-            }
-            guard let data = try? store.attachmentData(path, named: source.name, user: who.user, unlocks: who.unlocks) else {
-                return TableSourceStatus(source: source.name, filename: nil, changed: false, missing: true, edited: document.edited == true)
-            }
-            let filename = try? store.attachmentFilename(path, named: source.name, user: who.user, unlocks: who.unlocks)
-            return TableSourceStatus(source: source.name, filename: filename, changed: TableFiles.hash(data) != source.hash, missing: false,
-                                     edited: document.edited == true)
-        }
     }
 }

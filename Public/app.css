@@ -926,8 +926,6 @@ svg text { text-rendering: geometricPrecision; }
 .tn-table td.err { color: #b00020; text-align: center; }
 .tn-table td.fixed { background-image: linear-gradient(225deg, #e39a2b 5px, transparent 5px); }
 .tn-table-more { margin: 4px 0 0; font-size: .8em; opacity: .7; }
-.tn-table-box { position: relative; }
-.tn-source-badge { position: absolute; top: 2px; right: 2px; z-index: 2; padding: 0 5px; border-radius: 9px; background: #e39a2b; color: #fff; font-size: 12px; line-height: 18px; }
 
 /* Szerkesztési mód */
 .node-note:has(.tn-table-editor) { overflow: hidden; padding: 0; }
@@ -968,8 +966,6 @@ svg text { text-rendering: geometricPrecision; }
 .tn-spacer td, tr.tn-spacer { padding: 0; border: 0; }
 
 /* Panel */
-.tn-source-changed { display: grid; gap: 6px; padding: 8px; border-radius: 6px; background: #fff4e0; color: #7a4b00; font-size: .88rem; }
-.tn-source { margin: 0; font-size: .85rem; overflow-wrap: anywhere; }
 
 /* Párbeszédablakok (table/table-files.js) */
 .table-dialog { max-width: 420px; padding: 18px; display: grid; gap: 12px; }
@@ -977,4 +973,3 @@ svg text { text-rendering: geometricPrecision; }
 .table-dialog p { margin: 0; }
 .table-dialog-options { display: grid; gap: 8px; }
 .table-dialog-options .button { justify-content: flex-start; text-align: left; }
-.table-dialog-remember { font-size: .9rem; color: var(--muted); }

@@ -55,7 +55,11 @@ export class TableEditor {
 
   select(r, c, extend = false) {
     this.commitDraft();
-    this.active = {r: clamp(r, 0, this.doc.size.rows - 1), c: clamp(c, 0, this.doc.size.cols - 1)};
+    // A széle fölé lépve a táblázat bővül (Enter / nyíl az utolsó soron, oszlopon), a korlátokon belül.
+    r = clamp(r, 0, limits.maxRows - 1); c = clamp(c, 0, limits.maxCols - 1);
+    if (r >= this.doc.size.rows) this.doc.size.rows = r + 1;
+    if (c >= this.doc.size.cols) this.doc.size.cols = c + 1;
+    this.active = {r, c};
     if (!extend) this.anchor = {...this.active};
     this.touch();
   }
@@ -367,7 +371,6 @@ export class TableEditor {
   changed(names) {
     if (names === null) recalculate(this.doc);
     else if (names.length) recalculate(this.doc, names);
-    this.doc.edited = true;
     this.touch();
     this.onChange(this.doc);
   }
