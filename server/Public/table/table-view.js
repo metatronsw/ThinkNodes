@@ -154,6 +154,10 @@ export function tableToolbar(h, edit, {compact = false} = {}) {
 
 // Szerkesztési mód: képletsor és rács (az eszközsor a panelen van, hogy kis dobozban is látsszon a rács). `onExit`: kilépés (Esc). A vezérlő (TableEditor) állapotát rajzolja; a `version` mező
 // változása váltja ki az újrarajzolást (a hívó olvassa).
+// A virtuális ablak ráhagyása (képpont) a látható rész fölött és alatt, és az újrarajzolás küszöbe: a küszöbnél kevesebb
+// görgetés nem rajzol újra. A ráhagyásnak a küszöbnél nagyobbnak kell lennie, különben üres sáv látszana.
+const windowAbove = 480, windowBelow = 640, windowStep = 320;
+
 export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false} = {}) {
   const doc = edit.doc, sel = edit.sel, draft = edit.draft;
   const highlighted = referencedRanges(draft, doc);
@@ -162,9 +166,11 @@ export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false
 
   // Virtualizálás: csak a látható sorok (és egy kis ráhagyás) rajzolódnak ki; a többit térköz helyettesíti.
   let first = 0, top = 0;
-  while (first < doc.size.rows && top + rowHeight(doc, first) < edit.scrollTop - 200) { top += rowHeight(doc, first); first++; }
+  // Ráhagyás fölül és alul: a görgetés csak akkor rajzol újra, ha a ráhagyás fogytán van (lásd az onScroll küszöbét);
+  // így gyors görgetésnél nem minden második képkocka újrarajzolás.
+  while (first < doc.size.rows && top + rowHeight(doc, first) < edit.scrollTop - windowAbove) { top += rowHeight(doc, first); first++; }
   let last = first, bottom = top;
-  while (last < doc.size.rows && bottom < edit.scrollTop + edit.viewport + 400) { bottom += rowHeight(doc, last); last++; }
+  while (last < doc.size.rows && bottom < edit.scrollTop + edit.viewport + windowBelow) { bottom += rowHeight(doc, last); last++; }
   let rest = 0;
   for (let r = last; r < doc.size.rows; r++) rest += rowHeight(doc, r);
 
@@ -209,7 +215,9 @@ export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false
   ]);
 
   const bodyRows = [];
-  if (top > 0) bodyRows.push(h("tr", {class: "tn-spacer", style: {height: top + "px"}}));
+  // A sorok kulcsa a sorszám: görgetéskor a megmaradó sorok DOM-ja érintetlen marad, csak a belépő és kilépő sorok
+  // jönnek létre, illetve tűnnek el. Kulcs nélkül minden látható cella tartalma kicserélődött (teljes újraelrendezés).
+  bodyRows.push(h("tr", {key: "top", class: "tn-spacer", style: {height: top + "px"}}));
   for (let r = first; r < last; r++) {
     const cells = [h("th", {class: ["tn-rowhead", {selected: r >= sel.r0 && r <= sel.r1}],
       onPointerdown: e => { e.stopPropagation(); edit.selectRow(r, e.shiftKey); }}, String(r + 1))];
@@ -227,9 +235,9 @@ export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false
         onDblclick: e => { e.stopPropagation(); edit.select(r, c); edit.startDraft(); },
       }, isActive && draft != null ? [cellInput()] : display(cell?.v, style.fmt)));
     }
-    bodyRows.push(h("tr", rowHeight(doc, r) === defaultRowHeight ? {} : {style: {height: rowHeight(doc, r) + "px"}}, cells));
+    bodyRows.push(h("tr", rowHeight(doc, r) === defaultRowHeight ? {key: r} : {key: r, style: {height: rowHeight(doc, r) + "px"}}, cells));
   }
-  if (rest > 0) bodyRows.push(h("tr", {class: "tn-spacer", style: {height: rest + "px"}}));
+  bodyRows.push(h("tr", {key: "bottom", class: "tn-spacer", style: {height: rest + "px"}}));
 
   const stop = e => e.stopPropagation();
   return h("div", {class: "tn-table-editor", tabindex: -1, "data-table-editor": "",
@@ -283,7 +291,7 @@ export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false
       onScroll: e => {
         const el = e.currentTarget;
         edit.viewport = el.clientHeight || 400;
-        if (Math.abs(el.scrollTop - edit.scrollTop) > 100) { edit.scrollTop = el.scrollTop; edit.touch(); }
+        if (Math.abs(el.scrollTop - edit.scrollTop) > windowStep) { edit.scrollTop = el.scrollTop; edit.touch(); }
       }}, [
       h("table", {class: ["tn-table", "tn-editing", {"no-grid": doc.grid === false}]}, [
         colgroup(h, doc, true),
@@ -297,7 +305,9 @@ export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false
 // A fókusz a rejtett billentyűzet-nyelőre kerül (ha éppen nincs cellaszerkesztés).
 function focusSink(from) {
   const root = from?.closest?.(".tn-table-editor") ?? from;
-  root?.querySelector?.(".tn-sink")?.focus({preventScroll: true});
+  // Ha már a nyelőn van a fókusz, nem hívjuk újra: a focus() azonnali elrendezést kényszerít ki (kattintásonként ~9 ms).
+  const sink = root?.querySelector?.(".tn-sink");
+  if (sink && sink.ownerDocument.activeElement !== sink) sink.focus({preventScroll: true});
 }
 
 function writeClip(event, data) {

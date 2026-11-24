@@ -244,11 +244,17 @@ def table_edit_exit(s):
     s.js("document.querySelector('.tn-table-editor')?.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})); return 1")
     time.sleep(.6)
 
+def peers_idle(s):
+    """Másik felhasználó jelöl ki és húz dobozokat (külön böngészőből, lásd Tests/Perf/peer.js); itt csak figyelünk."""
+    frames = recorded(s, lambda: time.sleep(6), 0)
+    frames["peers"] = s.js("return document.querySelectorAll('.participants .participant').length")
+    return frames
+
 def run(label, base, sheet, only, options=None):
     s = Safari()
     results = {"label": label, "sheet": sheet, "time": time.strftime("%Y-%m-%d %H:%M:%S")}
     def step(name, fn, *args):
-        if only and name.split(":")[0] not in only: return
+        if only and name.split(":")[0] not in only and name not in only: return
         try: results[name] = fn(s, *args)
         except Exception as error: results[name] = {"error": str(error)[:300]}
         print(name, json.dumps(results[name], ensure_ascii=False), flush=True)
@@ -257,6 +263,12 @@ def run(label, base, sheet, only, options=None):
         results["options"] = options
         results["agent"] = s.js("return navigator.userAgent")
         results["nodes"] = s.js("return [document.querySelectorAll('[data-node]').length, document.querySelectorAll('[data-edge]').length]")
+        if "peers" in only:
+            focus_on(s, '[data-node="n00100"] .node-surface', 140)
+            step("peers:idle", peers_idle)
+            step("peers:pan", pan_slow)
+            step("peers:select", select_single)
+            return results
         step("idle", idle)
         step("pan_slow", pan_slow)
         step("pan_fast", pan_fast)
