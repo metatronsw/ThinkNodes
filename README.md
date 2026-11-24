@@ -6,7 +6,7 @@ Közös ötletvászon Swift 6.0.3 és Vapor szerverrel, Vue 3 szerkesztővel és
 
 | Mappa | Tartalom |
 | --- | --- |
-| `server/` | A szerver és a kliens forrása (`Sources/`, `Public/`, `Tests/`, `docs/`, `tools/`, `Patches/`), a `run.sh` és a `deploy/` szkriptek; build után itt a `thinknodes` bináris |
+| `server/` | A szerver és a kliens forrása (`Sources/`, `Public/`, `Tests/`, `docs/`, `Patches/`), a `run.sh` és a `deploy/` szkriptek; build után itt a `thinknodes` bináris |
 | `projects/` | Helyi projektadatok (Git-követésen kívül); élesben `/var/lib/thinknodes/Projects` |
 
 ## Szkriptek
@@ -109,13 +109,8 @@ Az **Új munkalap** a megtekintőből és a vászon helyi menüjéből is elérh
 
 A főoldali **Útmutató** az eszközöket, a gyorsbillentyűket és az egérgesztusokat példákkal mutatja be. A megtekintő a mentett munkalapot rács nélküli SVG-ként, .thnode fájlként vagy szövegként tudja exportálni.
 
-Gyorsbillentyű vagy gesztus változásakor frissítsd a [központi táblázatot](docs/hotkeys.json). A [HTML-sablonban](docs/guide.template.html) találhatók a példaábrák, az oldal elrendezése pedig a [stíluslapon](Public/guide.css).
+Az útmutató oldal a [server/Public/utmutato.html](server/Public/utmutato.html). Gyorsbillentyű vagy gesztus változásakor ezt kell frissíteni, a [központi táblázattal](server/docs/hotkeys.json) együtt. A példaábrák forrása a [HTML-sablon](server/docs/guide.template.html), az oldal elrendezése a [stíluslapon](server/Public/guide.css) található.
 
-```sh
-python3 tools/generate-guide.py
-python3 tools/generate-guide.py --check
-```
-
-Az első parancs elkészíti a kiszolgált `Public/utmutato.html` fájlt. A második ellenőrzi, hogy a verziózott HTML egyezik-e a forrásokkal.
+A `Patches/` két apró javítást tartalmaz a `swift-nio` és az `async-http-client` csomaghoz. A `deploy/build.sh` csak macOS-en, 15-nél régebbi SDK esetén teszi rá őket a letöltött csomagokra (Swift 6.0.3 + macOS 14 SDK).
 
 A munkalapok a rövid kulcsú, 2-es verziójú JSON-formátumban készülnek. A **projects/** mappa tartalma helyi adatként a Git-követésen kívül marad.
