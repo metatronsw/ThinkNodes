@@ -35,7 +35,7 @@ const tally = name => window.__perf?.count(name);
 const timed = (name, run) => window.__perf ? window.__perf.time(name, run) : run();
 // Teljesítmény-kapcsolók kísérletezéshez (docs/PERF.md): localStorage.tnPerf = '{"overscan":0.5,"moving":"all",…}', majd újratöltés.
 // Alapértékek: a mérések szerint legjobb beállítás; a kapcsolókkal a korábbi viselkedés visszaállítható és összemérhető.
-const perfOptions = {overscan: 1, moving: "gesture", shield: true, rest: true, grid: "css", layer: "wrapper", coalesce: true, pause: true, sharp: true,
+const perfOptions = {overscan: 1, moving: "gesture", shield: true, rest: true, grid: "draw", layer: "wrapper", coalesce: true, pause: true, sharp: true,
   ...(() => { try { return JSON.parse(localStorage.getItem("tnPerf") || "{}"); } catch { return {}; } })()};
 const {createApp, computed, getCurrentInstance, h, markRaw, nextTick, onMounted, onUnmounted, onUpdated, reactive, ref, shallowRef, toRaw, watch, watchEffect} = window.Vue;
 
@@ -1199,7 +1199,7 @@ createApp({
       // A rács nem skálázódik a réteggel: a mintája közvetlenül az élő nézetet követi.
       const [centerX, centerY] = center();
       if (perfOptions.grid === "separate") zoomHost()?.querySelector?.("#worksheet-grid")?.setAttribute("patternTransform", transform + " translate(" + centerX + " " + centerY + ")");
-      else if (perfOptions.grid === "css") applyGrid(transform);
+      else if (perfOptions.grid === "css" || perfOptions.grid === "draw") applyGrid(transform);
     }
     // Háttérrács CSS-háttérként, saját rétegben (perfOptions.grid = "css", alap). Az SVG-minta festése Safariban drága:
     // külön SVG-rétegként ("separate") minden képkockában újrafestődött, a vászon rétegében ("canvas") pedig a nézet minden
@@ -1231,7 +1231,72 @@ createApp({
         backgroundPosition: layers.map(layer => wrap(originX - layer[2], layer[1]) + "px " + wrap(originY - layer[2], layer[1]) + "px").join(","),
       };
     }
+    // Háttérrács vászonelemre (<canvas>) rajzolva (perfOptions.grid = "draw", alap). A csempézett CSS-háttérnél a böngésző
+    // a csempe méretét egész képpontra kerekíti; a tört rácsköznél (szinte minden nagyításnál) ez csempénként összeadódik,
+    // ezért Safariban nagyítás közben a rács ugrált – kis nagyításnál (sok csempe) jobban, nagynál kevésbé. Itt minden pont
+    // és vonal a saját, pontos helyére kerül. Sok pontnál (kis nagyítás) egy mintával töltünk, amelynek a léptéke tört is lehet.
+    let gridTile = null;
+    function drawGrid(element, transform) {
+      const context = element.getContext?.("2d");
+      if (!context) return;
+      const {width, height} = size.value, ratio = window.devicePixelRatio || 1;
+      const w = Math.round(width * ratio), h = Math.round(height * ratio);
+      if (element.width !== w || element.height !== h) { element.width = w; element.height = h; }
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.clearRect(0, 0, w, h);
+      if (!gridVisible.value || !w || !h) return;
+      const [centerX, centerY] = center();
+      const k = transform.k, spacing = gridSpacing.value, {grid, glass} = graphics.value;
+      // A vászon origója eszközképpontban; a rács pontjai és vonalai ettől a rácsköz egész számú többszöröseire esnek.
+      const originX = (transform.x + k * centerX) * ratio, originY = (transform.y + k * centerY) * ratio;
+      const first = (origin, period) => wrap(origin, period) - period;
+      const lines = (alpha, step) => {
+        const period = step * k * ratio, thickness = Math.max(1, Math.round(Math.max(k, .5) * ratio));
+        if (period < 3) return;
+        context.fillStyle = "rgba(120,155,176," + alpha + ")";
+        for (let x = first(originX, period); x < w + period; x += period) context.fillRect(Math.round(x - thickness / 2), 0, thickness, h);
+        for (let y = first(originY, period); y < h + period; y += period) context.fillRect(0, Math.round(y - thickness / 2), w, thickness);
+      };
+      if (grid === "drafting" || grid === "lines") {
+        if (grid === "drafting") lines(.08, spacing);
+        lines(.22, grid === "drafting" ? spacing * 5 : spacing);
+        return;
+      }
+      const period = spacing * k * ratio, radius = (glass ? 1 : 1.1) * k * ratio;
+      if (period < 2) return;
+      const hex = glass ? "#a397bf" : gridColor.value, alpha = glass ? .24 : .28;
+      const rgb = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(",");
+      // Képpontnál kisebb pont: egy képpontnyi négyzet, a területével arányosan halványítva (különben eltűnne vagy vibrálna).
+      const dot = (target, x, y) => {
+        if (radius >= .75) { target.beginPath(); target.arc(x, y, radius, 0, 2 * Math.PI); target.fill(); }
+        else target.fillRect(x - .5, y - .5, 1, 1);
+      };
+      const color = "rgba(" + rgb + "," + (radius >= .75 ? alpha : alpha * Math.min(1, Math.max(.2, Math.PI * radius * radius))) + ")";
+      if ((w / period) * (h / period) <= 2500) {
+        context.fillStyle = color;
+        for (let x = first(originX, period); x < w + period; x += period)
+          for (let y = first(originY, period); y < h + period; y += period) dot(context, x, y);
+        return;
+      }
+      // Sok pont: egyetlen kitöltés mintával. A csempe egész képpontos, a minta transzformja adja a pontos (tört) rácsközt.
+      const tileSize = Math.max(2, Math.round(period));
+      const key = tileSize + "/" + radius.toFixed(2) + "/" + color;
+      if (gridTile?.key !== key) {
+        const tile = document.createElement("canvas");
+        tile.width = tile.height = tileSize;
+        const tileContext = tile.getContext("2d");
+        tileContext.fillStyle = color;
+        dot(tileContext, tileSize / 2, tileSize / 2);
+        gridTile = {key, tile};
+      }
+      const pattern = context.createPattern(gridTile.tile, "repeat");
+      const scale = period / tileSize;
+      pattern.setTransform?.(new DOMMatrix([scale, 0, 0, scale, originX - period / 2, originY - period / 2]));
+      context.fillStyle = pattern;
+      context.fillRect(0, 0, w, h);
+    }
     function applyGrid(transform) {
+      if (gridElement.value?.getContext) { drawGrid(gridElement.value, transform); return; }
       const style = gridElement.value?.style;
       if (!style) return;
       if (!gridVisible.value) { style.backgroundImage = "none"; return; }
@@ -3881,6 +3946,7 @@ createApp({
       return h("div", {class: "canvas-area", style: {background: paint(board.value.background, 0), "--overscan": overscan}}, [
         perfOptions.grid === "separate" ? h(GridLayer) : null,
         perfOptions.grid === "css" ? h("div", {class: "canvas-grid-css", ref: gridElement, "aria-hidden": "true", "data-editor-only": ""}) : null,
+        perfOptions.grid === "draw" ? h("canvas", {class: "canvas-grid-css canvas-grid-draw", ref: gridElement, "aria-hidden": "true", "data-editor-only": ""}) : null,
         // A mozdulat közbeni CSS-transzform a vásznat körülvevő rétegen van ("wrapper", alap), nem magán az SVG-n: a
         // transzformált SVG-gyökérben Safari minden HTML-változásra (táblázat, szövegfájl) a teljes réteget újrafestette.
         h("div", {class: ["canvas-layer", {"is-layer": perfOptions.layer !== "svg"}]}, [h("svg", {ref: canvas, class: ["canvas", "editor-canvas", {"is-layer": perfOptions.layer === "svg", "ctrl-held": ctrl.value, "alt-held": alt.value}],
@@ -4765,7 +4831,7 @@ createApp({
     // A nagyítási lépcső CSS-változóban: a fogantyúk és a vonalak találati szélessége ebből számol (app.css),
     // így lépcsőváltáskor egyetlen stílusérték változik, nem rajzolódik újra minden vonal.
     // A CSS-rács a rögzített nézetet, a rácsbeállításokat és a méretet követi (mozdulat közben a previewView frissíti).
-    watchEffect(() => { size.value; gridSpacing.value; gridColor.value; graphics.value; applyGrid(pendingView ?? view.value); }, {flush: "post"});
+    watchEffect(() => { size.value; gridSpacing.value; gridColor.value; graphics.value; gridVisible.value; applyGrid(pendingView ?? view.value); }, {flush: "post"});
 
     return () => timed("rootRender", () => {
       if (!board.value) return h("p", {class: problem.value ? "error editor-loading" : "editor-loading"}, problem.value || "Szerkesztő betöltése…");

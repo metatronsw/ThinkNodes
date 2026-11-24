@@ -156,6 +156,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .canvas-grid-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 /* Háttérrács CSS-háttérként, saját rétegben (editor.js gridBackground): az újrafestése csak ezt a réteget érinti. */
 .canvas-grid-css { position: absolute; inset: 0; pointer-events: none; will-change: transform; }
+.canvas-grid-draw { display: block; width: 100%; height: 100%; }
 /* A vászonréteg minden irányban a látható terület felével nagyobb (editor.js overscan): pásztázáskor és kicsinyítéskor
    a grafikus kártya már kirajzolt tartalmat tol be. Mindig külön réteg (will-change), hogy a szélek előre raszterizálódjanak. */
 .canvas-area { overflow: hidden; }

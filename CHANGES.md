@@ -1,5 +1,12 @@
 # Változások
 
+## 2026-11-24 – Háttérrács vászonelemre rajzolva (Safari: ugráló rács nagyítás közben)
+
+- Megfigyelés: Safariban a rács nagyítás közben mindenhol ugrált, kis nagyításnál jobban, nagynál kevésbé. Automatizált Safariban mérve a rács és a vászonréteg beállított értékei képkockánként egyeztek, a képkockaidő egyenletes volt – tehát nem a számolás és nem a rétegváltás az ok.
+- Valószínű ok: a rács csempézett CSS-háttér volt (a teljesítményjavítás óta), és a böngésző a csempe méretét egész képpontra kerekíti. Tört rácsköznél a kerekítés csempénként összeadódik: sok csempénél (kis nagyítás) nagy, kevésnél kicsi az elcsúszás, és nagyítási lépésenként változik.
+- Javítás: a rács `<canvas>` elemre rajzolódik (`drawGrid`, `perfOptions.grid = "draw"`, alap): minden pont és vonal a saját, pontos helyére kerül; sok pontnál egyetlen mintakitöltés, amelynek a léptéke tört is lehet. A korábbi mód visszakapcsolható: `{"grid":"css"}`.
+- Ellenőrizve: automatizált Safari 18.6-ban a rács megjelenik (12% és 62%), Chromiumban is. Az ugrálás megszűnését szemmel nem tudtam megerősíteni. A szerver újrafordítva és újraindítva (verziószámok).
+
 ## 2026-11-24 – Safari: nagyítás közben ugrált a rács (az élesítés késleltetve)
 
 - Feltételezett ok: az „éles kirajzolás nagyítva” javítás a nézet minden rögzítésekor ki-, a következő mozdulatnál visszakapcsolta az előre raszterizált réteget. Nagyítás közben a nézet többször is rögzül (görgőszünet, a kirajzolt réteg széle), a réteg váltása pedig Safariban megakadás.

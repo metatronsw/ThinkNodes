@@ -56,7 +56,7 @@ lenyomástól a következő kirajzolt képkockáig.
 | `layer` | `"wrapper"` | `"svg"`: a transzform magán az SVG-n (régi). |
 | `shield` | `true` | `false`: húzás-kurzor a vászon attribútumával (régi). |
 | `moving` | `"gesture"` | `"all"`: pásztázásnál és nagyításnál is (régi); `"none"`: soha. |
-| `grid` | `"css"` | `"separate"`: külön SVG-réteg (régi); `"canvas"`: a vászon rétegében; `"none"`: nincs rács. |
+| `grid` | `"draw"` | `"css"`: csempézett CSS-háttér (2026-11-24-ig az alap; Safariban nagyítás közben ugrál, mert a csempe mérete egész képpontra kerekül); `"separate"`: külön SVG-réteg (régi); `"canvas"`: a vászon rétegében; `"none"`: nincs rács. |
 | `coalesce` | `true` | `false`: minden egérmozdulat külön feldolgozva (régi). |
 | `pause` | `true` | `false`: az animációk mozgás közben is futnak (régi). |
 | `sharp` | `true` | `false`: 100% fölötti nagyításnál is megmarad az előre raszterizált réteg (gyorsabb mozdulatindítás, de a táblázat / CSV / szövegfájl életlen). |
