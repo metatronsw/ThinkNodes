@@ -28,7 +28,9 @@ enum ThinkNodes {
         }
         // A relatív alapértékek (Public, ../projects, .thinknodes-tls) a szerver mappájához képest értendők.
         ServerFolder.enter()
-        let store = try WorksheetStore(root: URL(fileURLWithPath: options.project, isDirectory: true), testMode: options.test)
+        let dataFolder = URL(fileURLWithPath: options.project, isDirectory: true)
+        warnIfNewDataFolder(dataFolder)
+        let store = try WorksheetStore(root: dataFolder, testMode: options.test)
         if case let .user(name, role) = options.command {
             try addUser(name: name, role: role, store: store)
             return
@@ -86,6 +88,24 @@ enum ThinkNodes {
             throw error
         }
         try await app.asyncShutdown()
+    }
+
+    /// A nem létező adatmappát a tároló csendben létrehozza; egy elírt `--project:` így üres mappát nyitna
+    /// (fiókok és projektek nélkül). Indításkor ezt jelezzük, és megmutatjuk a közelben lévő valódi adatmappákat.
+    private static func warnIfNewDataFolder(_ folder: URL) {
+        let files = FileManager.default
+        var isDirectory: ObjCBool = false
+        guard !files.fileExists(atPath: folder.path, isDirectory: &isDirectory) else { return }
+        print("Data folder does not exist yet, creating a new, empty one: \(folder.path)")
+        // Testvérmappák, amelyekben már van .settings.json (pl. ThinkProject helyett ThinkProjects).
+        let parent = folder.deletingLastPathComponent()
+        let siblings = ((try? files.contentsOfDirectory(at: parent, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? [])
+            .filter { files.fileExists(atPath: $0.appendingPathComponent(".settings.json").path) }
+            .map(\.path).sorted()
+        if !siblings.isEmpty {
+            print("Existing ThinkNodes data folders next to it (did you mean one of these?):")
+            siblings.forEach { print("  \($0)") }
+        }
     }
 
     private static func addUser(name: String, role rawRole: String, store: WorksheetStore) throws {
