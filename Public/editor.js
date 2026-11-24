@@ -22,9 +22,9 @@ import {awaitWebPreview} from "./web-preview-refresh.js";
 import {decodeTable, encodeTable} from "./table/table-document.js";
 import {TableEditor} from "./table/table-edit.js";
 import {renderTable, renderTableEditor, revealActive, tableToolbar} from "./table/table-view.js";
-import {askNewTable, createEmptyTable, createTableFromTSV, exportURL, extensionOf, importableExtensions, tableBoxProperties, tableFromSource, tableFromUpload} from "./table/table-files.js";
+import {askNewTable, askReimport, createEmptyTable, createTableFromTSV, exportURL, extensionOf, importableExtensions, tableBoxProperties, tableFromSource, tableFromUpload} from "./table/table-files.js";
 import {looksTabular} from "./table/table-clipboard.js";
-import {detectSeparator, linkableExtensions, linkedCSV, linkedTable} from "./table/table-csv.js";
+import {detectSeparator} from "./table/table-csv.js";
 
 const mount = document.querySelector("#editor");
 const {path, csrf, user, motionRate} = mount.dataset;
@@ -2702,38 +2702,30 @@ createApp({
     const parsedTables = new Map();
     let revealedCell = null;
 
-    // Önálló táblázat (.tntable) vagy dokumentumhoz linkelt táblázat (.csv, .tsv: maga a dokumentum a táblázat).
-    const fileExtension = node => (node?.file?.filename ?? "").split(".").pop().toLowerCase();
-    const isLinkedTable = node => node?.type === "table" && linkableExtensions.has(fileExtension(node));
-
-    function tableDocument(text, node) {
+    // Önálló táblázat (.tntable). Fájlból (CSV, később xls) csak import készül, a fájllal nincs kapcsolat (EXCEL.md).
+    function tableDocument(text) {
       if (text == null) return null;
-      const linked = isLinkedTable(node), key = (linked ? fileExtension(node) + "|" : "") + text;
-      if (parsedTables.has(key)) return parsedTables.get(key);
+      if (parsedTables.has(text)) return parsedTables.get(text);
       let doc;
-      try { doc = linked ? linkedTable(text, (node.file.filename ?? "").replace(/\.[^.]+$/, ""), fileExtension(node)) : decodeTable(text); }
-      catch { doc = null; }
+      try { doc = decodeTable(text); } catch { doc = null; }
       if (parsedTables.size > 50) parsedTables.clear();
-      parsedTables.set(key, doc);
+      parsedTables.set(text, doc);
       return doc;
     }
 
-    const tableOf = node => tableEdit.value?.id === node.id ? tableEdit.value.editor.doc : tableDocument(fileTexts.value.get(fileTextKey(node)), node);
+    const tableOf = node => tableEdit.value?.id === node.id ? tableEdit.value.editor.doc : tableDocument(fileTexts.value.get(fileTextKey(node)));
 
     async function startTableEdit(node) {
       if (occupied(node.id) || !online.value) return;
       if (!(await selectNode(node.id))) return;
       const current = nodeMap.value.get(node.id);
       if (current?.file && isCommonFile(current.file)) { problem.value = "A közös könyvtár fájlja csak olvasható."; return; }
-      const doc = current && tableDocument(fileTexts.value.get(fileTextKey(current)), current);
+      const doc = current && tableDocument(fileTexts.value.get(fileTextKey(current)));
       if (!doc) { problem.value = "A táblázat még nem töltődött be, vagy hibás."; return; }
-      // Linkelt táblázat: a szerkesztés a dokumentumba (CSV) íródik vissza, beírt alakban; önálló: a .tntable-be.
-      const linked = isLinkedTable(current);
       const editor = new TableEditor(structuredClone(doc), {onChange: next => {
         const target = nodeMap.value.get(node.id);
-        if (target?.file && held.value === node.id) editFileText(target, linked ? linkedCSV(next) : encodeTable(next));
+        if (target?.file && held.value === node.id) editFileText(target, encodeTable(next));
       }});
-      editor.linked = linked;
       editor.touch = () => { editor.version++; tableTick.value++; };
       revealedCell = null;
       tableFocus.value = true;
@@ -2766,8 +2758,7 @@ createApp({
         editor.changed([]);
         return;
       }
-      if (isLinkedTable(node)) return;  // a CSV nem tárol nevet, fejlécsort, rácsot
-      const doc = tableDocument(fileTexts.value.get(fileTextKey(node)), node);
+      const doc = tableDocument(fileTexts.value.get(fileTextKey(node)));
       if (!doc || held.value !== node.id) return;
       const next = structuredClone(doc);
       update(next);
@@ -2775,17 +2766,36 @@ createApp({
     }
 
     // Fájl választása a projektből: saját lapon a melléklet tartalmából, máshonnan letöltve készül a független táblázat.
-    // Visszaadja a szerver válaszát (az új táblázat adatait), vagy null-t (Mégse).
-    async function tableFromProject() {
+    // `target`: újraimportálás meglévő táblázatba ({into, mode}). Visszaadja a szerver válaszát, vagy null-t (Mégse).
+    async function tableFromProject(target) {
       const choice = await openFileBrowser(path, csrf);
       if (!choice || choice.kind !== "file") return null;
       if (!importableExtensions.has(extensionOf(choice.name))) throw Error("Ebből a fájltípusból még nem készíthető táblázat (első körben: CSV, TSV).");
       const own = path.split("/").slice(1).map(decodeURIComponent).join("/");
-      if (!choice.common && choice.source === own) return tableFromSource(path, csrf, choice.asset ?? choice.name);
+      if (!choice.common && choice.source === own) return tableFromSource(path, csrf, choice.asset ?? choice.name, target);
       const sheet = choice.common ? "" : [choice.project, ...(choice.source ? choice.source.split("/").map(encodeURIComponent) : [])].join("/");
       const url = choice.common ? fileURL("", {source: choice.source, asset: choice.asset ?? choice.name}) : assetURL(sheet, choice.asset ?? choice.name);
       const blob = await (await checked(await fetch(url))).blob();
-      return tableFromUpload(path, csrf, blob, choice.name);
+      return tableFromUpload(path, csrf, blob, choice.name, target);
+    }
+
+    // Tartalom cseréje fájlból (EXCEL.md 7. fejezet): részleges (adatcsere, a formázás marad) vagy teljes csere.
+    // A táblázat doboza, helye és azonosítója marad; a fájllal utána sincs kapcsolat.
+    async function reimportTable(node) {
+      const choice = await askReimport();
+      if (!choice || !online.value) return;
+      if (!(await selectNode(node.id))) return;
+      stopTableEdit();
+      const target = {into: node.file.asset, mode: choice.mode};
+      let result;
+      if (choice.source === "upload") {
+        if (!importableExtensions.has(extensionOf(choice.file.name))) throw Error("Most CSV és TSV fájlból lehet importálni.");
+        result = await tableFromUpload(path, csrf, choice.file, choice.file.name, target);
+      } else result = await tableFromProject(target);
+      if (!result) return;
+      const current = nodeMap.value.get(node.id);
+      if (current && held.value === current.id) updateItem(current, "file", {...current.file, rev: (current.file.rev ?? 0) + 1});
+      if (result.truncated) problem.value = "A fájl túl nagy volt; a korlát (1000 sor × 100 oszlop) fölötti rész kimaradt.";
     }
 
     // Új táblázat doboz: üres, vagy egy fájl (CSV, TSV) tartalmából – utána a fájl és a táblázat független.
@@ -2793,7 +2803,6 @@ createApp({
       const choice = await askNewTable();
       if (!choice || !online.value) return;
       let result;
-      if (choice.mode === "link") { await linkTableToFile(position); return; }
       if (choice.mode === "empty") result = await createEmptyTable(path, csrf);
       else if (choice.mode === "upload") {
         if (!importableExtensions.has(extensionOf(choice.file.name))) throw Error("Ebből a fájltípusból még nem készíthető táblázat (első körben: CSV, TSV).");
@@ -2804,26 +2813,6 @@ createApp({
       }
       addNode(position, tableBoxProperties(result));
       if (result.truncated) problem.value = "A táblázat túl nagy volt; a korlát (1000 sor × 100 oszlop) fölötti rész kimaradt.";
-    }
-
-    // CSV-doboz ↔ dokumentumhoz linkelt táblázat: ugyanaz a fájl, csak a megjelenítés (és a szerkesztés módja) más.
-    async function setTableView(node, table) {
-      if (!(await selectNode(node.id))) return;
-      const current = nodeMap.value.get(node.id);
-      if (!current) return;
-      if (!table) stopTableEdit();
-      updateItem(current, "type", table ? "table" : (fileExtension(current) === "tsv" || fileExtension(current) === "csv" ? "csv" : "text"));
-    }
-
-    // Dokumentumhoz linkelt táblázat a projekt egy CSV/TSV fájljához (a fájl nem másolódik).
-    async function linkTableToFile(position) {
-      const choice = await openFileBrowser(path, csrf);
-      if (!choice || choice.kind !== "file" || !online.value) return;
-      if (!linkableExtensions.has(extensionOf(choice.name))) throw Error("Táblázatként most CSV és TSV fájl linkelhető.");
-      const own = path.split("/").slice(1).map(decodeURIComponent).join("/");
-      const source = !choice.common && choice.source === own ? undefined : choice.source;
-      addNode(position, {type: "table", file: {asset: choice.asset ?? choice.name, source, filename: choice.name, showFilename: true},
-        fontSize: 13, width: 420, height: 260});
     }
 
     // CSV-dobozból új, független táblázat doboz mellé (a CSV-doboz és a fájl változatlan marad).
@@ -2906,7 +2895,7 @@ createApp({
       if (node.type === "table") {
         tableTick.value;
         if (tableEdit.value?.id === node.id) return renderTableEditor(h, tableEdit.value.editor, {onExit: stopTableEdit, focusGrid: tableFocus.value});
-        const doc = tableDocument(text, node);
+        const doc = tableDocument(text);
         return doc ? renderTable(h, doc) : h("p", {class: "muted"}, "A táblázat nem olvasható.");
       }
       const preview = text.slice(0, 200000);
@@ -3594,9 +3583,7 @@ createApp({
           chooseLink(node);
         }, {symbol: "link", disabled: !!occupied(node.id)}) : null,
         node.type === "table" ? button("Cellák szerkesztése", () => { menu.value = null; startTableEdit(node); }, {symbol: "grid", disabled: !!occupied(node.id)}) : null,
-        node.type === "csv" ? button("Megjelenítés táblázatként (linkelt)", () => { menu.value = null; setTableView(node, true); }, {symbol: "grid", disabled: !!occupied(node.id)}) : null,
-        node.type === "csv" || isLinkedTable(node) ? button("Önálló táblázat (másolat)", () => { menu.value = null; transfer(() => tableFromCSVBox(node)); }, {symbol: "copy", disabled: !online.value}) : null,
-        isLinkedTable(node) ? button("Megjelenítés szövegként", () => { menu.value = null; setTableView(node, false); }, {symbol: "file", disabled: !!occupied(node.id)}) : null,
+        node.type === "csv" ? button("Önálló táblázat (másolat)", () => { menu.value = null; transfer(() => tableFromCSVBox(node)); }, {symbol: "copy", disabled: !online.value}) : null,
         button("Szerkesztés", () => openProperties("node", node.id), {symbol: "edit", disabled: !!occupied(node.id)}),
         // Egyetlen törlés: fájl- és linkes doboznál a közös kérdőablak jön fel (deleteObjects).
         button("Törlés", () => { menu.value = null; deleteNode(node); }, {class: "button danger", symbol: "trash", disabled: !!occupied(node.id)}),
@@ -4014,9 +4001,8 @@ createApp({
 
       if (single?.type === "csv") {
         panels.push(group("Táblázat", [
-          h("p", {class: "muted"}, "A CSV önálló szöveges dokumentum. Megjeleníthető táblázatként (linkelt: a szerkesztés ebbe a fájlba íródik), vagy készíthető belőle független táblázat."),
+          h("p", {class: "muted"}, "A CSV önálló szöveges dokumentum. Készíthető belőle független táblázat."),
           propertyTools(
-            button("Megjelenítés táblázatként", () => setTableView(single, true), {symbol: "grid", disabled: !!occupied(single.id)}),
             button("Önálló táblázat (másolat)", () => transfer(() => tableFromCSVBox(single)), {symbol: "copy", disabled: !online.value}),
           ),
         ]));
@@ -4026,24 +4012,19 @@ createApp({
         tableTick.value;
         const doc = tableOf(single);
         const editing = tableEdit.value?.id === single.id;
-        const linked = isLinkedTable(single);
         panels.push(group("Táblázat", [
-          linked ? h("p", {class: "muted tn-linked"}, "Linkelt dokumentum: " + (single.file.filename ?? "") + ". A szerkesztés ebbe a fájlba íródik; formázás (szín, keret) itt nem menthető.")
-            : doc ? h("input", {class: "input", "aria-label": "Táblázat neve", placeholder: "Táblázat neve", value: doc.name ?? "",
+          doc ? h("input", {class: "input", "aria-label": "Táblázat neve", placeholder: "Táblázat neve", value: doc.name ?? "",
               onChange: e => modifyTable(single, next => { next.name = e.target.value.trim() || undefined; })}) : h("p", {class: "muted"}, "Betöltés…"),
           propertyTools(
             button(editing ? "Szerkesztés vége" : "Cellák szerkesztése", () => editing ? stopTableEdit() : startTableEdit(single), {symbol: "grid", disabled: !doc}),
-            linked ? null : iconToggle("Fejlécsor rögzítése", (doc?.header?.rows ?? 0) > 0,
+            iconToggle("Fejlécsor rögzítése", (doc?.header?.rows ?? 0) > 0,
               () => modifyTable(single, next => { next.header = (next.header?.rows ?? 0) > 0 ? undefined : {rows: 1, cols: 0}; }), icon("heading")),
-            linked ? null : iconToggle("Alaprács", doc?.grid !== false, () => modifyTable(single, next => { next.grid = next.grid === false; }), icon("grid")),
+            iconToggle("Alaprács", doc?.grid !== false, () => modifyTable(single, next => { next.grid = next.grid === false; }), icon("grid")),
           ),
-          editing ? tableToolbar(h, tableEdit.value.editor, {linked}) : h("p", {class: "muted"}, "Cellák szerkesztése: dupla kattintás a táblázaton."),
-          linked ? propertyTools(
-            button("Önálló táblázat (másolat)", () => transfer(() => tableFromCSVBox(single)), {symbol: "copy", disabled: !online.value}),
-            button("Megjelenítés szövegként", () => setTableView(single, false), {symbol: "file"}),
-          ) : null,
+          editing ? tableToolbar(h, tableEdit.value.editor) : h("p", {class: "muted"}, "Cellák szerkesztése: dupla kattintás a táblázaton."),
           propertyTools(
-            linked ? null : h("a", {class: "button", href: exportURL(fileSheet(path, single.file), single.file.asset, "csv"), download: ""}, [icon("download"), "CSV"]),
+            button("Tartalom cseréje fájlból…", () => transfer(() => reimportTable(single)), {symbol: "restore", disabled: !online.value || !!occupied(single.id)}),
+            h("a", {class: "button", href: exportURL(fileSheet(path, single.file), single.file.asset, "csv"), download: ""}, [icon("download"), "CSV"]),
             h("small", {class: "muted", role: "status"}, fileSaveState.value.get(single.id) ?? ""),
           ),
         ]));

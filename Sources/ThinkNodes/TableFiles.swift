@@ -68,6 +68,7 @@ struct TableImportResult: Content {
 /// Végpontok (EXCEL.md 7. fejezet):
 /// - `POST /api/table/<lap>?from=<melléklet>`: a lap egy mellékletéből (pl. .csv) új, független táblázat.
 /// - `POST /api/table/<lap>?name=<fájlnév.csv>` + törzs: feltöltött fájlból új táblázat; a feltöltött fájl nem tárolódik.
+/// - mindkettő `&into=<meglévő .tntable>&mode=full|partial`: újraimportálás a meglévő táblázatba (`TableMerge`).
 /// - `GET /api/table-export/<lap>?name=<x.tntable>&format=csv`: letöltés.
 /// A táblázat és a forrásfájl között nincs kapcsolat: a táblázat a beolvasáskori tartalom másolata.
 func registerTableRoutes(_ app: any RoutesBuilder, store: WorksheetStore,
@@ -81,6 +82,8 @@ func registerTableRoutes(_ app: any RoutesBuilder, store: WorksheetStore,
         let from = req.query[String.self, at: "from"]
         let uploadName = req.query[String.self, at: "name"]
         let body = req.body.data.map { Data($0.readableBytesView) }
+        let into = req.query[String.self, at: "into"]
+        let mode = TableImportMode(rawValue: req.query[String.self, at: "mode"] ?? "partial") ?? .partial
         let result = try await req.application.threadPool.runIfActive { () throws -> TableImportResult in
             let data: Data, sourceName: String
             if let from {
@@ -91,6 +94,15 @@ func registerTableRoutes(_ app: any RoutesBuilder, store: WorksheetStore,
                 sourceName = (uploadName as NSString).lastPathComponent
             } else { throw Abort(.badRequest) }
             guard let (document, truncated) = try TableFiles.convert(data, filename: sourceName).first else { throw Abort(.unprocessableEntity) }
+            if let into {
+                let filename = try store.attachmentFilename(path, named: into, user: who.user, unlocks: who.unlocks)
+                guard TableFiles.isTable(filename) else { throw Abort(.badRequest, reason: "A cél csak táblázat lehet.") }
+                let old = try TableDocument.decode(store.attachmentData(path, named: into, user: who.user, unlocks: who.unlocks))
+                let merged = TableMerge.reimport(old, with: document, mode: mode)
+                try store.storeAttachment(merged.encoded(), named: into, at: path, user: who.user, unlocks: who.unlocks, replaceText: true)
+                return TableImportResult(asset: into, filename: filename, name: merged.name, rows: merged.size.rows,
+                                         cols: merged.size.cols, truncated: truncated)
+            }
             let stem = (sourceName as NSString).deletingPathExtension
             let bytes = try document.encoded()
             for attempt in 1...50 {

@@ -4,6 +4,10 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 ## Nyitott
 
+- **Sötét kitöltésű szövegfájl- és táblázatdobozon a tartalom olvashatatlan** (2026-11-24, a táblázat tesztelésekor)
+  - A `.node-note` szövegszíne rögzített sötét (`rgb(24, 35, 53)`), a doboz kitöltése viszont a palettából jön; a szerver által automatikusan felvett fájldobozok (`fill: "@2"`) sötét témában sötétek, így a tartalom nem látszik (pl. `MassTest/TablaTeszt`: `lista.csv`, `feltoltott.tntable`).
+  - Dönteni kell: a fájl „lapja” mindig világos papír legyen (a hajtott sarkú lap mintájára), vagy a szövegszín kövesse a doboz kitöltését.
+
 - **`Tests/Editor/gestures.mjs` elbukik** – már a TODO.md-ben is szerepel (`ownUnderlay`); a táblázat munka előtt is így volt (2026-11-24, ellenőrizve az eredeti `editor.js`-szel).
   - `markdownEditor` `adjust`: a teszt hamis DOM-jában a `getComputedStyle` / `el.style` hiányzik (`reading 'height'`).
   - 311. sor: `button("Mentés")` nem található (a Mentés gomb azóta átalakult).

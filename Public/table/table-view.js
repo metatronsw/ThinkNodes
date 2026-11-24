@@ -108,16 +108,14 @@ const borderModes = [
 ];
 
 // Eszközsor (a doboz fölött és a panelen is): formázás, számformátum, keret, Σ, sorok/oszlopok.
-export function tableToolbar(h, edit, {compact = false, linked = false} = {}) {
+export function tableToolbar(h, edit, {compact = false} = {}) {
   const style = edit.activeStyle();
   const toggle = (key, label, title) => h("button", {type: "button", class: ["button", "tn-tool", "tn-tool-" + key], "aria-pressed": String(!!edit.isOn(key)),
     title, "aria-label": title, onClick: () => edit.toggle(key)}, label);
   const tool = (label, title, action) => h("button", {type: "button", class: "button tn-tool", title, "aria-label": title, onClick: action}, label);
   edit.borderLine ??= {w: 1, color: "#000000", style: "solid"};
-  // Linkelt (CSV) táblázatban csak a szöveges alakban tárolható beállítások: számformátum, tizedesjegyek, sorok, oszlopok.
-  const styling = !linked;
   return h("div", {class: ["tn-toolbar", {compact}], role: "toolbar", "aria-label": "Táblázat formázása"}, [
-    ...(styling ? [toggle("b", "B", "Félkövér (Ctrl+B)"), toggle("i", "I", "Dőlt (Ctrl+I)"), toggle("u", "U", "Aláhúzott (Ctrl+U)"), toggle("o", "O", "Felülvonás"),
+    toggle("b", "B", "Félkövér (Ctrl+B)"), toggle("i", "I", "Dőlt (Ctrl+I)"), toggle("u", "U", "Aláhúzott (Ctrl+U)"), toggle("o", "O", "Felülvonás"),
     h("label", {class: "tn-color", title: "Betűszín"}, ["A", h("input", {type: "color", "aria-label": "Betűszín", value: hexColor(style.color) ?? "#000000",
       onChange: e => edit.setStyle("color", e.target.value)})]),
     h("label", {class: "tn-color tn-fill", title: "Cellaszín"}, ["▧", h("input", {type: "color", "aria-label": "Cellaszín", value: hexColor(style.fill) ?? "#ffffff",
@@ -125,13 +123,13 @@ export function tableToolbar(h, edit, {compact = false, linked = false} = {}) {
     tool("⌫", "Színek törlése", () => edit.styleSelection(s => ({...s, color: undefined, fill: undefined}))),
     ...[["left", "⇤", "Balra"], ["center", "↔", "Középre"], ["right", "⇥", "Jobbra"]].map(([align, label, title]) =>
       h("button", {type: "button", class: "button tn-tool", "aria-pressed": String(style.align === align), title, "aria-label": title,
-        onClick: () => edit.setStyle("align", style.align === align ? undefined : align)}, label))] : []),
+        onClick: () => edit.setStyle("align", style.align === align ? undefined : align)}, label)),
     h("select", {class: "tn-select", "aria-label": "Számformátum", title: "Számformátum", value: formatKey(style.fmt),
       onChange: e => edit.setStyle("fmt", numberFormats.find(([key]) => key === e.target.value)?.[2] ?? undefined)},
       numberFormats.map(([key, label]) => h("option", {value: key}, label))),
     tool(",0−", "Kevesebb tizedesjegy", () => edit.stepDecimals(-1)),
     tool(",0+", "Több tizedesjegy", () => edit.stepDecimals(1)),
-    ...(styling ? [h("select", {class: "tn-select", "aria-label": "Keret", title: "Keret", value: "",
+    h("select", {class: "tn-select", "aria-label": "Keret", title: "Keret", value: "",
       onChange: e => { if (e.target.value) edit.border(e.target.value, {...edit.borderLine}); e.target.value = ""; }},
       [h("option", {value: ""}, "Keret…"), ...borderModes.map(([key, label]) => h("option", {value: key}, label))]),
     h("select", {class: "tn-select", "aria-label": "Keret vastagsága", title: "Keret vastagsága", value: String(edit.borderLine.w),
@@ -141,7 +139,7 @@ export function tableToolbar(h, edit, {compact = false, linked = false} = {}) {
       onChange: e => { edit.borderLine.style = e.target.value; edit.touch(); }},
       [["solid", "Folytonos"], ["dashed", "Szaggatott"], ["dotted", "Pontozott"], ["double", "Dupla"]].map(([v, label]) => h("option", {value: v}, label))),
     h("label", {class: "tn-color", title: "Keret színe"}, ["▢", h("input", {type: "color", "aria-label": "Keret színe", value: edit.borderLine.color,
-      onChange: e => { edit.borderLine.color = e.target.value; edit.touch(); }})])] : []),
+      onChange: e => { edit.borderLine.color = e.target.value; edit.touch(); }})]),
     tool("Σ", "Összegzés", () => edit.autoSum()),
     tool("+sor", "Sor beszúrása fölé", () => edit.insertRows(true)),
     tool("−sor", "Sor törlése", () => edit.deleteRows()),

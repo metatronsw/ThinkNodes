@@ -1,12 +1,10 @@
-// CSV/TSV ↔ táblázat a böngészőben (EXCEL.md). Swift párja: Sources/ThinkTable/TableCSV.swift.
-// Dokumentumhoz linkelt táblázat: a CSV maga a táblázat. Beolvasáskor a `=` kezdetű mező képlet; mentéskor a cellák
-// a beírt alakjukban (képlet "=…", formázott szám pl. "1 200 Ft", "12%") íródnak vissza, a formázás (szín, keret) nem.
+// CSV/TSV a böngészőben (EXCEL.md): elválasztó-felismerés és mezőbontás (a CSV-szövegnézethez és a beillesztéshez).
+// Swift párja: Sources/ThinkTable/TableCSV.swift. A CSV önálló szöveges dokumentum; táblázat csak importtal készül belőle.
 
 import {cellName, emptyTable, setCell, styleIndex, styleOf} from "./table-document.js";
 import {display, general, parseInput} from "./table-format.js";
 import {recalculate} from "./table-engine.js";
 
-export const linkableExtensions = new Set(["csv", "tsv"]);
 const isNewline = ch => ch === "\n" || ch === "\r";
 
 // Elválasztó: tsv-nél tabulátor, egyébként az első sor (idézőjelen kívül) leggyakoribb jele; döntetlennél , ; tab sorrend.
@@ -87,46 +85,4 @@ export function importCSV(text, name, ext = "csv", {formulas = false} = {}) {
     }
   }
   return {doc, separator, eol: /\r\n/.test(text) ? "\r\n" : "\n"};
-}
-
-// Linkelt táblázat: CSV → kiszámolt táblázat, a visszaíráshoz szükséges jellemzőkkel (elválasztó, sorvége, BOM).
-export function linkedTable(text, name, ext) {
-  const bom = text.startsWith("﻿");
-  const {doc, separator, eol} = importCSV(text, name, ext, {formulas: true});
-  recalculate(doc);
-  doc.linked = {separator, eol, bom};
-  return doc;
-}
-
-// Táblázat → CSV a beírt alakban. Vesszős CSV-ben a sima számok tizedesponttal, egyébként tizedesvesszővel íródnak.
-export function linkedCSV(doc) {
-  const {separator = ",", eol = "\n", bom = false} = doc.linked ?? {};
-  let rows = 0, cols = 0;
-  for (const name of Object.keys(doc.cells)) {
-    const match = /^([A-Z]+)(\d+)$/.exec(name);
-    if (!match) continue;
-    const col = [...match[1]].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
-    rows = Math.max(rows, Number(match[2])); cols = Math.max(cols, col);
-  }
-  const quote = text => text.includes(separator) || /["\r\n]/.test(text) || /^\s|\s$/.test(text) ? "\"" + text.replace(/"/g, "\"\"") + "\"" : text;
-  const lines = [];
-  for (let r = 0; r < rows; r++) {
-    const fields = [];
-    for (let c = 0; c < cols; c++) {
-      const cell = doc.cells[cellName(r, c)];
-      let text = "";
-      if (cell?.f != null) text = "=" + cell.f;
-      else if (typeof cell?.v === "number") {
-        const fmt = styleOf(doc, cell).fmt;
-        text = fmt ? display(cell.v, fmt).replace(/ /g, " ") : separator === "," ? String(cell.v) : general(cell.v);
-      } else if (typeof cell?.v === "string") {
-        // Ha a szöveg számnak vagy képletnek látszana, ' elé kerül (beolvasáskor szöveg marad).
-        const input = parseInput(cell.v);
-        text = input.kind === "value" && typeof input.value === "string" ? cell.v : "'" + cell.v;
-      } else if (cell?.v != null) text = display(cell.v, null);
-      fields.push(quote(text));
-    }
-    lines.push(fields.join(separator));
-  }
-  return (bom ? "﻿" : "") + lines.join(eol) + (lines.length ? eol : "");
 }

@@ -887,11 +887,7 @@ func fileTextHTML(_ node: Idea, text: String?) -> String {
     let ext = (node.file?.filename.map { ($0 as NSString).pathExtension } ?? "").lowercased()
     switch node.type {
     case "table":
-        // Táblázat doboz (EXCEL.md): önálló (.tntable) vagy dokumentumhoz linkelt (.csv, .tsv). A képleteket a szerver számolja.
-        if TableCSV.isLinkable(ext) {
-            let name = ((node.file?.filename ?? "") as NSString).deletingPathExtension
-            return "<div class=\"tn-table-wrap\">" + TableHTML.render(TableCSV.linkedTable(Data(text.utf8), name: name, ext: ext)) + "</div>"
-        }
+        // Táblázat doboz (EXCEL.md): a szerver által számolt értékek, a teljes fájlból (nem csak az elejéből).
         guard let document = try? TableDocument.decode(Data(text.utf8)) else { return "<p class=\"muted\">A táblázat nem olvasható.</p>" }
         return "<div class=\"tn-table-wrap\">" + TableHTML.render(document) + "</div>"
     case "csv":

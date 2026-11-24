@@ -60,10 +60,9 @@ public enum TableCSV {
         return rows
     }
 
-    /// CSV → táblázat. A mezők a beírt szöveghez hasonlóan értelmeződnek (szám, százalék, pénznem, dátum).
-    /// `formulas`: a `=`-vel kezdődő mező képlet (dokumentumhoz linkelt táblázat: a CSV maga a táblázat);
-    /// enélkül szöveg marad (önálló másolat importja, idegen fájl).
-    public static func importCSV(_ data: Data, name: String, ext: String = "csv", formulas: Bool = false) -> Imported {
+    /// CSV → táblázat. A mezők a beírt szöveghez hasonlóan értelmeződnek (szám, százalék, pénznem, dátum),
+    /// de `=`-vel kezdődő mezőből nem lesz képlet (idegen fájl, CSV-befecskendezés ellen).
+    public static func importCSV(_ data: Data, name: String, ext: String = "csv") -> Imported {
         let text = decode(data)
         let separator = detectSeparator(text, ext: ext)
         let parsed = rows(text, separator: separator)
@@ -77,8 +76,7 @@ public enum TableCSV {
                 var cell = TableCell()
                 switch TableFormat.parseInput(field) {
                 case .empty: continue
-                case .formula(let formula):
-                    if formulas { cell.f = formula } else { cell.v = .text(field.trimmingCharacters(in: .whitespaces)) }
+                case .formula: cell.v = .text(field.trimmingCharacters(in: .whitespaces))
                 case .value(let value, let format):
                     cell.v = value
                     if let format { cell.s = document.styleIndex(CellStyle(fmt: format)) }
@@ -96,7 +94,6 @@ public enum TableCSV {
             let first = (0..<usedCols).compactMap { document[CellAddress(row: 0, col: $0)]?.v }
             let second = (0..<usedCols).compactMap { document[CellAddress(row: 1, col: $0)]?.v }
             let allText = !first.isEmpty && first.allSatisfy { if case .text = $0 { return true }; return false }
-                && (0..<usedCols).allSatisfy { document[CellAddress(row: 0, col: $0)]?.f == nil }
             let hasNumber = second.contains { if case .number = $0 { return true }; return false }
             if allText && hasNumber {
                 document.header = HeaderInfo(rows: 1, cols: 0)
@@ -140,15 +137,4 @@ public enum TableCSV {
         }
         return Data([0xEF, 0xBB, 0xBF]) + Data(lines.joined(separator: "\r\n").utf8)
     }
-}
-
-extension TableCSV {
-    /// Dokumentumhoz linkelt táblázat (EXCEL.md): a CSV/TSV maga a táblázat; a képleteket a szerver számolja ki.
-    public static func linkedTable(_ data: Data, name: String, ext: String) -> TableDocument {
-        var document = importCSV(data, name: name, ext: ext, formulas: true).document
-        TableEngine.recalculate(&document)
-        return document
-    }
-
-    public static func isLinkable(_ ext: String) -> Bool { ["csv", "tsv"].contains(ext.lowercased()) }
 }

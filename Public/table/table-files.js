@@ -23,17 +23,20 @@ export function tableBoxProperties({asset, filename, rows, cols}) {
     width: Math.round(Math.min(760, Math.max(240, 24 + cols * 80))), height: Math.round(Math.min(520, Math.max(140, 64 + Math.min(rows, 20) * 24)))};
 }
 
-// A lap egy mellékletéből (pl. .csv) új, független táblázat a szerveren.
-export async function tableFromSource(path, csrf, from) {
-  const response = await fetch("/api/table/" + path + "?from=" + encodeURIComponent(from), {method: "POST", headers: {"X-CSRF-Token": csrf}});
+// Újraimportálás meglévő táblázatba: {into: a táblázat asset-je, mode: "partial" | "full"}.
+const reimportQuery = ({into, mode} = {}) => into ? "&into=" + encodeURIComponent(into) + "&mode=" + (mode === "full" ? "full" : "partial") : "";
+
+// A lap egy mellékletéből (pl. .csv) új, független táblázat a szerveren (vagy újraimportálás `target`-be).
+export async function tableFromSource(path, csrf, from, target) {
+  const response = await fetch("/api/table/" + path + "?from=" + encodeURIComponent(from) + reimportQuery(target), {method: "POST", headers: {"X-CSRF-Token": csrf}});
   if (!response.ok) throw await failure(response, "A táblázat létrehozása sikertelen");
   return response.json();
 }
 
 // Feltöltött (vagy máshonnan letöltött) fájlból új táblázat; maga a fájl nem tárolódik.
-export async function tableFromUpload(path, csrf, blob, name) {
+export async function tableFromUpload(path, csrf, blob, name, target) {
   if (blob.size > 12 * 1024 * 1024) throw Error("A fájl legfeljebb 12 MiB lehet.");
-  const response = await fetch("/api/table/" + path + "?name=" + encodeURIComponent(name), {method: "POST",
+  const response = await fetch("/api/table/" + path + "?name=" + encodeURIComponent(name) + reimportQuery(target), {method: "POST",
     headers: {"X-CSRF-Token": csrf, "Content-Type": "application/octet-stream"}, body: blob});
   if (!response.ok) throw await failure(response, "A táblázat létrehozása sikertelen");
   return response.json();
@@ -97,7 +100,7 @@ function dialogShell(title) {
   return dialog;
 }
 
-// Új táblázat: {mode: "empty"} | {mode: "upload", file} | {mode: "browse"} | {mode: "link"} vagy null (Mégse).
+// Új táblázat: {mode: "empty"} | {mode: "upload", file} | {mode: "browse"} vagy null (Mégse).
 export function askNewTable() {
   return new Promise(resolve => {
     const dialog = dialogShell("Új táblázat");
@@ -111,14 +114,48 @@ export function askNewTable() {
     const upload = element("button", "Önálló másolat a gépről (CSV, TSV)…", {type: "button", className: "button"});
     upload.addEventListener("click", () => input.click());
     input.addEventListener("change", () => { if (input.files?.[0]) { result = {mode: "upload", file: input.files[0]}; dialog.close(); } });
-    const link = element("button", "Linkelt táblázat egy dokumentumhoz (CSV, TSV)…", {type: "button", className: "button"});
-    link.addEventListener("click", () => { result = {mode: "link"}; dialog.close(); });
-    options.append(empty, browse, upload, link, input);
+    options.append(empty, browse, upload, input);
     const cancel = element("button", "Mégse", {type: "button", className: "button"});
     cancel.addEventListener("click", () => dialog.close());
     dialog.append(options, cancel);
     dialog.addEventListener("close", () => { dialog.remove(); resolve(result); });
     dialog.showModal();
     empty.focus();
+  });
+}
+
+// Tartalom cseréje fájlból (újraimportálás): {mode: "partial" | "full", source: "project" | "upload", file?} vagy null.
+export function askReimport() {
+  return new Promise(resolve => {
+    const dialog = dialogShell("Tartalom cseréje fájlból");
+    let result = null;
+    const modes = element("fieldset", "", {className: "stack table-dialog-modes"});
+    modes.append(element("legend", "Mi maradjon?"));
+    const option = (value, label, hint, checked) => {
+      const row = element("label", "", {className: "table-dialog-mode"});
+      const radio = element("input", "", {type: "radio", name: "reimport-mode", value, checked});
+      const text = element("span", "");
+      text.append(element("b", label), element("small", hint));
+      row.append(radio, text);
+      modes.append(row);
+    };
+    option("partial", "Részleges – a formázás marad",
+      "Minden érték az új fájlé (ami ott üres, itt is üres lesz); a színek, keretek, formátumok, oszlopszélességek maradnak.", true);
+    option("full", "Teljes csere", "Az adat és a formázás is az új fájlé; a táblázat neve és helye marad.", false);
+    const mode = () => modes.querySelector("input:checked")?.value ?? "partial";
+    const options = element("div", "", {className: "stack table-dialog-options"});
+    const browse = element("button", "Fájl a projektből (CSV, TSV)…", {type: "button", className: "button primary"});
+    browse.addEventListener("click", () => { result = {mode: mode(), source: "project"}; dialog.close(); });
+    const input = element("input", "", {type: "file", accept: [...importableExtensions].map(ext => "." + ext).join(","), hidden: true});
+    const upload = element("button", "Fájl a gépről (CSV, TSV)…", {type: "button", className: "button"});
+    upload.addEventListener("click", () => input.click());
+    input.addEventListener("change", () => { if (input.files?.[0]) { result = {mode: mode(), source: "upload", file: input.files[0]}; dialog.close(); } });
+    options.append(browse, upload, input);
+    const cancel = element("button", "Mégse", {type: "button", className: "button"});
+    cancel.addEventListener("click", () => dialog.close());
+    dialog.append(modes, options, cancel);
+    dialog.addEventListener("close", () => { dialog.remove(); resolve(result); });
+    dialog.showModal();
+    browse.focus();
   });
 }

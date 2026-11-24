@@ -6,7 +6,7 @@ import {display, parseInput} from "../../Public/table/table-format.js";
 import {move, shift} from "../../Public/table/table-formula.js";
 import {decodeTable, encodeTable, emptyTable, parseAddress, setCell, styleIndex} from "../../Public/table/table-document.js";
 import {TableEditor} from "../../Public/table/table-edit.js";
-import {detectSeparator, linkedCSV, linkedTable} from "../../Public/table/table-csv.js";
+import {detectSeparator} from "../../Public/table/table-csv.js";
 
 const fixture = name => JSON.parse(readFileSync(new URL("../TableFixtures/" + name, import.meta.url), "utf8"));
 let failures = 0;
@@ -66,31 +66,10 @@ check("dokumentum oda-vissza", () => {
   assert.throws(() => decodeTable('{"format":"thinknodes-table","version":1,"size":{"rows":1,"cols":1},"cells":{"ZZZZ1":{"v":1}}}'));
 });
 
-// Dokumentumhoz linkelt táblázat: közös esetek (Swift: sharedLinkedFixtures) és visszaírás a CSV-be.
-for (const test of fixture("linked.json")) {
-  const doc = linkedTable(test.csv, "t", test.ext);
-  for (const [name, expected] of Object.entries(test.expect))
-    check("linkelt " + test.name + ": " + name, () => assert.deepEqual(doc.cells[name]?.v, expected));
-  check("linkelt " + test.name + ": visszaírás változatlan", () => {
-    const again = linkedTable(linkedCSV(doc), "t", test.ext);
-    for (const name of Object.keys(doc.cells)) assert.deepEqual(again.cells[name]?.v, doc.cells[name].v, name);
-  });
-}
-
-check("linkelt: pontos visszaírás és szerkesztés", () => {
-  const csv = "Termék;Ár;Db;Összesen\r\nAlma;1 200 Ft;3;=B2*C2\r\n";
-  const doc = linkedTable(csv, "t", "csv");
-  assert.equal(linkedCSV(doc), csv);
-  const edit = new TableEditor(doc);
-  edit.select(1, 2); edit.startDraft("5"); edit.commitDraft();
-  assert.equal(doc.cells.D2.v, 6000);
-  edit.select(2, 0); edit.startDraft("Szilva"); edit.commitDraft();
-  edit.select(2, 3); edit.startDraft("=SZUM(D2:D2)"); edit.commitDraft();
-  assert.equal(linkedCSV(doc), "Termék;Ár;Db;Összesen\r\nAlma;1 200 Ft;5;=B2*C2\r\nSzilva;;;=SZUM(D2:D2)\r\n");
-  const comma = linkedTable("a,b\n1.5,\"x,y\"\n007,'12\n", "t", "csv");
-  assert.equal(linkedCSV(comma), "a,b\n1.5,\"x,y\"\n7,'12\n");
+check("CSV-elválasztó (a Swift-tel egyezően)", () => {
   assert.equal(detectSeparator("a;b,c\n", "csv"), ",");
   assert.equal(detectSeparator("a;b;c,d\n", "csv"), ";");
+  assert.equal(detectSeparator("a,b\n", "tsv"), "\t");
 });
 
 // Szerkesztésvezérlő (DOM nélkül).

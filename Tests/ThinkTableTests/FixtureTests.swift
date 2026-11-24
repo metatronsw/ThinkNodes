@@ -141,22 +141,43 @@ private struct RewriteCase: Decodable {
     #expect(html.contains("&lt;b&gt;&amp;&lt;/b&gt;"))
 }
 
-private struct LinkedCase: Decodable { var name: String; var ext: String; var csv: String; var expect: [String: CellValue] }
-
-/// Dokumentumhoz linkelt táblázat: a CSV-ből a szerver ugyanazt számolja, mint a böngésző (Tests/Editor/table-engine.mjs).
-@Test func sharedLinkedFixtures() throws {
-    for test in try load("linked.json", as: [LinkedCase].self) {
-        let document = TableCSV.linkedTable(Data(test.csv.utf8), name: "t", ext: test.ext)
-        for (name, expected) in test.expect {
-            #expect(document.cells[name]?.v == expected, "\(test.name): \(name)")
-        }
-    }
-}
-
 @Test func separatorDetectionIsDeterministic() {
     #expect(TableCSV.detectSeparator("a;b,c\n", ext: "csv") == ",")
     #expect(TableCSV.detectSeparator("a;b;c,d\n", ext: "csv") == ";")
     #expect(TableCSV.detectSeparator("a\tb\n", ext: "csv") == "\t")
     #expect(TableCSV.detectSeparator("abc\n", ext: "csv") == ",")
     #expect(TableCSV.detectSeparator("a,b\n", ext: "tsv") == "\t")
+}
+
+/// Újraimportálás: részlegesnél teljes adatcsere, a formázás marad; teljesnél minden cserélődik, az azonosító marad.
+@Test func reimportReplacesDataAndKeepsFormattingWhenPartial() {
+    var old = TableDocument(id: "tbl-regi", name: "Régi", rows: 4, cols: 3)
+    let red = old.styleIndex(CellStyle(fill: "#ff0000", border: CellBorder(bottom: BorderLine(w: 2))))
+    old[CellAddress("A1")!] = TableCell(v: .text("régi fej"), s: red)
+    old[CellAddress("B2")!] = TableCell(v: .number(5), s: red)
+    old[CellAddress("C3")!] = TableCell(v: .text("eltűnik"))
+    old[CellAddress("C4")!] = TableCell(v: .number(9), s: red)
+    old.cols = ["A": ColumnInfo(w: 150)]
+    old.header = HeaderInfo(rows: 1)
+    let csv = "Név;Ár\nAlma;12%\n;=1+1\n"
+    let new = TableCSV.importCSV(Data(csv.utf8), name: "uj").document
+
+    let partial = TableMerge.reimport(old, with: new, mode: .partial)
+    #expect(partial.id == "tbl-regi" && partial.name == "Régi")
+    #expect(partial.size == TableSize(rows: 3, cols: 2))
+    #expect(partial.cells["A1"]?.v == .text("Név"))
+    #expect(partial.style(of: partial.cells["A1"]).fill == "#ff0000")      // régi formázás marad
+    #expect(partial.cells["B2"]?.v == .number(0.12))
+    #expect(partial.style(of: partial.cells["B2"]).fill == "#ff0000")      // régi stílus nyer az importált % felett
+    #expect(partial.style(of: partial.cells["B1"]).b == true)              // új cella: az import stílusa (fejléc félkövér)
+    #expect(partial.cells["C3"] == nil)                                    // az újban üres → itt is üres
+    #expect(partial.cells["C4"] == nil)                                    // az új méreten kívül
+    #expect(partial.cells["B3"]?.v == .text("=1+1"))
+    #expect(partial.cols?["A"]?.w == 150 && partial.header?.rows == 1)
+
+    let full = TableMerge.reimport(old, with: new, mode: .full)
+    #expect(full.id == "tbl-regi" && full.name == "Régi")
+    #expect(full.style(of: full.cells["A1"]).fill == nil)
+    #expect(full.style(of: full.cells["B2"]).fmt?.kind == "percent")
+    #expect(full.cols == nil)
 }

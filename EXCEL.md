@@ -15,15 +15,20 @@ A típusrendszer szabályai: `docs/node-types.md`. **Állapot: az első kör elk
    hivatkozhatnak egymásra.
 4. **Több munkalapos fájl:** munkalaponként külön `table` doboz.
 5. **Ütemezés:** az első körben csak `.csv` / `.tsv` import. Az `.xlsx`, `.xls`, `.ods` a második körben jön.
-6. **A táblázat lehet önálló vagy dokumentumhoz linkelt** (2026-11-24, felülírja a korábbi „rákérdezés feltöltéskor” és
-   „forrásfájl figyelése” döntést):
+6. **Csak önálló táblázat; fájllal letöltés és újraimportálás** (2026-11-24, végleges; felülírja a „rákérdezés feltöltéskor”,
+   a „forrásfájl figyelése” és a „dokumentumhoz linkelt táblázat” változatot):
    - **A `.csv` önálló szöveges dokumentum.** Feltöltéskor nincs rákérdezés és nincs automatikus import.
-   - **Önálló táblázat** (`.tntable`): saját adat, képletek, formázás. A fájlból (CSV, TSV) importált táblázat is ilyen:
-     a beolvasáskori tartalom független másolata, a fájllal nincs kapcsolata (nincs figyelés, újraolvasás).
-   - **Dokumentumhoz linkelt táblázat:** maga a dokumentum (most CSV, TSV; a második körben xls) jelenik meg táblázatként.
-     A szerkesztés a dokumentumba íródik vissza, beírt alakban (képlet `=…`, formázott szám pl. `1 200 Ft`, `12%`).
-     A formázás (szín, keret, félkövér) itt nem menthető, mert a CSV nem tárolja. A CSV-doboz és a linkelt táblázat
-     ugyanaz a fájl, a nézet a helyi menüből vagy a panelről váltható.
+   - **A táblázat mindig önálló** (`.tntable`): saját adat, képletek, formázás. Fájlból (CSV, TSV; később xls) importtal készül,
+     utána nincs kapcsolata a fájllal. **Linkelés nincs**, mert a CSV (és a visszaírt xls) nem lehet teljes értékű:
+     a formázás, a képletek, az Excel saját funkciói elvesznének, és két szerkesztő írna egy fájlba.
+   - **Kifelé:** letöltés (CSV most, xlsx/xls a második körben). **Befelé:** új táblázat fájlból, vagy **„Tartalom cseréje fájlból…”**
+     egy meglévő táblázatba, kérdéssel:
+     - **Részleges** = teljes adatcsere, a formázás marad: minden érték és képlet az új fájlé; ami ott üres, itt is üres lesz,
+       régi érték nem marad; a cellák stílusa, oszlopszélesség, sormagasság, fejléc, rács a régi. Új (eddig formázatlan)
+       cellán az importban felismert stílus (pl. Ft, %) érvényes. Az új méreten kívüli cellák elmaradnak.
+     - **Teljes** = adat és formázás is az új fájlé.
+     - Mindkettőnél a doboz, a helye, a táblázat azonosítója és neve marad (a későbbi táblázatközi hivatkozások miatt).
+     - Xls-importnál (második kör) ugyanígy.
    - **Szerkesztés a vásznon:** dupla kattintás a táblázatra (Alt+dupla kattintás: tulajdonságpanel).
 7. **Számformátumok már az első körben** (tizedesjegyek, ezreselválasztó, pénznem, százalék, dátum; 3. fejezet).
 8. **Táblázatközi hivatkozás:** csak vonallal összekötött táblázatok hivatkozhatnak egymásra, kölcsönösen; a vonal iránya nem számít (9. fejezet).
@@ -98,9 +103,7 @@ A szövegfájlok mintáját követi: **a tartalom egy fájlban van**, nem a munk
 - **A böngésző azonnal számol**, hogy gépelés közben is látszódjon az eredmény. A tárolt értéket mindig a szerver írja.
   Ha a kettő eltér, az a közös tesztek hibája.
 - **Ütközés nincs**, mert a kijelölés zárol (egy dobozt egyszerre egy ember szerkeszt).
-- **Importált táblázat:** a forrásfájlból egyszeri, független másolat; a táblázat nem hivatkozik a fájlra.
-- **Linkelt táblázat:** nincs `.tntable`; a doboz `file` mezője magára a CSV/TSV-re mutat, a tárolt érték a CSV szövege.
-  A képletek eredményét a szerver (megjelenítéskor) és a böngésző (szerkesztéskor) számolja ki.
+- **Importált táblázat:** a fájlból egyszeri, független másolat; a táblázat nem hivatkozik a fájlra (újraimportálni a panelről lehet).
 
 ### Fájlformátum
 
@@ -233,10 +236,14 @@ B / I / U / O, betűszín, cellaszín, igazítás, számformátum, keret; Letöl
 Helyi menü → Táblázat létrehozása. A párbeszédben:
 - **Üres:** 5 oszlop × 10 sor.
 - **Önálló másolat egy projektfájlból / a gépről (CSV, TSV):** független táblázat; a gépről feltöltött fájl nem tárolódik.
-- **Linkelt táblázat egy dokumentumhoz (CSV, TSV):** a projekt egy fájlja táblázatként (a fájl nem másolódik).
 
-CSV-dobozon (helyi menü, panel): „Megjelenítés táblázatként (linkelt)” és „Önálló táblázat (másolat)”.
-Linkelt táblázaton: „Megjelenítés szövegként” és „Önálló táblázat (másolat)”.
+CSV-dobozon (helyi menü, panel): „Önálló táblázat (másolat)”.
+
+### Tartalom cseréje fájlból (újraimportálás)
+
+Táblázat panel → „Tartalom cseréje fájlból…”: mód (Részleges / Teljes, lásd 0. fejezet 6. pont), majd fájl a projektből vagy a gépről.
+Szerver: `TableMerge.reimport` (`Sources/ThinkTable/TableMerge.swift`), végpont: `POST /api/table/…?from=|name=…&into=<táblázat>&mode=partial|full`.
+Utána a doboz `file.rev`-je nő, így a többi szerkesztő újratölti.
 
 ### Első kör
 
@@ -329,7 +336,7 @@ Több munkalapos export: a vonallal összekötött táblázatok (9. fejezet) ké
 1. **ThinkTable alapok:** adatmodell, képletmotor és számformátumok Swiftben és JS-ben, közös tesztesetek (elemzés, kiértékelés, függőségek, körök, hivatkozás-eltolás, formázott kiírás).
 2. **Típus és megjelenítés:** regiszter, Swift modell és validálás, a mentéskori szerveres újraszámolás, `TableHTML`, `table-view.js` (cellakeretekkel), megtekintő.
 3. **Szerkesztési mód:** kijelölés, billentyűzet, képletsor, formázás, számformátum, keret, eszközsor, panel, vágólap, automatikus mentés.
-4. **Létrehozás és CSV:** új doboz párbeszéd (üres / önálló másolat / linkelt), CSV/TSV import, linkelt CSV-táblázat, csv-export, Swift-tesztek mintafájlokkal.
+4. **Létrehozás és CSV:** új doboz párbeszéd (üres / önálló másolat), CSV/TSV import, újraimportálás (részleges / teljes), csv-export, Swift-tesztek mintafájlokkal.
 
 **Második kör**
 5. Közös köztes import-réteg, `.xlsx` és `.ods` import (keretekkel, számformátumokkal), több munkalap → több doboz.
@@ -372,7 +379,7 @@ táblázat is újraszámolódik, akár egy másik felhasználónál is.
 
 Jelenleg nincs. A legutóbb lezártak (2026-11-24):
 1. **A vonal iránya nem számít:** az összekötött táblázatok kölcsönösen hivatkozhatnak egymásra. A körkörös hivatkozás `#CIRC!` lesz (9. fejezet).
-2. ~~A forrásfájl változását a program figyeli~~ – visszavonva: az importált táblázat független; helyette dokumentumhoz linkelt táblázat (0. fejezet, 6. pont).
+2. ~~A forrásfájl változását a program figyeli~~ – visszavonva; linkelés sincs: letöltés és újraimportálás (0. fejezet, 6. pont).
 
 ## 11. Megvalósítás állapota
 
@@ -384,8 +391,8 @@ Jelenleg nincs. A legutóbb lezártak (2026-11-24):
 | Ugyanez JavaScriptben | `Public/table/table-document.js`, `table-formula.js`, `table-engine.js`, `table-format.js` |
 | Szerkesztési mód, vágólap, nézet, eszközsor | `Public/table/table-edit.js` (DOM nélküli vezérlő), `table-clipboard.js`, `table-view.js` |
 | Fájlműveletek, párbeszédablakok | `Public/table/table-files.js` |
-| Szerver | `Sources/ThinkNodes/TableFiles.swift`: mentéskor ellenőrzés + újraszámolás (`WorksheetStore.storeAttachment`), végpontok: `POST /api/table/…?from=` (mellékletből) vagy `?name=` + törzs (feltöltésből, a fájl nem tárolódik), `GET /api/table-export/…?format=csv`; linkelt CSV: `TableCSV.linkedTable`; a megtekintő és az SVG a `TableHTML`-t rajzolja (`Rendering.swift` `fileTextHTML`) |
-| Szerkesztő bekötése | `Public/editor.js`: olvasó nézet, Alt+dupla kattintás → cellaszerkesztés, dupla kattintás → cellaszerkesztés, helyi menü („Táblázat létrehozása”, „Cellák szerkesztése”, CSV-dobozon / linkelt táblázaton nézetváltás és önálló másolat), táblázatos szöveg beillesztése → táblázat doboz, Táblázat panel (név, fejlécsor, alaprács, eszközsor, CSV-letöltés; linkeltnél a fájl neve és a nézetváltás). Linkelt CSV: `Public/table/table-csv.js` (beolvasás, visszaírás beírt alakban) |
+| Szerver | `Sources/ThinkNodes/TableFiles.swift`: mentéskor ellenőrzés + újraszámolás (`WorksheetStore.storeAttachment`), végpontok: `POST /api/table/…?from=` (mellékletből) vagy `?name=` + törzs (feltöltésből, a fájl nem tárolódik), `&into=…&mode=partial|full` (újraimportálás, `TableMerge`), `GET /api/table-export/…?format=csv`; a megtekintő és az SVG a `TableHTML`-t rajzolja (`Rendering.swift` `fileTextHTML`) |
+| Szerkesztő bekötése | `Public/editor.js`: olvasó nézet, Alt+dupla kattintás → cellaszerkesztés, dupla kattintás → cellaszerkesztés, helyi menü („Táblázat létrehozása”, „Cellák szerkesztése”, CSV-dobozon „Önálló táblázat (másolat)”), táblázatos szöveg beillesztése → táblázat doboz, Táblázat panel (név, fejlécsor, alaprács, eszközsor, „Tartalom cseréje fájlból…”, CSV-letöltés). CSV-elválasztó a böngészőben: `Public/table/table-csv.js` |
 | Típusregiszter | `Public/node-types.json`: `table` (`base: text`, `.tntable`) |
 | Stílus | `Public/app.css` `.tn-*` |
 | Tesztek | közös esetek: `Tests/TableFixtures/*.json`; Swift: `Tests/ThinkTableTests` (`swift test --filter ThinkTableTests`); JS: `node Tests/Editor/table-engine.mjs` (közös esetek + szerkesztésvezérlő) |
@@ -403,9 +410,9 @@ Jelenleg nincs. A legutóbb lezártak (2026-11-24):
 **Böngészőben ellenőrizve (2026-11-24, `MassTest/TablaTeszt`, helyi adat):** olvasó nézet, cellaszerkesztés (beírás, képlet,
 hivatkozás-kiemelés, Enter), azonnali újraszámolás, sorbeszúrás, Shift+kattintásos tartomány, félkövér, pénznem, vastag külső keret,
 mentés és szerveres újraszámolás, megtekintő, üres táblázat létrehozása a helyi menüből.
-**Linkelt táblázat böngészőben (2026-11-24):** CSV-doboz → „Megjelenítés táblázatként”, képletek kiszámolva, dupla kattintás → szerkesztés,
-a CSV-be visszaírva (képlet, `1 200 Ft`, `850,5`, CRLF megmaradt), a megtekintő a szerver által számolt értéket mutatja, visszaváltás szövegre.
-**Még nem ellenőrzött:** oszlopszélesség húzása, vágólap Excellel oda-vissza, a párbeszéd „Linkelt táblázat” és „a gépről” ága (fájlválasztó kell).
+**Újraimportálás (2026-11-24):** részleges `curl`-lel (értékek cserélve, a régi Ft-formátum és keret maradt, az új oszlopok az import
+fejlécstílusát kapták, az azonosító maradt), teljes a böngészőből (párbeszéd → projektfájl → formázás is cserélve, `file.rev` nőtt, a doboz frissült).
+**Még nem ellenőrzött:** oszlopszélesség húzása, vágólap Excellel oda-vissza, a párbeszédek „a gépről” ága (fájlválasztó kell).
 
 **A tesztelés közben javítva:**
 - A gépelés egy rejtett beviteli mezőn keresztül érkezik (IME, érintőbillentyűzet, szövegbeszúrás is cellaszerkesztést indít).

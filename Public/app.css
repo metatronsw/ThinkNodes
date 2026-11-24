@@ -973,3 +973,7 @@ svg text { text-rendering: geometricPrecision; }
 .table-dialog p { margin: 0; }
 .table-dialog-options { display: grid; gap: 8px; }
 .table-dialog-options .button { justify-content: flex-start; text-align: left; }
+.table-dialog-modes { margin: 0; padding: 8px 10px; border: 1px solid #d9dfeb; border-radius: 6px; display: grid; gap: 8px; }
+.table-dialog-mode { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: start; cursor: pointer; }
+.table-dialog-mode span { display: grid; gap: 2px; }
+.table-dialog-mode small { color: var(--muted); }
