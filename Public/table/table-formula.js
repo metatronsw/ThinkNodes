@@ -50,6 +50,9 @@ export function tokenize(source) {
   let i = 0;
   const peek = (offset = 0) => chars[i + offset];
   const add = (token, start) => tokens.push({...token, start: offsets[start], end: offsets[i]});
+  // Zárójelek: függvényhívásé-e. Függvényhíváson kívül a számjegyek közötti vessző tizedesvessző (=1,5*2),
+  // belül elválasztó (SUM(1,5) = 6); pontosvesszős képletben mindig tizedesvessző (Swift: calls).
+  const calls = [];
 
   // Egész oszlop (`B:B`): az első tag után `:` jön, a második előtt `:` és egy oszlophivatkozás áll.
   const afterColumnColon = () => {
@@ -70,7 +73,7 @@ export function tokenize(source) {
     if (isDigit(c) || (c === "." && isDigit(peek(1)))) {
       let text = "";
       while (isDigit(peek())) text += chars[i++];
-      if ((peek() === "." || (decimalComma && peek() === ",")) && isDigit(peek(1))) {
+      if ((peek() === "." || (peek() === "," && (decimalComma || !calls.includes(true)))) && isDigit(peek(1))) {
         text += "."; i++;
         while (isDigit(peek())) text += chars[i++];
       } else if (peek() === ".") i++;
@@ -155,8 +158,8 @@ export function tokenize(source) {
     const two = c + (peek(1) ?? "");
     if (["<=", ">=", "<>"].includes(two)) { i += 2; add({type: "op", value: two}, start); continue; }
     if ("+-*/^&=<>%:".includes(c)) { i++; add({type: "op", value: c}, start); continue; }
-    if (c === "(") { i++; add({type: "open"}, start); continue; }
-    if (c === ")") { i++; add({type: "close"}, start); continue; }
+    if (c === "(") { calls.push(tokens[tokens.length - 1]?.type === "function"); i++; add({type: "open"}, start); continue; }
+    if (c === ")") { calls.pop(); i++; add({type: "close"}, start); continue; }
     if (c === "," || c === ";") { i++; add({type: "separator"}, start); continue; }
     fail();
   }

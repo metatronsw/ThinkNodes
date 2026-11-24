@@ -2,7 +2,7 @@
 // DOM nélküli vezérlő; a nézet (table-view.js) rajzolja, az editor.js menti. Node-ban is tesztelhető.
 
 import {cellName, columnName, limits, parseAddress, setCell, styleIndex, styleOf} from "./table-document.js";
-import {display, general, parseInput} from "./table-format.js";
+import {display, parseInput, precise} from "./table-format.js";
 import {move, shift} from "./table-formula.js";
 import {recalculate} from "./table-engine.js";
 import {copySelection, parseTSV} from "./table-clipboard.js";
@@ -36,16 +36,18 @@ export class TableEditor {
 
   touch() { this.version++; }
 
-  // A cella szerkeszthető nyers szövege: képletnél "=…", számnál a formátum szerinti alak (dátum, %, pénznem),
-  // egyébként az általános alak (tizedesvesszővel).
+  // A cella szerkeszthető nyers szövege: képletnél "=…", számnál teljes pontosságú alak (15 értékes jegy) a formátum
+  // jelével (%, pénznem), dátumnál a dátum. A kerekített kiírás nem kerülhet ide: F2+Enter után elveszne a pontosság.
   rawText(name) {
     const cell = this.doc.cells[name];
     if (!cell) return "";
     if (cell.f != null) return "=" + cell.f;
     const v = cell.v, fmt = styleOf(this.doc, cell).fmt;
     if (typeof v === "number") {
-      if (fmt && ["date", "percent", "currency"].includes(fmt.kind)) return display(v, fmt).replace(/ /g, " ");
-      return general(v);
+      if (fmt?.kind === "date") return display(v, fmt).replace(/\u00a0/g, " ");
+      if (fmt?.kind === "percent") return precise(v * 100) + "%";
+      if (fmt?.kind === "currency") return fmt.before ? (fmt.symbol ?? "Ft") + " " + precise(v) : precise(v) + " " + (fmt.symbol ?? "Ft");
+      return precise(v);
     }
     if (typeof v === "string") return parseInput(v).kind === "value" && typeof parseInput(v).value === "string" ? v : "'" + v;
     return display(v, null);
@@ -99,6 +101,9 @@ export class TableEditor {
 
   startDraft(text = null) {
     this.draft = text ?? this.rawText(this.activeName);
+    // Változatlan vázlat (F2 / dupla kattintás, majd Enter) nem írja felül a cellát: így a 15 jegyen túli pontosság
+    // és a beírt alak sem vész el (audit, 2026-11-24).
+    this.draftOriginal = text == null ? this.draft : null;
     this.touch();
   }
 
@@ -125,6 +130,7 @@ export class TableEditor {
     if (this.draft == null) return false;
     const text = this.draft;
     this.draft = null;
+    if (text === this.draftOriginal) { this.touch(); return true; }
     this.setInput(this.activeName, text);
     return true;
   }
@@ -183,7 +189,7 @@ export class TableEditor {
   // Tizedesjegy −/+ : a számformátum `dec` mezője (általános formátumból 2 tizedes számformátum lesz).
   stepDecimals(delta) {
     this.styleSelection(style => {
-      const fmt = style.fmt && style.fmt.kind !== "general" && style.fmt.kind !== "date" && style.fmt.kind !== "text"
+      const fmt = style.fmt && !["general", "date", "text", "fraction"].includes(style.fmt.kind)
         ? {...style.fmt} : {kind: "number", dec: 2, group: true};
       fmt.dec = clamp((fmt.dec ?? 2) + delta, 0, 10);
       return {...style, fmt};

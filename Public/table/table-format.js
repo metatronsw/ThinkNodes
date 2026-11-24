@@ -3,14 +3,21 @@
 
 export const groupSeparator = " ";
 
+// Lebegőpontos korrekció (a Swift TableFormat.nudge párja): az 1,005 binárisan 1,00499999…, ezért a szorzat egy
+// hajszálnyival (~4 ulp) feljebb kerül, így a tizedes fél valóban felfelé kerekedik, mint az Excelben.
+const nudge = 1 + Math.pow(2, -50);
+
 export function roundHalfAway(value, digits) {
+  if (!Number.isFinite(value)) return value;
   let rounded;
   if (digits >= 0) {
     const factor = Math.pow(10, digits);
-    rounded = Math.floor(Math.abs(value) * factor + 0.5) / factor;
+    const scaled = Math.abs(value) * factor;
+    if (scaled >= 4503599627370496) return value;  // 2^52 fölött már egész
+    rounded = Math.floor(scaled * nudge + 0.5) / factor;
   } else {
     const factor = Math.pow(10, -digits);
-    rounded = Math.floor(Math.abs(value) / factor + 0.5) * factor;
+    rounded = Math.floor(Math.abs(value) / factor * nudge + 0.5) * factor;
   }
   return value < 0 ? -rounded : rounded;
 }
@@ -25,10 +32,17 @@ function grouped(digits) {
 }
 
 export function fixed(value, decimals, group = false) {
+  if (!Number.isFinite(value)) return "#NUM!";
+  // 10^15 fölött a tizedesjegyeknek nincs értelme (és a toFixed 10^21-től exponenst ad): általános alak.
+  if (Math.abs(value) >= 1e15) return general(value);
   decimals = Math.max(0, Math.min(decimals, 15));
-  const rounded = roundHalfAway(value, decimals);
-  const text = Math.abs(rounded).toFixed(decimals);
+  // Legfeljebb 15 értékes jegy (mint az Excel): a további tizedeshelyek nullák (a Swift fixed párja).
+  const integerDigits = Math.abs(value) >= 1 ? String(Math.trunc(Math.abs(value))).length : 0;
+  const significant = Math.min(decimals, Math.max(0, 15 - integerDigits));
+  const rounded = roundHalfAway(value, significant);
+  const text = Math.abs(rounded).toFixed(significant);
   let [integer, fraction = ""] = text.split(".");
+  fraction += "0".repeat(decimals - significant);
   if (group) integer = grouped(integer);
   const negative = rounded < 0 && Number(text) !== 0;
   return (negative ? "-" : "") + integer + (fraction ? "," + fraction : "");
@@ -70,8 +84,37 @@ export function display(value, format) {
     }
     case "percent": return fixed(value * 100, format.dec ?? 0) + "%";
     case "date": return date(value, format.pattern ?? "yyyy.MM.dd.");
+    case "fraction": return fraction(value, format.dec ?? 99);
     default: return general(value);
   }
+}
+
+// Tört alak (a Swift TableFormat.fraction párja): egész rész + a legközelebbi p/q, q ≤ maxDenominator; döntetlennél a kisebb nevező.
+export function fraction(value, maxDenominator = 99) {
+  if (!Number.isFinite(value)) return "#NUM!";
+  if (Math.abs(value) >= 1e15) return general(value);
+  const magnitude = Math.abs(value);
+  let whole = Math.floor(magnitude);
+  const part = magnitude - whole;
+  let bestP = 0, bestQ = 1, bestError = part;
+  for (let q = 1; q <= Math.max(1, Math.min(maxDenominator, 999)); q++) {
+    const p = roundHalfAway(part * q, 0);
+    const error = Math.abs(part - p / q);
+    if (error < bestError) { bestP = p; bestQ = q; bestError = error; }
+  }
+  if (bestP === bestQ) { whole += 1; bestP = 0; }
+  const sign = value < 0 && (whole > 0 || bestP > 0) ? "-" : "";
+  const wholeText = whole > 0 || bestP === 0 ? String(whole) : "";
+  const partText = bestP > 0 ? (wholeText ? " " : "") + bestP + "/" + bestQ : "";
+  return sign + wholeText + partText;
+}
+
+// Szerkeszthető, teljes pontosságú alak (15 értékes jegy, mint az Excel képletsorában), tizedesvesszővel.
+// A formázott kiírás kerekít; ha a szerkesztő azt mutatná, F2+Enter után elveszne a pontosság (audit, 2026-11-24).
+export function precise(value) {
+  if (!Number.isFinite(value)) return "#NUM!";
+  if (value === 0) return "0";
+  return String(Number(value.toPrecision(15))).replace(".", ",");
 }
 
 // Dátum: napok 1899-12-30 óta (Excel). Polgári dátum ↔ napok 1970 óta: Howard Hinnant algoritmusa.
@@ -126,6 +169,8 @@ export function parseInput(raw) {
   const upper = text.toUpperCase();
   if (upper === "IGAZ" || upper === "TRUE") return {kind: "value", value: true, format: null};
   if (upper === "HAMIS" || upper === "FALSE") return {kind: "value", value: false, format: null};
+  const fractionValue = parseFraction(text);
+  if (fractionValue != null) return {kind: "value", value: fractionValue, format: {kind: "fraction"}};
   if (text.endsWith("%")) {
     const parsed = parseNumber(trimSpaces(text.slice(0, -1)));
     if (parsed) return {kind: "value", value: parsed[0] / 100, format: {kind: "percent", dec: parsed[1]}};
@@ -145,13 +190,24 @@ export function parseInput(raw) {
   return {kind: "value", value: raw, format: null};
 }
 
+// Tört: "3/4", "1 1/2", "-2 3/8" (a nevező nem 0). Az Excel a "1/2"-t dátumnak venné; itt szám (tört formátummal).
+function parseFraction(text) {
+  if (!/^[-+]?([0-9]+ +)?[0-9]+\/[0-9]+$/.test(text)) return null;
+  const negative = text.startsWith("-");
+  const parts = text.replace(/^[-+]/, "").split(/ +/);
+  const [numerator, denominator] = parts[parts.length - 1].split("/").map(Number);
+  if (denominator === 0) return null;
+  const value = (parts.length === 2 ? Number(parts[0]) : 0) + numerator / denominator;
+  return negative ? -value : value;
+}
+
 // [érték, tizedesjegyek, volt-e ezreselválasztás] vagy null.
 export function parseNumber(text) {
   let body = text, negative = false;
   if (body.startsWith("-") || body.startsWith("+")) { negative = body[0] === "-"; body = body.slice(1); }
   const first = body[0];
   if (!first || !(isDigit(first) || first === "." || first === ",")) return null;
-  const lower = body.toLowerCase();
+  const lower = body.toLowerCase().replace(/,/g, ".");  // exponensben a tizedesvessző is jó: "1,5e3"
   if (lower.includes("e")) {
     if (!/^([0-9]+\.?[0-9]*|\.[0-9]+)e[+-]?[0-9]+$/.test(lower)) return null;
     const value = Number(lower);

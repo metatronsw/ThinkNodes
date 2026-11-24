@@ -7,27 +7,40 @@ public enum TableFormat {
     /// Nem törő szóköz az ezreselválasztóhoz.
     public static let groupSeparator = "\u{00A0}"
 
+    /// Lebegőpontos korrekció: az 1,005 binárisan 1,00499999…, ezért a szorzat egy hajszálnyival (~4 ulp) feljebb kerül,
+    /// így a „tizedes” fél valóban felfelé kerekedik, ahogy az Excelben (audit, 2026-11-24). A JS párja ugyanígy számol.
+    static let nudge: Double = 1 + 0x1p-50
+
     /// Kerekítés `digits` tizedesre, a feleket nullától elfelé (Excel ROUND).
     public static func roundHalfAway(_ value: Double, _ digits: Int) -> Double {
+        guard value.isFinite else { return value }
         let rounded: Double
         if digits >= 0 {
             let factor = pow(10.0, Double(digits))
-            rounded = (abs(value) * factor + 0.5).rounded(.down) / factor
+            let scaled = abs(value) * factor
+            guard scaled < 4503599627370496 else { return value }  // 2^52 fölött már egész: nincs mit kerekíteni
+            rounded = (scaled * nudge + 0.5).rounded(.down) / factor
         } else {
             let factor = pow(10.0, Double(-digits))
-            rounded = (abs(value) / factor + 0.5).rounded(.down) * factor
+            rounded = (abs(value) / factor * nudge + 0.5).rounded(.down) * factor
         }
         return value < 0 ? -rounded : rounded
     }
 
     /// Tizedestört alak `decimals` jeggyel, tizedesvesszővel, opcionális ezreselválasztással.
     public static func fixed(_ value: Double, decimals: Int, group: Bool = false) -> String {
+        guard value.isFinite else { return "#NUM!" }
+        // 10^15 fölött a tizedesjegyeknek nincs értelme (és a JS toFixed 10^21-től exponenst ad): általános alak.
+        if abs(value) >= 1e15 { return general(value) }
         let decimals = max(0, min(decimals, 15))
-        let rounded = roundHalfAway(value, decimals)
-        var text = String(format: "%.\(decimals)f", abs(rounded))
-        if text.hasPrefix("-") { text.removeFirst() }
+        // Legfeljebb 15 értékes jegy (mint az Excel): a további tizedeshelyek nullák, nem a bináris ábrázolás „zaja”.
+        let integerDigits = abs(value) >= 1 ? String(Int64(abs(value))).count : 0
+        let significant = min(decimals, max(0, 15 - integerDigits))
+        let rounded = roundHalfAway(value, significant)
+        let text = String(format: "%.\(significant)f", abs(rounded))
         var integer = text, fraction = ""
         if let dot = text.firstIndex(of: ".") { integer = String(text[..<dot]); fraction = String(text[text.index(after: dot)...]) }
+        fraction += String(repeating: "0", count: decimals - significant)
         if group { integer = grouped(integer) }
         let negative = rounded < 0 && (Double(text) ?? 0) != 0
         return (negative ? "-" : "") + integer + (fraction.isEmpty ? "" : "," + fraction)
@@ -86,9 +99,30 @@ public enum TableFormat {
                 return amount + " " + symbol
             case "percent": return fixed(number * 100, decimals: format.dec ?? 0) + "%"
             case "date": return date(number, pattern: format.pattern ?? "yyyy.MM.dd.")
+            case "fraction": return fraction(number, maxDenominator: format.dec ?? 99)
             default: return general(number)
             }
         }
+    }
+
+    /// Tört alak (Excel „# ??/??”): egész rész + a legközelebbi p/q, q ≤ `maxDenominator` (1–999); döntetlennél a kisebb nevező.
+    public static func fraction(_ value: Double, maxDenominator: Int = 99) -> String {
+        guard value.isFinite else { return "#NUM!" }
+        if abs(value) >= 1e15 { return general(value) }
+        let magnitude = abs(value)
+        var whole = magnitude.rounded(.down)
+        let part = magnitude - whole
+        var bestP = 0.0, bestQ = 1.0, bestError = part
+        for q in 1...max(1, min(maxDenominator, 999)) {
+            let p = roundHalfAway(part * Double(q), 0)
+            let error = abs(part - p / Double(q))
+            if error < bestError { bestP = p; bestQ = Double(q); bestError = error }
+        }
+        if bestP == bestQ { whole += 1; bestP = 0 }
+        let sign = value < 0 && (whole > 0 || bestP > 0) ? "-" : ""
+        let wholeText = whole > 0 || bestP == 0 ? String(Int64(whole)) : ""
+        let partText = bestP > 0 ? (wholeText.isEmpty ? "" : " ") + String(Int64(bestP)) + "/" + String(Int64(bestQ)) : ""
+        return sign + wholeText + partText
     }
 
     // MARK: Dátum (napok 1899-12-30 óta, mint az Excelben)
@@ -147,7 +181,9 @@ public enum TableFormat {
     static let currencyPrefixes = ["€", "$"]
 
     /// Beírt vagy importált szöveg: képlet (`=`), kényszerített szöveg (`'`), logikai, százalék, pénznem, dátum, idő, szám.
-    public static func parseInput(_ raw: String) -> Input {
+    /// `dotGrouping`: a pont ezreselválasztó, ha a szám pontosan ezres csoportokból áll („1.234” = 1234); pontosvesszős
+    /// (magyar) CSV-ben, ahol a tizedesjel a vessző.
+    public static func parseInput(_ raw: String, dotGrouping: Bool = false) -> Input {
         let text = raw.trimmingCharacters(in: .whitespaces)
         if text.isEmpty { return .empty }
         if text.hasPrefix("="), text.count > 1 { return .formula(String(text.dropFirst())) }
@@ -157,6 +193,7 @@ public enum TableFormat {
         case "HAMIS", "FALSE": return .value(.bool(false), nil)
         default: break
         }
+        if let value = parseFraction(text) { return .value(.number(value), NumberFormat(kind: "fraction")) }
         if text.hasSuffix("%"), let (number, decimals, _) = parseNumber(String(text.dropLast()).trimmingCharacters(in: .whitespaces)) {
             return .value(.number(number / 100), NumberFormat(kind: "percent", dec: decimals))
         }
@@ -173,7 +210,7 @@ public enum TableFormat {
             }
         }
         if let (serial, pattern) = parseDate(text) { return .value(.number(serial), NumberFormat(kind: "date", pattern: pattern)) }
-        if let (number, decimals, grouped) = parseNumber(text) {
+        if let (number, decimals, grouped) = parseNumber(text, dotGrouping: dotGrouping) {
             return .value(.number(number), grouped ? NumberFormat(kind: "number", dec: decimals, group: true) : nil)
         }
         return .value(.text(raw), nil)
@@ -181,12 +218,25 @@ public enum TableFormat {
 
     /// Szám: előjel, számjegyek, ezreselválasztó (szóköz, illetve a nem tizedes jel), tizedesvessző vagy -pont, exponens.
     /// Eredmény: érték, tizedesjegyek száma, volt-e ezreselválasztás.
-    public static func parseNumber(_ text: String) -> (Double, Int, Bool)? {
+    /// Tört: „3/4”, „1 1/2”, „-2 3/8” (a nevező nem 0). Az Excel a „1/2”-t dátumnak venné; itt szám (tört formátummal).
+    static func parseFraction(_ text: String) -> Double? {
+        guard text.range(of: #"^[-+]?([0-9]+ +)?[0-9]+/[0-9]+$"#, options: .regularExpression) != nil else { return nil }
+        let negative = text.hasPrefix("-")
+        let body = text.drop { $0 == "-" || $0 == "+" }
+        let parts = body.split(separator: " ", omittingEmptySubsequences: true)
+        let pair = parts.last!.split(separator: "/")
+        guard let numerator = Double(pair[0]), let denominator = Double(pair[1]), denominator != 0 else { return nil }
+        let whole = parts.count == 2 ? Double(parts[0]) ?? 0 : 0
+        let value = whole + numerator / denominator
+        return negative ? -value : value
+    }
+
+    public static func parseNumber(_ text: String, dotGrouping: Bool = false) -> (Double, Int, Bool)? {
         var body = text
         var negative = false
         if body.hasPrefix("-") || body.hasPrefix("+") { negative = body.hasPrefix("-"); body.removeFirst() }
         guard let first = body.first, first.isASCII && (first.isNumber || first == "." || first == ",") else { return nil }
-        let lower = body.lowercased()
+        let lower = body.lowercased().replacingOccurrences(of: ",", with: ".")  // exponensben a tizedesvessző is jó: „1,5e3”
         if lower.contains("e") {
             guard lower.range(of: #"^([0-9]+\.?[0-9]*|\.[0-9]+)e[+-]?[0-9]+$"#, options: .regularExpression) != nil,
                   let value = Double(lower) else { return nil }
@@ -196,7 +246,8 @@ public enum TableFormat {
         guard body.allSatisfy({ ($0.isASCII && $0.isNumber) || separators.contains($0) }) else { return nil }
         let dots = body.filter { $0 == "." }.count, commas = body.filter { $0 == "," }.count
         var mark: Character?
-        if dots > 0 && commas > 0 { mark = body.lastIndex(of: ".")! > body.lastIndex(of: ",")! ? "." : "," }
+        if dotGrouping, commas == 0, body.range(of: #"^[0-9]{1,3}(\.[0-9]{3})+$"#, options: .regularExpression) != nil { mark = nil }
+        else if dots > 0 && commas > 0 { mark = body.lastIndex(of: ".")! > body.lastIndex(of: ",")! ? "." : "," }
         else if dots == 1 { mark = "." }
         else if commas == 1 { mark = "," }
         var integer = body, fraction = ""

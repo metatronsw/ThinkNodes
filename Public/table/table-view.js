@@ -92,6 +92,7 @@ const numberFormats = [
   ["date", "Dátum", {kind: "date", pattern: "yyyy.MM.dd."}],
   ["datetime", "Dátum és idő", {kind: "date", pattern: "yyyy.MM.dd. HH:mm"}],
   ["time", "Idő", {kind: "date", pattern: "HH:mm"}],
+  ["fraction", "Tört", {kind: "fraction"}],
   ["text", "Szöveg", {kind: "text"}],
 ];
 

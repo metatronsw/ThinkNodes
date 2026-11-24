@@ -181,3 +181,67 @@ private struct RewriteCase: Decodable {
     #expect(full.style(of: full.cells["B2"]).fmt?.kind == "percent")
     #expect(full.cols == nil)
 }
+
+// Differenciális fuzz (audit, 2026-11-24): a JS által előállított esetek (Tests/Editor/table-fuzz.mjs) Swiftben is ugyanazt adják.
+// A számok "n:<szöveg>" alakban vannak (a Double(String) pontos; a JSONDecoder egyes platformokon 1 ulp-t téved).
+private struct FuzzValue: Decodable {
+    var value: CellValue
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let text = try? container.decode(String.self), text.hasPrefix("n:"), let number = Double(text.dropFirst(2)) { value = .number(number) }
+        else { value = try container.decode(CellValue.self) }
+    }
+    var number: Double { if case .number(let n) = value { return n }; return .nan }
+}
+
+private struct FuzzCases: Decodable {
+    struct Format: Decodable { var v: FuzzValue; var fmt: NumberFormat?; var text: String }
+    struct Round: Decodable { var v: FuzzValue; var d: Int; var r: FuzzValue }
+    struct Parse: Decodable { var input: String; var kind: String; var v: FuzzValue?; var fmt: NumberFormat? }
+    struct Formula: Decodable { var f: String; var v: FuzzValue }
+    var format: [Format]; var round: [Round]; var parse: [Parse]; var formula: [Formula]
+}
+
+@Test func sharedFuzzFixtures() throws {
+    let cases = try load("numbers-fuzz.json", as: FuzzCases.self)
+    var mismatches: [String] = []
+    for c in cases.format where TableFormat.display(.number(c.v.number), c.fmt) != c.text {
+        mismatches.append("display(\(c.v.number), \(String(describing: c.fmt?.kind))) = \(TableFormat.display(.number(c.v.number), c.fmt)) ≠ \(c.text)")
+    }
+    for c in cases.round where TableFormat.roundHalfAway(c.v.number, c.d) != c.r.number {
+        mismatches.append("round(\(c.v.number), \(c.d)) = \(TableFormat.roundHalfAway(c.v.number, c.d)) ≠ \(c.r.number)")
+    }
+    for c in cases.parse {
+        let parsed = TableFormat.parseInput(c.input)
+        let expected: TableFormat.Input = c.kind == "empty" ? .empty : .value(c.v?.value ?? .text(""), c.fmt)
+        if parsed != expected { mismatches.append("parse(\(c.input)) = \(parsed) ≠ \(expected)") }
+    }
+    for c in cases.formula {
+        var document = TableDocument(rows: 1, cols: 1)
+        document[CellAddress("A1")!] = TableCell(f: c.f)
+        TableEngine.recalculate(&document)
+        if document.cells["A1"]?.v != c.v.value { mismatches.append("=\(c.f) → \(String(describing: document.cells["A1"]?.v)) ≠ \(c.v.value)") }
+    }
+    let report = "\(mismatches.count) eltérés:\n" + mismatches.prefix(25).joined(separator: "\n")
+    #expect(mismatches.isEmpty, "\(report)")
+}
+
+/// Audit-lelet rögzítése: a platform JSONDecoder-e pontosan olvassa-e a lebegőpontos literált. A macOS 13 Foundation
+/// egyes számoknál 1 ulp-t téved (pl. 0.0020293361140076467); ha a teszt jelzi, a .tntable értékei a szerveren
+/// az utolsó bináris jegyben elcsúszhatnak (a kiírt 15 jegyre nincs hatással). A Double(String) pontos.
+@Test func platformJSONDecoderDoublePrecision() throws {
+    let literals = ["0.0020293361140076467", "0.056338028169014086", "0.00009365358373615191", "452667510065700000000"]
+    let decoded = try JSONDecoder().decode([Double].self, from: Data(("[" + literals.joined(separator: ",") + "]").utf8))
+    let inexact = zip(literals, decoded).filter { Double($0.0)! != $0.1 }.map(\.0)
+    if !inexact.isEmpty { print("FIGYELEM: a JSONDecoder pontatlan lebegőpontos literáloknál: \(inexact)") }
+    #expect(Double("0.0020293361140076467")! == 729.8 / 359625)
+}
+
+@Test func hungarianCSVTreatsDotAsGrouping() {
+    let semicolon = TableCSV.importCSV(Data("a;b;c\n1.234;1.234,5;12.5\n".utf8), name: "hu").document
+    #expect(semicolon.cells["A2"]?.v == .number(1234))
+    #expect(semicolon.cells["B2"]?.v == .number(1234.5))
+    #expect(semicolon.cells["C2"]?.v == .number(12.5))
+    let comma = TableCSV.importCSV(Data("a,b\n1.234,x\n".utf8), name: "en").document
+    #expect(comma.cells["A2"]?.v == .number(1.234))
+}

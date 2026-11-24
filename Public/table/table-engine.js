@@ -24,7 +24,7 @@ function fromCell(value) {
 function toCell(value) {
   switch (value.t) {
     case "empty": return 0;
-    case "number": return Number.isFinite(value.v) ? value.v : {err: "#NUM!"};
+    case "number": return Number.isFinite(value.v) ? (value.v === 0 ? 0 : value.v) : {err: "#NUM!"};  // -0 → 0
     case "error": return {err: value.v};
     default: return value.v;
   }
@@ -219,6 +219,9 @@ function binary(op, left, right) {
   return err("#VALUE!");
 }
 
+// Az Excel 15 értékes jegyig hasonlít: a csak a 15. jegy után eltérő számok egyenlők (0,1+0,2 = 0,3 IGAZ).
+const approximatelyEqual = (x, y) => x === y || Math.abs(x - y) <= Math.max(Math.abs(x), Math.abs(y)) * 1e-15;
+
 // Excel-sorrend: szám < szöveg < logikai; a szöveg kis- és nagybetűtől függetlenül (Swift lowercased + <).
 function compare(left, right) {
   const rank = v => ({number: 0, empty: 0, text: 1, bool: 2, error: 3})[v.t];
@@ -226,7 +229,7 @@ function compare(left, right) {
   if (a.t === "empty") a = b.t === "text" ? {t: "text", v: ""} : b.t === "bool" ? {t: "bool", v: false} : num(0);
   if (b.t === "empty") b = a.t === "text" ? {t: "text", v: ""} : a.t === "bool" ? {t: "bool", v: false} : num(0);
   if (rank(a) !== rank(b)) return rank(a) < rank(b) ? -1 : 1;
-  if (a.t === "number") return a.v < b.v ? -1 : a.v > b.v ? 1 : 0;
+  if (a.t === "number") return approximatelyEqual(a.v, b.v) ? 0 : a.v < b.v ? -1 : 1;
   if (a.t === "text") {
     const p = a.v.toLowerCase(), q = b.v.toLowerCase();
     return p < q ? -1 : p > q ? 1 : 0;

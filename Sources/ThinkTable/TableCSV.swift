@@ -74,7 +74,7 @@ public enum TableCSV {
             for (c, field) in fields.prefix(TableLimits.maxCols).enumerated() {
                 let address = CellAddress(row: r, col: c)
                 var cell = TableCell()
-                switch TableFormat.parseInput(field) {
+                switch TableFormat.parseInput(field, dotGrouping: separator == ";") {
                 case .empty: continue
                 case .formula: cell.v = .text(field.trimmingCharacters(in: .whitespaces))
                 case .value(let value, let format):

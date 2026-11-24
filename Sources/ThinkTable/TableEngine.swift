@@ -37,7 +37,7 @@ public enum TableEngine {
         var cellValue: CellValue {
             switch self {
             case .empty: return .number(0)
-            case .number(let v): return v.isFinite ? .number(v) : .error("#NUM!")
+            case .number(let v): return v.isFinite ? .number(v == 0 ? 0 : v) : .error("#NUM!")  // -0 → 0
             case .text(let v): return .text(v)
             case .bool(let v): return .bool(v)
             case .error(let v): return .error(v)
@@ -255,13 +255,18 @@ public enum TableEngine {
         if b == .empty { b = a.isText ? .text("") : a.isBool ? .bool(false) : .number(0) }
         if rank(a) != rank(b) { return rank(a) < rank(b) ? -1 : 1 }
         switch (a, b) {
-        case (.number(let x), .number(let y)): return x < y ? -1 : x > y ? 1 : 0
+        case (.number(let x), .number(let y)): return approximatelyEqual(x, y) ? 0 : x < y ? -1 : 1
         case (.text(let x), .text(let y)):
             let p = x.lowercased(), q = y.lowercased()
             return p < q ? -1 : p > q ? 1 : 0
         case (.bool(let x), .bool(let y)): return x == y ? 0 : (!x ? -1 : 1)
         default: return 0
         }
+    }
+
+    /// Az Excel 15 értékes jegyig hasonlít: a csak a 15. jegy után eltérő számok egyenlők (`0,1+0,2 = 0,3` IGAZ).
+    static func approximatelyEqual(_ x: Double, _ y: Double) -> Bool {
+        x == y || abs(x - y) <= max(abs(x), abs(y)) * 1e-15
     }
 
     /// Függvényargumentumok számai: a tartományban csak a számok számítanak, a közvetlen argumentum számmá alakul.

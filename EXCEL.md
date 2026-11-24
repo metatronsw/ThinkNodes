@@ -151,6 +151,7 @@ A szövegfájlok mintáját követi: **a tartalom egy fájlban van**, nem a munk
   | `currency` | `dec`, `symbol`, `before` (a jel elöl) | `1 235 Ft`, `€ 12,00` |
   | `percent` | `dec` | `12,5%` |
   | `date` | `pattern` (`yyyy.MM.dd.`, `yyyy.MM.dd. HH:mm`, `HH:mm`) | `2026.11.24.` |
+  | `fraction` | `dec`: a legnagyobb nevező (alap 99, legfeljebb 999) | `3 1/4`, `1/3`, `3 14/99` |
   | `text` | – | a beírt szöveg változatlanul, nem lesz szám |
 
   - A dátum a cellában számként tárolódik (napok 1899-12-30 óta, mint az Excelben), így számolni is lehet vele, és az import/export is egyszerű.
@@ -421,3 +422,37 @@ fejlécstílusát kapták, az azonosító maradt), teljes a böngészőből (pá
 - Sötét témában is olvasható fejléc és képletsor.
 
 **Apróság későbbre:** a már nem használt stílusok a `styles` tömbben maradnak (mentéskor tömöríthető).
+
+## 12. Audit: tizedesjegyek és törtek (2026-11-24)
+
+**Módszer:**
+1. A kockázatos esetek reprodukálása (`node` próbaszkript).
+2. A javítás azonos algoritmussal a Swiftben és a JS-ben.
+3. Közös tesztesetek a hibákra (`Tests/TableFixtures/formulas.json`, `formats.json`, `inputs.json`).
+4. Differenciális fuzz-teszt, rögzített kezdőértékkel, 3544 esettel (kiírás, kerekítés, beolvasás, tört, képlet).
+   - A generátor: `Tests/Editor/table-fuzz.mjs`. A JS az eredményeit a `Tests/TableFixtures/numbers-fuzz.json`-be írja, a Swift `sharedFuzzFixtures` pontos egyezést vár.
+   - Futtatás: `node Tests/Editor/table-fuzz.mjs` (ellenőrzi, hogy a fixture naprakész), illetve `--write` (újragenerálja).
+
+**Eredmény:** a javítások után a 3544 esetből mind egyezik a Swift és a JS között, a hatványozás is.
+
+| # | Lelet | Súlyosság | Javítás |
+|---|---|---|---|
+| 1 | `ROUND(1,005;2)` = 1, `ROUND(0,285;2)` = 0,28 (Excel: 1,01 és 0,29). A 1,005 binárisan 1,00499…; a kiírt formátum is így kerekített (`1,005` → „1,00”). | magas | `roundHalfAway`: a szorzat ~4 ulp-vel feljebb kerül (`1 + 2^-50`), így a tizedes fél felfelé kerekedik. 2^52 fölött nincs kerekítés. |
+| 2 | Szerkesztés közben adatvesztés: F2+Enter után 1/3 értéke 0,3333333333 lett (10 jegyes kiírás), a 850,5 Ft-ból 0 tizedessel 851 lett. | magas | A szerkesztő nyers értéke 15 értékes jegyű (`precise`, mint az Excel képletsora), a % / pénznem jelével. Változatlan vázlat (F2, majd Enter) nem írja felül a cellát. |
+| 3 | `=0,1+0,2=0,3` → HAMIS (Excel: IGAZ). | közepes | Az összehasonlítás 15 értékes jegyig pontos (relatív 1e-15), mint az Excelben. |
+| 4 | `=1,5*2` → `#NAME?`, ha a képletben nincs pontosvessző. | közepes | Függvényhíváson kívül a számjegyek közötti vessző tizedesvessző (`=1,5*2` = 3). Függvényen belül pontosvessző nélkül továbbra is elválasztó (`SUM(1,5)` = 6), pontosvesszővel mindig tizedesvessző. |
+| 5 | 10^21 fölött a számformátum hibás („2e +21 Ft”), 10^15 körül a bináris zaj látszott („…999,88”). | alacsony | `fixed`: 10^15-től általános (exponenciális) alak; legfeljebb 15 értékes jegy, a többi helyen nulla. |
+| 6 | „1,5e3” szöveg maradt. | alacsony | Exponenses számban a tizedesvessző is elfogadott. |
+| 7 | Törtek: „1/2”, „3 1/4” szöveg maradt; tört formátum nem volt. | funkció | Tört bevitel (`3/4`, `1 1/2`, `-2 3/8`) és `fraction` formátum (legjobb p/q, nevező ≤ 99 vagy `dec` szerint ≤ 999). Az Excel a „1/2”-t dátumnak venné, itt szám. A „1/0”, „12/B” szöveg marad. A tizedes −/+ gomb tört formátumot nem módosít. |
+| 8 | Pontosvesszős (magyar) CSV-ben az „1.234” 1,234 lett. | közepes | Pontosvesszős CSV importjakor a pontosan ezres csoportokból álló szám („1.234”, „12.345.678”) ezreselválasztós. A „12.5” és a vesszős CSV változatlan. |
+| 9 | A `-0` eredmény `-0`-ként kerülhetett a fájlba. | alacsony | Az eredmény `-0` helyett 0. |
+| 10 | **A macOS 13 Foundation `JSONDecoder`-e** egyes lebegőpontos literálokat 1 ulp pontatlansággal olvas (pl. `0.0020293361140076467`). A `.tntable` beolvasásakor a szerveren egy érték az utolsó bináris jegyben elcsúszhat. A kiírt 15 jegyre nincs hatása, a képleteket a szerver úgyis újraszámolja. | alacsony | **Nyitott** (BUGS.md). A `platformJSONDecoderDoublePrecision` teszt figyelmeztet. Élesben (Fedora, swift-foundation) ellenőrizni kell; ha ott is pontatlan, saját számolvasó kell a `.tntable`-höz. |
+
+**Ellenőrzött, rendben lévő területek:**
+- Feleknél nullától elfelé kerekít, negatív számnál is.
+- Negatív tizedesjegyre kerekít (`ROUND(…;-2)`).
+- Az általános alak 10 értékes jegyű, 10^11 fölött és 10^-9 alatt exponenciális.
+- A dátum törtrésze (idő) és a százalék tizedesjegyei helyesek.
+- A pénznem negatív előjele (`-€ 12,00`) helyes.
+- Számkiírás → beolvasás oda-vissza (600 fuzz-eset).
+- Az összes képletművelet tizedes literálokkal (600 fuzz-eset).

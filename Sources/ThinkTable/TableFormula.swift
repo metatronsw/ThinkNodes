@@ -76,6 +76,9 @@ public enum TableFormula {
         }
         func advance(_ n: Int = 1) { for _ in 0..<n where i < source.endIndex { i = source.index(after: i) } }
         func add(_ token: FormulaToken, from start: String.Index) { tokens.append(LocatedToken(token: token, start: start, end: i)) }
+        // Zárójelek: függvényhívásé-e (`SZUM(`). Függvényhíváson kívül a számjegyek közötti vessző tizedesvessző
+        // (`=1,5*2`), belül elválasztó (`SUM(1,5)` = 6); pontosvesszős képletben mindig tizedesvessző.
+        var calls: [Bool] = []
 
         /// Egész oszlop (`B:B`): az első tag után `:` jön, a második előtt `:` és egy oszlophivatkozás áll.
         func afterColumnColon() -> Bool {
@@ -103,7 +106,7 @@ public enum TableFormula {
             if c.isASCII && c.isNumber || (c == "." && peek(1)?.isASCII == true && peek(1)!.isNumber) {
                 var text = ""
                 while let d = peek(), d.isASCII && d.isNumber { text.append(d); advance() }
-                if let d = peek(), d == "." || (decimalComma && d == ","), let e = peek(1), e.isASCII && e.isNumber {
+                if let d = peek(), d == "." || (d == "," && (decimalComma || !calls.contains(true))), let e = peek(1), e.isASCII && e.isNumber {
                     text.append("."); advance()
                     while let d = peek(), d.isASCII && d.isNumber { text.append(d); advance() }
                 } else if peek() == "." { advance() }
@@ -193,8 +196,10 @@ public enum TableFormula {
             if ["<=", ">=", "<>"].contains(two) { advance(2); add(.op(two), from: start); continue }
             switch c {
             case "+", "-", "*", "/", "^", "&", "=", "<", ">", "%", ":": advance(); add(.op(String(c)), from: start)
-            case "(": advance(); add(.open, from: start)
-            case ")": advance(); add(.close, from: start)
+            case "(":
+                if case .function? = tokens.last?.token { calls.append(true) } else { calls.append(false) }
+                advance(); add(.open, from: start)
+            case ")": if !calls.isEmpty { calls.removeLast() }; advance(); add(.close, from: start)
             case ",", ";": advance(); add(.separator, from: start)
             default: throw SyntaxError()
             }
