@@ -42,6 +42,21 @@ import VaporTesting
     _ = try store.open(subfolder, user: creator)
     let nestedSheet = try store.open(nested, user: creator)
     try action("grant", editor.name)
+    // Meghívni csak a projekt létrehozója és az admin tud: a meghívott szerkesztő nem hívhat és nem távolíthat el mást.
+    try store.setUser(name: "third", role: .editor, passwordHash: "unused")
+    try store.setUser(name: "visitor", role: .guest, passwordHash: "unused")
+    func membership(_ action: String, _ name: String, by user: User) throws {
+        _ = try store.manage(project, operation: DocumentAction(scope: "project", action: action, value: name), user: user, unlocks: [])
+    }
+    #expect(throws: Abort.self) { try membership("grant", "third", by: editor) }
+    #expect(throws: Abort.self) { try membership("revoke", editor.name, by: editor) }
+    #expect(try !store.access(project, sheet: worksheet, user: editor).invitable)
+    #expect(try store.access(project, sheet: worksheet, user: editor).manageable)
+    #expect(try store.access(project, sheet: worksheet, user: creator).invitable)
+    // Szerkesztő szerepkört csak admin ad: vendég fiók nem hívható meg szerkesztőnek.
+    #expect(throws: Abort.self) { try membership("grant", "visitor", by: creator) }
+    try membership("grant", "third", by: creator)
+    try membership("revoke", "third", by: User(name: "admin", role: .admin, passwordHash: ""))
     #expect(try !listed(for: editor))
     #expect(try store.access(nested, sheet: nestedSheet, user: editor).editable)
     #expect(try store.list(user: editor, childrenOf: subfolder).map(\.path.url) == [nested.url])
@@ -215,5 +230,136 @@ private func queryValue(_ name: String, in url: String) -> String? {
         let browser = try app.testing()
         #expect(try await !browser.sendRequest(.GET, "/login").body.string.contains("/login/google"))
         #expect(try await browser.sendRequest(.GET, "/login/google").status != .seeOther)
+    }
+}
+
+@Test func unknownGoogleAccountCanRequestAccess() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-google-request-\(UUID().uuidString)")
+    let store = try WorksheetStore(root: root)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try store.setUser(name: "admin", role: .admin, passwordHash: try Bcrypt.hash("titkos-jelszo"))
+    try store.setUser(name: "regi", role: .editor, passwordHash: "unused")
+
+    // Tároló: kikapcsolva senki nem kérhet; domainszűrés; címenként egy kérelem; lejárat; elutasítás és feloldás.
+    #expect(try store.accessRequestState(email: "uj@ceg.hu") == .closed)
+    #expect(throws: Abort.self) { try store.requestAccess(email: "uj@ceg.hu", name: "uj") }
+    #expect(throws: Abort.self) { try GoogleAccess.domains(from: "nem domain!") }
+    try store.setSettings(SiteSettings(googleAccess: GoogleAccess(requests: true, domains: try GoogleAccess.domains(from: "@Ceg.hu, masik.com"))))
+    #expect(try store.settings().googleAccess?.domains == ["ceg.hu", "masik.com"])
+    #expect(try store.accessRequestState(email: "valaki@idegen.org") == .closed)
+    #expect(try store.accessRequestState(email: "Uj@Ceg.hu") == .open)
+    #expect(throws: Abort.self) { try store.requestAccess(email: "uj@ceg.hu", name: "admin") }
+    #expect(throws: Abort.self) { try store.requestAccess(email: "uj@ceg.hu", name: "Rossz Név") }
+    let old = Date(timeIntervalSinceNow: -31 * 24 * 3600)
+    try store.requestAccess(email: "uj@ceg.hu", name: "elso", now: old)
+    #expect(try store.accessRequests().pending.isEmpty)
+    #expect(try store.accessRequests(now: old).pending.map(\.name) == ["elso"])
+    try store.requestAccess(email: "uj@ceg.hu", name: "elso")
+    try store.requestAccess(email: "uj@ceg.hu", name: "uj")
+    #expect(try store.accessRequests().pending.map(\.name) == ["uj"])
+    // A beállítások mentése (Google-mezők nélkül) nem törli sem a szabályt, sem a kérelmeket.
+    try store.setSettings(SiteSettings(requireLogin: false))
+    #expect(try store.settings().googleAccess?.requests == true)
+    #expect(try store.accessRequests().pending.count == 1)
+    try store.rejectAccess(email: "uj@ceg.hu")
+    #expect(try store.accessRequestState(email: "uj@ceg.hu") == .rejected)
+    #expect(throws: Abort.self) { try store.requestAccess(email: "uj@ceg.hu", name: "uj") }
+    #expect(throws: Abort.self) { try store.approveAccess(email: "uj@ceg.hu", name: "uj", role: .guest) }
+    try store.forgetRejectedAccess(email: "uj@ceg.hu")
+    #expect(try store.accessRequestState(email: "uj@ceg.hu") == .open)
+    // Meglévő, Google-fiók nélküli felhasználó nevével jóváhagyva a cím hozzá kapcsolódik, a szerepköre marad.
+    try store.requestAccess(email: "regi@masik.com", name: "valami")
+    try store.approveAccess(email: "regi@masik.com", name: "regi", role: .guest)
+    #expect(try store.user(google: "regi@masik.com")?.role == .editor)
+    #expect(try store.accessRequests().pending.isEmpty)
+    // Kézi hozzárendelés a függő kérelmet is lezárja.
+    try store.requestAccess(email: "kezi@ceg.hu", name: "kezi")
+    try store.setUser(name: "kezi", role: .guest, passwordHash: nil, google: "kezi@ceg.hu")
+    #expect(try store.accessRequests().pending.isEmpty)
+
+    let google = GoogleSignIn(clientID: "kliens", clientSecret: "titok") { _, form in form["code"] ?? "" }
+    let host: HTTPHeaders = ["Host": "localhost:8080"]
+    try await withApp(configure: { app in configure(app, store: store, secureCookies: false, google: google) }) { app in
+        let browser = try app.testing()
+        func signIn(_ email: String) async throws -> (response: TestingHTTPResponse, cookie: String) {
+            let started = try await browser.sendRequest(.GET, "/login/google", headers: host)
+            let location = try #require(started.headers.first(name: .location))
+            let session = try cookie(started)
+            let token = try googleToken(["iss": "https://accounts.google.com", "aud": "kliens", "exp": Date().timeIntervalSince1970 + 600,
+                                         "nonce": try #require(queryValue("nonce", in: location)), "email": email, "email_verified": true])
+            var headers = host
+            headers.add(name: "Cookie", value: session)
+            let done = try await browser.sendRequest(.GET, "/login/google/callback?state=\(try #require(queryValue("state", in: location)))&code=\(token)", headers: headers)
+            return (done, (try? cookie(done)) ?? session)
+        }
+        // Kérelem oldal csak a Google-től visszatért munkamenetben van.
+        #expect(try await browser.sendRequest(.GET, "/login/request").headers.first(name: .location) == "/login")
+        #expect(try await signIn("valaki@idegen.org").response.status == .unauthorized)
+
+        let visitor = try await signIn("Anna.Kis@ceg.hu")
+        #expect(visitor.response.headers.first(name: .location) == "/login/request")
+        let page = try await browser.sendRequest(.GET, "/login/request", headers: ["Cookie": visitor.cookie])
+        #expect(page.body.string.contains("anna.kis@ceg.hu"))
+        #expect(page.body.string.contains(#"value="anna-kis""#))
+        let csrf = try attribute("name=\"csrf\" value=\"", in: page.body.string)
+        struct RequestForm: Content { var name: String; var csrf: String }
+        func submit(_ name: String, csrf: String) async throws -> TestingHTTPResponse {
+            try await browser.sendRequest(.POST, "/login/request", headers: ["Cookie": visitor.cookie]) { request in
+                try request.content.encode(RequestForm(name: name, csrf: csrf), as: .urlEncodedForm)
+            }
+        }
+        #expect(try await submit("anna", csrf: "hamis").status == .forbidden)
+        let taken = try await submit("admin", csrf: csrf)
+        #expect(taken.status == .unprocessableEntity)
+        #expect(taken.body.string.contains("foglalt"))
+        #expect(try await submit("anna", csrf: csrf).status == .seeOther)
+        #expect(try await browser.sendRequest(.GET, "/login/request", headers: ["Cookie": visitor.cookie]).body.string.contains("elbírálásra vár"))
+        // A kérelem önmagában nem ad hozzáférést.
+        #expect(try await browser.sendRequest(.GET, "/admin", headers: ["Cookie": visitor.cookie]).status == .seeOther)
+
+        // Az admin látja és jóváhagyja; utána a Google-belépés sikerül.
+        _ = try store.open(try WorksheetPath(["main"]), user: User(name: "admin", role: .admin, passwordHash: ""))
+        let admin = try await login(browser, name: "admin", password: "titkos-jelszo", path: "main")
+        let adminPage = try await browser.sendRequest(.GET, "/admin", headers: ["Cookie": admin.cookie])
+        #expect(adminPage.body.string.contains("Hozzáférési kérelmek (1)"))
+        #expect(adminPage.body.string.contains("anna.kis@ceg.hu"))
+        // Adminisztrátori jelzés: jelvény a fejléc Admin gombján (minden oldalon) és teendőlista az adminoldalon.
+        #expect(try store.adminMessages() == [AdminMessage(kind: .accessRequests, count: 1, text: "1 hozzáférési kérelem vár elbírálásra", link: "/admin#access-requests")])
+        #expect(adminPage.body.string.contains(#"id="admin-messages""#))
+        let index = try await browser.sendRequest(.GET, "/", headers: ["Cookie": admin.cookie])
+        #expect(index.body.string.contains(#"href="/admin#admin-messages""#))
+        #expect(index.body.string.contains("admin-badge"))
+        #expect(try await !browser.sendRequest(.GET, "/", headers: ["Cookie": visitor.cookie]).body.string.contains("admin-badge"))
+        struct Decision: Content { var email: String; var name: String?; var role: String?; var action: String; var csrf: String }
+        func decide(_ decision: Decision, cookie: String) async throws -> HTTPStatus {
+            try await browser.sendRequest(.POST, "/admin/requests", headers: ["Cookie": cookie]) { request in
+                try request.content.encode(decision, as: .urlEncodedForm)
+            }.status
+        }
+        #expect(try await decide(Decision(email: "anna.kis@ceg.hu", name: "anna", role: "admin", action: "approve", csrf: csrf), cookie: visitor.cookie) == .unauthorized)
+        #expect(try await decide(Decision(email: "anna.kis@ceg.hu", name: "anna", role: "editor", action: "approve", csrf: admin.csrf), cookie: admin.cookie) == .seeOther)
+        #expect(try store.user(named: "anna")?.role == .editor)
+        #expect(try store.adminMessages().isEmpty)
+        #expect(try await !browser.sendRequest(.GET, "/", headers: ["Cookie": admin.cookie]).body.string.contains("admin-badge"))
+        #expect(try await browser.sendRequest(.GET, "/login/request", headers: ["Cookie": visitor.cookie]).headers.first(name: .location) == "/login/google")
+        #expect(try await signIn("anna.kis@ceg.hu").response.headers.first(name: .location) == "/")
+
+        // Elutasítás: a cím nem kérhet újra, amíg az admin fel nem oldja.
+        let other = try await signIn("bela@ceg.hu")
+        #expect(other.response.headers.first(name: .location) == "/login/request")
+        try store.requestAccess(email: "bela@ceg.hu", name: "bela")
+        #expect(try await decide(Decision(email: "bela@ceg.hu", action: "reject", csrf: admin.csrf), cookie: admin.cookie) == .seeOther)
+        #expect(try await browser.sendRequest(.GET, "/login/request", headers: ["Cookie": other.cookie]).body.string.contains("elutasította"))
+        #expect(try await decide(Decision(email: "bela@ceg.hu", action: "forget", csrf: admin.csrf), cookie: admin.cookie) == .seeOther)
+        #expect(try store.accessRequestState(email: "bela@ceg.hu") == .open)
+
+        // Az adminoldal beállítása: kikapcsolva az ismeretlen fiók újra csak elutasítást kap.
+        struct Settings: Content { var googleDomains: String; var csrf: String }
+        let saved = try await browser.sendRequest(.POST, "/admin/settings", headers: ["Cookie": admin.cookie]) { request in
+            try request.content.encode(Settings(googleDomains: "ceg.hu", csrf: admin.csrf), as: .urlEncodedForm)
+        }
+        #expect(saved.status == .seeOther)
+        #expect(try store.settings().googleAccess == GoogleAccess(requests: false, domains: ["ceg.hu"]))
+        #expect(try await signIn("bela@ceg.hu").response.status == .unauthorized)
     }
 }

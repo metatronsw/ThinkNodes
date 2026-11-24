@@ -134,5 +134,7 @@ Ez reális és takarékos megoldás. A megvalósítás előtt tisztázandó terv
 
 + Kész: belépés Google-fiókkal az admin által hozzárendelt e-mail-cím alapján (README „Google-bejelentkezés”).
 + Hátra: kipróbálás valódi Google OAuth-klienssel (Cloud Console: kliens létrehozása, visszatérési cím felvétele), helyben `http://localhost:8888`-on és élesben.
-+ Javaslat (döntés kell): hozzáférés-kérés. Ismeretlen Google-fiókkal belépve a felhasználó kérelmet adhat be (igazolt e-mail-cím + kért felhasználónév); a kérelem a `.settings.json`-ba kerül, az admin a Beállítások oldalon hagyja jóvá (felhasználónév, szerepkör) vagy utasítja el. Kell hozzá: adminbeállítás a ki/bekapcsoláshoz, kérelmenként egy cím, darabszám- és időkorlát, elutasított címek listája, esetleg engedélyezett e-mail-domainek. Értesítés e-mailben nincs (nincs levélküldés), az adminoldal jelezné a függő kérelmeket.
++ Kész: hozzáférés-kérés admin jóváhagyással, jelvény a fejléc Admin gombján (AdminMessages), README és server/deploy/GOOGLE.md.
++ Hátra: a kérelmező értesítése a döntésről (most nincs; a szerver nem küld e-mailt).
++ Lehetőség: további adminisztrátori jelzések (AdminMessage.Kind), pl. lemezhely, hibás mentés.
 + Lehetőség: a felhasználó maga kösse össze / válassza le a Google-fiókját (most csak az admin teheti); a Google `sub` azonosítójának rögzítése az e-mail-cím mellé.

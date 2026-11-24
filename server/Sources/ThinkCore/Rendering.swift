@@ -136,7 +136,11 @@ package func siteHeader(path: String? = nil, project: String? = nil, user: User?
         session = buttonLink("/login" + (path.map { "?next=/\($0)" } ?? ""), "Bejelentkezés", symbol: "login", classes: headerButtonClass)
     }
     let tag = path == nil ? "header" : "div"
-    let admin = user?.role == .admin ? buttonLink("/admin", "Admin", symbol: "settings", classes: headerButtonClass) : ""
+    // Admin gomb; jelvény mutatja, hány adminisztrátori jelzés (AdminMessage) vár, pl. új hozzáférés-kérelem.
+    let waiting = user?.adminMessages ?? 0
+    let badge = waiting > 0 ? "<span class=\"admin-badge\" title=\"\(waiting) elintézendő jelzés\"><span class=\"visually-hidden\">, </span>\(waiting > 99 ? "99+" : String(waiting))<span class=\"visually-hidden\"> elintézendő jelzés</span></span>" : ""
+    let admin = user?.role == .admin
+        ? "<a class=\"\(headerButtonClass) admin-link\" href=\"/admin\(waiting > 0 ? "#admin-messages" : "")\">\(uiIcon("settings"))Admin\(badge)</a>" : ""
     // Névtér-azonosító (Public/ui-names.js): csak bejelentkezett adminoknak.
     let names = user?.role == .admin ? """
         <button type="button" class="\(headerButtonClass) ui-names-toggle" data-ui-names aria-pressed="false" aria-label="Névtér-azonosító" title="Névtér-azonosító: az elemek neve és class-a">\(uiIcon("namespace"))</button><script defer src="/ui-names.js?v=2"></script>

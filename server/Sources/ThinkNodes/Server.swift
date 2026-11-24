@@ -152,11 +152,17 @@ private struct SessionInfo: Sendable {
 }
 
 private func authenticatedUser(_ data: SessionData, store: WorksheetStore) throws -> User? {
-    if store.testMode, let name = data["tester"], isTesterName(name) { return User(name: name, role: .admin, passwordHash: "", avatar: try store.settings().preferences?[name]?.avatar) }
-    guard let name = data["user"], let user = try store.user(named: name),
+    if store.testMode, let name = data["tester"], isTesterName(name) {
+        var tester = User(name: name, role: .admin, passwordHash: "", avatar: try store.settings().preferences?[name]?.avatar)
+        tester.adminMessages = try store.adminMessages().reduce(0) { $0 + $1.count }
+        return tester
+    }
+    guard let name = data["user"], var user = try store.user(named: name),
           data["credential"] == user.passwordHash else { return nil }
     // Google-lal indult munkamenet: csak addig él, amíg ugyanaz a Google-fiók tartozik a felhasználóhoz.
     if let google = data["google"], google != user.google { return nil }
+    // Adminnak: a fejléc jelvénye (hány jelzés vár).
+    if user.role == .admin { user.adminMessages = try store.adminMessages().reduce(0) { $0 + $1.count } }
     return user
 }
 
@@ -256,6 +262,44 @@ private func loginPage(_ req: Request, next: String, message: String? = nil, noA
         </main>
         \(updates == nil ? "" : statusUpdatesScript)
         """, updates: updates)
+}
+
+/// Hozzáférés-kérés oldala: ismeretlen, de a Google által igazolt címmel belépett látogatónak.
+private func accessRequestPage(_ req: Request, email: String, state: AccessRequestState, message: String? = nil,
+                               name: String? = nil) -> Response {
+    let problem = message.map { "<p class=\"error\" role=\"alert\">\(escaped($0))</p>" } ?? ""
+    // Javasolt felhasználónév az e-mail-cím elejéből (kisbetű, szám, kötőjel).
+    let local = email.split(separator: "@").first.map(String.init) ?? ""
+    let suggested = String(local.map { $0.isASCII && ($0.isLetter || $0.isNumber) ? $0 : "-" })
+        .split(separator: "-").joined(separator: "-")
+    let body: String
+    switch state {
+    case .pending(let request):
+        body = "<p role=\"status\">A kérelmed (<strong>\(escaped(request.name))</strong>) elbírálásra vár. Ha az adminisztrátor jóváhagyta, a <a href=\"/login/google\">Google-fiókoddal</a> tudsz belépni.</p>"
+    case .rejected:
+        body = "<p class=\"error\" role=\"status\">A kérelmedet az adminisztrátor elutasította.</p>"
+    case .closed:
+        body = "<p class=\"error\" role=\"status\">Ezzel a Google-fiókkal nem kérhető hozzáférés.</p>"
+    case .open:
+        body = """
+            <p>Ehhez a Google-fiókhoz még nem tartozik ThinkNodes-fiók. Kérhetsz hozzáférést; az adminisztrátor jóváhagyása után a Google-fiókoddal tudsz belépni.</p>
+            <form method="post" action="/login/request" class="stack panel">
+              \(csrfInput(token(req)))
+              <label>Kért felhasználónév<input name="name" pattern="[a-z0-9-]+" maxlength="64" value="\(escaped(name ?? suggested))" required autofocus></label>
+              <button class="button primary" type="submit">\(uiIcon("login"))Hozzáférés kérése</button>
+            </form>
+            """
+    }
+    return htmlPage(title: "Hozzáférés kérése", body: """
+        \(siteHeader(user: nil, csrf: nil))
+        <main class="shell narrow" data-page-status="access-request">
+          <h1>Hozzáférés kérése</h1>
+          <p class="muted">Google-fiók: \(escaped(email))</p>
+          \(problem)
+          \(body)
+          <p><a href="/login">Vissza a bejelentkezéshez</a></p>
+        </main>
+        """)
 }
 
 private func missingPage(_ identity: SessionInfo, updates: PageUpdates.Subscription? = nil) -> Response {
@@ -370,10 +414,43 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
             return try await failed("A Google-bejelentkezés nem sikerült. Próbáld újra.")
         }
         guard let user = try await req.application.threadPool.runIfActive({ try store.user(google: email) }) else {
+            // Ismeretlen fiók: ha a hozzáférés-kérés be van kapcsolva, a kérelem oldalára jut (a cím a munkamenetben marad).
+            if try await req.application.threadPool.runIfActive({ try store.accessRequestState(email: email) }) != .closed {
+                req.session.data["google-request"] = email
+                return redirect("/login/request")
+            }
             return try await failed("A(z) \(email) Google-fiókhoz nem tartozik ThinkNodes-fiók. Kérd meg az adminisztrátort, hogy rendelje hozzá a fiókodhoz.")
         }
         try await signIn(req, user: user, google: email)
         return redirect(next)
+    }
+
+    // Hozzáférés-kérés: csak a Google-től visszatért, igazolt címmel (a munkamenet „google-request” értéke).
+    app.get("login", "request") { req async throws -> Response in
+        guard google != nil, req.hasSession, let email = req.session.data["google-request"] else { return redirect("/login") }
+        let (known, state) = try await req.application.threadPool.runIfActive {
+            (try store.user(google: email) != nil, try store.accessRequestState(email: email))
+        }
+        // Közben jóváhagyták: a Google-belépés már sikerülni fog.
+        if known { return redirect("/login/google") }
+        return accessRequestPage(req, email: email, state: state)
+    }
+
+    app.post("login", "request") { req async throws -> Response in
+        struct Form: Content { var name: String; var csrf: String }
+        guard google != nil, req.hasSession, let email = req.session.data["google-request"] else { return redirect("/login") }
+        let form = try req.content.decode(Form.self)
+        try verify(req, token: form.csrf)
+        do {
+            try await req.application.threadPool.runIfActive { try store.requestAccess(email: email, name: form.name) }
+        } catch let error as any AbortError {
+            let state = try await req.application.threadPool.runIfActive { try store.accessRequestState(email: email) }
+            let response = accessRequestPage(req, email: email, state: state, message: error.reason, name: form.name)
+            response.status = error.status
+            return response
+        }
+        live.accountChanged()
+        return redirect("/login/request")
     }
 
     app.post("login") { req async throws -> Response in
@@ -481,7 +558,7 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         return try await req.application.threadPool.runIfActive {
             guard path.parts.count == 1 else { throw Abort(.forbidden) }
             let worksheet = try store.load(path, user: user, unlocks: identity.unlocks)
-            guard try store.access(path, sheet: worksheet, user: user, unlocks: identity.unlocks).manageable else { throw Abort(.forbidden) }
+            guard try store.access(path, sheet: worksheet, user: user, unlocks: identity.unlocks).invitable else { throw Abort(.forbidden) }
             return try store.allUsers().filter { $0.role == .editor }.map(\.name)
         }
     }
@@ -1305,7 +1382,7 @@ private func menuState(_ rule: DocumentPolicy) -> String {
 
 private func editorMembership(_ access: DocumentAccess) -> String {
     let editors = access.editorNames.filter { $0 != access.sheetRule.owner }
-    return "data-editors=\"\(escaped(editors.joined(separator: " ")))\" data-owner=\"\(escaped(access.sheetRule.owner ?? ""))\""
+    return "data-editors=\"\(escaped(editors.joined(separator: " ")))\" data-owner=\"\(escaped(access.sheetRule.owner ?? ""))\" data-invite=\"\(access.invitable)\""
 }
 
 private func credits(_ sheet: Worksheet, _ access: DocumentAccess) -> String {
@@ -1381,7 +1458,7 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
     let edit = access.editable
         ? "<a class=\"button small viewer-edit\" href=\"/edit/\(path.url)\" aria-label=\"Szerkesztés\" title=\"Szerkesztés\">\(uiIcon("edit"))Szerkesztés</a>"
         : "<button type=\"button\" class=\"button small viewer-edit\" disabled>\(uiIcon("edit"))Szerkesztés</button>"
-    let manageEditors = path.parts.count == 1 && access.manageable
+    let manageEditors = path.parts.count == 1 && access.invitable
         ? "<button type=\"button\" class=\"button small\" data-manage-editors>Szerkesztők kezelése</button>" : ""
     let downloads = [
         ("svg", "SVG"), ("thnode", "ThinkNodes"), ("text", "Text"),
@@ -1513,7 +1590,8 @@ private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, liv
         guard let user = identity.user, let csrf = identity.csrf else { return redirect("/login?next=/admin") }
         guard user.role == .admin else { throw Abort(.forbidden) }
         let settings = try store.settings()
-        return adminPage(users: users, settings: settings, user: user, csrf: csrf,
+        return adminPage(users: users, settings: settings, requests: try store.accessRequests(),
+                         messages: try store.adminMessages(), user: user, csrf: csrf,
                          dataDirectoryPath: store.dataDirectoryPath, google: google, updates: updates)
     }
 
@@ -1532,11 +1610,35 @@ private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, liv
     }
 
     app.post("admin", "settings") { req -> Response in
-        struct Form: Content { var requireLogin: String?; var csrf: String }
+        struct Form: Content { var requireLogin: String?; var googleRequests: String?; var googleDomains: String?; var csrf: String }
         _ = try requireAdmin(req, store: store)
         let form = try req.content.decode(Form.self)
         try verify(req, token: form.csrf)
-        try store.setSettings(SiteSettings(requireLogin: form.requireLogin == "on"))
+        // A Google-mezők csak bekapcsolt Google-bejelentkezésnél vannak az űrlapon; nélkülük a szabály változatlan.
+        let access = try form.googleDomains.map {
+            GoogleAccess(requests: form.googleRequests == "on", domains: try GoogleAccess.domains(from: $0))
+        }
+        try store.setSettings(SiteSettings(requireLogin: form.requireLogin == "on", googleAccess: access))
+        live.accountChanged()
+        return redirect("/admin")
+    }
+
+    // Hozzáférés-kérelmek elbírálása: jóváhagyás, elutasítás, elutasítás feloldása.
+    app.post("admin", "requests") { req async throws -> Response in
+        struct Form: Content { var email: String; var name: String?; var role: Role?; var action: String; var csrf: String }
+        _ = try requireAdmin(req, store: store)
+        let form = try req.content.decode(Form.self)
+        try verify(req, token: form.csrf)
+        try await req.application.threadPool.runIfActive {
+            switch form.action {
+            case "approve":
+                guard let name = form.name, let role = form.role else { throw Abort(.badRequest) }
+                try store.approveAccess(email: form.email, name: name, role: role)
+            case "reject": try store.rejectAccess(email: form.email)
+            case "forget": try store.forgetRejectedAccess(email: form.email)
+            default: throw Abort(.badRequest)
+            }
+        }
         live.accountChanged()
         return redirect("/admin")
     }
@@ -1585,13 +1687,59 @@ private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, liv
     }
 }
 
-private func adminPage(users: [User], settings: SiteSettings, user: User, csrf: String,
+private func adminPage(users: [User], settings: SiteSettings, requests: (pending: [AccessRequest], rejected: [String]),
+                       messages: [AdminMessage], user: User, csrf: String,
                        dataDirectoryPath: String, google: Bool, updates: PageUpdates.Subscription) -> Response {
     // Google-fiók mező: csak akkor látszik, ha a szerveren be van állítva a Google-bejelentkezés.
     func googleField(_ email: String?) -> String {
         !google ? "" : "<label>Google-fiók<input name=\"google\" type=\"email\" autocomplete=\"off\" maxlength=\"254\" value=\"\(escaped(email ?? ""))\" placeholder=\"nincs hozzárendelve\"></label>"
     }
     let fieldsClass = google ? "account-fields with-google" : "account-fields"
+    // Hozzáférés-kérés Google-fiókkal: szabály a Hozzáférés panelen, kérelmek külön panelen.
+    let access = settings.googleAccess ?? GoogleAccess()
+    let accessFields = !google ? "" : """
+        <label class="check"><input type="checkbox" name="googleRequests"\(access.requests ? " checked" : "")>Ismeretlen Google-fiókkal lehet hozzáférést kérni (adminisztrátori jóváhagyással)</label>
+        <label>Csak ezekről az e-mail-domainekről (üresen: bármelyikről)<input name="googleDomains" value="\(escaped(access.domains.joined(separator: ", ")))" placeholder="ceg.hu, masik.com" autocomplete="off"></label>
+        """
+    let day = DateFormatter()
+    day.dateFormat = "yyyy-MM-dd"
+    let pendingRows = requests.pending.map { request in
+        """
+        <div class="account-row">
+          <form method="post" action="/admin/requests" class="account-fields with-google request-fields">
+            \(csrfInput(csrf))<input type="hidden" name="email" value="\(escaped(request.email))">
+            <strong>\(escaped(request.email))<br><small class="muted">\(day.string(from: Date(timeIntervalSince1970: request.date)))</small></strong>
+            <label>Felhasználónév<input name="name" pattern="[a-z0-9-]+" maxlength="64" value="\(escaped(request.name))" required></label>
+            <label>Szerepkör\(roles(.guest))</label>
+            <button class="button primary" type="submit" name="action" value="approve">\(uiIcon("plus"))Jóváhagyás</button>
+            <button class="button danger" type="submit" name="action" value="reject" formnovalidate>\(uiIcon("trash"))Elutasítás</button>
+          </form>
+        </div>
+        """
+    }.joined()
+    let rejectedRows = requests.rejected.map { email in
+        """
+        <form method="post" action="/admin/requests" class="rejected-request">
+          \(csrfInput(csrf))<input type="hidden" name="email" value="\(escaped(email))">
+          <span>\(escaped(email))</span>
+          <button class="button" type="submit" name="action" value="forget">Feloldás</button>
+        </form>
+        """
+    }.joined()
+    // Adminisztrátori jelzések (AdminMessage): a fejléc jelvénye ide vezet.
+    let messagePanel = messages.isEmpty ? "" : """
+        <section class="panel admin-panel admin-messages" id="admin-messages">
+          <h2>Teendők</h2>
+          <ul>\(messages.map { "<li data-kind=\"\($0.kind.rawValue)\"><a href=\"\(escaped($0.link))\">\(escaped($0.text))</a></li>" }.joined())</ul>
+        </section>
+        """
+    let requestPanel = requests.pending.isEmpty && requests.rejected.isEmpty && !(google && access.requests) ? "" : """
+        <section class="panel admin-panel" id="access-requests">
+          <h2>Hozzáférési kérelmek\(requests.pending.isEmpty ? "" : " (\(requests.pending.count))")</h2>
+          \(requests.pending.isEmpty ? "<p class=\"muted\">Nincs függő kérelem.</p>" : "<p class=\"muted\">Meglévő, Google-fiók nélküli felhasználó nevét megadva a cím hozzá kapcsolódik, a szerepköre nem változik.</p>" + pendingRows)
+          \(requests.rejected.isEmpty ? "" : "<details class=\"new-account\"><summary>Elutasított címek (\(requests.rejected.count))</summary>\(rejectedRows)</details>")
+        </section>
+        """
     func roles(_ current: Role) -> String {
         """
         <select name="role"><option value="editor"\(current == .editor ? " selected" : "")>Szerkesztő</option>
@@ -1637,14 +1785,17 @@ private func adminPage(users: [User], settings: SiteSettings, user: User, csrf: 
         <script type="module" src="/admin-avatars.js"></script>
         <main class="shell admin-shell">
           <h1>Beállítások</h1>
+          \(messagePanel)
           <section class="panel admin-panel">
             <h2>Hozzáférés</h2>
             <form method="post" action="/admin/settings" class="stack">
               \(csrfInput(csrf))
               <label class="check"><input type="checkbox" name="requireLogin"\(settings.requireLogin ? " checked" : "")>Megtekintéshez is szükséges bejelentkezni</label>
+              \(accessFields)
               <button class="button primary" type="submit">\(uiIcon("save"))Beállítások mentése</button>
             </form>
           </section>
+          \(requestPanel)
           <section class="panel admin-panel">
             <h2>Projektmappa</h2>
             <p>Az aktív projektadatok teljes elérési útja:</p>

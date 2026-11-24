@@ -543,13 +543,79 @@ package struct SiteSettings: Codable, Sendable {
     package var requireLogin = false
     package var preferences: [String: UserPreferences]?
     var users: [User]?
+    /// Hozzáférés-kérés Google-fiókkal: a szabály (`nil` = kikapcsolva), a függő kérelmek és az elutasított címek.
+    package var googleAccess: GoogleAccess?
+    var accessRequests: [AccessRequest]?
+    var rejectedGoogle: [String]?
 
     // A memberwise inicializáló pontos mása (modulhatár).
-    package init(requireLogin: Bool = false, preferences: [String: UserPreferences]? = nil, users: [User]? = nil) {
+    package init(requireLogin: Bool = false, preferences: [String: UserPreferences]? = nil, users: [User]? = nil,
+                 googleAccess: GoogleAccess? = nil) {
         self.requireLogin = requireLogin
         self.preferences = preferences
         self.users = users
+        self.googleAccess = googleAccess
     }
+}
+
+/// Kérhet-e hozzáférést egy még ismeretlen Google-fiók, és mely e-mail-domainekről (üres lista = bármelyikről).
+package struct GoogleAccess: Codable, Sendable, Equatable {
+    package var requests = false
+    package var domains: [String] = []
+
+    package init(requests: Bool = false, domains: [String] = []) {
+        self.requests = requests
+        self.domains = domains
+    }
+
+    /// Szóközzel vagy vesszővel tagolt domainlista (pl. „ceg.hu, @masik.com”) egységes alakban.
+    package static func domains(from text: String) throws -> [String] {
+        let items = text.lowercased().split(whereSeparator: { $0.isWhitespace || $0 == "," || $0 == ";" })
+            .map { $0.hasPrefix("@") ? String($0.dropFirst()) : String($0) }
+        guard items.count <= 50, items.allSatisfy({ item in
+            item.utf8.count <= 253 && item.contains(".") && !item.hasPrefix(".") && !item.hasSuffix(".")
+                && item.utf8.allSatisfy { (97...122).contains($0) || (48...57).contains($0) || $0 == 45 || $0 == 46 }
+        }) else { throw Abort(.unprocessableEntity, reason: "Az e-mail-domainek listája érvénytelen (példa: ceg.hu, masik.com).") }
+        return Array(Set(items)).sorted()
+    }
+
+    func allows(_ email: String) -> Bool {
+        guard requests else { return false }
+        guard !domains.isEmpty else { return true }
+        return email.split(separator: "@").last.map { domains.contains(String($0)) } ?? false
+    }
+}
+
+/// Adminisztrátoroknak szóló, elintézendő jelzés: a fejléc Admin gombján jelvényként (összesített darabszám),
+/// az adminoldal tetején listaként jelenik meg. Új fajta jelzéshez új `Kind` és egy új ág kell a
+/// `WorksheetStore.adminMessages()` függvényben; a megjelenítés közös.
+package struct AdminMessage: Sendable, Equatable {
+    package enum Kind: String, Sendable {
+        /// Elbírálásra váró hozzáférés-kérelmek (Google-fiókkal).
+        case accessRequests
+    }
+    package var kind: Kind
+    /// Hány elintézendő tétel van ebből a fajtából (ennyivel nő a jelvény).
+    package var count: Int
+    package var text: String
+    /// Hová visz a jelzés (az adminoldalon belüli horgony vagy útvonal).
+    package var link: String
+}
+
+/// Függő hozzáférés-kérelem: a Google által igazolt e-mail-cím és a kért felhasználónév.
+package struct AccessRequest: Codable, Sendable, Equatable {
+    package var email: String
+    package var name: String
+    /// A beadás ideje (másodperc 1970 óta).
+    package var date: Double
+}
+
+package enum AccessRequestState: Sendable, Equatable {
+    /// Ez a cím nem kérhet hozzáférést (kikapcsolva, vagy a domain nem engedélyezett).
+    case closed
+    case open
+    case pending(AccessRequest)
+    case rejected
 }
 
 package enum Role: String, Codable, Sendable {
@@ -563,6 +629,10 @@ package struct User: Codable, Sendable {
     package var avatar: Int?
     /// A fiókhoz rendelt Google-fiók e-mail-címe (kisbetűs); ezzel a fiókkal jelszó nélkül is be lehet lépni.
     package var google: String?
+    /// Adminnak szóló, elintézendő jelzések száma (`AdminMessage`); kérésenként számolódik, nem tárolódik.
+    package var adminMessages = 0
+
+    private enum CodingKeys: String, CodingKey { case name, role, passwordHash, avatar, google }
 
     // A memberwise inicializáló pontos mása (modulhatár).
     package init(name: String, role: Role, passwordHash: String, avatar: Int? = nil, google: String? = nil) {
@@ -686,6 +756,8 @@ package struct DocumentAccess: Sendable {
     package var readable = false
     package var editable = false
     package var manageable = false
+    /// Hozzáadhat és eltávolíthat szerkesztőket a projektben: csak az admin és a projekt létrehozója (tulajdonosa).
+    package var invitable = false
     var listed = false
     package var locked = false
     package var hidden = false
@@ -833,7 +905,7 @@ package final class WorksheetStore: @unchecked Sendable {
         menu.owner = projectRule.owner
         menu.guestReadable = projectRule.guestReadable
         return DocumentAccess(readable: readable && !locked, editable: editable && !locked && (!frozen || admin || owner),
-            manageable: (admin || member) && !locked, listed: readable && !page.hidden,
+            manageable: (admin || member) && !locked, invitable: (admin || owner) && !locked, listed: readable && !page.hidden,
             locked: readable && locked, hidden: page.hidden, projectRule: menu, sheetRule: menu,
             editorNames: names.sorted(), protectedByPassword: protected, frozen: frozen, passwordRequired: locked)
     }
@@ -919,6 +991,10 @@ package final class WorksheetStore: @unchecked Sendable {
             let existing = try readSettings()
             next.users = existing.users
             next.preferences = existing.preferences
+            // A kérelmek megmaradnak; a kérés szabálya csak akkor változik, ha a hívó megadta.
+            next.accessRequests = existing.accessRequests
+            next.rejectedGoogle = existing.rejectedGoogle
+            next.googleAccess = settings.googleAccess ?? existing.googleAccess
             try saveSiteSettings(next)
         }
     }
@@ -1212,6 +1288,11 @@ package final class WorksheetStore: @unchecked Sendable {
                 next.rules[ctx.directory]?.guestReadable = mode == "public"
             case "grant", "revoke":
                 guard path.parts.count == 1, let name = operation.value else { throw Abort(.badRequest) }
+                // Meghívni csak a saját (általa létrehozott) projektbe lehet; az admin bármelyikbe. A meghívott fiók
+                // szerepköre nem változik: szerkesztő szerepkört csak admin adhat (adminoldal), ezért csak ilyen fiók hívható meg.
+                guard rights.invitable else {
+                    throw Abort(.forbidden, reason: "Szerkesztőt csak a projekt létrehozója vagy adminisztrátor adhat hozzá és távolíthat el.")
+                }
                 var editors = Set(ctx.local.editors ?? [])
                 if operation.action == "grant" {
                     guard try readUsers().contains(where: { $0.name == name && $0.role == .editor }) else {
@@ -2116,6 +2197,127 @@ package final class WorksheetStore: @unchecked Sendable {
         }
     }
 
+    // MARK: Adminisztrátori jelzések
+
+    /// Az adminokra váró teendők, fajtánként egy jelzés (ami nem áll fenn, az nincs a listában).
+    package func adminMessages(now: Date = Date()) throws -> [AdminMessage] {
+        let settings = try lock.withLock { try readSettings() }
+        var messages: [AdminMessage] = []
+        let pending = liveRequests(settings, now: now).count
+        if pending > 0 {
+            messages.append(AdminMessage(kind: .accessRequests, count: pending,
+                                         text: "\(pending) hozzáférési kérelem vár elbírálásra", link: "/admin#access-requests"))
+        }
+        return messages
+    }
+
+    // MARK: Hozzáférés-kérés Google-fiókkal
+
+    /// Ennyi ideig él egy elbírálatlan kérelem, és ennyi függő kérelem lehet egyszerre.
+    static let accessRequestLifetime: Double = 30 * 24 * 3600
+    static let accessRequestLimit = 50
+
+    private func liveRequests(_ settings: SiteSettings, now: Date) -> [AccessRequest] {
+        (settings.accessRequests ?? []).filter { $0.date > now.timeIntervalSince1970 - Self.accessRequestLifetime }
+    }
+
+    private func requestState(_ email: String, in settings: SiteSettings, now: Date) -> AccessRequestState {
+        guard settings.googleAccess?.allows(email) == true else { return .closed }
+        if settings.rejectedGoogle?.contains(email) == true { return .rejected }
+        if let request = liveRequests(settings, now: now).first(where: { $0.email == email }) { return .pending(request) }
+        return .open
+    }
+
+    package func accessRequestState(email: String, now: Date = Date()) throws -> AccessRequestState {
+        guard let email = try? normalizedGoogleEmail(email) else { return .closed }
+        return try lock.withLock { requestState(email, in: try readSettings(), now: now) }
+    }
+
+    /// A függő kérelmek (a legrégebbi elöl) és az elutasított címek az adminoldalhoz.
+    package func accessRequests(now: Date = Date()) throws -> (pending: [AccessRequest], rejected: [String]) {
+        try lock.withLock {
+            let settings = try readSettings()
+            return (liveRequests(settings, now: now).sorted { $0.date < $1.date }, (settings.rejectedGoogle ?? []).sorted())
+        }
+    }
+
+    /// Kérelem beadása a Google által igazolt címmel; címenként egy kérelem él (az új a régit váltja).
+    package func requestAccess(email raw: String, name: String, now: Date = Date()) throws {
+        guard let email = try normalizedGoogleEmail(raw) else { throw Abort(.badRequest) }
+        guard validSlug(name) else {
+            throw Abort(.unprocessableEntity, reason: "A felhasználónév kisbetűket, számokat és kötőjelet tartalmazhat.")
+        }
+        try lock.withLock {
+            var settings = try readSettings()
+            let users = settings.users ?? []
+            guard !users.contains(where: { $0.google == email }) else { throw Abort(.conflict, reason: "Ehhez a Google-fiókhoz már tartozik fiók.") }
+            switch requestState(email, in: settings, now: now) {
+            case .closed: throw Abort(.forbidden, reason: "Ezzel a Google-fiókkal nem kérhető hozzáférés.")
+            case .rejected: throw Abort(.forbidden, reason: "A kérelmedet az adminisztrátor elutasította.")
+            case .open, .pending: break
+            }
+            guard !users.contains(where: { $0.name == name }) else {
+                throw Abort(.unprocessableEntity, reason: "Ez a felhasználónév már foglalt, válassz másikat.")
+            }
+            var requests = liveRequests(settings, now: now).filter { $0.email != email }
+            guard requests.count < Self.accessRequestLimit else {
+                throw Abort(.tooManyRequests, reason: "Most túl sok kérelem vár elbírálásra. Próbáld később, vagy szólj az adminisztrátornak.")
+            }
+            requests.append(AccessRequest(email: email, name: name, date: now.timeIntervalSince1970))
+            settings.accessRequests = requests
+            try saveSiteSettings(settings)
+        }
+    }
+
+    /// Jóváhagyás: új fiók jön létre a megadott névvel és szerepkörrel (jelszó nélkül, csak Google-belépéssel),
+    /// vagy ha a név egy meglévő, Google-fiók nélküli felhasználóé, a cím hozzá kapcsolódik (a szerepköre marad).
+    package func approveAccess(email raw: String, name: String, role: Role, now: Date = Date()) throws {
+        guard let email = try normalizedGoogleEmail(raw) else { throw Abort(.badRequest) }
+        guard validSlug(name) else {
+            throw Abort(.unprocessableEntity, reason: "A felhasználónév kisbetűket, számokat és kötőjelet tartalmazhat.")
+        }
+        try lock.withLock {
+            var users = try readUsers()
+            guard liveRequests(try readSettings(), now: now).contains(where: { $0.email == email }) else {
+                throw Abort(.notFound, reason: "A kérelem már nem található.")
+            }
+            guard !users.contains(where: { $0.google == email }) else { throw Abort(.conflict, reason: "Ehhez a Google-fiókhoz már tartozik fiók.") }
+            if let index = users.firstIndex(where: { $0.name == name }) {
+                guard users[index].google == nil else {
+                    throw Abort(.conflict, reason: "Ehhez a felhasználóhoz már másik Google-fiók tartozik.")
+                }
+                users[index].google = email
+            } else {
+                let hash = try Bcrypt.hash(Data([UInt8].random(count: 32)).base64EncodedString())
+                users.append(User(name: name, role: role, passwordHash: hash, google: email))
+            }
+            try writeUsers(users)
+        }
+    }
+
+    /// Elutasítás: a kérelem törlődik, és a cím nem kérhet újra, amíg az admin fel nem oldja.
+    package func rejectAccess(email raw: String) throws {
+        guard let email = try normalizedGoogleEmail(raw) else { throw Abort(.badRequest) }
+        try lock.withLock {
+            var settings = try readSettings()
+            settings.accessRequests?.removeAll { $0.email == email }
+            var rejected = (settings.rejectedGoogle ?? []).filter { $0 != email }
+            rejected.append(email)
+            settings.rejectedGoogle = Array(rejected.suffix(500))
+            try saveSiteSettings(settings)
+        }
+    }
+
+    /// Az elutasítás feloldása: a cím újra kérhet hozzáférést.
+    package func forgetRejectedAccess(email raw: String) throws {
+        guard let email = try normalizedGoogleEmail(raw) else { throw Abort(.badRequest) }
+        try lock.withLock {
+            var settings = try readSettings()
+            settings.rejectedGoogle?.removeAll { $0 == email }
+            try saveSiteSettings(settings)
+        }
+    }
+
     package func removeUser(named name: String) throws {
         try lock.withLock {
             let users = try readUsers()
@@ -2207,6 +2409,10 @@ package final class WorksheetStore: @unchecked Sendable {
         }
         var settings = try readSettings()
         settings.users = users
+        // Amelyik Google-fiók már egy felhasználóé, ahhoz nem tartozhat függő kérelem vagy elutasítás.
+        let linked = Set(users.compactMap(\.google))
+        settings.accessRequests?.removeAll { linked.contains($0.email) }
+        settings.rejectedGoogle?.removeAll { linked.contains($0) }
         try saveSiteSettings(settings)
     }
 

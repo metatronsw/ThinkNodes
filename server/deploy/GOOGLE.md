@@ -9,7 +9,7 @@ A Google-bejelentkezés nem kötelező: amíg nincs beállítva, a belépőoldal
 
 - A belépőoldalon megjelenik a „Belépés Google-fiókkal” gomb. A jelszavas belépés változatlanul megmarad.
 - A Google csak azonosít: megmondja a szervernek, hogy a böngésző előtt ülő személy melyik e-mail-cím tulajdonosa. Hogy ki mit láthat és szerkeszthet, azt továbbra is a ThinkNodes-fiók szerepköre és a projektek jogosultságai döntik el.
-- A Google-től nem jön létre új fiók. Belépni csak azzal a Google-fiókkal lehet, amelynek az e-mail-címét az adminisztrátor előre hozzárendelte egy ThinkNodes-felhasználóhoz.
+- A Google-től magától nem jön létre új fiók. Belépni csak azzal a Google-fiókkal lehet, amelynek az e-mail-címét az adminisztrátor hozzárendelte egy ThinkNodes-felhasználóhoz. Ha az adminisztrátor bekapcsolja, az ismeretlen Google-fiók hozzáférést kérhet, amelyet az adminisztrátor bírál el (lásd „Hozzáférés-kérés”).
 - A szerver a Google-től csak az e-mail-címet kéri (`openid email`), nevet, profilképet, naptárat, fájlokat nem. A címen kívül semmit nem tárol a Google-fiókról.
 
 ## Előfeltételek
@@ -107,6 +107,27 @@ Tudnivalók:
 - A Google-fiók mező csak akkor látszik az adminoldalon, ha a Google-bejelentkezés be van kapcsolva.
 - A hozzárendelés a projektadatok között, a `/var/lib/thinknodes/Projects/.settings.json` fájlban tárolódik (a felhasználó `google` mezője), így a mentésekkel együtt mozog.
 
+## Hozzáférés-kérés
+
+Alapból ki van kapcsolva: az ismeretlen Google-fiók csak elutasító üzenetet kap. Bekapcsolva a felhasználó maga kérhet fiókot, de belépni csak adminisztrátori jóváhagyás után tud.
+
+**Bekapcsolás:** `/admin` → „Hozzáférés” → „Ismeretlen Google-fiókkal lehet hozzáférést kérni”. Alatta megadható, mely e-mail-domainekről fogad a szerver kérelmet (pl. `ceg.hu, masik.com`); üresen hagyva bármelyik Google-fiók kérhet.
+
+**A felhasználó oldaláról:**
+
+1. A belépőoldalon a „Belépés Google-fiókkal” gombbal azonosítja magát a Google-nál.
+2. Mivel a címéhez nincs fiók, a „Hozzáférés kérése” oldalra jut. Itt megad egy kért felhasználónevet (kisbetű, szám, kötőjel; a szerver az e-mail-címből javasol egyet), és elküldi.
+3. Ha később újra a Google-gombbal próbál belépni, azt látja, hogy a kérelme elbírálásra vár, vagy hogy elutasították. Jóváhagyás után ugyanezzel a gombbal belép. Értesítést nem kap (a szerver nem küld e-mailt), ezért érdemes szólni neki.
+
+**Az adminisztrátor oldaláról:**
+
+- A fejléc **Admin** gombján piros jelvény mutatja, hány kérelem vár; minden oldalon látszik, és új kérelemnél magától frissül. Az adminoldal tetején a „Teendők” lista a kérelmekhez visz.
+- A „Hozzáférési kérelmek” panelen minden kérelemnél látszik az e-mail-cím és a beadás napja. A felhasználónév átírható, a szerepkör választható (alapból Vendég), majd **Jóváhagyás** vagy **Elutasítás**.
+- Jóváhagyáskor jelszó nélküli fiók jön létre, amelybe a kérelmező a Google-fiókjával tud belépni. Ha a megadott név egy meglévő, Google-fiók nélküli felhasználóé, új fiók helyett a cím ahhoz a felhasználóhoz kapcsolódik, a szerepköre nem változik.
+- Elutasítás után a cím nem tud újra kérni. Az „Elutasított címek” listában a **Feloldás** gombbal ez visszavonható; az is feloldja, ha az adminisztrátor a címet kézzel hozzárendeli egy felhasználóhoz.
+
+**Korlátok:** címenként egy kérelem él (az újabb a régit váltja), egyszerre legfeljebb 50 kérelem várhat, az elbírálatlan kérelem 30 nap után megszűnik. A kérelem önmagában semmilyen hozzáférést nem ad.
+
 ## 5. Kipróbálás
 
 1. Jelentkezz ki, nyisd meg a `/login` oldalt: a jelszavas űrlap alatt ott a „Belépés Google-fiókkal” gomb.
@@ -124,7 +145,7 @@ Szabványos OpenID Connect „authorization code” folyamat, PKCE-vel:
 3. **Visszatérés** (`GET /login/google/callback`): a Google egy egyszer használható kóddal küldi vissza a böngészőt. A szerver ellenőrzi, hogy a state ugyanaz-e, amit ő adott ki ennek a böngészőnek (így más nem tud idegen belépést ráerőltetni a felhasználóra).
 4. **Kódbeváltás**: a szerver közvetlenül, HTTPS-en a Google-hoz fordul (`oauth2.googleapis.com/token`), és a kódot a klienstitokkal és a PKCE-ellenőrzővel egy azonosító tokenre váltja. Ehhez a szervernek ki kell látnia az internetre.
 5. **Ellenőrzés**: a tokenben a szerver megnézi, hogy a Google adta-e ki, ennek a kliensnek szól-e, nem járt-e le, a nonce egyezik-e, és hogy a Google igazoltnak jelzi-e az e-mail-címet.
-6. **Fiók keresése**: ha a cím hozzá van rendelve egy felhasználóhoz, új munkamenet indul az ő nevében, ugyanolyan, mint jelszavas belépés után. Ha nincs, a belépés elutasítva.
+6. **Fiók keresése**: ha a cím hozzá van rendelve egy felhasználóhoz, új munkamenet indul az ő nevében, ugyanolyan, mint jelszavas belépés után. Ha nincs, a belépés elutasítva; bekapcsolt hozzáférés-kérésnél a látogató a kérelem oldalára jut, ahol csak kérelmet adhat be (az igazolt címe a munkamenetében marad, bejelentkezve nincs).
 
 A munkamenet a Google-tól függetlenül él tovább: ha a felhasználó kilép a Google-ból, a ThinkNodes-ban bent marad a szerver újraindításáig vagy a kijelentkezésig. A hozzáférés visszavonása ezért a ThinkNodes adminoldalán történik (Google-fiók leválasztása, szerepkör módosítása vagy a felhasználó törlése), ez azonnal hat.
 

@@ -1,5 +1,14 @@
 # Változások
 
+## 2026-11-24 – Hozzáférés-kérés Google-fiókkal, adminisztrátori jelzések, meghívási szabály
+
+- **Hozzáférés-kérés.** Ismeretlen, a Google által igazolt címmel belépett látogató a `/login/request` oldalon kérelmet adhat be (kért felhasználónév). Az admin a Beállítások oldal „Hozzáférési kérelmek” paneljén jóváhagyja (felhasználónév, szerepkör; meglévő, Google-fiók nélküli felhasználó nevével a cím ahhoz kapcsolódik) vagy elutasítja; az elutasítás feloldható. Alapból kikapcsolva; az adminoldalon kapcsolható és e-mail-domainekre szűkíthető. Korlátok: címenként egy kérelem, legfeljebb 50 függő, 30 nap után lejár. Tárolás a `.settings.json`-ban (`googleAccess`, `accessRequests`, `rejectedGoogle`). Útvonalak: `GET/POST /login/request`, `POST /admin/requests`.
+- **Adminisztrátori jelzések** (`AdminMessage`, `WorksheetStore.adminMessages()`): közös lista az adminokra váró teendőkről, későbbi fajtákkal bővíthető. A fejléc Admin gombján jelvény mutatja a darabszámot (minden oldalon), az adminoldal tetején „Teendők” panel. Most a függő hozzáférés-kérelmeket jelzi.
+- **Új szabály: projektbe csak a létrehozója és az admin hívhat meg szerkesztőt** (és távolíthat el). Eddig bármelyik meghívott szerkesztő is megtehette. Új `DocumentAccess.invitable`; a `grant`/`revoke` művelet, az `/api/worksheet-users` és a „Szerkesztők kezelése” gomb/menüpont (`Public/cards.js`, `data-invite`) ezt követi. Fiók-szerepkört továbbra is csak admin ad; meghívni csak szerkesztő szerepkörű fiókot lehet.
+- Javítás: szűk képernyőn a Google-fiók mezős felhasználósor nem váltott egyoszlopos elrendezésre (`app.css`).
+- Tesztek: `unknownGoogleAccountCanRequestAccess`, a `projectPoliciesFollowDirectory` és a `worksheetRoundTrip` kiegészítve; 72 Swift teszt rendben. Böngészőben ellenőrizve (tesztmód, mintakérelmek): jelvény, „Teendők”, kérelmek panelje. Nem ellenőrzött böngészőben: a kérelem oldala és a „Szerkesztők kezelése” menüpont elrejtése (a `cards.js` módosítása); valódi Google-klienssel továbbra sem futott.
+- Dokumentáció: `server/deploy/GOOGLE.md` („Hozzáférés-kérés”), README („Szerepkörök és meghívás”).
+
 ## 2026-11-24 – Google-bejelentkezés: éles beállítási útmutató, daemon.sh
 
 - Új `server/deploy/GOOGLE.md`: a Google-bejelentkezés beállítása a Fedora szerveren (OAuth-kliens létrehozása, visszatérési cím, `thinknodes.env`, fiókok hozzárendelése, működés, hibakeresés, biztonság).

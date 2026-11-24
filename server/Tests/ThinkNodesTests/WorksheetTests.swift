@@ -194,10 +194,12 @@ import VaporTesting
         #expect(!outsidersView.body.string.contains("aria-label=\"Szerkesztés\""))
         let tampered = try await save(browser, path: path, worksheet: worksheet, session: outsider)
         #expect(tampered.status == .forbidden)
-        let accounts = try await browser.sendRequest(.GET, "/api/worksheet-users/" + project.url, headers: ["Cookie": shared.cookie])
+        // A meghívott szerkesztő nem kezelheti a szerkesztőket; a létrehozó és az admin igen.
+        #expect(try await browser.sendRequest(.GET, "/api/worksheet-users/" + project.url, headers: ["Cookie": shared.cookie]).status == .forbidden)
+        let accounts = try await browser.sendRequest(.GET, "/api/worksheet-users/" + project.url, headers: ["Cookie": admin.cookie])
         #expect(accounts.status == .ok)
         #expect(try accounts.content.decode([String].self).contains("shared"))
-        let blockedAccounts = try await browser.sendRequest(.GET, "/api/worksheet-users/\(path)", headers: ["Cookie": shared.cookie])
+        let blockedAccounts = try await browser.sendRequest(.GET, "/api/worksheet-users/\(path)", headers: ["Cookie": admin.cookie])
         #expect(blockedAccounts.status == .forbidden)
 
         let page = try await browser.sendRequest(.GET, "/\(path)?note=elso")

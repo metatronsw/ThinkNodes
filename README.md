@@ -70,6 +70,7 @@ Nem kötelező. Ha a szerver környezetében mindkét változó meg van adva, a 
 - A Google-nál az „Authorized redirect URIs” közé pontosan azt a címet kell felvenni, amelyen a felhasználók a szervert elérik, a `/login/google/callback` útvonallal. A Google csak HTTPS-címet és nyilvános domainnevet fogad el (kivétel: `http://localhost`), LAN-IP-címet nem.
 - A Google csak azonosít: új fiók nem jön létre. Az adminisztrátor a Beállítások oldalon (`/admin`) rendeli a felhasználóhoz a Google-fiók e-mail-címét; belépni csak hozzárendelt, a Google által igazolt címmel lehet. Egy cím egy felhasználóhoz tartozhat.
 - Új felhasználó jelszó nélkül is létrehozható, ha Google-fiókot kap; a jelszavas belépés ilyenkor addig nem használható, amíg az admin jelszót nem ad. A hozzárendelés törlése a Google-lal indult munkameneteket is lezárja.
+- Hozzáférés-kérés (alapból kikapcsolva, az adminoldalon kapcsolható, e-mail-domainekre szűkíthető): az ismeretlen Google-fiók kérelmet adhat be, az admin jóváhagyja (felhasználónév, szerepkör) vagy elutasítja. A fejléc Admin gombján jelvény mutatja a függő kérelmek számát.
 - Tesztmódban (`--test`) a Google-bejelentkezés ki van kapcsolva.
 - Élesben a `daemon.sh` által telepített szolgáltatás a `/var/lib/thinknodes/thinknodes.env` fájlból olvassa a változókat; a fájlt a `daemon.sh` hozza létre. A teljes beállítás lépésről lépésre (Google Cloud Console, hozzárendelés, hibakeresés): `server/deploy/GOOGLE.md`.
 
@@ -111,6 +112,12 @@ A szerkesztő vásznának helyi menüjében a **Prezentáció beszúrása** para
 A megtekintő **Prezentációk** gombjánál projektjogosultsággal szűkíthető az olvasók köre és beállítható a prezentáció jelszava. Minden fájlra külön érvényes a projekt, az útvonalon lévő mappák és a prezentáció szabálya. Egy helyi beállítás csak szűkítheti az örökölt hozzáférést.
 
 A böngésző elkülönített környezetben futtatja a prezentációt. A prezentáció nem fér hozzá a ThinkNodes sütijeihez, böngészőtárhelyéhez és bejelentkezett munkamenetéhez, nem küldhet űrlapot és nem ágyazható más oldalba. A mappán belüli relatív CSS-, kép-, font-, média- és klasszikus JavaScript-fájlok, valamint a külső HTTPS-források (például Tailwind CDN, Google Fonts) betöltődnek. Ha a mappában nincs `index.html`, de pontosan egy HTML-fájl van (például `code.html`), az lesz a belépő. A védett prezentációk relatív erőforrásai a megnyitáskor kapott, munkamenethez kötött ideiglenes útvonalon töltődnek be. HTTPS-en ehhez egy prezentációra korlátozott biztonságos süti is szükséges, HTTP-n (`--http`) az útvonal önmagában elég. A modulbetöltés és a ThinkNodes felé irányuló, programból indított hálózati kérések nem támogatottak; a prezentáción kívülre mutató relatív hivatkozások (`../`) 404-et adnak.
+
+## Szerepkörök és meghívás
+
+- Fiók-szerepkört (vendég, szerkesztő, adminisztrátor) csak adminisztrátor adhat, az `/admin` oldalon.
+- Projektbe szerkesztőt csak a projekt létrehozója és az adminisztrátor hívhat meg és távolíthat el („Szerkesztők kezelése”); a meghívott szerkesztő nem. Meghívni csak szerkesztő szerepkörű fiókot lehet, a meghívás a fiók szerepkörét nem változtatja.
+- Adminisztrátori jelzések (`AdminMessage`, `WorksheetStore.adminMessages()`): az adminokra váró teendők közös listája. A fejléc Admin gombján jelvény mutatja az összesített darabszámot, az adminoldal „Teendők” panelje a tételeket. Most egy fajtája van (függő hozzáférés-kérelmek); új fajtához új `Kind` és egy új ág kell az `adminMessages()` függvényben.
 
 ## Közös szerkesztés
 

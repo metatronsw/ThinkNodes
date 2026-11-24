@@ -148,8 +148,9 @@ export function documentEntries(card) {
     [card.dataset.frozen === "true" ? "Szerkesztés feloldása" : "Szerkesztés zárolása", () => change(card, "freeze"), "hand"],
     input("Átnevezés", "rename", "Új útvonalnév", "edit"),
   );
+  // Szerkesztőt csak a projekt létrehozója és az admin hívhat meg (data-invite).
+  if (card.dataset.scope === "project" && card.dataset.invite === "true") entries.push(["Szerkesztők kezelése", () => editorsDialog(card), "plus"]);
   if (card.dataset.scope === "project") entries.push(
-    ["Szerkesztők kezelése", () => editorsDialog(card), "plus"],
     card.dataset.public === "true" ? ["Belső mód", () => change(card, "mode", "internal"), "folder"] : ["Nyilvános mód", () => change(card, "mode", "public"), "butterfly"],
   );
   return entries;
@@ -164,7 +165,7 @@ document.addEventListener("keydown", event => { if (event.key === "Escape") clos
 
 document.addEventListener("click", async event => {
   if (event.target.closest("[data-manage-editors]")) {
-    const card = document.querySelector("[data-current-document][data-scope=project][data-manage=true]");
+    const card = document.querySelector("[data-current-document][data-scope=project][data-invite=true]");
     if (card) await editorsDialog(card);
     return;
   }
