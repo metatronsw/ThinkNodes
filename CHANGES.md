@@ -1,5 +1,11 @@
 # Változások
 
+## 2026-11-24 – Táblázat / CSV: cellaszerkesztés közben nincs lekerekített keret
+
+- Cellaszerkesztés közben a doboz nem kapja meg a saját kijelölés vastag, lekerekített, világító keretét (`syncUi`, `editor.js`); a többi résztvevő továbbra is látja, hogy a doboz foglalt.
+- A szerkesztett cella kerete a cellán belül, szögletesen áll (az általános fókuszkeret 3 px-re kijjebb, lekerekítve rajzolódott); a szerkesztő gyökerének fókuszkerete megszűnt (`app.css`).
+- Ellenőrizve Chromiumban. A szerver újrafordítva és újraindítva (csak a stíluslap és a szkript verziószáma változott benne).
+
 ## 2026-11-24 – Táblázat / CSV: az Enter szerkesztést indít
 
 - Kijelölt cellán az Enter szerkesztést indít (mint az F2), nem lép a következő sorra. Szerkesztés közben az Enter elfogadja a beírást, és a cella kijelölve marad; továbblépni a nyilakkal vagy Tabbal lehet (`table-edit.js`, `keydown`).

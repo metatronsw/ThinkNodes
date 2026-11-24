@@ -4707,6 +4707,8 @@ createApp({
       }
       const snap = preview.value?.target ?? junctionTarget.value;
       const found = candidates.value, editing = editingObject.value, containers = containerIDs.value;
+      // Cellaszerkesztés közben a doboz nem kapja meg a saját kijelölés (lekerekített, vastag) keretét.
+      const gridEditing = tableEdit.value?.id;
       const drops = containerDropTargets.value, resize = resizeTarget.value, moving = motions.value;
       const members = drag?.type === "batch" ? drag.members : null;
       const index = nodeIndex = nodeMap.value;
@@ -4718,7 +4720,7 @@ createApp({
         const peer = selectors.find(p => !p.mine && !p.viewing) ?? selectors.find(p => !p.mine);
         nodes.set(id, {
           node: toRaw(node), claimed: !!owner, peerColor: peer?.color ?? null,
-          own: selectors.some(p => p.mine) || !!group?.nodes.has(id) || !!hits?.nodes.has(id),
+          own: id !== gridEditing && (selectors.some(p => p.mine) || !!group?.nodes.has(id) || !!hits?.nodes.has(id)),
           occupied: present.some(p => !p.mine && !p.viewing),
           snap: snap === id, candidate: found.has("node/" + id), editing: editing === id,
           container: containers.has(id), drop: drops.has(id), resize: resize === id,
