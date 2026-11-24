@@ -688,6 +688,21 @@ package enum CommonLibrary {
         return BrowseListing(path: path, parent: parent, manageable: false, entries: entries)
     }
 
+    /// A közös könyvtár egy fájlja a lemezen (`@common/mappa` forrás + fájlnév); nil, ha nincs ilyen vagy nem szabályos fájl.
+    static func file(_ file: CanvasFile, publicDirectory: String) -> URL? {
+        guard file.isCommon, let source = file.source, validSegment(file.asset) else { return nil }
+        var url = URL(fileURLWithPath: publicDirectory).appendingPathComponent("common", isDirectory: true)
+        for folder in source.split(separator: "/").dropFirst().map(String.init) {
+            guard validSegment(folder), folder != ".." else { return nil }
+            url.appendPathComponent(folder, isDirectory: true)
+            guard (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true else { return nil }
+        }
+        url.appendPathComponent(file.asset)
+        guard let info = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]),
+              info.isRegularFile == true, info.isSymbolicLink != true else { return nil }
+        return url
+    }
+
     private static func validSegment(_ value: String) -> Bool {
         !value.isEmpty && value.utf8.count <= 200 && !value.hasPrefix(".") && !value.contains("/") && !value.contains("\\")
             && !value.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)

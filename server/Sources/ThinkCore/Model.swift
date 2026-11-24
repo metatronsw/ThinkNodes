@@ -1016,7 +1016,7 @@ package final class WorksheetStore: @unchecked Sendable {
             let ctx = try context(path)
             try authorize(accessLocked(ctx, user: user, unlocks: unlocks), user: user)
             if createOnly { throw Abort(.conflict) }
-            return try reconcile(context: ctx, url: url)
+            return try reconcile(context: ctx, url: url, path: path)
         }
         if path.parts.count == 1 {
             guard let user else { throw Abort(.unauthorized) }
@@ -1069,7 +1069,7 @@ package final class WorksheetStore: @unchecked Sendable {
             let url = try worksheetURL(path)
             let ctx = try context(path)
             try authorize(accessLocked(ctx, user: user, unlocks: unlocks), user: user)
-            let sheet = resolvedFileNames(try read(url), metadata: ctx.local)
+            let sheet = resolvedFileNames(try read(url), metadata: ctx.local, at: path, project: ctx.project)
             if let name = sheet.previewImage,
                let file = try attachments(at: url, named: name, metadata: ctx.local).first,
                let mime = previewType(file) { return .image(file, mime) }
@@ -1087,12 +1087,17 @@ package final class WorksheetStore: @unchecked Sendable {
     }
 
     /// Szövegfájl-objektumok tartalma (asset → szöveg) a vászon rendereléséhez; legfeljebb 200 KB fájlonként.
-    private func textContents(_ sheet: Worksheet, url: URL, metadata: DocumentPolicy, project: WorksheetPath? = nil) -> [String: String] {
+    private func textContents(_ sheet: Worksheet, url: URL, metadata: DocumentPolicy, project: WorksheetPath? = nil,
+                              commonDirectory: String? = nil) -> [String: String] {
         var result: [String: String] = [:]
         for node in sheet.nodes where node.isTextFile {
-            guard let asset = node.file?.asset, result[asset] == nil,
-                  let file = node.file?.source == nil ? try? attachments(at: url, named: asset, metadata: metadata).first
-                      : project.flatMap({ node.file?.sheet(from: $0) }).flatMap({ try? sharedFile($0, named: asset) }),
+            guard let source = node.file, result[source.asset] == nil else { continue }
+            let asset = source.asset
+            // Közös könyvtár (Public/common): bárki olvashatja; a projekt fájljai a tulajdonos lap mappájából.
+            let located: URL? = source.isCommon ? commonDirectory.flatMap { CommonLibrary.file(source, publicDirectory: $0) }
+                : source.source == nil ? try? attachments(at: url, named: asset, metadata: metadata).first
+                : project.flatMap({ source.sheet(from: $0) }).flatMap({ try? sharedFile($0, named: asset) })
+            guard let file = located,
                   let handle = try? FileHandle(forReadingFrom: file) else { continue }
             defer { try? handle.close() }
             // A táblázat JSON-ja csak egészben olvasható; a többi szövegfájlnak elég az eleje.
@@ -1102,11 +1107,12 @@ package final class WorksheetStore: @unchecked Sendable {
         return result
     }
 
-    package func fileTexts(_ path: WorksheetPath, sheet: Worksheet, user: User?, unlocks: Set<String>) throws -> [String: String] {
+    package func fileTexts(_ path: WorksheetPath, sheet: Worksheet, user: User?, unlocks: Set<String>,
+                           commonDirectory: String? = nil) throws -> [String: String] {
         try lock.withLock {
             let ctx = try context(path)
             try authorize(accessLocked(ctx, user: user, unlocks: unlocks), user: user)
-            return textContents(sheet, url: try worksheetURL(path), metadata: ctx.local, project: path)
+            return textContents(sheet, url: try worksheetURL(path), metadata: ctx.local, project: path, commonDirectory: commonDirectory)
         }
     }
 
@@ -1122,7 +1128,7 @@ package final class WorksheetStore: @unchecked Sendable {
             if try readSettings().requireLogin && user == nil { throw Abort(.unauthorized) }
             let ctx = try context(path)
             try authorize(accessLocked(ctx, user: user, unlocks: unlocks), user: user)
-            return try reconcile(context: ctx, url: worksheetURL(path))
+            return try reconcile(context: ctx, url: worksheetURL(path), path: path)
         }
     }
 
@@ -1373,13 +1379,36 @@ package final class WorksheetStore: @unchecked Sendable {
         return renamed
     }
 
-    private func resolvedFileNames(_ sheet: Worksheet, metadata: DocumentPolicy) -> Worksheet {
+    /// Olvasáskor a doboz a tulajdonos lap mappájának aktuális állapotát kapja: a fájl valódi nevét (átnevezés után
+    /// a többi lapon is), és a publikus jogot (`webPublic`, a pillangó ikon) – fájlnál a tulajdonos mappa
+    /// `publicFiles` listájából, .web hivatkozásnál a .web mappa beállításából. `path` nélkül csak a saját mappa nevei.
+    private func resolvedFileNames(_ sheet: Worksheet, metadata: DocumentPolicy, at path: WorksheetPath? = nil, project: URL? = nil) -> Worksheet {
         var result = sheet
+        var owners: [String: DocumentPolicy?] = [:]
+        var webs: [String: Bool] = [:]
+        func owner(of file: CanvasFile) -> DocumentPolicy? {
+            guard let source = file.source else { return metadata }
+            guard let path, !file.isCommon, let sheet = file.sheet(from: path) else { return nil }
+            if let known = owners[source] { return known }
+            let found = sheet.url == path.url ? metadata : (try? context(sheet))?.local
+            owners[source] = .some(found)
+            return found
+        }
         for index in sheet.nodes.indices {
             let node = sheet.nodes[index]
-            guard let file = node.file, file.source == nil, let name = metadata.mediaFiles?[file.asset] else { continue }
-            result.nodes[index].file?.filename = node.isImage ? (name as NSString).deletingPathExtension : name
-            if node.isImage { result.nodes[index].file?.fileExtension = (name as NSString).pathExtension }
+            if let file = node.file {
+                guard let policy = owner(of: file) else { continue }
+                if let name = policy.mediaFiles?[file.asset] {
+                    result.nodes[index].file?.filename = node.isImage ? (name as NSString).deletingPathExtension : name
+                    if node.isImage { result.nodes[index].file?.fileExtension = (name as NSString).pathExtension }
+                }
+                if path != nil { result.nodes[index].webPublic = isPublic(file.asset, metadata: policy) ? true : nil }
+            } else if let project, let reference = node.link?.webReference {
+                let key = reference.relativePath
+                let open = webs[key] ?? (((try? webPolicy(at: project.appendingPathComponent(key, isDirectory: true))) ?? nil)?.guestReadable == true)
+                webs[key] = open
+                result.nodes[index].webPublic = open ? true : nil
+            }
         }
         return result
     }
@@ -1395,7 +1424,7 @@ package final class WorksheetStore: @unchecked Sendable {
                           let path = try? WorksheetPath(parts + [entry.lastPathComponent]),
                           (try? context(path)) != nil, let url = try? worksheetURL(path),
                           files.fileExists(atPath: url.path) else { continue }
-                    if let ctx = try? context(path) { _ = try? reconcile(context: ctx, url: url) }
+                    if let ctx = try? context(path) { _ = try? reconcile(context: ctx, url: url, path: path) }
                     visit(entry, parts: path.parts)
                 }
             }
@@ -1417,8 +1446,8 @@ package final class WorksheetStore: @unchecked Sendable {
         return DocumentPolicy(mediaFiles: media.isEmpty ? nil : media)
     }
 
-    private func reconcile(context ctx: Context, url: URL) throws -> Worksheet {
-        let current = resolvedFileNames(try read(url), metadata: ctx.local)
+    private func reconcile(context ctx: Context, url: URL, path: WorksheetPath) throws -> Worksheet {
+        let current = resolvedFileNames(try read(url), metadata: ctx.local, at: path, project: ctx.project)
         guard current.nodes.count < 2_000 else { return current }
         let now = Date()
         pendingAttachments = pendingAttachments.filter { $0.value > now }

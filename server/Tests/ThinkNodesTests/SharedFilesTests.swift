@@ -90,6 +90,29 @@ import Vapor
     #expect(CanvasFile.validSource("@common/ikonok"))
 }
 
+/// Közös könyvtár (Public/common): a szövegfájl tartalma a megtekintőnek is megvan; a könyvtáron kívülre nem lát.
+@Test func commonLibraryTextIsReadForTheViewer() throws {
+    let directory = FileManager.default
+    let root = directory.temporaryDirectory.appendingPathComponent("thinknodes-common-\(UUID())")
+    defer { try? directory.removeItem(at: root) }
+    let assets = root.appendingPathComponent("Public")
+    try directory.createDirectory(at: assets.appendingPathComponent("common/leirasok"), withIntermediateDirectories: true)
+    try Data("# Közös leírás".utf8).write(to: assets.appendingPathComponent("common/leirasok/leiras.md"))
+    try Data("titok".utf8).write(to: assets.appendingPathComponent("kulso.md"))
+    let store = try WorksheetStore(root: root.appendingPathComponent("projects"))
+    try store.setUser(name: "owner", role: .admin, passwordHash: try Bcrypt.hash("x", cost: 4))
+    let owner = try #require(try store.user(named: "owner"))
+    let project = try WorksheetPath(["lap"])
+    var sheet = try store.open(project, user: owner)
+    sheet.nodes = [Idea(id: "kozos", type: "text", file: CanvasFile(asset: "leiras.md", source: "@common/leirasok", filename: "leiras.md"),
+                        position: Point(x: 0, y: 0), width: 340, height: 240)]
+    sheet = try store.update(project, worksheet: sheet, user: owner)
+    #expect(try store.fileTexts(project, sheet: sheet, user: owner, unlocks: [], commonDirectory: assets.path) == ["leiras.md": "# Közös leírás"])
+    #expect(try store.fileTexts(project, sheet: sheet, user: owner, unlocks: []).isEmpty)
+    #expect(CommonLibrary.file(CanvasFile(asset: "../kulso.md", source: "@common"), publicDirectory: assets.path) == nil)
+    #expect(CommonLibrary.file(CanvasFile(asset: "kulso.md", source: "@common/.."), publicDirectory: assets.path) == nil)
+}
+
 /// Markdown HTML: a sima sortörés új sor, és ahány üres sor van a forrásban, annyi látszik (kódblokkon kívül).
 @Test func markdownKeepsLineBreaksAndBlankLines() {
     #expect(markdownHTML("a\nb").contains("a<br />"))

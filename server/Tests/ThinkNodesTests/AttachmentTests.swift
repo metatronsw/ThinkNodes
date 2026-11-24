@@ -147,6 +147,37 @@ import VaporTesting
     #expect(!FileManager.default.fileExists(atPath: archived.path))
 }
 
+/// Közös fájl: az átnevezés és a publikus jog a többi lap dobozán is megjelenik (olvasáskor a szerver adja).
+@Test func sharedFileNameAndPublicStateFollowTheOwner() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-follow-\(UUID().uuidString)")
+    let store = try WorksheetStore(root: root)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try store.setUser(name: "admin", role: .admin, passwordHash: try Bcrypt.hash("x", cost: 4))
+    let admin = try #require(try store.user(named: "admin"))
+    let project = try WorksheetPath(["kozos"]), child = try WorksheetPath(["kozos", "al"])
+    var parent = try store.open(project, user: admin)
+    var sub = try store.open(child, user: admin)
+    let asset = try store.storeAttachment(Data("# Jegyzet".utf8), named: "jegyzet.md", at: project, user: admin, unlocks: [])
+    parent.nodes = [Idea(id: "parentfile", type: "text", file: CanvasFile(asset: asset, filename: "jegyzet.md"), position: Point(x: 0, y: 0), width: 340, height: 240)]
+    parent = try store.update(project, worksheet: parent, user: admin)
+    sub.nodes = [Idea(id: "childfile", type: "text", file: CanvasFile(asset: asset, source: "", filename: "jegyzet.md"), position: Point(x: 0, y: 0), width: 340, height: 240)]
+    sub = try store.update(child, worksheet: sub, user: admin)
+    #expect(try store.load(child, user: admin).nodes.first?.webPublic == nil)
+
+    // Átnevezés a tulajdonos lapon: az allap doboza a következő olvasáskor már az új nevet mutatja.
+    parent.nodes[0].file?.filename = "uj-nev.md"
+    parent = try store.update(project, worksheet: parent, user: admin)
+    #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("kozos/uj-nev.md").path))
+    #expect(try store.load(child, user: admin).nodes.first?.file?.filename == "uj-nev.md")
+
+    // Publikus jog: mindkét lap doboza a tulajdonos mappa állapotát kapja, akkor is, ha a dobozban más van elmentve.
+    try store.setFilePublic(asset, publicAccess: true, in: project, user: admin, unlocks: [])
+    #expect(try store.load(child, user: admin).nodes.first?.webPublic == true)
+    #expect(try store.load(project, user: admin).nodes.first?.webPublic == true)
+    try store.setFilePublic(asset, publicAccess: false, in: project, user: admin, unlocks: [])
+    #expect(try store.load(child, user: admin).nodes.first?.webPublic == nil)
+}
+
 /// Közös fájl: másik lapról is hivatkozható; lomtárba tételkor a többi lap doboza üres dobozzá válik.
 @Test func sharedFileReleaseUnlinksOtherSheets() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-release-\(UUID().uuidString)")

@@ -701,7 +701,7 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         let identity = try session(req, store: store)
         let (worksheet, texts) = try await req.application.threadPool.runIfActive {
             let sheet = try store.load(path, user: identity.user, unlocks: identity.unlocks)
-            return (sheet, try store.fileTexts(path, sheet: sheet, user: identity.user, unlocks: identity.unlocks))
+            return (sheet, try store.fileTexts(path, sheet: sheet, user: identity.user, unlocks: identity.unlocks, commonDirectory: assets))
         }
         switch req.parameters.get("format") {
         case "svg":
@@ -1224,7 +1224,7 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
             let children = try store.list(user: identity.user, childrenOf: path, unlocks: identity.unlocks)
             let access = try store.access(path, sheet: worksheet, user: identity.user, unlocks: identity.unlocks)
             let files = try store.contents(path, user: identity.user, unlocks: identity.unlocks)
-            let texts = try store.fileTexts(path, sheet: worksheet, user: identity.user, unlocks: identity.unlocks)
+            let texts = try store.fileTexts(path, sheet: worksheet, user: identity.user, unlocks: identity.unlocks, commonDirectory: assets)
             let pages = try children.map { child in
                 (path: child.path, worksheet: child.worksheet,
                  access: try store.access(child.path, sheet: child.worksheet, user: identity.user, unlocks: identity.unlocks))
