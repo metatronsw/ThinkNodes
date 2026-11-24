@@ -940,8 +940,10 @@ svg text { text-rendering: geometricPrecision; }
 /* A szerkesztő a doboz hátterét és szövegszínét követi (--tn-paper: a doboz kitöltése, editor.js renderFileBox);
    a ragadó fejlécek és a beviteli mezők ebből kevert, átlátszatlan árnyalatot kapnak. */
 .tn-table-editor .tn-table thead th { background: var(--tn-head); }
-.tn-sink { position: absolute; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; pointer-events: none; }
-.tn-table-editor { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; outline: none; color: inherit; background: transparent; font-size: 13px;
+/* Nincs pozicionálás a szerkesztő gyökerén és a billentyűzet-nyelőn: Safariban a foreignObject-beli pozicionált elem
+   (és minden leszármazottja) nagyított vásznon nem kattintható. */
+.tn-sink { flex: none; width: 1px; height: 1px; margin: 0 0 -1px; padding: 0; border: 0; opacity: 0; pointer-events: none; }
+.tn-table-editor { display: flex; flex-direction: column; height: 100%; min-height: 0; outline: none; color: inherit; background: transparent; font-size: 13px;
   --tn-head: color-mix(in srgb, currentColor 10%, var(--tn-paper, #fff)); --tn-line: color-mix(in srgb, currentColor 24%, transparent);
   --tn-mark: color-mix(in srgb, var(--accent) 28%, var(--tn-paper, #fff)); }
 .tn-table-editor:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
@@ -958,7 +960,21 @@ svg text { text-rendering: geometricPrecision; }
 .tn-color { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 24px; border: 1px solid #d9dfeb; border-radius: 5px; background: #fff; font-weight: 700; font-size: 12px; cursor: pointer; }
 .tn-color input { position: absolute; inset: auto 2px 1px 2px; width: calc(100% - 4px); height: 5px; padding: 0; border: 0; cursor: pointer; }
 .tn-problem { margin: 0; padding: 3px 6px; color: #b00020; font-size: 12px; }
+.tn-table-scroll-host { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .tn-table-scroll { flex: 1; min-height: 0; overflow: auto; }
+/* Saját görgetősáv Safariban (scrollbar-drag.js): a natív sáv rejtve, a sávok a görgethető elem mellett, rácsban állnak
+   (nem pozicionálva: a foreignObject-beli pozicionált elemeket a Safari rossz helyre teszi). */
+.tn-sb-host { display: grid !important; grid-template: minmax(0, 1fr) auto / minmax(0, 1fr) auto; }
+.tn-sb-host > .tn-sb-native-off { grid-area: 1 / 1; min-width: 0; min-height: 0; scrollbar-width: none; }
+.tn-sb-native-off::-webkit-scrollbar { display: none; }
+.tn-sb { box-sizing: border-box; overflow: hidden; cursor: default; touch-action: none; }
+.tn-sb[hidden] { display: none; }
+.tn-sb-y { grid-area: 1 / 2; width: 11px; padding: 0 2px; }
+.tn-sb-x { grid-area: 2 / 1; height: 11px; padding: 2px 0; }
+.tn-sb-thumb { box-sizing: border-box; border-radius: 4px; background: color-mix(in srgb, currentColor 45%, transparent); }
+.tn-sb-y .tn-sb-thumb { width: 100%; }
+.tn-sb-x .tn-sb-thumb { height: 100%; }
+.tn-sb:hover .tn-sb-thumb, .tn-sb:active .tn-sb-thumb { background: color-mix(in srgb, currentColor 65%, transparent); }
 .tn-table.tn-editing { font-size: 13px; }
 .tn-table.tn-editing td { cursor: cell; user-select: none; }
 .tn-table.tn-editing .tn-colhead th, .tn-table.tn-editing .tn-rowhead { position: sticky; background: var(--tn-head); color: color-mix(in srgb, currentColor 70%, transparent); font: 600 11px/1 system-ui, sans-serif; text-align: center; user-select: none; }

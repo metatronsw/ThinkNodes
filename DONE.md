@@ -6,6 +6,13 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **Safari 18: a szövegfájl-, CSV- és táblázatdoboz görgetősávja egérrel nem volt húzható (a görgő működött)** (2026-11-24)
+  - Ok: WebKit-hiba. SVG foreignObject-beli görgethető elem natív görgetősávja nem húzható, ha fölötte SVG-transzform áll (próbaoldallal igazolva: eltolásnál a függőleges, nagyításnál mindkét sáv halott). A sávra nyomott egér mozgását a WebKit a sávnak adja, a lap `pointermove`-ot sem kap, ezért kívülről nem pótolható. Az első két kísérlet (a sáv felismerése vászonkoordinátából, védelem a `pressNode`-ban) ezért nem segített.
+  - Javítás: WebKitben a natív sáv rejtve van, a görgethető elem mellett saját, normál elrendezésű sávok állnak (`Public/scrollbar-drag.js`, `.tn-sb*` az `app.css`-ben); más böngészőben marad a natív sáv. Automatizált Safari 18.6-ban ellenőrizve (hüvelyk húzása, sínre kattintás, mindkét irány; CSV, táblázat, táblázatszerkesztő).
+- **Safari: a táblázat szerkesztési módjában semmi nem volt kattintható** (2026-11-24, a fenti hiba keresésekor)
+  - Ok: a `.tn-table-editor` `position: relative` volt; Safariban a foreignObject-beli pozicionált elem és minden leszármazottja nagyított vásznon kiesik a találatvizsgálatból (a kattintás a mögötte lévő `.node-note`-ra ment).
+  - Javítás: a szerkesztő gyökere és a billentyűzet-nyelő (`.tn-sink`) nem pozicionált. Automatizált Safariban ellenőrizve: a cellakattintás kijelöl.
+
 - **Sötét kitöltésű szövegfájl- és táblázatdobozon a tartalom olvashatatlan volt** (2026-11-24)
   - Ok: a szerkesztőben a `.node-file` rögzített sötét szövegszíne (`#182335`) felülírta a doboz szövegszínét; a doboz kitöltése a palettából jött, így sötét témában sötét alapon sötét szöveg állt. A táblázat szerkesztési módja rögzített fehér volt.
   - Javítás: a tartalom a doboz szövegszínét (`textColor`, paletta 1) használja a szerkesztőben is; a táblázatszerkesztő a doboz hátteréből és szövegszínéből kevert színeket kap. Új: Keret be/ki kapcsoló (`frame: false`) szövegfájl-, kódfájl- és táblázatdobozon, és Szövegszín választó a táblázat Megjelenés paneljén. Teszt: `textFileBoxFrameCanBeSwitchedOffInEveryBackgroundMode`. Böngészőben nem ellenőriztem (a helyi `projects` mappa üres volt).

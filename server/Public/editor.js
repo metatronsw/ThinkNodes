@@ -25,6 +25,7 @@ import {renderTable, renderTableEditor, revealActive, tableToolbar} from "./tabl
 import {askNewTable, askReimport, createEmptyTable, createTableFromTSV, exportURL, extensionOf, importableExtensions, tableBoxProperties, tableFromSource, tableFromUpload} from "./table/table-files.js";
 import {looksTabular} from "./table/table-clipboard.js";
 import {detectSeparator} from "./table/table-csv.js";
+import {attachScrollbars, detachScrollbars} from "./scrollbar-drag.js";
 
 const mount = document.querySelector("#editor");
 const {path, csrf, user, motionRate} = mount.dataset;
@@ -2884,7 +2885,8 @@ createApp({
     // DOM-ból: Safariban a foreignObject-beli elemek getBoundingClientRect-je nem követi a vászon nagyítását és
     // eltolását, így ott a doboz húzása elkapta a görgetősávot.
     function onScrollbar(e, node, el) {
-      if (!el) return false;
+      // Safariban a natív sáv rejtve van, helyette saját sávok állnak az elem mellett (scrollbar-drag.js).
+      if (!el || el.classList.contains("tn-sb-native-off")) return false;
       const point = world(e.touches?.[0] ?? e), band = 16;
       const inset = parseFloat(getComputedStyle(el.closest(".node-file")).paddingRight) || 0;
       const x = point.x - node.position.x, y = point.y - node.position.y;
@@ -2940,7 +2942,8 @@ createApp({
         ]);
       } else if (root === "text") {
         content = h("div", {class: ["node-note", {"with-fold": backgroundMode(node) === "solid"}], style: {fontSize: (node.fontSize ?? 13) + "px"},
-          onPointerdown: e => scrollbarPress(e, node), onMousedown: e => scrollbarPress(e, node), onTouchstart: e => scrollbarPress(e, node), onWheel: stopScroll},
+          onPointerdown: e => scrollbarPress(e, node), onMousedown: e => scrollbarPress(e, node), onTouchstart: e => scrollbarPress(e, node), onWheel: stopScroll,
+          onVnodeMounted: ({el}) => attachScrollbars(el), onVnodeUpdated: ({el}) => attachScrollbars(el), onVnodeBeforeUnmount: ({el}) => detachScrollbars(el)},
           [renderFileText(node)]);
       } else {
         const ext = (file.filename ?? file.asset).split(".").pop().toUpperCase();

@@ -5,6 +5,7 @@ import {cellName, columnName, styleOf} from "./table-document.js";
 import {display} from "./table-format.js";
 import {tokenize} from "./table-formula.js";
 import {parseHTMLTable, tableMime} from "./table-clipboard.js";
+import {attachScrollbars, detachScrollbars} from "../scrollbar-drag.js";
 
 export const defaultColumnWidth = 80, defaultRowHeight = 24, previewRows = 200;
 
@@ -275,8 +276,10 @@ export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false
         onInput: e => edit.setDraft(e.target.value), onPointerdown: stop}),
     ]),
     edit.problem ? h("p", {class: "tn-problem", role: "alert"}, edit.problem) : null,
-    h("div", {class: "tn-table-scroll",
-      onVnodeMounted: ({el}) => { edit.viewport = el.clientHeight || 400; el.scrollTop = edit.scrollTop; },
+    // A görgethető rács külön tartóban áll: Safariban ide kerülnek mellé a saját görgetősávok (scrollbar-drag.js).
+    h("div", {class: "tn-table-scroll-host"}, [h("div", {class: "tn-table-scroll",
+      onVnodeMounted: ({el}) => { edit.viewport = el.clientHeight || 400; el.scrollTop = edit.scrollTop; attachScrollbars(el); },
+      onVnodeUpdated: ({el}) => attachScrollbars(el), onVnodeBeforeUnmount: ({el}) => detachScrollbars(el),
       onScroll: e => {
         const el = e.currentTarget;
         edit.viewport = el.clientHeight || 400;
@@ -287,7 +290,7 @@ export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false
         h("thead", [headerRow]),
         h("tbody", bodyRows),
       ]),
-    ]),
+    ])]),
   ]);
 }
 

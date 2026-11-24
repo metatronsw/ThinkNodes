@@ -10,6 +10,7 @@ import {openExternalLink} from "./links.js";
 import {flashNode, flashPoint} from "./ping.js";
 import {hideTooltip, showTooltip} from "./tooltip.js";
 import {justifyRows} from "./justify.js";
+import {attachScrollbars} from "./scrollbar-drag.js";
 import {liveConnection} from "./collaboration.js";
 
 import {useWorksheetGeometry, arrowLength, arrowTransform, edgeGeometry, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireGradientValues, wireLabelLayout} from "./geometry.js?v=23";
@@ -36,6 +37,8 @@ function bindCanvas() {
   for (const element of svg.querySelectorAll("[data-file-ink]")) {
     element.style.color = element.dataset.fileInk;
   }
+  // Safari: a fájldobozok natív görgetősávja nem húzható, saját sávot kapnak (scrollbar-drag.js).
+  for (const element of svg.querySelectorAll(".node-body > .node-note")) attachScrollbars(element);
   for (const element of svg.querySelectorAll("[data-font-size]")) {
     element.style.fontSize = element.dataset.fontSize + "px";
   }

@@ -1,5 +1,12 @@
 # Változások
 
+## 2026-11-24 – Safari: saját görgetősáv a fájldobozokon, kattintható táblázatszerkesztő
+
+- Ok: Safariban (WebKit) az SVG-transzform alatti foreignObject-ben a natív görgetősáv nem húzható, és a sávra nyomott egér mozgását a lap sem kapja meg. Ezért WebKitben a szövegfájl-, CSV- és táblázatdoboz (megjelenítés és cellaszerkesztés) natív sávja rejtve van, helyette az elem mellett saját sávok állnak: a hüvelyk húzható, a sínre kattintva odaugrik (`Public/scrollbar-drag.js`; bekötve: `editor.js`, `table/table-view.js`, `viewer.js`; stílus: `app.css` `.tn-sb*`). Más böngészőben nincs változás.
+- A táblázatszerkesztő gyökere (`.tn-table-editor`) és a billentyűzet-nyelő már nem pozicionált: Safariban emiatt a szerkesztőben semmi nem volt kattintható. A rács új tartót kapott (`.tn-table-scroll-host`).
+- A korábbi két kísérlet (sáv felismerése vászonkoordinátából, védelem a `pressNode`-ban) bent maradt, a többi böngészőben ez dönti el, hogy a doboz húzása vagy a görgetés indul.
+- Ellenőrizve automatizált Safari 18.6-ban és Chromiumban; JS tesztek (`table-engine`, `canvas-markdown`) rendben. Nyitva maradt: BUGS.md (oszlopszélesség-fogó Safariban, megjelenítő).
+
 ## 2026-11-24 – Hozzáférés-kérés Google-fiókkal, adminisztrátori jelzések, meghívási szabály
 
 - **Hozzáférés-kérés.** Ismeretlen, a Google által igazolt címmel belépett látogató a `/login/request` oldalon kérelmet adhat be (kért felhasználónév). Az admin a Beállítások oldal „Hozzáférési kérelmek” paneljén jóváhagyja (felhasználónév, szerepkör; meglévő, Google-fiók nélküli felhasználó nevével a cím ahhoz kapcsolódik) vagy elutasítja; az elutasítás feloldható. Alapból kikapcsolva; az adminoldalon kapcsolható és e-mail-domainekre szűkíthető. Korlátok: címenként egy kérelem, legfeljebb 50 függő, 30 nap után lejár. Tárolás a `.settings.json`-ban (`googleAccess`, `accessRequests`, `rejectedGoogle`). Útvonalak: `GET/POST /login/request`, `POST /admin/requests`.
