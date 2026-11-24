@@ -338,7 +338,7 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
                                    count: access.readable ? try store.list(user: identity.user, childrenOf: item.path, recursive: true, unlocks: identity.unlocks).count : 0)
             }
         }
-        return indexPage(projects, session: identity, updates: updates)
+        return indexPage(projects, session: identity, dataFolder: store.dataDirectoryPath, updates: updates)
     }
 
     app.get("open") { req -> Response in
@@ -1245,7 +1245,7 @@ private func projectBadges(_ access: DocumentAccess) -> String {
     }.joined()
 }
 
-private func indexPage(_ items: [ProjectCard], session: SessionInfo, updates: PageUpdates.Subscription) -> Response {
+private func indexPage(_ items: [ProjectCard], session: SessionInfo, dataFolder: String, updates: PageUpdates.Subscription) -> Response {
     let cards = items.map { item in
         let count = item.count
         return """
@@ -1267,7 +1267,23 @@ private func indexPage(_ items: [ProjectCard], session: SessionInfo, updates: Pa
           <div class="page-heading"><h1>Munkalapok</h1></div>
           <div class="project-list" id="worksheet-cards" data-delete="\(session.user?.role == .admin)" data-csrf="\(session.csrf ?? "")">\(cards.isEmpty && create.isEmpty ? "<p class=\"muted\">Még nincs munkalap.</p>" : cards)\(create)</div>
         </main>
+        \(debugBadge(dataFolder: dataFolder))
         """, updates: updates)
+}
+
+/// Debug buildben a nyitóoldal jobb alsó sarkában: jelzés és az adatmappa valós útvonala (szimbolikus linkek
+/// feloldva). Release buildben üres, így élesben semmi nem kerül az oldalba.
+private func debugBadge(dataFolder: String) -> String {
+    #if DEBUG
+    let real = URL(fileURLWithPath: dataFolder, isDirectory: true).resolvingSymlinksInPath().path
+    return """
+        <aside class="debug-badge" aria-label="Debug build">
+          <strong>Debug build</strong><span title="Adatmappa">\(escaped(real))</span>
+        </aside>
+        """
+    #else
+    return ""
+    #endif
 }
 
 private func siteMode(_ req: Request) -> String? {

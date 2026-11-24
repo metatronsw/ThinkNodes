@@ -16,6 +16,14 @@
       "port": 8888,
       "url": "http://mtrn.local:8888",
       "autoPort": false
+    },
+    {
+      "name": "thinknodes-debug-test",
+      "runtimeExecutable": "./server/run.sh",
+      "runtimeArgs": ["--debug", "--http", "--port:8888", "--host:::", "--test"],
+      "port": 8888,
+      "url": "http://mtrn.local:8888",
+      "autoPort": false
     }
   ]
 }

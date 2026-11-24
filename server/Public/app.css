@@ -977,3 +977,8 @@ svg text { text-rendering: geometricPrecision; }
 .table-dialog-mode { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: start; cursor: pointer; }
 .table-dialog-mode span { display: grid; gap: 2px; }
 .table-dialog-mode small { color: var(--muted); }
+
+/* Debug build jelzése a nyitóoldalon (csak debug buildben kerül az oldalba): mindkét módban ugyanaz a figyelmeztető szín. */
+.debug-badge { position: fixed; right: 12px; bottom: 12px; z-index: 30; max-width: min(560px, calc(100vw - 24px)); box-sizing: border-box; display: grid; gap: 2px; padding: 7px 11px; border-radius: 7px; background: #ffd35a; color: #3a2a00; border: 1px solid #c79a12; box-shadow: 0 4px 14px #00000033; font-size: 12px; line-height: 1.35; pointer-events: auto; }
+.debug-badge strong { text-transform: uppercase; letter-spacing: .04em; font-size: 11px; }
+.debug-badge span { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; user-select: all; }

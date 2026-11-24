@@ -334,6 +334,22 @@ import VaporTesting
     }
 }
 
+@Test func debugBuildShowsBadgeWithRealDataFolder() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-badge-\(UUID().uuidString)")
+    let store = try WorksheetStore(root: root)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try await withApp(configure: { app in configure(app, store: store) }) { app in
+        let page = try await app.testing().sendRequest(.GET, "/").body.string
+        #if DEBUG
+        #expect(page.contains("class=\"debug-badge\""))
+        // A szimbolikus linkek feloldva (macOS-en /var → /private/var).
+        #expect(page.contains(root.resolvingSymlinksInPath().path))
+        #else
+        #expect(!page.contains("debug-badge"))
+        #endif
+    }
+}
+
 @Test func firstAdminCanBeCreatedFromLoopback() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-setup-\(UUID().uuidString)")
     let store = try WorksheetStore(root: root)
