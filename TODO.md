@@ -128,3 +128,11 @@ Ez reális és takarékos megoldás. A megvalósítás előtt tisztázandó terv
 + javascript nélkül is működjön a statikus oldal megtekintés
 + Animációk az SVG -be, futó vonal 
 + chat a felhasználók között
+
+
+# Google-bejelentkezés
+
++ Kész: belépés Google-fiókkal az admin által hozzárendelt e-mail-cím alapján (README „Google-bejelentkezés”).
++ Hátra: kipróbálás valódi Google OAuth-klienssel (Cloud Console: kliens létrehozása, visszatérési cím felvétele), helyben `http://localhost:8888`-on és élesben.
++ Döntés kell: jöhessen-e létre fiók automatikusan az első Google-belépéskor (pl. megadott e-mail-domainből, vendég szerepkörrel)? Most csak az admin által előre hozzárendelt cím léphet be.
++ Lehetőség: a felhasználó maga kösse össze / válassza le a Google-fiókját (most csak az admin teheti); a Google `sub` azonosítójának rögzítése az e-mail-cím mellé.

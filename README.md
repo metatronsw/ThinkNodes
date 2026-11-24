@@ -57,6 +57,22 @@ A `thinknodes` bináris kapcsolói (a `server/run.sh` ugyanezeket adja tovább; 
 
 HTTPS-nél a bináris maga készíti el a LAN-tanúsítványt: a `ca.crt` gyökértanúsítványt a klienseszközökön megbízhatóként kell telepíteni (a szerver indításkor kiírja az útvonalát). Adminfiók parancssorból: `server/run.sh user admin admin` (jelszót kér). Nyisd meg az `/admin` oldalt; az első helyi megnyitáskor itt is létrehozható az adminfiók.
 
+### Google-bejelentkezés
+
+Nem kötelező. Ha a szerver környezetében mindkét változó meg van adva, a belépőoldalon megjelenik a „Belépés Google-fiókkal” gomb:
+
+| Változó | Jelentés |
+| --- | --- |
+| `THINKNODES_GOOGLE_CLIENT_ID` | A Google Cloud Console-ban létrehozott OAuth-kliens („Web application”) azonosítója |
+| `THINKNODES_GOOGLE_CLIENT_SECRET` | Az OAuth-kliens titka |
+| `THINKNODES_GOOGLE_REDIRECT` | Visszatérési cím, ha eltér attól, amit a böngésző lát (pl. proxy mögött); alapból `https://GAZDANÉV[:PORT]/login/google/callback` |
+
+- A Google-nál az „Authorized redirect URIs” közé pontosan azt a címet kell felvenni, amelyen a felhasználók a szervert elérik, a `/login/google/callback` útvonallal. A Google csak HTTPS-címet és nyilvános domainnevet fogad el (kivétel: `http://localhost`), LAN-IP-címet nem.
+- A Google csak azonosít: új fiók nem jön létre. Az adminisztrátor a Beállítások oldalon (`/admin`) rendeli a felhasználóhoz a Google-fiók e-mail-címét; belépni csak hozzárendelt, a Google által igazolt címmel lehet. Egy cím egy felhasználóhoz tartozhat.
+- Új felhasználó jelszó nélkül is létrehozható, ha Google-fiókot kap; a jelszavas belépés ilyenkor addig nem használható, amíg az admin jelszót nem ad. A hozzárendelés törlése a Google-lal indult munkameneteket is lezárja.
+- Tesztmódban (`--test`) a Google-bejelentkezés ki van kapcsolva.
+- Élesben a `daemon.sh` által telepített szolgáltatás a `/var/lib/thinknodes/thinknodes.env` fájlból olvassa a változókat (`NÉV=érték` sorok; a fájl legyen csak a `thinknodes` felhasználó számára olvasható), utána `sudo systemctl restart thinknodes`.
+
 Élesben (Fedora): `sudo server/deploy/install.sh`, majd `sudo server/deploy/daemon.sh`. Frissítés: a `daemon.sh` által kiírt `build.sh` parancs, majd `sudo systemctl restart thinknodes`.
 
 ## Munkalapok és fájlok

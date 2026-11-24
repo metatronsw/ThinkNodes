@@ -1,5 +1,15 @@
 # Változások
 
+## 2026-11-24 – Google-bejelentkezés
+
+- Új `server/Sources/ThinkNodes/GoogleSignIn.swift`: OpenID Connect „authorization code” folyamat PKCE-vel, state és nonce ellenőrzéssel. Útvonalak: `GET /login/google` (átirányítás a Google-hoz), `GET /login/google/callback` (kódbeváltás, ID token ellenőrzése: kibocsátó, címzett, lejárat, nonce, igazolt e-mail).
+- Bekapcsolás környezeti változókkal: `THINKNODES_GOOGLE_CLIENT_ID`, `THINKNODES_GOOGLE_CLIENT_SECRET` (és szükség esetén `THINKNODES_GOOGLE_REDIRECT`); nélkülük nincs gomb és nincs útvonal. Tesztmódban kikapcsolva. Indításkor a szerver kiírja, ha be van kapcsolva.
+- A Google csak azonosít: a `User` új `google` mezője (e-mail-cím a `.settings.json`-ban) köti a Google-fiókot a ThinkNodes-fiókhoz, az admin a Beállítások oldalon állítja. Új fiók nem jön létre a Google-től; egy cím egy felhasználóhoz tartozhat. Jelszó nélküli új fiók Google-fiókkal létrehozható (véletlen jelszó-hash-t kap).
+- A Google-lal indult munkamenet megszűnik, ha a hozzárendelést törlik vagy megváltoztatják.
+- `deploy/daemon.sh`: a szolgáltatás beolvassa a `/var/lib/thinknodes/thinknodes.env` fájlt, ha létezik (a `daemon.sh` újrafuttatása kell hozzá).
+- Teszt: `googleSignInOpensTheLinkedAccount` (71 Swift teszt rendben). Böngészőben ellenőrizve: gomb a belépőoldalon, átirányítás a Google-hoz, Google-fiók mező az adminoldalon. Valódi Google OAuth-klienssel nem próbáltam ki (nincs hozzá kliensazonosító), lásd TODO.md.
+- README: „Google-bejelentkezés” fejezet.
+
 ## 2026-11-24 – Görgetősáv húzása fájldobozban (Safari 18)
 
 - A szövegfájl-, CSV- és táblázatdoboz görgetősávjának felismerése a doboz vászonbeli helyéből és az egér vászonkoordinátájából számol, nem a DOM-ból (`Public/editor.js` `scrollbarPress`); Safariban a foreignObject-beli elemek mérete/helye megbízhatatlan, ezért ott a doboz húzása kapta el a görgetősávot.

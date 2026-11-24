@@ -86,6 +86,8 @@ Group=thinknodes
 WorkingDirectory=$install_dir/server
 Environment=HOME=$data_dir
 ${chromium:+Environment=THINKNODES_CHROMIUM=$chromium}
+# Optional settings, e.g. THINKNODES_GOOGLE_CLIENT_ID / THINKNODES_GOOGLE_CLIENT_SECRET (Google sign-in).
+EnvironmentFile=-$data_dir/thinknodes.env
 ExecStart=$install_dir/server/run.sh --project:$data_dir/Projects --tls-dir:$data_dir/tls
 Restart=on-failure
 RestartSec=5s
