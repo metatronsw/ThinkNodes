@@ -38,7 +38,8 @@ export function hideTooltip(event) {
 }
 
 // `colors`: {background, color} – a doboz színe; ha hiányzik, a doboz rajzából olvassa ki (megtekintő).
-export function showTooltip(event, render, justified, colors) {
+// `alignment`: a szöveg vízszintes igazítása (left / center / right), a dobozéval egyezően; sorkizártnál nem számít.
+export function showTooltip(event, render, justified, colors, alignment) {
   close();
   const {currentTarget} = event;
   track(event);
@@ -54,6 +55,7 @@ export function showTooltip(event, render, justified, colors) {
       tooltip = document.createElement("div");
       tooltip.className = "formatted-text canvas-tooltip";
       if (justified) tooltip.classList.add("justified-text");
+      else if (["left", "center", "right"].includes(alignment)) tooltip.style.textAlign = alignment;
       tooltip.setAttribute("role", "tooltip");
       tooltip.innerHTML = html;
       const {background, color} = colors ?? boxColors(currentTarget, anchor);

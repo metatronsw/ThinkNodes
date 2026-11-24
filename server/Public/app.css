@@ -89,6 +89,10 @@ h2 { letter-spacing: -.02em; }
 .page-heading { display: flex; gap: 15px; align-items: center; justify-content: space-between; margin-bottom: 24px; }
 .page-heading h1 { margin: 0; font-size: clamp(1.9rem, 4vw, 2.65rem); }
 .project-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(275px, 100%), 1fr)); gap: 16px; }
+/* Főoldal: a projektek és a létrehozás / importálás külön szekció, vonallal elválasztva; vendégeknek tájékoztató. */
+.project-actions { margin-top: 28px; padding-top: 28px; border-top: 1px solid var(--line); }
+.guest-notice { display: flex; align-items: flex-start; gap: 10px; margin: 0 0 22px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 9px; background: color-mix(in srgb, var(--accent, #4168e9) 8%, transparent); color: var(--ink); }
+.guest-notice .ui-icon { flex: none; width: 20px; height: 20px; margin-top: 1px; }
 .project-card { display: flex; min-height: 102px; align-items: center; padding: 20px; gap: 16px; color: var(--ink); }
 .project-card:hover { border-color: #8c9adc; text-decoration: none; }
 .project-card h2 { margin: 0 0 5px; font-size: 1.16rem; }
@@ -444,7 +448,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 
 .node-image { display: flex; flex-direction: column; height: 100%; color: var(--ink); text-align: center; font: 14px/22px system-ui, sans-serif; }
 .node-image img { display: block; flex: 1; width: 100%; min-height: 0; object-fit: contain; background: transparent; }
-.node-image img:not([src$=".svg"]) { border-radius: 6px; }
+.node-image img { border-radius: 5px; }
 .image-alpha-options input[type="color"] { width: 32px; height: 32px; padding: 3px; }
 .image-alpha-options input[type="color"]:disabled { opacity: .45; }
 .node-image > :is(strong, span) { flex: none; height: 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -593,7 +597,7 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
   --panel-surface: #253140;
   --control-hover: #303e50;
 }
-:root[data-display="dark"] :is(.panel, .passive-note, .inspector-content > fieldset, .inspector-content > fieldset > legend, .context-menu, .canvas-status, .canvas-tooltip, .canvas-empty, .canvas-people > :is(.participants, .canvas-creator), .passive-frame > .participants, .guide-nav a, .guide kbd) {
+:root[data-display="dark"] :is(.panel, .passive-note, .inspector-content > fieldset, .inspector-content > fieldset > legend, .context-menu, .canvas-status, .canvas-area > .zoom-level, .canvas-tooltip, .canvas-empty, .canvas-people > :is(.participants, .canvas-creator), .passive-frame > .participants, .guide-nav a, .guide kbd) {
   background-color: var(--panel-surface);
   color: var(--ink);
 }
@@ -693,7 +697,7 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 .node-file-name .node-download { align-self: center; margin: 0; max-width: 100%; }
 .node-body { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .node-image .node-body img { display: block; flex: 1; width: 100%; min-height: 0; object-fit: contain; background: transparent; }
-.node-image .node-body img:not([src$=".svg"]) { border-radius: 6px; }
+.node-image .node-body img { border-radius: 5px; }
 /* A fájldoboz megjegyzése egysoros, formázás nélküli felirat; ami nem fér el, „…”-tal rövidül. */
 /* Megjegyzés a doboz alatt: sima szöveg, minden sora, a doboz szélességére tördelve. */
 .node-comment { flex: none; max-width: 100%; overflow-wrap: anywhere; font-size: 13px; line-height: 1.35; }
@@ -739,7 +743,7 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 /* Fájlt tároló doboz: a tartalom a doboz belsejében van, a fájlnév a doboz felett, a link és a megjegyzés alatta. */
 .node-file .node-body { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .node-file.node-image .node-body img { display: block; flex: 1; width: 100%; height: 100%; min-height: 0; object-fit: cover; background: transparent; border-radius: 5px; }
-.node-file.node-image .node-body img.is-svg { border-radius: 0; }
+/* Külső vizuális tartalom (kép, SVG, weboldal- és munkalap-előnézet): egységesen 5 px lekerekítés. */
 .node-file-frame { overflow: visible; pointer-events: none; }
 .node-file-stack { display: flex; flex-direction: column; font: 14px/1.4 system-ui, sans-serif; pointer-events: none; }
 .node-file-stack > .node-file { flex: none; pointer-events: auto; }
@@ -919,8 +923,8 @@ svg text { text-rendering: geometricPrecision; }
 @media (prefers-reduced-motion: reduce) { .canvas-tooltip { transition: none; } }
 /* NAGYBETŰS Text (HTML-ben: doboz alatti Text, szövegfájl, buboréksúgó); a vásznon a tördelés előtt alakul. */
 .is-uppercase :is(.node-comment, .node-note, .node-plain, .formatted-text), .canvas-tooltip .is-uppercase, .canvas-tooltip.is-uppercase { text-transform: uppercase; }
-/* Nagyítás értéke a bal eszköztáron (csak nagyítás közben). */
-.canvas-controls .zoom-level { align-self: center; min-width: 74px; padding: 0 8px; font-size: 12px; font-variant-numeric: tabular-nums; text-align: center; white-space: nowrap; color: var(--ink); }
+/* Nagyítás értéke a vászon alján, középen (csak nagyítás közben). */
+.canvas-area > .zoom-level { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 2; min-width: 74px; padding: 3px 10px; border-radius: 5px; background: #fffffff0; font-size: 12px; font-variant-numeric: tabular-nums; text-align: center; white-space: nowrap; color: var(--ink); pointer-events: none; }
 
 /* Mentett állapotok listája (vászon tulajdonságpanel) */
 .version-list { list-style: none; margin: 0; padding: 0; max-height: 16rem; overflow-y: auto; display: grid; gap: 0.25rem; }
@@ -971,7 +975,8 @@ svg text { text-rendering: geometricPrecision; }
 .tn-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; padding: 3px 4px; }
 .tn-toolbar.compact { border-bottom: 1px solid #d9dfeb; background: #fbfcfe; }
 .tn-tool { min-width: 26px; height: 24px; padding: 0 6px; font-size: 12px; line-height: 1; }
-.tn-tool-b { font-weight: 800; } .tn-tool-i { font-style: italic; } .tn-tool-u { text-decoration: underline; } .tn-tool-o { text-decoration: overline; }
+.tn-tool-b { font-weight: 800; } .tn-tool-i { font-style: italic; } .tn-tool-u { text-decoration: underline; } .tn-tool-o { text-decoration: line-through; }
+.tn-tool-align { padding: 0 4px; } .tn-tool-align .ui-icon { width: 16px; height: 16px; }
 .tn-select { height: 24px; max-width: 120px; padding: 0 4px; border: 1px solid #d9dfeb; border-radius: 5px; background: #fff; font-size: 12px; }
 .tn-color { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 24px; border: 1px solid #d9dfeb; border-radius: 5px; background: #fff; font-weight: 700; font-size: 12px; cursor: pointer; }
 .tn-color input { position: absolute; inset: auto 2px 1px 2px; width: calc(100% - 4px); height: 5px; padding: 0; border: 0; cursor: pointer; }

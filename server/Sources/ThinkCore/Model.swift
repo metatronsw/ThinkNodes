@@ -197,7 +197,8 @@ package enum BoxAnimation: String, Codable, Sendable {
 }
 
 package enum BoxBackgroundMode: String, Codable, Sendable {
-    case solid, free, empty, blurred, translucent
+    /// canvas: a háttér a munkalap háttérszíne, a vászon rácsa nélkül (táblázat, CSV, átlátszó kép).
+    case solid, free, empty, blurred, translucent, canvas
 }
 
 package struct Idea: Codable, Equatable, Sendable {
@@ -227,7 +228,7 @@ package struct Idea: Codable, Equatable, Sendable {
     /// A téma három betűtípusa közül a választott (1 = alap; nil = 1).
     var font: Int?
     package var justified: Bool?
-    var alignment: LabelAlignment = .center
+    package var alignment: LabelAlignment = .center
     var verticalAlignment: VerticalAlignment?
     package var link: NodeLink?
     /// junction: a címke elforgatása fokban a középpont körül.

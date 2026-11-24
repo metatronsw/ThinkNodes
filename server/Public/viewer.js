@@ -34,6 +34,10 @@ function bindCanvas() {
   svg.style.setProperty("--sheet-glow", (graphics.glow ?? 3) + "px");
   main.querySelector(".passive-frame > .mouse-share")?.remove();
   mouse?.bind(svg, svg, main.dataset.member === "true" ? main.querySelector(".passive-frame") : null);
+  // A szerver által a fájldobozokba írt stílusok (a doboz magassága, a táblázat oszlopszélességei és cellaformázása):
+  // az oldal tartalombiztonsági szabálya (style-src 'self') a style attribútumot nem engedi érvényesülni, ezért innen
+  // állítjuk be. Enélkül a szövegfájl-, CSV- és táblázatdoboz tartalma kilógott a dobozból.
+  for (const element of svg.querySelectorAll(".node-file-frame [style]")) element.style.cssText = element.getAttribute("style");
   for (const element of svg.querySelectorAll("[data-file-ink]")) {
     element.style.color = element.dataset.fileInk;
   }
@@ -60,7 +64,7 @@ function bindTooltips(svg) {
     tooltipBoxes.add(box);
     box.addEventListener("pointerenter", event => {
       const current = main.querySelector('template[data-tooltip="' + CSS.escape(id) + '"]');
-      if (current) showTooltip(event, () => current.innerHTML, current.hasAttribute("data-justified"));
+      if (current) showTooltip(event, () => current.innerHTML, current.hasAttribute("data-justified"), undefined, current.dataset.align);
     });
     box.addEventListener("pointerleave", hideTooltip);
     box.addEventListener("pointerdown", hideTooltip);

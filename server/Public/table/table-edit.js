@@ -11,9 +11,11 @@ const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
 
 export class TableEditor {
   // doc: a táblázat munkapéldánya (a vezérlő módosítja); onChange(doc): mentéskor hívódik.
-  constructor(doc, {onChange = () => {}} = {}) {
+  // plain: formázás és képletek nélküli mód (önálló CSV): minden cella szöveg, ahogy be van írva.
+  constructor(doc, {onChange = () => {}, plain = false} = {}) {
     this.doc = doc;
     this.onChange = onChange;
+    this.plain = plain;
     this.active = {r: 0, c: 0};
     this.anchor = {r: 0, c: 0};
     this.draft = null;        // szerkesztett cella nyers szövege (null: nincs cellaszerkesztés)
@@ -41,6 +43,7 @@ export class TableEditor {
   rawText(name) {
     const cell = this.doc.cells[name];
     if (!cell) return "";
+    if (this.plain) return typeof cell.v === "string" ? cell.v : display(cell.v, null);
     if (cell.f != null) return "=" + cell.f;
     const v = cell.v, fmt = styleOf(this.doc, cell).fmt;
     if (typeof v === "number") {
@@ -113,7 +116,7 @@ export class TableEditor {
 
   // Képletírás közben kattintott cella hivatkozásként a képletbe kerül.
   insertReference(r, c, r1 = r, c1 = c) {
-    if (this.draft == null || !this.draft.startsWith("=")) return false;
+    if (this.plain || this.draft == null || !this.draft.startsWith("=")) return false;
     const ref = cellName(Math.min(r, r1), Math.min(c, c1)) + (r1 !== r || c1 !== c ? ":" + cellName(Math.max(r, r1), Math.max(c, c1)) : "");
     this.draft = this.draft.replace(/\$?[A-Z]{1,3}\$?\d+(:\$?[A-Z]{1,3}\$?\d+)?$/i, "") + ref;
     this.touch();
@@ -123,7 +126,7 @@ export class TableEditor {
   // Képletírás közben a vezérlő eldönti, hogy egy kattintás hivatkozás-beszúrás legyen-e: igen, ha a képlet
   // operátorra, nyitó zárójelre, elválasztóra vagy már egy hivatkozásra végződik.
   get pointing() {
-    return this.draft != null && this.draft.startsWith("=") && /([=+\-*/^&(;,<>:]|\$?[A-Z]{1,3}\$?\d+)$/i.test(this.draft.trimEnd());
+    return !this.plain && this.draft != null && this.draft.startsWith("=") && /([=+\-*/^&(;,<>:]|\$?[A-Z]{1,3}\$?\d+)$/i.test(this.draft.trimEnd());
   }
 
   commitDraft() {
@@ -138,6 +141,11 @@ export class TableEditor {
   // Egy cella beírt szövege → érték vagy képlet; a felismert formátum a cella stílusába kerül, ha még nincs.
   setInput(name, text, {record = true} = {}) {
     if (record) this.record();
+    if (this.plain) {
+      setCell(this.doc, name, text === "" ? null : {v: text});
+      if (record) this.changed([name]);
+      return;
+    }
     const cell = {...(this.doc.cells[name] ?? {})};
     delete cell.f; delete cell.v; delete cell.fx;
     const parsed = parseInput(text);
@@ -164,6 +172,7 @@ export class TableEditor {
   // MARK: Formázás
 
   styleSelection(update) {
+    if (this.plain) return;
     this.commitDraft();
     this.record();
     for (const name of this.selectedNames()) {
@@ -198,6 +207,7 @@ export class TableEditor {
 
   // Keret: mode = all | outer | none | top | bottom | left | right | innerH | innerV; line = {w, color, style}.
   border(mode, line = {w: 1, color: "#000000", style: "solid"}) {
+    if (this.plain) return;
     const {r0, r1, c0, c1} = this.sel;
     this.commitDraft();
     this.record();
@@ -223,6 +233,7 @@ export class TableEditor {
 
   // Σ: több cellánál oszloponként SUM a kijelölés alá; egy cellánál a fölötte lévő összefüggő számok összege.
   autoSum() {
+    if (this.plain) return;
     this.commitDraft();
     const {r0, r1, c0, c1} = this.sel;
     const isNumber = (r, c) => typeof this.doc.cells[cellName(r, c)]?.v === "number";
@@ -314,7 +325,8 @@ export class TableEditor {
     this.commitDraft();
     const {r: r0, c: c0} = this.active;
     let grid;
-    if (json) {
+    if (this.plain) grid = (htmlRows ? htmlRows.map(row => row.map(item => item.text)) : parseTSV(tsv ?? "")).map(row => row.map(text => ({text, plain: true})));
+    else if (json) {
       const clip = JSON.parse(json);
       grid = clip.cells.map(row => row.map(cell => cell && {cell, origin: clip.origin}));
     } else if (htmlRows) grid = htmlRows.map(row => row.map(item => ({text: item.text, style: item.style})));
@@ -330,6 +342,7 @@ export class TableEditor {
       const name = cellName(r0 + i, c0 + j);
       changed.push(name);
       if (!item) { setCell(this.doc, name, null); return; }
+      if (item.plain) { this.setInput(name, item.text, {record: false}); return; }
       if (item.cell) {
         const {style, ...cell} = item.cell;
         if (cell.f != null) cell.f = move(cell.f, r0 - item.origin.row, c0 - item.origin.col);
@@ -375,7 +388,8 @@ export class TableEditor {
 
   // Változás után: újraszámolás (null: minden; [] csak stílus, nincs számolás) és mentés.
   changed(names) {
-    if (names === null) recalculate(this.doc);
+    if (this.plain) { /* nincs képlet, nincs számolás */ }
+    else if (names === null) recalculate(this.doc);
     else if (names.length) recalculate(this.doc, names);
     this.touch();
     this.onChange(this.doc);
@@ -396,9 +410,7 @@ export class TableEditor {
       const lower = key.toLowerCase();
       if (lower === "z") { shiftKey ? this.redo() : this.undo(); return true; }
       if (lower === "y") { this.redo(); return true; }
-      if (lower === "b") { this.toggle("b"); return true; }
-      if (lower === "i") { this.toggle("i"); return true; }
-      if (lower === "u") { this.toggle("u"); return true; }
+      if (["b", "i", "u"].includes(lower)) { if (!this.plain) this.toggle(lower); return true; }
       if (lower === "a") { this.anchor = {r: 0, c: 0}; this.active = {r: this.doc.size.rows - 1, c: this.doc.size.cols - 1}; this.touch(); return true; }
       const arrows = {ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1]}[key];
       if (arrows) { this.jump(...arrows, shiftKey); return true; }

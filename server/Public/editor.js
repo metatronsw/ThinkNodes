@@ -14,17 +14,17 @@ import {justifyRows} from "./justify.js";
 import {canvasMarkdown, canvasMarkdownAvailable} from "./canvas-markdown.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, canvasBounds, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=23";
+import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=23";
 
 import {ancestors, overlapFraction} from "./containers.js?v=3";
 import {glowFilter, glowId, glowReach, glowVNode} from "./glow.js";
 import {awaitWebPreview} from "./web-preview-refresh.js";
-import {decodeTable, encodeTable} from "./table/table-document.js";
+import {cellName, columnName, decodeTable, encodeTable, limits as tableLimits} from "./table/table-document.js";
 import {TableEditor} from "./table/table-edit.js";
 import {renderTable, renderTableEditor, revealActive, tableToolbar} from "./table/table-view.js";
 import {askNewTable, askReimport, createEmptyTable, createTableFromTSV, exportURL, extensionOf, importableExtensions, tableBoxProperties, tableFromSource, tableFromUpload} from "./table/table-files.js";
 import {looksTabular} from "./table/table-clipboard.js";
-import {detectSeparator} from "./table/table-csv.js";
+import {detectSeparator, parseCSVRows, writeCSVRows} from "./table/table-csv.js";
 import {attachScrollbars, detachScrollbars} from "./scrollbar-drag.js";
 
 const mount = document.querySelector("#editor");
@@ -272,9 +272,10 @@ function normalizePreview(node) {
   if (node.type === "preview") { node.shape = "rectangle"; delete node.animation; }
   return node;
 }
-// A doboz alakja: az előnézetes doboz mindig 5 px-es lekerekítésű téglalap.
+// A doboz alakja: a külső vizuális tartalmat mutató doboz (előnézet: weboldal, munkalap; kép) mindig 5 px-es
+// lekerekítésű téglalap.
 function boxShapeGeometry(node, width = node.width, height = node.height) {
-  return node.type === "preview" ? ["rect", {x: -width/2, y: -height/2, width, height, rx: 5}] : shapeGeometry(node.shape, width, height);
+  return node.type === "preview" || isImage(node) ? ["rect", {x: -width/2, y: -height/2, width, height, rx: 5}] : shapeGeometry(node.shape, width, height);
 }
 const isImage = node => rootType(node?.type) === "image";
 const isTextFile = node => rootType(node?.type) === "text";
@@ -293,6 +294,10 @@ function animateBox(mode, contents) {
 
 function backgroundMode(node) {
   return node.backgroundMode ?? "solid";
+}
+// A doboz felületének színe: vászonszín módban a munkalap háttere, egyébként a doboz saját színe.
+function surfaceColor(node) {
+  return backgroundMode(node) === "canvas" ? paint(currentBoard.value?.background, 0) : paint(node.fill, 2);
 }
 
 function elevationShadow(node) {
@@ -330,15 +335,18 @@ function shape(node, linked, dropTarget = false) {
   const image = isImage(node) ? node.file : null;
   const mode = backgroundMode(node);
   const blurred = mode === "blurred", empty = mode === "empty";
-  const free = mode === "free" || !!image;  // a kép mindig háttér nélkül, a saját átlátszóságával jelenik meg
+  // Vászonszín: a doboz háttere a munkalap háttérszíne (a rács nem látszik át). Táblázatnál és (átlátszó) képnél.
+  const canvasTint = mode === "canvas";
+  const free = mode === "free" || (!!image && !canvasTint);  // a kép egyébként háttér nélkül, a saját átlátszóságával jelenik meg
   if (dropTarget) return h(tag, {...geometry, class: "drop-target", "data-container-candidate": "",
     fill: empty || free ? "none" : paint(node.fill, 2), "pointer-events": "fill",
     stroke: "#08796c", "stroke-width": 5, "stroke-dasharray": "0 8", "stroke-linecap": "round",
     "vector-effect": "non-scaling-stroke"});
   if (free) return h(tag, {...geometry, "data-editor-only": "", fill: "none", stroke: "none", "pointer-events": "fill"});
+  if (canvasTint && image) return h(tag, {...geometry, class: "node-surface", fill: surfaceColor(node), stroke: "none"});
   const locked = isBox(node) && node.locked;
   const glass = graphics.value.glass && mode === "solid" && !image;
-  const fill = paint(node.fill, 2);
+  const fill = surfaceColor(node);
   // Üres doboz: csak a keret látszik, a keret színe a doboz színe. Elmosottnál a háttér elmosódik, a keret nem.
   const frame = node.type === "preview" || frameless(node) ? "none" : empty ? paint(node.fill, 2) : image && !empty ? "none" : glass ? "url(#glass-rim)" : automaticBorder(fill);
   const translucent = mode === "translucent";
@@ -583,11 +591,22 @@ createApp({
       return drawing;
     }
 
-    const drawnBounds = () => canvasBounds({
-      nodes: sceneNodes.value.map(node => {
+    // A kompozíció tényleges határoló doboza (dobozok a szövegkilógással, vonalak), ráhagyás nélkül; üres lapon az
+    // alapméret az origó körül. A nézet korlátai (pásztázás, legkisebb nagyítás) és a kezdő nézet ebből számolnak.
+    const contentBox = computed(() => {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      const grow = (x, y, rx = 0, ry = 0) => {
+        minX = Math.min(minX, x - rx); maxX = Math.max(maxX, x + rx);
+        minY = Math.min(minY, y - ry); maxY = Math.max(maxY, y + ry);
+      };
+      for (const node of board.value?.nodes ?? []) {
         const {extentX, extentY} = nodeLayout(node);
-        return {...node, extentX, extentY};
-      }), edges: board.value.edges,
+        // Fájldoboznál nincs szövegelrendezés (a kiterjedés hiányzik vagy NaN): a doboz saját mérete számít.
+        grow(node.position.x, node.position.y, Number.isFinite(extentX) ? Math.max(extentX, node.width / 2) : node.width / 2,
+          Number.isFinite(extentY) ? Math.max(extentY, node.height / 2) : node.height / 2);
+      }
+      for (const edge of board.value?.edges ?? []) for (const {x, y} of wireGeometry(edge).boundsPoints ?? []) grow(x, y);
+      return minX > maxX ? {minX: -360, minY: -240, maxX: 360, maxY: 240} : {minX, minY, maxX, maxY};
     });
     const preferences = JSON.parse(mount.dataset.preferences || "{}");
     const gridVisible = ref(preferences.showGrid ?? true);
@@ -968,6 +987,26 @@ createApp({
       if (area) size.value = {width: area.clientWidth, height: area.clientHeight};
     }
 
+    // Nézetkorlátok. Legnagyobb nagyítás 800%. A legkisebb nagyításnál a teljes kompozíció a képernyő negyedét tölti ki
+    // (oldalanként a felét); a 100% mindig elérhető. Pásztázni bármelyik irányba addig lehet, amíg a legszélső objektum
+    // éppen eltűnik a képernyő szélén.
+    const maxScale = 8;
+    function minScale() {
+      const box = contentBox.value, {width, height} = size.value;
+      if (!width || !height) return 0.0005;
+      const fitScale = Math.min(width / Math.max(1, box.maxX - box.minX), height / Math.max(1, box.maxY - box.minY));
+      return limit(fitScale / 2, 0.0005, 1);
+    }
+    function constrainView(transform) {
+      const box = contentBox.value, {width, height} = size.value;
+      if (!width || !height) return transform;
+      const [centerX, centerY] = center(), k = transform.k;
+      const x = limit(transform.x, -k * (box.maxX + centerX), width - k * (box.minX + centerX));
+      const y = limit(transform.y, -k * (box.maxY + centerY), height - k * (box.minY + centerY));
+      return x === transform.x && y === transform.y ? transform : d3.zoomIdentity.translate(x, y).scale(k);
+    }
+    function setView(transform) { d3.select(zoomHost()).call(zoom.transform, constrainView(transform)); }
+
     const pinchTolerance = 6; // CSS pixels between the two touch points
     let touchView;
     function touchPair(event) {
@@ -994,9 +1033,9 @@ createApp({
       const pair = touchPair(event);
       const start = touchView.transform;
       touchView.zoomDistance = limit(touchView.zoomDistance, pair.distance - pinchTolerance, pair.distance + pinchTolerance);
-      const k = limit(start.k * touchView.zoomDistance / touchView.distance, 0.0005, 4);
+      const k = limit(start.k * touchView.zoomDistance / touchView.distance, Math.min(minScale(), start.k), maxScale);
       const [x, y] = start.invert([touchView.x, touchView.y]);
-      d3.select(zoomHost()).call(zoom.transform, d3.zoomIdentity.translate(pair.x - x*k, pair.y - y*k).scale(k));
+      setView(d3.zoomIdentity.translate(pair.x - x*k, pair.y - y*k).scale(k));
     }
     function endTouchView(event) {
       if (!touchView) return;
@@ -1013,8 +1052,11 @@ createApp({
     function initializeZoom() {
       if (!canvas.value || zoom) return;
       measure();
-      zoom = d3.zoom().scaleExtent([0.0005, 4])
+      zoom = d3.zoom().scaleExtent([0.0005, maxScale])
+        .constrain(constrainView)
         .filter(event => {
+          // A legkisebb nagyítás a kompozíció méretétől függ; a jelenleginél nagyobbra nem ugrik (pl. törlés után).
+          zoom.scaleExtent([Math.min(minScale(), (pendingView ?? view.value).k), maxScale]);
           // A vezérlők és jelenlévők (a vászon szülőjének többi gyereke) fölötti események nem nagyítanak/pásztáznak.
           if (canvas.value?.contains && event.target && !canvas.value.contains(event.target)) return false;
           if (event.type === "wheel") return !gesture.value && !scrollsSelectedText(event);
@@ -1130,15 +1172,18 @@ createApp({
 
     function fit() {
       if (!zoom || !board.value) return;
-      const bounds = drawnBounds();
+      // A kompozíció (az összes objektum határoló doboza) közepe kerül a képernyő közepére, mint a megtekintőben.
+      const box = contentBox.value;
       const [x, y] = center();
-      const scale = limit(Math.min((x * 2 - 40) / bounds.width, (y * 2 - 40) / bounds.height, 1), 0.0005, 1);
-      d3.select(zoomHost()).call(zoom.transform, d3.zoomIdentity.translate(x * (1 - scale), y * (1 - scale)).scale(scale));
+      const padding = 40;
+      const scale = limit(Math.min(x * 2 / (box.maxX - box.minX + 2 * padding), y * 2 / (box.maxY - box.minY + 2 * padding), 1), 0.0005, 1);
+      const middleX = (box.minX + box.maxX) / 2, middleY = (box.minY + box.maxY) / 2;
+      d3.select(zoomHost()).call(zoom.transform, d3.zoomIdentity.translate(x - scale * (middleX + x), y - scale * (middleY + y)).scale(scale));
     }
 
     function centerOrigin() {
       if (!zoom) return;
-      d3.select(zoomHost()).call(zoom.transform, d3.zoomIdentity);
+      setView(d3.zoomIdentity);
     }
 
     function id() {
@@ -1876,8 +1921,7 @@ createApp({
       if (operation?.type === "pan") {
         const [x, y] = operation.screen;
         const start = operation.startView;
-        const next = start.translate((event.clientX - x) / start.k, (event.clientY - y) / start.k);
-        d3.select(zoomHost()).call(zoom.transform, next);
+        setView(start.translate((event.clientX - x) / start.k, (event.clientY - y) / start.k));
         return;
       }
       if (operation?.waiting) {
@@ -2220,7 +2264,7 @@ createApp({
     // Mozgás közben (pásztázás, nagyítás, húzás) a drága szűrők (elmosás, glow, üvegpanelek) ki vannak kapcsolva;
     // a jelzés DOM-attribútum (data-moving), nem Vue-állapot, így nem rajzol újra semmit (docs/PLAN.md C4).
     const movingSources = new Set();
-    // Nagyítás értéke a bal eszköztáron, amíg a nagyítás tart (utána rövid idővel eltűnik).
+    // Nagyítás értéke a vászon alján középen, amíg a nagyítás tart (utána rövid idővel eltűnik).
     // Szint: 1,25-ös lépések, a 0-s szint a natív méret (1 vászonegység = 1 CSS-pixel).
     const zoomDisplay = ref(null);
     let zoomDisplayTimer, lastZoomScale;
@@ -2237,6 +2281,12 @@ createApp({
       const percent = k >= 0.1 ? Math.round(k * 100) + "%" : (k * 100).toFixed(k >= 0.01 ? 1 : 2) + "%";
       return percent + " · " + (level > 0 ? "+" + level : level);
     }
+
+    // Külön komponens: a kijelzés változása nem rajzolja újra a szerkesztő gyökerét. A vászon alján, középen áll.
+    const ZoomLabel = {
+      setup: () => () => zoomDisplay.value != null
+        ? h("span", {class: "zoom-level", role: "status", "aria-live": "polite"}, zoomLabel(zoomDisplay.value)) : null,
+    };
 
     // A „mozgás” jelző (data-moving) kikapcsolja a szűrőket és az animációkat mozgás közben. Az attribútum váltása maga is
     // megakadás (stílusszámítás + a szűrős elemek újrafestése), ezért pásztázásnál és nagyításnál – ahol mozdulat közben a
@@ -2837,17 +2887,64 @@ createApp({
     }
 
     const tableOf = node => tableEdit.value?.id === node.id ? tableEdit.value.editor.doc : tableDocument(fileTexts.value.get(fileTextKey(node)));
+    const isGrid = node => node?.type === "table" || node?.type === "csv";
+
+    // Önálló CSV a vásznon: a cellái közvetlenül szerkeszthetők (kijelölés, törlés, átírás), formázás és képletek nélkül.
+    // A szerkesztő egy ideiglenes táblázatdokumentumon dolgozik; mentéskor a fájl CSV-szövege áll elő belőle, az eredeti
+    // elválasztóval, sorvégekkel és soronkénti mezőszámmal (az érintetlen sorok alakja nem változik).
+    function csvDocument(text, node) {
+      const separator = detectSeparator(text, (node.file.filename ?? "").split(".").pop().toLowerCase());
+      const parsed = parseCSVRows(text, separator);
+      const cols = Math.max(1, ...parsed.rows.map(row => row.length));
+      if (parsed.rows.length > tableLimits.maxRows || cols > tableLimits.maxCols) return null;
+      const doc = {size: {rows: Math.max(1, parsed.rows.length), cols}, grid: true, styles: [{}], cells: {}, cols: {}, header: {rows: 1, cols: 0}};
+      const widths = Array(cols).fill(0);
+      parsed.rows.forEach((row, r) => row.forEach((value, c) => {
+        if (value !== "") doc.cells[cellName(r, c)] = {v: value};
+        if (r < 300) widths[c] = Math.max(widths[c], textWidth(value, 13));
+      }));
+      widths.forEach((width, c) => { doc.cols[columnName(c)] = {w: Math.round(limit(width + 20, 48, 420))}; });
+      return {doc, separator, newline: parsed.newline, trailing: parsed.trailing, lengths: parsed.rows.map(row => row.length)};
+    }
+    function csvText(doc, source) {
+      const rows = [];
+      for (let r = 0; r < doc.size.rows; r++) {
+        const row = [];
+        let used = source.lengths[r] ?? 0;
+        for (let c = 0; c < doc.size.cols; c++) {
+          const value = doc.cells[cellName(r, c)]?.v;
+          row.push(value == null ? "" : String(value));
+          if (value != null && value !== "") used = Math.max(used, c + 1);
+        }
+        rows.push(row.slice(0, used));
+      }
+      while (rows.length > source.lengths.length && !rows.at(-1).length) rows.pop();
+      return writeCSVRows(rows, source.separator, source);
+    }
 
     async function startTableEdit(node) {
       if (occupied(node.id) || !online.value) return;
+      hideTooltip();
       if (!(await selectNode(node.id))) return;
       const current = nodeMap.value.get(node.id);
       if (current?.file && isCommonFile(current.file)) { problem.value = "A közös könyvtár fájlja csak olvasható."; return; }
-      const doc = current && tableDocument(fileTexts.value.get(fileTextKey(current)));
-      if (!doc) { problem.value = "A táblázat még nem töltődött be, vagy hibás."; return; }
-      const editor = new TableEditor(structuredClone(doc), {onChange: next => {
+      const text = current && fileTexts.value.get(fileTextKey(current));
+      let doc, encode = encodeTable;
+      const plain = current?.type === "csv";
+      if (plain) {
+        if (text == null) { problem.value = "A fájl még nem töltődött be."; return; }
+        const source = csvDocument(text, current);
+        if (!source) { problem.value = "A CSV túl nagy a közvetlen szerkesztéshez (legfeljebb " + tableLimits.maxRows + " sor × " + tableLimits.maxCols + " oszlop)."; return; }
+        doc = source.doc;
+        encode = next => csvText(next, source);
+      } else {
+        const stored = current && tableDocument(text);
+        if (!stored) { problem.value = "A táblázat még nem töltődött be, vagy hibás."; return; }
+        doc = structuredClone(stored);
+      }
+      const editor = new TableEditor(doc, {plain, onChange: next => {
         const target = nodeMap.value.get(node.id);
-        if (target?.file && held.value === node.id) editFileText(target, encodeTable(next));
+        if (target?.file && held.value === node.id) editFileText(target, encode(next));
       }});
       editor.touch = () => { editor.version++; tableTick.value++; };
       revealedCell = null;
@@ -2938,6 +3035,39 @@ createApp({
       if (result.truncated) problem.value = "A táblázat túl nagy volt; a korlát (1000 sor × 100 oszlop) fölötti rész kimaradt.";
     }
 
+    // A doboz átméretezése a tartalom tényleges méretére (táblázat, CSV): a kirajzolt táblázat mérete a doboz belső
+    // térközeivel. Szerkesztés közben előbb kilép a cellaszerkesztésből (az olvasó nézet méretét mérjük).
+    async function fitBoxToContent(node) {
+      if (!(await selectNode(node.id))) return;
+      if (tableEdit.value?.id === node.id) { stopTableEdit(); await nextTick(); }
+      const note = canvas.value?.querySelector('[data-node="' + CSS.escape(node.id) + '"] .node-note');
+      const table = note?.querySelector("table");
+      const current = nodeMap.value.get(node.id);
+      if (!table || !current || held.value !== node.id) return;
+      const pixels = (element, ...keys) => { const style = getComputedStyle(element); return keys.reduce((sum, key) => sum + (parseFloat(style[key]) || 0), 0); };
+      const frame = note.closest(".node-file");
+      const more = note.querySelector(".tn-table-more");
+      let width = table.offsetWidth + pixels(note, "paddingLeft", "paddingRight") + pixels(frame, "paddingLeft", "paddingRight") + 2;
+      let height = table.offsetHeight + (more ? more.offsetHeight + pixels(more, "marginTop", "marginBottom") : 0)
+        + pixels(note, "paddingTop", "paddingBottom") + pixels(frame, "paddingTop", "paddingBottom") + 2;
+      // Ha az egyik irányban a tartalom nem fér bele a legnagyobb dobozméretbe, ott görgetősáv marad: a másik irányban
+      // a sáv helyét rá kell hagyni, különben az is görgetős lenne.
+      const scrollbar = 16;
+      if (height > 4096) width += scrollbar;
+      if (width > 4096 + scrollbar) height += scrollbar;
+      const next = {width: Math.round(limit(width, 64, 4096)), height: Math.round(limit(height, 40, 4096))};
+      if (next.width === current.width && next.height === current.height) return;
+      // A bal felső sarok a helyén marad.
+      current.position = clampPoint({x: current.position.x + (next.width - current.width) / 2, y: current.position.y + (next.height - current.height) / 2});
+      current.width = next.width;
+      current.height = next.height;
+      modified();
+    }
+    function fitContentButton(node) {
+      return h("button", {type: "button", class: "button option-icon", ...controlName("Doboz igazítása a tartalom tényleges méretéhez"),
+        disabled: !online.value || !!occupied(node.id), onClick: () => transfer(() => fitBoxToContent(node))}, [icon("fit-content")]);
+    }
+
     // CSV-dobozból új, független táblázat doboz mellé (a CSV-doboz és a fájl változatlan marad).
     async function tableFromCSVBox(node) {
       const result = node.file?.source == null ? await tableFromSource(path, csrf, node.file.asset)
@@ -2993,9 +3123,13 @@ createApp({
       }, [icon("package"), label ?? h("span", filename)]);
     }
 
-    const stopScroll = e => {
+    // Görgethető tartalom (szövegfájl, CSV, táblázat) egérgörgővel csak a kijelölt dobozban görög; egyébként a görgő a
+    // vásznat nagyítja. Ctrl+görgő (csippentés) mindig a vászoné.
+    const stopScroll = (e, node) => {
       const el = e.currentTarget;
-      if (el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth) e.stopPropagation();
+      if (e.ctrlKey || !(el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth)) return;
+      if (selected.value?.kind === "node" && selected.value.id === node.id) e.stopPropagation();
+      else e.preventDefault();
     };
     // A görgethető tartalom (pl. CSV) bárhol megfogva mozgatható; csak a görgetősávokon (a tartalom jobb és alsó
     // ~16px-es sávjában, ha van mit görgetni) marad a görgetés. A sávot a doboz vászonbeli helyéből számoljuk, nem a
@@ -3020,9 +3154,11 @@ createApp({
         if (!fileTexts.value.has(fileTextKey(node))) queueMicrotask(() => loadFileText(fileTextKey(node)));
         return h("p", {class: "muted"}, "…");
       }
-      if (node.type === "table") {
+      if (isGrid(node)) {
         tableTick.value;
         if (tableEdit.value?.id === node.id) return renderTableEditor(h, tableEdit.value.editor, {onExit: stopTableEdit, focusGrid: tableFocus.value});
+      }
+      if (node.type === "table") {
         const doc = tableDocument(text);
         return doc ? renderTable(h, doc) : h("p", {class: "muted"}, "A táblázat nem olvasható.");
       }
@@ -3059,7 +3195,7 @@ createApp({
         ]);
       } else if (root === "text") {
         content = h("div", {class: ["node-note", {"with-fold": backgroundMode(node) === "solid"}], style: {fontSize: (node.fontSize ?? 13) + "px"},
-          onPointerdown: e => scrollbarPress(e, node), onMousedown: e => scrollbarPress(e, node), onTouchstart: e => scrollbarPress(e, node), onWheel: stopScroll,
+          onPointerdown: e => scrollbarPress(e, node), onMousedown: e => scrollbarPress(e, node), onTouchstart: e => scrollbarPress(e, node), onWheel: e => stopScroll(e, node),
           onVnodeMounted: ({el}) => attachScrollbars(el), onVnodeUpdated: ({el}) => attachScrollbars(el), onVnodeBeforeUnmount: ({el}) => detachScrollbars(el)},
           [renderFileText(node)]);
       } else {
@@ -3087,7 +3223,7 @@ createApp({
           h("div", {class: "node-above", style: {height: fileNameSpace + "px"}},
             file.showFilename !== false ? [h("header", {class: "node-file-name"}, [renderFileDownload(node)])] : []),
           // A tartalom szövegszíne a dobozé (a megjelenítőben: data-file-ink, viewer.js); --tn-paper: a táblázatszerkesztő háttere.
-          h("div", {class: ["node-file", "node-" + root], style: {height: node.height + "px", color: paint(node.textColor, 1), "--tn-paper": paint(node.fill, 2)}},
+          h("div", {class: ["node-file", "node-" + root], style: {height: node.height + "px", color: paint(node.textColor, 1), "--tn-paper": surfaceColor(node)}},
             [h("div", {class: "node-body"}, [content])]),
           below ? h("div", {class: "node-below"}, [marker, comment]) : null,
         ]),
@@ -3238,12 +3374,12 @@ createApp({
         onPointerenter: event => {
           // Buboréksúgó: túl hosszú doboz-szöveg, illetve összecsukott többsoros megjegyzés (fájl- és előnézetes doboz).
           const tooltip = node.file || node.type === "preview" ? commentCollapsed(node) : isBox(node) && layout.overflow;
-          if (!gesture.value && tooltip && node.text) showTooltip(event, async signal => {
+          if (!gesture.value && tooltip && node.text && tableEdit.value?.id !== node.id) showTooltip(event, async signal => {
             const result = await checked(await fetch("/api/text", {method: "POST", signal,
               headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify({text: node.text})}));
             const html = await result.text();
             return node.uppercase ? '<div class="is-uppercase">' + html + "</div>" : html;
-          }, node.justified, {background: paint(node.fill, 2), color: paint(node.textColor, 1)});
+          }, node.justified, {background: surfaceColor(node), color: paint(node.textColor, 1)}, node.alignment ?? "center");
         },
         onPointerleave: hideTooltip,
         onPointerdown: event => { hideTooltip(); pressNode(event, node); },
@@ -3251,9 +3387,9 @@ createApp({
           event.stopPropagation();
           // Előnézetes (linkes) doboz: dupla kattintás megnyitja a linket; Alt-tal a szerkesztés marad.
           if (node.type === "preview" && destination && !event.altKey) { followBoxLink(destination); return; }
-          // Táblázat: dupla kattintás a cellák szerkesztése (docs/EXCEL.md 6. fejezet); Alt-tal a tulajdonságpanel.
-          if (node.type === "table" && !event.altKey) { startTableEdit(node); return; }
-          if (node.type === "table") { editObject("node", node.id, true); return; }
+          // Táblázat és CSV: dupla kattintás a cellák szerkesztése (docs/EXCEL.md 6. fejezet); Alt-tal a tulajdonságpanel.
+          if (isGrid(node) && !event.altKey) { startTableEdit(node); return; }
+          if (isGrid(node)) { editObject("node", node.id, true); return; }
           editObject("node", node.id, event.altKey ? "text" : true);
         },
         onContextmenu: event => context(event, "node", node.id),
@@ -3683,7 +3819,6 @@ createApp({
         h("div", {class: "canvas-controls", "data-open": toolbarOpen.value}, [
           button("", () => { toolbarOpen.value = !toolbarOpen.value; }, {symbol: toolbarOpen.value ? "left" : "right",
             "aria-label": "Eszköztár", "aria-expanded": toolbarOpen.value}),
-          zoomDisplay.value != null ? h("span", {class: "zoom-level", role: "status", "aria-live": "polite"}, zoomLabel(zoomDisplay.value)) : null,
           button("", toggleGrid, {
             title: lined ? "Saját rács megjelenítése" : "Saját pontrács megjelenítése",
             "aria-label": lined ? "Rács" : "Pontrács", "aria-pressed": gridVisible.value, symbol: "grid"}),
@@ -3696,6 +3831,7 @@ createApp({
             else await document.documentElement.requestFullscreen();
           }), {symbol: "fit", title: "Teljes képernyő", "aria-label": "Teljes képernyő", "data-canvas-fullscreen": ""}),
         ]),
+        h(ZoomLabel),
         board.value && !board.value.nodes.length ? h("p", {class: "canvas-empty"}, "Új dobozhoz kattints duplán az üres vászonra.") : null,
       ]);
     }
@@ -3753,7 +3889,7 @@ createApp({
         hasTrait(node, "link") && !node.link ? button("Link hozzáadása", () => {
           chooseLink(node);
         }, {symbol: "link", disabled: !!occupied(node.id)}) : null,
-        node.type === "table" ? button("Cellák szerkesztése", () => { menu.value = null; startTableEdit(node); }, {symbol: "grid", disabled: !!occupied(node.id)}) : null,
+        isGrid(node) ? button("Cellák szerkesztése", () => { menu.value = null; startTableEdit(node); }, {symbol: "table-grid", disabled: !!occupied(node.id)}) : null,
         node.type === "csv" ? button("Önálló táblázat (másolat)", () => { menu.value = null; transfer(() => tableFromCSVBox(node)); }, {symbol: "copy", disabled: !online.value}) : null,
         button("Szerkesztés", () => openProperties("node", node.id), {symbol: "edit", disabled: !!occupied(node.id)}),
         // Egyetlen törlés: fájl- és linkes doboznál a közös kérdőablak jön fel (deleteObjects).
@@ -4083,9 +4219,14 @@ createApp({
         // Képnél a Free és az Üres értelmetlen; az Elmosott és az Áttetsző magára a képre hat.
         nodes.some(isImage) ? null : iconToggle("Free", mode === "free", () => setBackground(mode === "free" ? "solid" : "free"), icon("box-free")),
         nodes.some(isImage) ? null : iconToggle("Üres", mode === "empty", () => setBackground(mode === "empty" ? "solid" : "empty"), icon("box-empty")),
-        iconToggle("Elmosott", mode === "blurred", () => setBackground(mode === "blurred" ? "solid" : "blurred"), icon("box-blur")),
+        // Táblázat nem kap elmosott hátteret.
+        nodes.some(n => n.type === "table") ? null : iconToggle("Elmosott", mode === "blurred", () => setBackground(mode === "blurred" ? "solid" : "blurred"), icon("box-blur")),
         iconToggle("Áttetsző", mode === "translucent", () => setBackground(mode === "translucent" ? "solid" : "translucent"), icon("box-background")),
+        canvasTintTool(),
       ];
+      // Vászonszín: a háttér a munkalap háttérszíne, a vászon rácsa nélkül (táblázat, CSV, átlátszó kép / SVG).
+      const canvasTintTool = () => nodes.every(n => isImage(n) || isGrid(n))
+        ? iconToggle("Vászonszín (a rács nem látszik át)", mode === "canvas", () => setBackground(mode === "canvas" ? "solid" : "canvas"), icon("box-canvas")) : null;
       const elevation = () => single ? elevationButton(single) : iconToggle("Kiemelés", nodes.every(n => n.elevated === true), () => {
         const raise = !nodes.every(n => n.elevated === true);
         change("elevated", node => { if (raise) node.parent = undefined; return raise ? true : undefined; });
@@ -4156,8 +4297,9 @@ createApp({
         const key = fileTextKey(single);
         const loaded = fileTexts.value.get(key);
         const justified = single.justified === true;
-        panels.push(group("Text", [
-          loaded == null ? h("p", {class: "muted"}, "Betöltés…") :
+        // A CSV tartalma közvetlenül a vásznon szerkeszthető (dupla kattintás), itt nincs szövegszerkesztő.
+        panels.push(group(single.type === "csv" ? "Megjelenítés" : "Text", [
+          single.type === "csv" ? null : loaded == null ? h("p", {class: "muted"}, "Betöltés…") :
             h("textarea", {"aria-label": "Fájl tartalma", class: ["file-text-editor", {"justified-text": justified}], value: loaded, rows: 10,
               spellcheck: single.type !== "code", onInput: event => editFileText(single, event.target.value)}),
           propertyTools(
@@ -4171,8 +4313,13 @@ createApp({
       }
 
       if (single?.type === "csv") {
+        const editing = tableEdit.value?.id === single.id;
         panels.push(group("Táblázat", [
-          h("p", {class: "muted"}, "A CSV önálló szöveges dokumentum. Készíthető belőle független táblázat."),
+          propertyTools(
+            button(editing ? "Szerkesztés vége" : "Cellák szerkesztése", () => editing ? stopTableEdit() : startTableEdit(single), {symbol: "table-grid", disabled: !online.value}),
+            fitContentButton(single),
+          ),
+          h("p", {class: "muted"}, "Cellák szerkesztése: dupla kattintás a táblázaton. A CSV formázás nélküli szöveges dokumentum; készíthető belőle független, formázható táblázat."),
           propertyTools(
             button("Önálló táblázat (másolat)", () => transfer(() => tableFromCSVBox(single)), {symbol: "copy", disabled: !online.value}),
           ),
@@ -4187,12 +4334,13 @@ createApp({
           doc ? h("input", {class: "input", "aria-label": "Táblázat neve", placeholder: "Táblázat neve", value: doc.name ?? "",
               onChange: e => modifyTable(single, next => { next.name = e.target.value.trim() || undefined; })}) : h("p", {class: "muted"}, "Betöltés…"),
           propertyTools(
-            button(editing ? "Szerkesztés vége" : "Cellák szerkesztése", () => editing ? stopTableEdit() : startTableEdit(single), {symbol: "grid", disabled: !doc}),
+            button(editing ? "Szerkesztés vége" : "Cellák szerkesztése", () => editing ? stopTableEdit() : startTableEdit(single), {symbol: "table-grid", disabled: !doc}),
             iconToggle("Fejlécsor rögzítése", (doc?.header?.rows ?? 0) > 0,
               () => modifyTable(single, next => { next.header = (next.header?.rows ?? 0) > 0 ? undefined : {rows: 1, cols: 0}; }), icon("heading")),
-            iconToggle("Alaprács", doc?.grid !== false, () => modifyTable(single, next => { next.grid = next.grid === false; }), icon("grid")),
+            iconToggle("Alaprács", doc?.grid !== false, () => modifyTable(single, next => { next.grid = next.grid === false; }), icon("table-grid")),
+            fitContentButton(single),
           ),
-          editing ? tableToolbar(h, tableEdit.value.editor) : h("p", {class: "muted"}, "Cellák szerkesztése: dupla kattintás a táblázaton."),
+          editing ? tableToolbar(h, tableEdit.value.editor, {icon}) : h("p", {class: "muted"}, "Cellák szerkesztése: dupla kattintás a táblázaton."),
           propertyTools(
             button("Tartalom cseréje fájlból…", () => transfer(() => reimportTable(single)), {symbol: "restore", disabled: !online.value || !!occupied(single.id)}),
             h("a", {class: "button", href: exportURL(fileSheet(path, single.file), single.file.asset, "csv"), download: ""}, [icon("download"), "CSV"]),
@@ -4270,7 +4418,7 @@ createApp({
         ] : [];
         panels.push(group("Megjelenés", [
           h("div", {class: "property-options property-tools box-effect-options"}, [
-            ...(nodes.some(isImage) ? [color("Szín (keret, súgó)", "fill", 2)] : backgroundTools()),
+            ...(nodes.some(isImage) ? [color("Szín (keret, súgó)", "fill", 2), canvasTintTool()] : backgroundTools()),
             ...frameTools, elevation(), ...imageSizeButtons(), linkButton()]),
         ]));
       }

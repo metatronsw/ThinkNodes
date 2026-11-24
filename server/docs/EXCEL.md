@@ -136,7 +136,7 @@ A szövegfájlok mintáját követi: **a tartalom egy fájlban van**, nem a munk
 - **`v` (érték):** szám, szöveg, logikai érték vagy hiba (`{"err": "#DIV/0!"}`). Képletes cellánál ez a szerver által számolt eredmény.
 - **`f` (képlet):** a `=` jel nélkül tárolva.
 - **`s` (stílus):** index a `styles` tömbbe, ahogy az xlsx is csinálja.
-- **Stílusmezők:** `b` félkövér, `i` dőlt, `u` aláhúzott, `o` felülvonás, `color` betűszín, `fill` cellaszín, `align` igazítás (left / center / right),
+- **Stílusmezők:** `b` félkövér, `i` dőlt, `u` aláhúzott, `o` áthúzott (2026-11-24 előtt felülvonás volt; a kulcs maradt, a régi felülvont cellák áthúzva jelennek meg), `color` betűszín, `fill` cellaszín, `align` igazítás (left / center / right),
   `fmt` számformátum, `border` cellakeret.
 - **Cellakeret (`border`):** oldalanként (`top`, `right`, `bottom`, `left`) külön: `w` vastagság (1 vékony, 2 közepes, 3 vastag),
   `color` szín, `style` (`solid`, `dashed`, `dotted`, `double`). Ha két szomszédos cella közös oldalán eltér a keret,
@@ -212,14 +212,14 @@ ha a saját cellájának nincs (pl. `SUM` pénznemes cellákon pénznem lesz), a
 - Mozgás: nyilak, Tab / Shift+Tab, Enter / Shift+Enter, Home / End, Ctrl+nyíl.
 - Beírás: gépeléskor a cella tartalma lecserélődik, F2 vagy dupla kattintás a meglévőt szerkeszti, Delete törli, Esc elveti a változást.
 - Képlet írásakor egy cellára kattintva vagy a nyilakkal a hivatkozás beszúródik, és a hivatkozott tartomány színes keretet kap.
-- Formázás: Ctrl+B / I / U. A felülvonásnak és a színeknek nincs gyorsbillentyűje, ezek a panelen és a lebegő eszközsoron érhetők el.
+- Formázás: Ctrl+B / I / U. Az áthúzásnak és a színeknek nincs gyorsbillentyűje, ezek a panelen és a lebegő eszközsoron érhetők el.
 - Vágólap:
   - **Másolás:** TSV és HTML formában is, így Excelbe és Numbersbe is beilleszthető.
   - **Beillesztés:** TSV vagy HTML-táblázat a kijelölt bal felső cellától. A beillesztett képletek relatív hivatkozásai az új helyhez igazodnak.
 - Sor/oszlop: helyi menüből beszúrás, törlés, oszlopszélesség húzással.
 - Visszavonás: szerkesztési módban saját visszavonási verem a cellaműveletekhez. Kilépés után a táblázat a munkalap visszavonásában egy lépésnek számít.
 
-**Lebegő eszközsor** (a doboz fölött, szerkesztési módban): B, I, U, felülvonás, betűszín, cellaszín, igazítás (3 gomb),
+**Lebegő eszközsor** (a doboz fölött, szerkesztési módban): B, I, U, áthúzás, betűszín, cellaszín, igazítás (3 gomb),
 számformátum (lenyíló + tizedesjegy −/+), keret, Σ (összegzés a kijelölés alá vagy mellé).
 
 **Keret gomb:** lenyíló, mint az Excelben.

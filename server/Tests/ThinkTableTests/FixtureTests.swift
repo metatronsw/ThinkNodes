@@ -135,7 +135,7 @@ private struct RewriteCase: Decodable {
     doc[CellAddress("B2")!] = TableCell(v: .text("<b>&</b>"))
     let html = TableHTML.render(doc)
     #expect(html.contains("1\u{00A0}500 Ft"))
-    #expect(html.contains("text-decoration:underline overline"))
+    #expect(html.contains("text-decoration:underline line-through"))
     #expect(html.contains("border-top:3px double #000"))
     #expect(!html.contains("javascript"))
     #expect(html.contains("&lt;b&gt;&amp;&lt;/b&gt;"))

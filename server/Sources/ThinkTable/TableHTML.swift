@@ -42,7 +42,7 @@ public enum TableHTML {
         var css: [String] = []
         if style.b == true { css.append("font-weight:700") }
         if style.i == true { css.append("font-style:italic") }
-        let decorations = [style.u == true ? "underline" : nil, style.o == true ? "overline" : nil].compactMap { $0 }
+        let decorations = [style.u == true ? "underline" : nil, style.o == true ? "line-through" : nil].compactMap { $0 }
         if !decorations.isEmpty { css.append("text-decoration:" + decorations.joined(separator: " ")) }
         if let c = color(style.color) { css.append("color:" + c) }
         if let c = color(style.fill) { css.append("background:" + c) }
@@ -67,11 +67,11 @@ public enum TableHTML {
     public static func render(_ document: TableDocument, maxRows: Int = maxPreviewRows) -> String {
         let rows = min(document.size.rows, maxRows), cols = document.size.cols
         let headerRows = min(document.header?.rows ?? 0, rows)
-        var html = "<table class=\"tn-table\(document.grid == false ? " no-grid" : "")\"><colgroup>"
-        for c in 0..<cols {
-            let width = document.cols?[CellAddress.columnName(c)]?.w ?? defaultColumnWidth
-            html += "<col style=\"width:\(Int(max(16, min(width, 2000))))px\">"
-        }
+        // A teljes szélesség kifejezett: rögzített oszlopszélességekhez (table-layout: fixed) kell, különben a böngésző
+        // a tartalomhoz igazít (pl. a félkövér betű szélesíti az oszlopot). A szerkesztő `tableWidth`-jének párja.
+        let widths = (0..<cols).map { Int(max(16, min(document.cols?[CellAddress.columnName($0)]?.w ?? defaultColumnWidth, 2000))) }
+        var html = "<table class=\"tn-table\(document.grid == false ? " no-grid" : "")\" style=\"width:\(widths.reduce(0, +))px\"><colgroup>"
+        for width in widths { html += "<col style=\"width:\(width)px\">" }
         html += "</colgroup>"
         func row(_ r: Int, cell tag: String) -> String {
             let height = document.rows?[String(r + 1)]?.h ?? defaultRowHeight

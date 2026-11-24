@@ -74,6 +74,7 @@ public struct CellStyle: Codable, Equatable, Sendable {
     public var b: Bool?
     public var i: Bool?
     public var u: Bool?
+    /// Áthúzott (korábban felülvonás volt; a fájlbeli kulcs maradt).
     public var o: Bool?
     public var color: String?
     public var fill: String?

@@ -1,5 +1,38 @@
 # Változások
 
+## 2026-11-24 – Vászon nézetkorlátok, közvetlenül szerkeszthető CSV, táblázat- és dobozjavítások, főoldal
+
+A felhasználói lista „-” jelű tételei; a „+” jelűek megbeszélésre várnak (TODO.md „Megbeszélendő”).
+
+**Vászon (szerkesztő)**
+- Legnagyobb nagyítás 800% (eddig 400%). A legkisebb nagyítás a kompozíciótól függ: a teljes tartalom ekkor a képernyő negyedét tölti ki (oldalanként a felét); a 100% mindig elérhető.
+- Pásztázni bármelyik irányba addig lehet, amíg a legszélső objektum éppen eltűnik a képernyő szélén (egér, görgő, érintés, szóköz+húzás; `constrainView`, `contentBox` az `editor.js`-ben).
+- Betöltéskor és a „Mind” gombnál a kompozíció (az objektumok határoló dobozának) közepe kerül a képernyő közepére, mint a megtekintőben – eddig a vászon origója.
+- A nagyítás értéke a vászon alján, középen jelenik meg (külön komponens, nem rajzolja újra a szerkesztő gyökerét).
+- Görgethető tartalom (szövegfájl, CSV, táblázat) egérgörgővel csak a kijelölt dobozban görög; nem kijelölt doboz fölött a görgő a vásznat nagyítja.
+
+**Táblázat**
+- A táblázat szélessége rögzített (az oszlopszélességek összege): a félkövér betű már nem szélesíti az oszlopot (szerkesztő és szerver: `TableHTML`).
+- Felülvonás helyett áthúzás (a fájlbeli `o` kulcs maradt; a régi felülvont cellák áthúzva jelennek meg). Az igazítás gombjai a szövegeknél megszokott ikonokat kapták, az Alaprács ikonja valódi rács (`table-grid`).
+- Táblázat nem kaphat elmosott hátteret. Szerkesztés közben nem jelenik meg a rejtett Text buboréksúgója.
+- Új háttérmód: „Vászonszín” (`backgroundMode: "canvas"`) táblázatra, CSV-re és képre (átlátszó kép, SVG): a doboz a munkalap háttérszínét mutatja, a vászon rácsa nem látszik át. Szerver: `BoxBackgroundMode.canvas`, `Rendering.swift`.
+- Új gomb a panelen (táblázat és CSV): a doboz átméretezése a tartalom tényleges méretére (`fitBoxToContent`; legfeljebb 4096 × 4096).
+- Megtekintő: a szövegfájl-, CSV- és táblázatdoboz tartalma kilógott a dobozból, és a táblázat cellaformázása sem érvényesült, mert az oldal tartalombiztonsági szabálya (`style-src 'self'`) nem engedi a szerver által beírt `style` attribútumot. A `viewer.js` most szkriptből állítja be ezeket.
+
+**Önálló CSV**
+- A CSV cellái közvetlenül a vásznon szerkeszthetők (dupla kattintás; kijelölés, törlés, átírás, beillesztés), formázás és képletek nélkül (`TableEditor` `plain` mód). Mentéskor az eredeti elválasztó, a sorvégek és a soronkénti mezőszám megmarad; korlát 1000 sor × 100 oszlop.
+- A tulajdonságpanelen megszűnt a CSV tartalmának szövegszerkesztője (a Text megjegyzés maradt).
+
+**Dobozok**
+- Külső vizuális tartalom (kép, SVG, weboldal- és munkalap-előnézet) egységesen 5 px lekerekítést kap (szerkesztő, megtekintő, szerver).
+- A buboréksúgó követi a szöveg igazítását (bal / közép / jobb); a megtekintőben a sablon `data-align` mezőjéből.
+
+**Főoldal**
+- Az Új projekt / Projekt importálása külön szekcióban áll, vonallal elválasztva a projektektől.
+- Vendégeknek (nincs bejelentkezve, vagy vendég szerepkör) tájékoztató: létrehozáshoz és szerkesztéshez be kell jelentkezni, és csak a publikus projektek láthatók.
+
+**Ellenőrzés:** Chromiumban, tesztmódban, a mérő-adatmappán (`server/.build/perf-data`): nagyítási és pásztázási korlát, kezdő nézet, görgetési szabály, táblázat (félkövér, áthúzás, méretre igazítás), CSV szerkesztése és a mentett fájl, vászonszín (szerkesztő és megtekintő), megtekintőbeli kilógás, főoldal, súgóigazítás; a vendégtájékoztató tesztmód nélküli szerveren. Safariban nem ellenőriztem. Tesztek: 72 Swift teszt, `table-engine`, `table-fuzz`, `canvas-markdown` rendben; a `gestures.mjs` ugyanott bukik, ahol eddig (BUGS.md). A szerver kódja változott (újrafordítva, újraindítva).
+
 ## 2026-11-24 – Teljesítményjavítás a vászonszerkesztőn (a `perf` ág beolvasztva a `main`-be)
 
 - Négy egymásra épülő változat (A–D), mind beolvasztva az alapbeállításokkal (a mérésben leggyorsabb kombináció), kapcsolható kísérleti beállításokkal (`localStorage.tnPerf`); mérések, okok, eredménytáblák: `server/docs/PERF.md`.

@@ -1410,6 +1410,9 @@ private func indexPage(_ items: [ProjectCard], session: SessionInfo, dataFolder:
         """
     }.joined()
     let create = session.user == nil || session.user?.role == .guest ? "" : "<button type=\"button\" class=\"panel sub-preview new-worksheet\">\(uiIcon("plus"))Új projekt</button><button type=\"button\" class=\"panel sub-preview import-package\">\(uiIcon("download"))Projekt importálása (.zip)</button>"
+    // Vendég (nincs bejelentkezve, vagy vendég szerepkör): miért nem lát minden projektet, és miért nincs létrehozás.
+    let guestNotice = session.user == nil || session.user?.role == .guest
+        ? "<p class=\"guest-notice\" role=\"note\">\(uiIcon("butterfly"))<span>Projektek létrehozásához és szerkesztéséhez be kell jelentkezni. Jelenleg csak a szerkesztők által publikusra állított projektek láthatók.</span></p>" : ""
     let openProject = """
         <form class="header-open" method="get" action="/open"><input aria-label="Munkalap útvonala" name="path" placeholder="Munkalap útvonala" required><button class="\(headerButtonClass)" aria-label="Megnyitás">\(uiIcon("folder"))</button></form>
         """
@@ -1418,7 +1421,11 @@ private func indexPage(_ items: [ProjectCard], session: SessionInfo, dataFolder:
         <main class="shell">
           <script type="module" src="/cards.js"></script>
           <div class="page-heading"><h1>Munkalapok</h1></div>
-          <div class="project-list" id="worksheet-cards" data-delete="\(session.user?.role == .admin)" data-csrf="\(session.csrf ?? "")">\(cards.isEmpty && create.isEmpty ? "<p class=\"muted\">Még nincs munkalap.</p>" : cards)\(create)</div>
+          \(guestNotice)
+          <div class="project-sections" id="worksheet-cards" data-delete="\(session.user?.role == .admin)" data-csrf="\(session.csrf ?? "")">
+            <div class="project-list">\(cards.isEmpty ? "<p class=\"muted\">Még nincs munkalap.</p>" : cards)</div>
+            \(create.isEmpty ? "" : "<section class=\"project-actions\" aria-label=\"Új projekt\"><div class=\"project-list\">\(create)</div></section>")
+          </div>
         </main>
         \(debugBadge(dataFolder: dataFolder))
         """, updates: updates)
@@ -1489,7 +1496,7 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
         let justification = $0.justified == true ? " data-justified" : ""
         // Text: mindenhol formázott markdown (a sima sortörés új sor).
         let body = $0.uppercase == true ? "<div class=\"is-uppercase\">\(markdownHTML($0.text))</div>" : markdownHTML($0.text)
-        return "<template data-tooltip=\"\($0.id)\"\(justification)>\(body)</template>"
+        return "<template data-tooltip=\"\($0.id)\" data-align=\"\($0.alignment.rawValue)\"\(justification)>\(body)</template>"
     }.joined()
     let introduction = worksheet.text.map(markdownHTML) ?? ""
     let notes = introduction.isEmpty ? "" :
@@ -1516,7 +1523,7 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
         ? "<a class=\"button small\" aria-label=\"Szülő munkalap\" title=\"Szülő munkalap\" href=\"/\(path.url.split(separator: "/").dropLast().joined(separator: "/"))\">\(uiIcon("parent-up"))</a>" : ""
     return htmlPage(title: worksheet.title, body: """
         \(siteHeader(path: path.url, project: worksheet.title, user: session.user, csrf: session.csrf, canEdit: access.editable))
-        <script type="module" src="/viewer.js?v=18"></script>
+        <script type="module" src="/viewer.js?v=19"></script>
         <main class="shell" id="worksheet-view" data-graphics="\(escaped(graphicsJSON))" data-selection="\(selectionColor)" data-site-mode="\(siteMode(req) ?? "light")" data-path="\(path.url)" data-csrf="\(token(req))" data-revision="\(worksheet.revision)" data-editable="\(access.editable)" data-member="\(session.user != nil)">
           <a hidden data-current-document data-scope="\(path.parts.count == 1 ? "project" : "sheet")" \(editorMembership(access)) \(menuState(access.sheetRule)) data-manage="\(access.manageable)" href="\(base)">Munkalap</a>
           <div class="viewer-heading">\(parent)<h1><span aria-hidden="true">• </span>\(escaped(worksheet.title))</h1><div class="viewer-heading-credits">\(credits(worksheet, access))</div></div>

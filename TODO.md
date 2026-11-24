@@ -1,8 +1,4 @@
 
-
-# Kép
-
-
 # project migráció
 
 + Kész (docs/migration.md „Megvalósítás”): ZIP-export (projekt / részfa / lap, .version, külső fájlok, titkosítás), import főoldalon és allapként.
@@ -11,44 +7,19 @@
 + Projektcsomag mérethatára: most a .web ZIP max. 100 MiB, a .thnode max. 12 MiB, a teljes projekt (képek, .web, .version) ennél jóval nagyobb lehet. Dönteni kell a felső határról (és a kibontott méret/fájlszám korlátjáról); ha több száz MB vagy GB is előfordulhat, streamelt feltöltés és letöltés kell (nem `body.collect` memóriába), plusz folyamatjelző a kliensen.
 
 
-
-
-
-
-# letölthető .zip és feltölthető teljes project, vagy munka lapok
-
-
-
-
-# fókusz kérés a többiektől.
--full screen legyen egy adott doboz vagy prezi ? 
-
 # instance 
 - lehessen létrehozni instanced klónokat dobozokról, ha az egyik változtatva van a másik is kövesse a változást.
 - kell egy ID minden doboznak (vonal,csomópont egyedi lesz, annak nem kell) vagy már most is van ? 
 - 
 
 
-[ **HIBÁK** ]
+# SHIFT DRAG: 
+Ez egy kísérleti módosító funkció lenne, a property panel kiváltására, hogy minnél kevesebb funkció - szerkesztés miatt kelljen kinyitni. Minden doboz, objektum, és elem kaphatna ilyen extra módosítót. Ha rendelkezik vele, akkor  SHIFT + lenyomott balegérgomb hatására 
+
++ Nyilat az adott pontra illeszteni dobozon belül!
 
 
-[ **DESIGN** ]
-
-Nyilat az adott pontra illeszteni dobozon belül!
-Shift -el húzva
- 
-
-
-
-
-
-
-
-[ **KÍSÉRLETI** ]
-
-
-SHIFT DRAG: 
-- vonal húzáskor, vagy kijelölt vonal vastagítás legyen
++ vonal húzáskor, vagy kijelölt vonal vastagítás legyen
 - szín váltás ? 
 - shift duplakatt: doboz, nyíl, forma váltás
 
@@ -145,3 +116,15 @@ Ez reális és takarékos megoldás. A megvalósítás előtt tisztázandó terv
 + Hátra: a kérelmező értesítése a döntésről (most nincs; a szerver nem küld e-mailt).
 + Lehetőség: további adminisztrátori jelzések (AdminMessage.Kind), pl. lemezhely, hibás mentés.
 + Lehetőség: a felhasználó maga kösse össze / válassza le a Google-fiókját (most csak az admin teheti); a Google `sub` azonosítójának rögzítése az e-mail-cím mellé.
+
+
+# Megbeszélendő (a 2026-11-24-i lista „+” jelű tételei – még nincs megvalósítva)
+
+## Vászon
++ Nagyítás utáni kirajzolás: az SVG, a táblázatok és a szövegek legyenek élesek 800%-on is. Kérdés: melyik böngészőben és mi életlen most (kép / SVG-fájl / táblázat / szövegfájl)? Lehetőségek: (a) kép- és SVG-fájl `<img>` helyett SVG `<image>` elemmel; (b) a HTML-tartalmú dobozok (táblázat, szövegfájl) a nagyításnak megfelelő felbontásban rajzolva (belül nagyítva, kívül visszakicsinyítve) – a nagyítás végi újrarajzolást lassítja; (c) csak lépcsőnként (pl. 200 / 400 / 800%) váltani felbontást.
+
+## Táblázat (teljesítményfüggő)
++ Dupla kattintásra az a cella nyíljon meg szerkesztésre, amelyik fölött kattintottak; a görgetési pozíció maradjon. Megoldhatónak látszik: az olvasó nézet cellájából sor/oszlop, a görgetési helyzet átvitele a szerkesztőbe.
++ A többi felhasználó lássa, melyik cella van kijelölve és melyik áll szerkesztés alatt. Új, rövid életű üzenet kell a közös csatornán (mint az egérmutató); kérdés: csak a kijelölés és az aktív cella, vagy a gépelt szöveg is?
++ Szerkesztés elfogadása után lassan frissül a táblázat, és az egész újratölt / villan. Ok: 1,5 mp-es mentési késleltetés + a többi kliens az új fájlváltozat betöltéséig „…”-ot mutat. Lehetőségek: a régi tartalom maradjon látható a betöltésig; rövidebb késleltetés cella elfogadásakor; cellaszintű változások a közös csatornán (újratöltés nélkül).
++ A többi felhasználó ugyanazt a görgetési pozíciót lássa, mint a szerkesztő – általános szabály minden görgethető tartalomra. Kérdés: csak élőben (amíg valaki görget), vagy a dobozhoz mentve is (a megtekintő és a később érkezők is azt lássák)?

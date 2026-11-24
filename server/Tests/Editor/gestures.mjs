@@ -39,6 +39,7 @@ let requestedZoom;
 function zoom() {
   const behavior = () => {};
   behavior.scaleExtent = () => behavior;
+  behavior.constrain = () => behavior;
   behavior.filter = filter => { zoomEvents.filter = filter; return behavior; };
   behavior.on = (key, fn) => { zoomEvents[key] = fn; return behavior; };
   behavior.transform = (_, transform) => { requestedZoom = transform; };

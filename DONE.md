@@ -6,6 +6,20 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **Megtekintő: a szövegfájl-, CSV- és táblázatdoboz tartalma kilógott a dobozból** (2026-11-24)
+  - Ok: az oldal tartalombiztonsági szabálya (`style-src 'self'`) nem engedi érvényesülni a szerver által beírt `style` attribútumot, így a doboz magassága, a táblázat oszlopszélességei és a cellák formázása elveszett.
+  - Javítás: a `viewer.js` (`bindCanvas`) a fájldobozok `style` attribútumát szkriptből állítja be. Chromiumban ellenőrizve (a dobozok a saját méretükben, görgethető tartalommal).
+
+- **Szerkesztő: betöltéskor a vászon origója került középre, nem a kompozíció** (2026-11-24)
+  - Javítás: a kezdő nézet és a „Mind” gomb az objektumok határoló dobozának közepére áll (`contentBox`, `fit`), mint a megtekintő.
+
+- **Táblázat: a félkövér betű megváltoztatta a táblázat szélességét** (2026-11-24)
+  - Ok: a `table-layout: fixed` kifejezett táblázatszélesség nélkül nem érvényesül, a böngésző a tartalomhoz igazította az oszlopokat.
+  - Javítás: a táblázat szélessége az oszlopszélességek összege (szerkesztő: `tableWidth`, szerver: `TableHTML.render`).
+
+- **A buboréksúgó nem követte a szöveg igazítását, és táblázat szerkesztése közben is megjelent** (2026-11-24)
+  - Javítás: `showTooltip` igazítás-paramétere (szerkesztő: a doboz igazítása; megtekintő: `data-align`); szerkesztett táblázaton / CSV-n nincs súgó.
+
 - **Más felhasználó által fogott szövegfájl- / táblázatdoboz görgethető volt** (2026-11-24)
   - Ok: a foglaltság csak a doboz megfogását és a görgőt zárta; a görgetősáv (natív, illetve Safariban a saját) húzása nem ment át a foglaltság-ellenőrzésen.
   - Javítás: foglalt dobozon a görgethető rész és a saját görgetősáv nem kap egéreseményt (`.node.occupied :is(.node-note, .tn-sb)`, `Public/app.css`). Két böngészőlappal ellenőrizve: a fogott táblázaton a sáv helyén a kattintás a doboz felületére esik, a szabad dobozon minden változatlan.

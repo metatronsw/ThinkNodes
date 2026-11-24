@@ -18,12 +18,12 @@ function borderCSS(line) {
   return width + "px " + style + " " + (hexColor(line.color) ?? "#000000");
 }
 
-// Cella stílusa (a Swift TableHTML.cellCSS párja).
+// Cella stílusa (a Swift TableHTML.cellCSS párja). Az `o` kulcs az áthúzás (korábban felülvonás volt).
 export function cellStyle(style) {
   const css = {};
   if (style.b) css.fontWeight = 700;
   if (style.i) css.fontStyle = "italic";
-  const decorations = [style.u && "underline", style.o && "overline"].filter(Boolean);
+  const decorations = [style.u && "underline", style.o && "line-through"].filter(Boolean);
   if (decorations.length) css.textDecoration = decorations.join(" ");
   if (hexColor(style.color)) css.color = style.color;
   if (hexColor(style.fill)) css.background = style.fill;
@@ -39,9 +39,18 @@ const kind = value => typeof value === "number" ? "num" : typeof value === "bool
 const columnWidth = (doc, c) => Math.max(16, Math.min(doc.cols?.[columnName(c)]?.w ?? defaultColumnWidth, 2000));
 const rowHeight = (doc, r) => Math.max(12, Math.min(doc.rows?.[String(r + 1)]?.h ?? defaultRowHeight, 2000));
 
+// A táblázat teljes szélessége: rögzített oszlopszélességekhez (table-layout: fixed) kell a kifejezett szélesség,
+// különben a böngésző a tartalomhoz igazít, és pl. a félkövér betű szélesíti az oszlopot.
+export const rowHeadWidth = 36;
+export function tableWidth(doc, withHeader = false) {
+  let width = withHeader ? rowHeadWidth : 0;
+  for (let c = 0; c < doc.size.cols; c++) width += columnWidth(doc, c);
+  return width;
+}
+
 function colgroup(h, doc, withHeader) {
   const cols = [];
-  if (withHeader) cols.push(h("col", {style: {width: "36px"}}));
+  if (withHeader) cols.push(h("col", {style: {width: rowHeadWidth + "px"}}));
   for (let c = 0; c < doc.size.cols; c++) cols.push(h("col", {style: {width: columnWidth(doc, c) + "px"}}));
   return h("colgroup", cols);
 }
@@ -56,7 +65,7 @@ export function renderTable(h, doc, {maxRows = previewRows} = {}) {
         display(cell?.v, style.fmt));
     }));
   return h("div", {class: "tn-table-wrap"}, [
-    h("table", {class: ["tn-table", {"no-grid": doc.grid === false}]}, [
+    h("table", {class: ["tn-table", {"no-grid": doc.grid === false}], style: {width: tableWidth(doc) + "px"}}, [
       colgroup(h, doc, false),
       headerRows ? h("thead", Array.from({length: headerRows}, (_, r) => row(r, "th"))) : null,
       h("tbody", Array.from({length: Math.max(0, rows - headerRows)}, (_, i) => row(headerRows + i, "td"))),
@@ -110,22 +119,23 @@ const borderModes = [
 ];
 
 // Eszközsor (a doboz fölött és a panelen is): formázás, számformátum, keret, Σ, sorok/oszlopok.
-export function tableToolbar(h, edit, {compact = false} = {}) {
+// `icon(név)`: a szerkesztő ikonrajzolója (icons.svg); az igazítás a szövegeknél megszokott ikonokat kapja.
+export function tableToolbar(h, edit, {compact = false, icon = null} = {}) {
   const style = edit.activeStyle();
   const toggle = (key, label, title) => h("button", {type: "button", class: ["button", "tn-tool", "tn-tool-" + key], "aria-pressed": String(!!edit.isOn(key)),
     title, "aria-label": title, onClick: () => edit.toggle(key)}, label);
   const tool = (label, title, action) => h("button", {type: "button", class: "button tn-tool", title, "aria-label": title, onClick: action}, label);
   edit.borderLine ??= {w: 1, color: "#000000", style: "solid"};
   return h("div", {class: ["tn-toolbar", {compact}], role: "toolbar", "aria-label": "Táblázat formázása"}, [
-    toggle("b", "B", "Félkövér (Ctrl+B)"), toggle("i", "I", "Dőlt (Ctrl+I)"), toggle("u", "U", "Aláhúzott (Ctrl+U)"), toggle("o", "O", "Felülvonás"),
+    toggle("b", "B", "Félkövér (Ctrl+B)"), toggle("i", "I", "Dőlt (Ctrl+I)"), toggle("u", "U", "Aláhúzott (Ctrl+U)"), toggle("o", "S", "Áthúzott"),
     h("label", {class: "tn-color", title: "Betűszín"}, ["A", h("input", {type: "color", "aria-label": "Betűszín", value: hexColor(style.color) ?? "#000000",
       onChange: e => edit.setStyle("color", e.target.value)})]),
     h("label", {class: "tn-color tn-fill", title: "Cellaszín"}, ["▧", h("input", {type: "color", "aria-label": "Cellaszín", value: hexColor(style.fill) ?? "#ffffff",
       onChange: e => edit.setStyle("fill", e.target.value)})]),
     tool("⌫", "Színek törlése", () => edit.styleSelection(s => ({...s, color: undefined, fill: undefined}))),
     ...[["left", "⇤", "Balra"], ["center", "↔", "Középre"], ["right", "⇥", "Jobbra"]].map(([align, label, title]) =>
-      h("button", {type: "button", class: "button tn-tool", "aria-pressed": String(style.align === align), title, "aria-label": title,
-        onClick: () => edit.setStyle("align", style.align === align ? undefined : align)}, label)),
+      h("button", {type: "button", class: "button tn-tool tn-tool-align", "aria-pressed": String(style.align === align), title, "aria-label": title,
+        onClick: () => edit.setStyle("align", style.align === align ? undefined : align)}, icon ? [icon("text-" + align)] : label)),
     h("select", {class: "tn-select", "aria-label": "Számformátum", title: "Számformátum", value: formatKey(style.fmt),
       onChange: e => edit.setStyle("fmt", numberFormats.find(([key]) => key === e.target.value)?.[2] ?? undefined)},
       numberFormats.map(([key, label]) => h("option", {value: key}, label))),
@@ -278,8 +288,8 @@ export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false
       onPointerdown: stop}),
     h("div", {class: "tn-formula-bar"}, [
       h("span", {class: "tn-name"}, edit.activeName),
-      h("span", {class: "tn-fx"}, "fx"),
-      h("input", {class: "tn-formula", spellcheck: false, "aria-label": "Képletsor", value: draft ?? edit.rawText(edit.activeName),
+      edit.plain ? null : h("span", {class: "tn-fx"}, "fx"),
+      h("input", {class: "tn-formula", spellcheck: false, "aria-label": edit.plain ? "Cella tartalma" : "Képletsor", value: draft ?? edit.rawText(edit.activeName),
         onFocus: () => { if (edit.draft == null) edit.startDraft(); },
         onInput: e => edit.setDraft(e.target.value), onPointerdown: stop}),
     ]),
@@ -293,7 +303,7 @@ export function renderTableEditor(h, edit, {onExit = () => {}, focusGrid = false
         edit.viewport = el.clientHeight || 400;
         if (Math.abs(el.scrollTop - edit.scrollTop) > windowStep) { edit.scrollTop = el.scrollTop; edit.touch(); }
       }}, [
-      h("table", {class: ["tn-table", "tn-editing", {"no-grid": doc.grid === false}]}, [
+      h("table", {class: ["tn-table", "tn-editing", {"no-grid": doc.grid === false}], style: {width: tableWidth(doc, true) + "px"}}, [
         colgroup(h, doc, true),
         h("thead", [headerRow]),
         h("tbody", bodyRows),

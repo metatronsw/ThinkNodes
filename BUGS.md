@@ -4,6 +4,12 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 ## Nyitott
 
+- **A 2026-11-24-i vászon-, táblázat- és CSV-módosítások Safariban nincsenek kipróbálva** (2026-11-24)
+  - Chromiumban ellenőrizve. Safariban külön nézendő: CSV cellaszerkesztés (ugyanaz a szerkesztő, mint a táblázaté, a ragadó fejlécekkel), a „méretre igazítás” gomb mérése (a saját görgetősáv tartója mellett), a 800%-os nagyítás, a zoom-kijelző helye.
+
+- **A megtekintőben a görgethető tartalom kijelölés nélkül is görög** (2026-11-24)
+  - A „csak kijelölt dobozban görög” szabály a szerkesztőben él; a megtekintőben (ahol a látogató nem jelöl ki) a tartalom egérgörgővel továbbra is görgethető. Eldöntendő, hogy ott mi legyen a szabály.
+
 - **Teljesítmény: nagyítás végén 80–190 ms-os képkocka; táblázatszerkesztés görgetése ~50 fps** (2026-11-24)
   - A mérések szerint ez a két terület nem javult eleget; részletek és a kipróbált megoldások: `server/docs/PERF.md` („Ami nem javult vagy nyitva maradt”).
   - A `contain: strict` gyorsította a táblázatgörgetést (42 → 54 fps), de Safariban a rétegződő elem foreignObject-ben nem kattintható, ezért kikerült.

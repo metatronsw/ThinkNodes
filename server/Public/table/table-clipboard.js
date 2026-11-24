@@ -49,7 +49,7 @@ export function copySelection(doc, sel) {
       const text = display(cell?.v, style.fmt);
       fields.push(/[\t\n\r"]/.test(text) ? "\"" + text.replace(/"/g, "\"\"") + "\"" : text);
       const css = [style.b && "font-weight:bold", style.i && "font-style:italic",
-        (style.u || style.o) && "text-decoration:" + [style.u && "underline", style.o && "overline"].filter(Boolean).join(" "),
+        (style.u || style.o) && "text-decoration:" + [style.u && "underline", style.o && "line-through"].filter(Boolean).join(" "),
         style.color && "color:" + style.color, style.fill && "background:" + style.fill].filter(Boolean).join(";");
       htmlCells.push("<td" + (css ? " style=\"" + escapeHTML(css) + "\"" : "") + ">" + escapeHTML(text) + "</td>");
       rowCells.push(cell ? {...cell, style: cell.s ? style : undefined, s: undefined} : null);
@@ -80,7 +80,7 @@ export function parseHTMLTable(html) {
       if (css.fontStyle === "italic" || td.querySelector("i,em")) style.i = 1;
       const decoration = css.textDecoration || css.textDecorationLine || "";
       if (decoration.includes("underline") || td.querySelector("u")) style.u = 1;
-      if (decoration.includes("overline")) style.o = 1;
+      if (decoration.includes("line-through") || td.querySelector("s,strike,del")) style.o = 1;
       const color = cssHex(css.color), fill = cssHex(css.backgroundColor || css.background);
       if (color && color !== "#000000") style.color = color;
       if (fill && fill !== "#ffffff") style.fill = fill;

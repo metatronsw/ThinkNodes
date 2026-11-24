@@ -47,7 +47,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/vendor/d3.js"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=56"></script>
+        <script type="module" src="/editor.js?v=57"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -58,7 +58,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=29">
+          <link rel="stylesheet" href="/app.css?v=30">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -579,7 +579,7 @@ private func boxGeometry(_ node: Idea, graphics: VisualTheme.Graphics?) -> Strin
     }
     switch node.shape {
     case .rectangle, .rounded:
-        return "rect x=\"\(number(-x))\" y=\"\(number(-y))\" width=\"\(number(node.width))\" height=\"\(number(node.height))\" rx=\"\(node.type == "preview" ? "5" : node.shape == .rounded ? "12" : "0")\""
+        return "rect x=\"\(number(-x))\" y=\"\(number(-y))\" width=\"\(number(node.width))\" height=\"\(number(node.height))\" rx=\"\(node.type == "preview" || node.isImage ? "5" : node.shape == .rounded ? "12" : "0")\""
     case .ellipse:
         return "ellipse rx=\"\(number(x))\" ry=\"\(number(y))\""
     case .diamond, .triangle, .pentagon, .hexagon, .parallelogram:
@@ -641,7 +641,8 @@ private func boxSurface(_ node: Idea, geometry: String, graphics: VisualTheme.Gr
     let blurred = mode == .blurred
     let empty = mode == .empty
     // A kép mindig háttér nélkül, a saját átlátszóságával jelenik meg (a régi alfa- és háttérbeállítások nem hatnak).
-    if node.isImage { return "" }
+    // Vászonszín módban (canvas) a kép alatt a munkalap háttérszíne áll (a szín a `fill`-ben érkezik, lásd renderWorksheetCanvas).
+    if node.isImage { return mode == .canvas ? "<\(geometry) class=\"node-surface\" fill=\"\(escaped(node.fill))\" stroke=\"none\"/>" : "" }
     let image = node.isImage
     let locked = node.isBox && node.locked == true
     let glass = graphics?.glass == true && mode == .solid && !image
@@ -995,6 +996,9 @@ package func boardSVG(_ board: Worksheet, noteBase: String? = nil, siteHost: Str
 package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHost: String?, assetBase: String? = nil,
                            fileText: (Idea) -> String? = { _ in nil }) -> (svg: String, tooltipNodes: [Idea]) {
     let graphics = Themes.catalog.first { $0.id == board.appearance?.theme }?.graphics
+    // Vászonszín háttérmód: a doboz felülete a munkalap háttérszínét kapja (editor.js surfaceColor).
+    var board = board
+    for index in board.nodes.indices where board.nodes[index].backgroundMode == .canvas { board.nodes[index].fill = board.backgroundColor }
     let drawings = board.nodes.map { ideaDrawing($0, graphics: graphics) }
     let renderedIdeas = drawings.map(\.node)
     let nodes = Dictionary(uniqueKeysWithValues: renderedIdeas.map { ($0.id, $0) })
