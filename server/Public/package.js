@@ -187,6 +187,34 @@ export function importPackage(file, {target = null, csrf}) {
   });
 }
 
+/// ThinkNodes-csomag-e a ZIP (docs/migration.md): titkosított csomag (`thinknodes-encrypted.json`), vagy nyitott csomag,
+/// amelynek gyökerében `Név/Név.thnode` van. Csak a ZIP tartalomjegyzékét olvassa (a fájl végéről), a tartalmat nem.
+export async function isPackageZip(blob) {
+  try {
+    if (blob.size < 22 || blob.size > 200 * 1024 * 1024) return false;
+    const tailStart = Math.max(0, blob.size - 65557);
+    const tail = new DataView(await blob.slice(tailStart).arrayBuffer());
+    let end = -1;
+    for (let offset = tail.byteLength - 22; offset >= 0; offset--) {
+      if (tail.getUint32(offset, true) === 0x06054b50) { end = offset; break; }
+    }
+    if (end < 0) return false;
+    const size = tail.getUint32(end + 12, true), start = tail.getUint32(end + 16, true);
+    if (size > 8 * 1024 * 1024 || start + size > blob.size) return false;
+    const directory = new DataView(await blob.slice(start, start + size).arrayBuffer());
+    const decoder = new TextDecoder();
+    for (let offset = 0; offset + 46 <= directory.byteLength && directory.getUint32(offset, true) === 0x02014b50;) {
+      const nameLength = directory.getUint16(offset + 28, true);
+      const name = decoder.decode(new Uint8Array(directory.buffer, offset + 46, nameLength)).normalize("NFC");
+      if (name === "thinknodes-encrypted.json") return true;
+      const parts = name.split("/");
+      if (parts.length === 2 && parts[1] === parts[0] + ".thnode") return true;
+      offset += 46 + nameLength + directory.getUint16(offset + 30, true) + directory.getUint16(offset + 32, true);
+    }
+  } catch { /* nem olvasható ZIP: nem csomag */ }
+  return false;
+}
+
 /// Fájlválasztó: egy .zip kiválasztása.
 export function chooseZip() {
   return new Promise(resolve => {

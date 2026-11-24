@@ -82,7 +82,7 @@ globalThis.fetch = async (url, options) => {
     return new Response(null, {status: 204});
   }
   if (url === "/api/worksheet-file/test?name=lap.thnode" && options?.method === "POST") {
-    return Response.json({asset: "sheet-test", title: "Lap", link: "/test/lap"});
+    return Response.json({path: "test/lap"});
   }
   if (url === "/api/subworksheet/test/jegyzet" && options?.method === "POST") {
     return Response.json({title: "Jegyzet"});
@@ -1421,7 +1421,37 @@ assert.equal(classify("hang.wav", new Uint8Array()), "audio");
 assert.equal(classify("kep.webp", new Uint8Array()), "image");
 assert.ok(traits("code").has("fileText") && traits("image").has("link") && !traits("document").has("link"));
 const importedWorksheet = await importFile(new File(['{"title":"Lap"}'], "lap.thnode"), "test", "token");
-assert.equal(importedWorksheet, null);
+// A behúzott .thnode új allap lesz, a vászonra pedig rá mutató laplinkes doboz kerül.
+assert.deepEqual(importedWorksheet, {text: "lap", link: {kind: "sheet", target: "lap"}, width: 220, height: 90});
+// Csomag-ZIP felismerése a tartalomjegyzékből: nyitott (Név/Név.thnode) és titkosított csomag; a sima ZIP nem az.
+const {isPackageZip} = await import("../../Public/package.js");
+function zipOf(...names) {
+  const encoder = new TextEncoder(), chunks = [], entries = [];
+  let offset = 0;
+  const bytes = (...parts) => { const view = new DataView(new ArrayBuffer(parts.reduce((sum, [size]) => sum + size, 0)));
+    let at = 0; for (const [size, value] of parts) { if (size === 2) view.setUint16(at, value, true); else view.setUint32(at, value, true); at += size; }
+    return new Uint8Array(view.buffer); };
+  for (const name of names) {
+    const raw = encoder.encode(name);
+    const local = bytes([4, 0x04034b50], [2, 20], [2, 0x800], [2, 0], [2, 0], [2, 0], [4, 0], [4, 0], [4, 0], [2, raw.length], [2, 0]);
+    entries.push({raw, offset});
+    chunks.push(local, raw);
+    offset += local.length + raw.length;
+  }
+  const start = offset;
+  for (const {raw, offset: at} of entries) {
+    const header = bytes([4, 0x02014b50], [2, 20], [2, 20], [2, 0x800], [2, 0], [2, 0], [2, 0], [4, 0], [4, 0], [4, 0],
+      [2, raw.length], [2, 0], [2, 0], [2, 0], [2, 0], [4, 0], [4, at]);
+    chunks.push(header, raw);
+    offset += header.length + raw.length;
+  }
+  chunks.push(bytes([4, 0x06054b50], [2, 0], [2, 0], [2, entries.length], [2, entries.length], [4, offset - start], [4, start], [2, 0]));
+  return new Blob(chunks);
+}
+assert.equal(await isPackageZip(zipOf("Terv/.settings.json", "Terv/Terv.thnode", "Terv/kep.png")), true);
+assert.equal(await isPackageZip(zipOf("thinknodes-encrypted.json", "content.bin")), true);
+assert.equal(await isPackageZip(zipOf("index.html", "Terv/masik.thnode", "a/b/b.thnode")), false);
+assert.equal(await isPackageZip(new Blob(["nem zip, csak szöveg, de elég hosszú hozzá"])), false);
 console.log("Passed document import, JSON precision and unsupported format checks.");
 
 if (!canvasPanel()) { canvasToggle().props.onClick(); await tick(); }

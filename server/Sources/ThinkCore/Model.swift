@@ -1149,6 +1149,7 @@ package final class WorksheetStore: @unchecked Sendable {
                     throw Abort(.unprocessableEntity, reason: "Érvénytelen link. Adj meg egy munkalapútvonalat, .web mappát vagy HTTP(S) webcímet.")
                 }
             }
+            restoreArchivedShared(worksheet, previous: current, at: path, user: user, unlocks: unlocks)
             var updated = worksheet
             if current.appearance != nil && updated.appearance == nil { throw Abort(.unprocessableEntity) }
             updated.creator = current.creator
@@ -1377,6 +1378,39 @@ package final class WorksheetStore: @unchecked Sendable {
             throw error
         }
         return renamed
+    }
+
+    /// Visszavonás után visszakerülő közös fájldoboz (másik lap mappájának fájlja): ha a fájl közben lomtárba került
+    /// (a tulajdonos mappa `archivedFiles` listája szerint), visszaáll a helyére. A saját mappás fájlokat a mentés kezeli.
+    private func restoreArchivedShared(_ worksheet: Worksheet, previous: Worksheet, at path: WorksheetPath, user: User?, unlocks: Set<String>) {
+        func key(_ file: CanvasFile) -> String? {
+            guard let source = file.source, !file.isCommon else { return nil }
+            return source + "\u{0}" + file.asset
+        }
+        let known = Set(previous.nodes.compactMap { $0.file.flatMap(key) })
+        var handled = Set<String>()
+        for node in worksheet.nodes {
+            guard let file = node.file, let id = key(file), !known.contains(id), handled.insert(id).inserted,
+                  let owner = file.sheet(from: path), owner.url != path.url,
+                  let ctx = try? context(owner), accessLocked(ctx, user: user, unlocks: unlocks).editable,
+                  let relative = ctx.local.archivedFiles?[file.asset],
+                  let url = try? worksheetURL(owner),
+                  (try? attachments(at: url, named: file.asset, metadata: ctx.local).isEmpty) == true,
+                  let source = try? projectTrashPath(relative, project: ctx.project, createParents: false),
+                  files.fileExists(atPath: source.path),
+                  let destination = try? unusedAttachment(ctx.local.mediaFiles?[file.asset] ?? file.asset, in: ctx.directory, metadata: nil)
+            else { continue }
+            var next = ctx
+            var metadata = ctx.local
+            metadata.archivedFiles?.removeValue(forKey: file.asset)
+            if metadata.archivedFiles?.isEmpty == true { metadata.archivedFiles = nil }
+            next.rules[ctx.directory] = metadata
+            do {
+                try files.moveItem(at: source, to: destination)
+                do { try persist(next, previous: ctx) }
+                catch { try? files.moveItem(at: destination, to: source) }
+            } catch { continue }
+        }
     }
 
     /// Olvasáskor a doboz a tulajdonos lap mappájának aktuális állapotát kapja: a fájl valódi nevét (átnevezés után
@@ -1863,7 +1897,19 @@ package final class WorksheetStore: @unchecked Sendable {
                 let source = ownerContext.directory.appendingPathComponent(name)
                 try rejectLink(source)
                 guard files.fileExists(atPath: source.path) else { return }
-                try files.moveItem(at: source, to: try trashDestination(source, in: ownerContext))
+                let destination = try trashDestination(source, in: ownerContext)
+                try files.moveItem(at: source, to: destination)
+                // A lomtárbeli hely feljegyzése: ha a doboz visszavonással visszakerül, a mentés visszaállítja a fájlt.
+                let media = ownerContext.local.mediaFiles ?? [:]
+                let references = media.filter { $0.value == name }.keys.sorted()
+                let relative = String(destination.path.dropFirst(ownerContext.project.path.count + "/.trash/".count))
+                var next = ownerContext
+                var metadata = ownerContext.local
+                var archived = metadata.archivedFiles ?? [:]
+                for reference in references.isEmpty ? [name] : references { archived[reference] = relative }
+                metadata.archivedFiles = archived
+                next.rules[ownerContext.directory] = metadata
+                try? persist(next, previous: ownerContext)
             }
         case nil: return
         }

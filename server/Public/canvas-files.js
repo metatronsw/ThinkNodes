@@ -134,7 +134,11 @@ export async function importFile(blob, path, csrf) {
       const detail = await response.json().catch(() => ({}));
       throw Error(detail.reason || "A munkalap feltöltése sikertelen.");
     }
-    return null;
+    // Az új allapra mutató laplinkes doboz (docs/node-types.md: a munkalap-hivatkozás a doboz `link` képessége).
+    const created = (await response.json().catch(() => ({}))).path;
+    if (!created) return null;
+    const sheet = decodeURIComponent(created.split("/").pop());
+    return {text: sheet, link: {kind: "sheet", target: sheet}, width: 220, height: 90};
   }
   const zipHeader = ext === "zip" && blob.size <= 100*1024*1024
     ? new Uint8Array(await blob.slice(0, 4).arrayBuffer()).join() === "80,75,3,4" : false;

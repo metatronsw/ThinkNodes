@@ -4,7 +4,7 @@ import {bindAudioPlayers} from "./audio-player.js";
 import {assetURL, attachmentURL, checkText, fileSheet, fileURL, isCommonFile, plainFirstLine, sharedFileBox, fileName, fileNameParts, importFile, nodeName, objectURL, pngForClipboard, validImageStem, writeText} from "./canvas-files.js";
 import {hasTrait, rootType, traits, typeLabel} from "./node-types.js";
 import {chooseRemoval, openFileBrowser} from "./file-browser.js";
-import {chooseZip, exportPackage, importPackage} from "./package.js";
+import {chooseZip, exportPackage, importPackage, isPackageZip} from "./package.js";
 import {decodeWorksheet, encodeWorksheet} from "./worksheet-json.js";
 import {sharedMouse} from "./mouse.js";
 import {worksheetChanges, replayChanges, sameValue} from "./editor-history.js?v=2";
@@ -1391,8 +1391,18 @@ createApp({
         if (item?.file) {
           const copied = {type: item.type, text: item.text, link: item.link, width: item.width, height: item.height,
             alignment: item.alignment, hideText: item.hideText};
+          // Ugyanannak a projektnek másik lapjáról (vagy a közös könyvtárból): közös hivatkozás, nem új példány.
+          // A fájl a tulajdonos lap mappájában marad; a forrás a projekten belüli lapútvonal ("" = a projekt gyökere).
+          const sameProject = sourcePath.split("/")[0] === path.split("/")[0];
+          if (sourcePath !== path && (sameProject || isCommonFile(item.file))) {
+            const own = path.split("/").slice(1).map(decodeURIComponent).join("/");
+            const source = item.file.source ?? sourcePath.split("/").slice(1).map(decodeURIComponent).join("/");
+            // Ha a fájl éppen ennek a lapnak a mappájában van, a megszokott saját hivatkozás lesz belőle.
+            addNode(position, {...copied, file: {...item.file, source: source === own ? undefined : source}});
+            return;
+          }
           if (sourcePath !== path) {
-            const url = ["image", "audio"].includes(rootType(item.type)) ? fileURL(sourcePath, item.file) : "/api/box-file/" + sourcePath + "?id=" + encodeURIComponent(item.id);
+            const url =["image", "audio"].includes(rootType(item.type)) ? fileURL(sourcePath, item.file) : "/api/box-file/" + sourcePath + "?id=" + encodeURIComponent(item.id);
             const blob = await (await checked(await fetch(url))).blob();
             const imported = await importFile(new File([blob], fileName(item.file, isImage(item)), {type: blob.type}), path, csrf);
             if (!imported) return;
@@ -1419,6 +1429,12 @@ createApp({
       let bottom = position.y;
       for (const blob of files) {
         try {
+          // Behúzott ThinkNodes-csomag (ZIP): importálás allapként, ha a felhasználó kéri; különben weboldal vagy melléklet.
+          if (canManage && /\.zip$/i.test(blob.name ?? "") && await isPackageZip(blob) &&
+              confirm("„" + blob.name + "” ThinkNodes-csomag. Importálod allapként?\n(Mégse: sima fájlként kerül a lapra.)")) {
+            await importPackageFile(blob, {x: position.x, y: bottom});
+            continue;
+          }
           // A .csv önálló szöveges dokumentum: táblázat csak kifejezett kérésre készül belőle (docs/EXCEL.md 7. fejezet).
           const properties = await importFile(blob, path, csrf);
           if (!properties) continue;
@@ -2752,15 +2768,18 @@ createApp({
 
     // Projektcsomag (docs/migration.md): a lap letöltése ZIP-ben, illetve csomag importálása allapként, laplinkes dobozzal.
     const canManage = mount.dataset.manage === "true";
+    // Csomag importálása allapként; a kész allapra laplinkes doboz mutat a megadott helyen.
+    async function importPackageFile(file, position = worldAtCenter()) {
+      if (dirty.value) await save();
+      const created = await importPackage(file, {target: path, csrf});
+      if (!created || !online.value) return;
+      const name = decodeURIComponent(created.split("/").pop());
+      addNode(position, {text: name, link: {kind: "sheet", target: name}, width: 220, height: 90});
+    }
     function importSubsheet() {
       transfer(async () => {
         const file = await chooseZip();
-        if (!file) return;
-        if (dirty.value) await save();
-        const created = await importPackage(file, {target: path, csrf});
-        if (!created || !online.value) return;
-        const name = decodeURIComponent(created.split("/").pop());
-        addNode(worldAtCenter(), {text: name, link: {kind: "sheet", target: name}, width: 220, height: 90});
+        if (file) await importPackageFile(file);
       });
     }
     function packageGroup() {

@@ -215,6 +215,17 @@ import VaporTesting
         #expect(updated.nodes.first?.type == "box" && updated.nodes.first?.file == nil && updated.nodes.first?.text.contains("lomtárban") == true)
         #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("kozos/jegyzet.md").path))
         #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("kozos/.trash/jegyzet.md").path))
+
+        // Visszavonás az allapon: a közös fájldoboz visszakerül, a mentés visszahozza a fájlt a lomtárból.
+        // (A kliens a lomtárba tétel után a saját dobozát is törli, majd a visszavonás újra felveszi.)
+        var undone = try store.load(child, user: admin)
+        undone.nodes = []
+        undone = try store.update(child, worksheet: undone, user: admin)
+        undone.nodes = [Idea(id: "childfile", type: "text", file: CanvasFile(asset: asset, source: "", filename: "jegyzet.md"), position: Point(x: 0, y: 0), width: 340, height: 240)]
+        _ = try store.update(child, worksheet: undone, user: admin)
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("kozos/jegyzet.md").path))
+        #expect(try store.fileTexts(child, sheet: try store.load(child, user: admin), user: admin, unlocks: [])[asset] == "# Jegyzet")
+        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("kozos/.trash/jegyzet.md").path))
     }
 }
 
