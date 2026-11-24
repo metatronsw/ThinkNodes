@@ -35,7 +35,7 @@ const tally = name => window.__perf?.count(name);
 const timed = (name, run) => window.__perf ? window.__perf.time(name, run) : run();
 // Teljesítmény-kapcsolók kísérletezéshez (docs/PERF.md): localStorage.tnPerf = '{"overscan":0.5,"moving":"all",…}', majd újratöltés.
 // Alapértékek: a mérések szerint legjobb beállítás; a kapcsolókkal a korábbi viselkedés visszaállítható és összemérhető.
-const perfOptions = {overscan: 1, moving: "gesture", shield: true, rest: true, grid: "css", layer: "wrapper",
+const perfOptions = {overscan: 1, moving: "gesture", shield: true, rest: true, grid: "css", layer: "wrapper", coalesce: true, pause: true,
   ...(() => { try { return JSON.parse(localStorage.getItem("tnPerf") || "{}"); } catch { return {}; } })()};
 const {createApp, computed, getCurrentInstance, h, markRaw, nextTick, onMounted, onUnmounted, onUpdated, reactive, ref, shallowRef, toRaw, watch, watchEffect} = window.Vue;
 
@@ -1959,7 +1959,23 @@ createApp({
       }
     }
 
+    // Húzás közben képkockánként legfeljebb egy egérmozdulatot dolgozunk fel (a legutolsót): a Safari egy képkockán belül
+    // több mozdulatot is kézbesít, és mindegyik külön számolás + újrarajzolás volt. Az elengedés előtt a várakozó mozdulat lefut.
+    let queuedMove = null, moveFrame = 0;
+    function flushMove() {
+      if (moveFrame) cancelAnimationFrame(moveFrame);
+      moveFrame = 0;
+      const event = queuedMove;
+      queuedMove = null;
+      if (event) updatePointer(event);
+    }
+    function queuePointer(event) {
+      if (!perfOptions.coalesce || !gesture.value || typeof requestAnimationFrame !== "function") { updatePointer(event); return; }
+      queuedMove = event;
+      if (!moveFrame) moveFrame = requestAnimationFrame(() => { moveFrame = 0; flushMove(); });
+    }
     function finishPointer(event, cancel = false) {
+      flushMove();
       const operation = gesture.value;
       if (!operation || operation.pointer !== event.pointerId) return;
       // Handle quick clicks even while the selection request is pending.
@@ -2225,7 +2241,18 @@ createApp({
     // A „mozgás” jelző (data-moving) kikapcsolja a szűrőket és az animációkat mozgás közben. Az attribútum váltása maga is
     // megakadás (stílusszámítás + a szűrős elemek újrafestése), ezért pásztázásnál és nagyításnál – ahol mozdulat közben a
     // réteg úgysem festődik újra – alapból nem kapcsol be, csak üveghatású témában (ott a panelek elmosása a drága).
+    // A vonalak animációi (SMIL) mozgás közben állnak: futó animáció mellett a vászonréteg minden képkockában újrafestődne,
+    // pásztázás és nagyítás közben is. A szüneteltetés nem változtat stílust, így maga nem okoz megakadást.
+    const animationPausers = new Set();
+    function pauseAnimations(source, active) {
+      if (!perfOptions.pause) return;
+      if (active) animationPausers.add(source); else animationPausers.delete(source);
+      const svg = canvas.value;
+      if (!svg?.pauseAnimations) return;
+      if (animationPausers.size) svg.pauseAnimations(); else svg.unpauseAnimations();
+    }
     function markMoving(source, active) {
+      pauseAnimations(source, active);
       if (perfOptions.moving === "none") return;
       if (source === "zoom" && perfOptions.moving !== "all" && !graphics.value.glass) return;
       if (active) movingSources.add(source); else movingSources.delete(source);
@@ -3611,7 +3638,7 @@ createApp({
           onTouchcancelCapture: endTouchView,
           onPointerdownCapture: pressCanvas,
           onPointerenter: rememberCanvasPointer,
-          onPointermove: event => { rememberCanvasPointer(event); updatePointer(event); },
+          onPointermove: event => { rememberCanvasPointer(event); queuePointer(event); },
           onPointerleave: () => { canvasPointer.value = null; },
           onPointerup: event => finishPointer(event),
           onPointercancel: event => finishPointer(event, true),

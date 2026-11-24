@@ -5,6 +5,13 @@ window.__perf = (() => {
   // Idővonal: a bemeneti események és a ritka (nézet-, gyökér-) újrarajzolások ideje, hogy a hosszú képkockák okához köthetők legyenek.
   const note = name => { if (running && events.length < 400) events.push([Math.round(performance.now() - origin), name]); };
   for (const type of ["pointerdown", "pointerup", "mousedown", "mouseup", "keydown", "keyup"]) window.addEventListener(type, () => note(type), true);
+  // Eseménykezelés teljes szkriptideje: az elfogási fázis elejétől a buborékolás végéig. A Vue frissítése mikrofeladat,
+  // amely a szerkesztő kezelője után, az ablak buborék-figyelője előtt lefut, így az is benne van (rajzolás + DOM-írás).
+  let eventStart = 0, eventTimes = [];
+  for (const type of ["pointermove", "pointerdown", "pointerup"]) {
+    window.addEventListener(type, () => { eventStart = performance.now(); }, true);
+    window.addEventListener(type, () => { if (running) eventTimes.push(performance.now() - eventStart); });
+  }
   let moves = 0;
   window.addEventListener("pointermove", () => { if (moves++ < 2) note("pointermove#" + moves); }, true);
   window.addEventListener("pointerdown", () => { moves = 0; }, true);
@@ -36,10 +43,10 @@ window.__perf = (() => {
   const rectOf = el => { const b = el.getBoundingClientRect(); return {x: b.left + b.width / 2, y: b.top + b.height / 2, l: b.left, t: b.top, r: b.right, b: b.bottom, w: b.width, h: b.height}; };
   const visible = b => { const a = area(); return b.l > a.left + 10 && b.r < a.right - 10 && b.t > a.top + 60 && b.b < a.bottom - 60; };
   return {
-    start() { frames = []; counters = {}; events = []; origin = performance.now(); for (const key in spent) delete spent[key]; running = true; requestAnimationFrame(loop(++generation)); },
+    start() { frames = []; counters = {}; events = []; eventTimes = []; origin = performance.now(); for (const key in spent) delete spent[key]; running = true; requestAnimationFrame(loop(++generation)); },
     stop() { running = false; const gaps = []; for (let i = 1; i < frames.length; i++) gaps.push(frames[i] - frames[i - 1]);
       const slow = []; for (let i = 1; i < frames.length; i++) if (frames[i] - frames[i - 1] > 30) slow.push([Math.round(frames[i - 1] - origin), Math.round(frames[i] - frames[i - 1])]);
-      return {...stats(gaps), slow: slow.slice(0, 60), events, counters, spent: Object.fromEntries(Object.entries(spent).map(([k, v]) => [k, Math.round(v)]))}; },
+      return {...stats(gaps), slow: slow.slice(0, 60), events, handlers: eventTimes.length ? stats(eventTimes) : undefined, counters, spent: Object.fromEntries(Object.entries(spent).map(([k, v]) => [k, Math.round(v)]))}; },
     time(name, run) { const from = performance.now(); try { return run(); } finally { add(name, performance.now() - from); } },
     count(name) { counters[name] = (counters[name] ?? 0) + 1; if (name === "view" || name === "root" || name === "scene") note(name); },
     stats,

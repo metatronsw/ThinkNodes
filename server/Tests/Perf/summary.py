@@ -14,7 +14,8 @@ def line(name, d):
     return "%-18s fps %5s  p50 %5s  p95 %5s  max %6s  >25ms %4s  >50ms %4s  akadás %5s ms%s  | %s" % (
         name, d["fps"], d["p50"], d["p95"], d["max"], d["over25"], d["over50"], d["jank"],
         ("  késés p50 %s max %s" % (lat.get("p50"), lat.get("max")) if lat else "") +
-        ("  szkript p50 %s max %s" % (d["js"].get("p50"), d["js"].get("max")) if d.get("js") else ""), counts)
+        ("  szkript p50 %s max %s" % (d["js"].get("p50"), d["js"].get("max")) if d.get("js") else "") +
+        ("  kezelő p50 %s p95 %s" % (d["handlers"].get("p50"), d["handlers"].get("p95")) if d.get("handlers") else ""), counts)
 
 def timeline(d):
     """A hosszú képkockák (kezdet → hossz) az események között, időrendben."""
