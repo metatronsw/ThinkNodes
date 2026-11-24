@@ -4,9 +4,6 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 ## Nyitott
 
-- **Safari: nagyítás közben ugrál a rács – a javítás Safariban nincs megerősítve** (2026-11-24)
-  - Az élesítés késleltetése nem segített. Második javítás: a rács vászonelemre rajzolva (a csempézett CSS-háttér csempemérete egész képpontra kerekült). Szemmel még megerősítendő Safariban; a rajzolt rács teljesítménye (pásztázás, nagyítás) ott nincs mérve.
-
 - **Éles kirajzolás nagyítva: Safariban nincs mérve** (2026-11-24)
   - 100% fölött a nyugalmi réteg megszűnik (`restLayer`), hogy a táblázat / CSV / szövegfájl éles legyen. Safariban ellenőrizendő az élesség, és hogy a pásztázás / nagyítás indulásakor mekkora a megakadás (a réteg visszakapcsolása; PERF.md szerint 40–70 ms lehet).
 

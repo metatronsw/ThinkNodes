@@ -6,6 +6,10 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **Safari: nagyítás közben ugrált a háttérrács** (2026-11-24)
+  - Ok: a rács csempézett CSS-háttér volt, a böngésző a csempe méretét egész képpontra kerekíti; tört rácsköznél ez csempénként összeadódik (kis nagyításnál nagy, nagy nagyításnál kicsi elcsúszás, lépésenként változva).
+  - Javítás: a rács `<canvas>` elemre rajzolódik, pontos helyekre (`drawGrid`, `editor.js`; `perfOptions.grid = "draw"`). A felhasználó Safariban megerősítette, hogy az ugrálás megszűnt. A rajzolt rács sebessége Safariban nincs mérve.
+
 - **Táblázat: szerkesztés elfogadása után lassan frissült, és a többi résztvevőnél az egész doboz villant** (2026-11-24)
   - Ok: 1,5 mp-es mentési késleltetés; a többi kliens az új fájlváltozat betöltéséig „…”-ot rajzolt a tartalom helyett.
   - Javítás: cellaszerkesztésnél 0,25 mp a késleltetés; betöltés közben a régi tartalom marad látható (`editor.js`, `editFileText`, `renderFileText`).
