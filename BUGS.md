@@ -20,6 +20,7 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
   - A „csak kijelölt dobozban görög” szabály a szerkesztőben él; a megtekintőben (ahol a látogató nem jelöl ki) a tartalom egérgörgővel továbbra is görgethető. Eldöntendő, hogy ott mi legyen a szabály.
 
 - **Teljesítmény: nagyítás végén 80–190 ms-os képkocka; táblázatszerkesztés görgetése ~50 fps** (2026-11-24)
+  - Este enyhítve: görgős nagyításnál a rögzítés 0,3 mp nyugalmat vár, így mozdulatonként egyszer fut le (nem kattanásonként). Maga a rögzítő képkocka költsége nem változott.
   - A mérések szerint ez a két terület nem javult eleget; részletek és a kipróbált megoldások: `server/docs/PERF.md` („Ami nem javult vagy nyitva maradt”).
   - A `contain: strict` gyorsította a táblázatgörgetést (42 → 54 fps), de Safariban a rétegződő elem foreignObject-ben nem kattintható, ezért kikerült.
 

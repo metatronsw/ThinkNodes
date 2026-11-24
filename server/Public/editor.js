@@ -1126,7 +1126,15 @@ createApp({
           if (event.sourceEvent) previewView(event.transform);
           else commitView(event.transform);
         })
-        .on("end", event => { panning.value = false; commitView(event?.transform ?? pendingView); markMoving("zoom", false); });
+        .on("end", event => {
+          panning.value = false;
+          // Görgős nagyítás: a nézet rögzítése (a teljes újrarajzolás, kis nagyításnál 30–130 ms-os képkocka) nem a
+          // görgetés minden szünetében történik, hanem csak rövid nyugalom után. Egérgörgőnél így a kattanások egy
+          // folyamatos mozdulattá olvadnak össze, nem akad meg minden kattanás után.
+          if (event?.sourceEvent?.type === "wheel" && pendingView) commitTimer = setTimeout(() => commitView(pendingView), wheelCommitDelay);
+          else commitView(event?.transform ?? pendingView);
+          markMoving("zoom", false);
+        });
       // A zoom a nem transzformált szülőn figyel, így a mozdulat közbeni CSS-transzform nem zavarja a koordinátáit.
       d3.select(zoomHost()).call(zoom).on("dblclick.zoom", null);
       resizeObserver = new ResizeObserver(measure);
@@ -1178,7 +1186,13 @@ createApp({
       }, 600);
     }
     let pendingView = null;
+    // A görgős nagyítás halasztott rögzítése (lásd a zoom "end" kezelőjét); kattintás előtt azonnal lefut (flushView).
+    const wheelCommitDelay = Number(perfOptions.wheelCommit ?? 300);
+    let commitTimer = null;
+    function flushView() { if (commitTimer != null && pendingView) commitView(pendingView); }
     function previewView(transform) {
+      clearTimeout(commitTimer);
+      commitTimer = null;
       pendingView = transform;
       const svg = layerElement(), current = view.value;
       if (!svg?.style) return;
@@ -1303,6 +1317,8 @@ createApp({
       Object.assign(style, gridBackground(transform));
     }
     function commitView(transform) {
+      clearTimeout(commitTimer);
+      commitTimer = null;
       pendingView = null;
       // A réteg nyugalomban is transzformált (egységmátrix, app.css): Safariban a transzform be- és kikapcsolása
       // (none ↔ matrix) 40–70 ms-os megakadás, a mátrixról mátrixra váltás viszont ingyen van.
@@ -2466,6 +2482,7 @@ createApp({
     }
 
     function pressCanvas(event) {
+      flushView();
       // Szerkesztett táblázaton belül a táblázat kezeli a kattintást (cellakijelölés, Shift+kattintás tartomány).
       if (event.target?.closest?.("[data-table-editor]")) return;
       if (event.pointerType === "touch" && (!event.isPrimary || touchView)) {
@@ -3352,6 +3369,17 @@ createApp({
     // A fájl utolsó ismert tartalma dobozonként: amíg egy új változat (más résztvevő mentése után) töltődik, a régi
     // tartalom marad látható, így a doboz nem villan üresre, és a görgetési helyzete is megmarad.
     const lastFileTexts = new Map();
+    // A táblázat / CSV olvasó nézetének kirajzolt fája dobozonként megmarad, amíg a tartalom és a többiek cellakijelölése
+    // nem változik. A doboz húzásakor (képkockánként új rajzolás a helyzet miatt) így nem épül újra és nem hasonlítódik
+    // össze a több ezer cella: ugyanazt a fát a Vue egy lépésben átugorja.
+    const gridViews = new Map();
+    function cachedGrid(id, content, marks, build) {
+      const cached = gridViews.get(id);
+      if (cached && cached.content === content && cached.marks === marks) return cached.view;
+      const view = build(marks);
+      gridViews.set(id, {content, marks, view});
+      return view;
+    }
     function renderFileText(node) {
       let text = fileTexts.value.get(fileTextKey(node));
       if (text == null) {
@@ -3365,18 +3393,19 @@ createApp({
       }
       if (node.type === "table") {
         const doc = tableDocument(text);
-        return doc ? renderTable(h, doc, {marks: peerCells.get(node.id)}) : h("p", {class: "muted"}, "A táblázat nem olvasható.");
+        return doc ? cachedGrid(node.id, doc, peerCells.get(node.id), marks => renderTable(h, doc, {marks})) : h("p", {class: "muted"}, "A táblázat nem olvasható.");
       }
       const preview = text.slice(0, 200000);
       const ext = (node.file.filename ?? "").split(".").pop().toLowerCase();
       if (node.type === "csv") {
-        const [head = [], ...rows] = parseCSV(preview, detectSeparator(preview, ext));
-        const marks = peerCells.get(node.id);
-        const marked = (r, c) => { const mark = peerMark(marks, r, c); return mark ? {class: mark.class, style: {"--tn-peer": mark.color}} : null; };
-        return h("table", {class: "node-csv"}, [
-          h("thead", [h("tr", head.map((cell, c) => h("th", marked(0, c), cell)))]),
-          h("tbody", rows.map((row, r) => h("tr", row.map((cell, c) => h("td", marked(r + 1, c), cell))))),
-        ]);
+        return cachedGrid(node.id, text, peerCells.get(node.id), marks => {
+          const [head = [], ...rows] = parseCSV(preview, detectSeparator(preview, ext));
+          const marked = (r, c) => { const mark = peerMark(marks, r, c); return mark ? {class: mark.class, style: {"--tn-peer": mark.color}} : null; };
+          return h("table", {class: "node-csv"}, [
+            h("thead", [h("tr", head.map((cell, c) => h("th", marked(0, c), cell)))]),
+            h("tbody", rows.map((row, r) => h("tr", row.map((cell, c) => h("td", marked(r + 1, c), cell))))),
+          ]);
+        });
       }
       if (node.type === "code") return h("pre", {class: "node-code"}, [h("code", preview)]);
       if (ext === "md" || ext === "markdown") return h(FormattedText, {source: preview, justified: node.justified});

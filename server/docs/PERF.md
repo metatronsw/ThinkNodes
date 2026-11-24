@@ -116,6 +116,25 @@ Egy újrarajzolás ideje nem függött érdemben a puffer méretétől, ezért a
 rovására. A Safari nem adja meg az eszköz memóriáját (`navigator.deviceMemory` nincs), így automatikus méretezéshez más
 jel kell (pl. a képernyő mérete és a `devicePixelRatio`).
 
+## 2026-11-24 esti mérés (Safari 18.6, `p300`)
+
+Új forgatókönyvek (egyszeri mérőszkript, nem része a `perf.py`-nak): egérgörgő-kattanások (200 ms-onként egy esemény), szakaszos nagyítás 100% fölött, táblázat húzása 700 képpont széles dobozzal.
+
+| Forgatókönyv | Előtte | Utána |
+|---|---|---|
+| Egérgörgős nagyítás, kis nagyítás (minden doboz látszik) | 51,8 fps; 10 képkocka > 50 ms; max 134 ms | 59,5 fps; 1; max 59 ms |
+| Egérgörgős nagyítás, 100% fölött | 59,2 fps; 1 > 50 ms | 59,5 fps; 1 |
+| Gyors nagyítás (`zoom_fast`) | 46 fps; 6 > 50 ms; max 115 ms | 59,4 fps; 0; max 27 ms |
+| Lassú nagyítás (`zoom_slow`) | 46,6 fps; 3 > 50 ms | 50,8 fps; 1 |
+| Szakaszos nagyítás 100% fölött | 57,4 fps; 8 > 50 ms | 59,6 fps; 1 |
+| Táblázat húzása (első, kijelöléssel) | 39,5 fps; max 382 ms | 59,5 fps; max 47 ms |
+| Táblázat húzása (már kijelölve) | 51,6 fps; max 213 ms | 58,8 fps; max 46 ms |
+
+- A nagyítás javulása a görgős rögzítés halasztásából jön (`wheelCommit`, alap 300 ms; 0 = régi viselkedés).
+- A rács módja (`draw` / `css`) és az élesítés (`sharp`) egyik forgatókönyvben sem változtatott az eredményen.
+- `overscan` 0,5 / 1 / 2 / 3: sebesség azonos; memória (`footprint`): a lap folyamata 163 / 163 / 165 / 165 MB betöltve, a grafikus folyamat 288 MB mindegyiknél. A korábbi „2,8-szoros memóriaigény” ezzel a módszerrel nem látszik (a réteg csempézett, csak a látható rész körül van háttértár).
+- Táblázat húzása: a szkriptidő 295 → 6 ms (a táblázat fája nem épül újra képkockánként), a kijelölés- és elengedés-akadás a nagy felületű glow-szűrő elhagyásával szűnt meg.
+
 ## Ami nem javult vagy nyitva maradt
 
 - **Nagyítás vége:** a nézet rögzítése nagyítás után még 80–190 ms-os képkocka (új méretarányon minden újrafestődik).

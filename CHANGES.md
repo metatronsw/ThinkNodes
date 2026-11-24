@@ -1,5 +1,16 @@
 # Változások
 
+## 2026-11-24 – Safari-mérés: görgős nagyítás és táblázathúzás gyorsítása; puffer- és memóriamérés
+
+Mérés: automatizált Safari 18.6, release szerver, mérő-adatmappa (`p300`: 376 doboz). Részletek: `server/docs/PERF.md` („2026-11-24 esti mérés”).
+
+- **A mai rács- és élesítés-változtatás nem lassít:** a rajzolt / CSS-rács és az élesítés be / ki minden nagyítási és pásztázási forgatókönyvben azonos eredményt adott.
+- **Az akadás oka a nézet rögzítése** (teljes újrarajzolás az új méretarányon, kis nagyításnál 30–130 ms-os képkocka), ami a görgetés minden 150 ms-os szünetében lefutott – egérgörgőnél kattanásonként.
+- **Javítás:** görgős nagyításnál a rögzítés további 0,3 mp nyugalmat vár (`wheelCommitDelay`, `perfOptions.wheelCommit`); a kattanások egy mozdulattá olvadnak össze, kattintás előtt azonnal rögzül (`flushView`). Egérgörgős nagyítás kis nagyításnál: 51,8 → 59,5 fps, 18 → 1 lassú képkocka; gyors nagyítás: 46 → 59,4 fps; szakaszos nagyítás 100% fölött: 8 → 1 képkocka 50 ms fölött. Ára: a nagyítás után kb. 0,45 mp-ig a kép a korábbi felbontásban, nagyítva látszik.
+- **Puffer (`overscan`) és memória:** 0,5 / 1 / 2 / 3 értékkel a nagyítás és a pásztázás sebessége nem változott; a lap folyamatának memóriája a mérési zajon belül azonos (163–165 MB betöltve), a grafikus folyamaté nem változott (288 MB). Nagyobb puffer tehát nem segít: nem a puffer fogy el, hanem az új méretarány kirajzolása drága. Az alap marad 1.
+- **Táblázat húzása:** 39,5 → 59,5 fps, a leghosszabb képkocka 382 → 47 ms. Két ok volt: (1) a doboz minden képkockában újraépítette és összehasonlította a táblázat teljes fáját (295 ms szkript 64 képkockára → 6 ms; `cachedGrid`); (2) a saját kijelölés glow-szűrője a nagy felületen kijelöléskor és a húzás végén 200–300 ms-os megakadást okozott – szövegfájl-, CSV- és táblázatdobozon a saját kijelölés mostantól csak vastag keret, glow nélkül.
+- A szerver újrafordítva és újraindítva (verziószámok). JS tesztek rendben, `gestures.mjs` változatlanul bukik.
+
 ## 2026-11-24 – Háttérrács vászonelemre rajzolva (Safari: ugráló rács nagyítás közben)
 
 - Megfigyelés: Safariban a rács nagyítás közben mindenhol ugrált, kis nagyításnál jobban, nagynál kevésbé. Automatizált Safariban mérve a rács és a vászonréteg beállított értékei képkockánként egyeztek, a képkockaidő egyenletes volt – tehát nem a számolás és nem a rétegváltás az ok.
