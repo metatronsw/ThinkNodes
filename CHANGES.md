@@ -5,7 +5,7 @@
 - A szerkesztő a teljes d3 (280 KB, tömörítve 93 KB) helyett csak a használt részt kapja: `zoom`, `zoomIdentity`, `select`, `pointer` és a függőségeik – `server/Public/lib/d3-zoom.js`, 55 KB (tömörítve 18,6 KB). A fájl a tárolóban van, a saját szerver adja ki; a `deploy/build.sh` a d3-at már nem tölti le.
 - Újraépítés (csak verzióváltáskor vagy új d3-függvény használatakor): `server/deploy/d3-slim.sh` – az npm-ről letölti a `d3-zoom` 3.0.0 és `d3-selection` 3.0.0 modult és az esbuildet egy ideiglenes mappába, és egy fájllá fűzi őket.
 - Ellenőrizve: minden teszt zöld; automatizált Safariban a szerkesztő betölt, a görgős nagyítás működik, és ugyanaz a próba a teljes d3-mal pontosan ugyanazt az eredményt adta. A pásztázást az automatizált húzás egyik csomaggal sem mozdította (a tesztkörnyezet sajátja), ezt kézzel érdemes megnézni.
-- A régi `server/Public/vendor/d3.js` a lemezen maradt (nincs a tárolóban, a szerver már nem használja); törölhető.
+- A régi `server/Public/vendor/d3.js` törölve (engedéllyel; nem volt a tárolóban, a szerver már nem használta).
 - Szerverkód változott (a szkript hivatkozása): újrafordítva és újraindítva.
 
 ## 2026-11-25 – Gyorsabb tesztek, válasz-tömörítés, táblázat-gyorsítótár a megtekintőben
