@@ -93,6 +93,14 @@ A jelenlegi rendszer a gyermekdobozok vászon-koordinátáit használja, és a k
 
 Javaslat: a konténer tárolja az elrendezési beállításokat, a gyermekek eredeti pozíciói pedig maradjanak meg. A kiszámított pozíció csak megjelenítési réteg legyen; kézi mozgatáskor a felhasználó választhat vagy átválthat kézi elrendezésre. Így az automatikus újratördelés nem írja át észrevétlenül a canvas szerkezetét.
 
+## Vászonszerkesztő teljesítménye (perf ág, docs/PERF.md)
+
++ Döntés a `perf` ág változatairól és alapbeállításairól (puffer mérete, nyugalmi transzform, glow húzás közben, CSS-rács, kurzor-pajzs), majd beolvasztás a `main`-be.
++ Puffer (`overscan`) automatikus méretezése a képernyő és a memória alapján.
++ Nagyítás végi újrafestés gyorsítása; táblázatszerkesztés görgetése és cellakijelölése.
++ Alt / Ctrl lenyomásakor ne változzon a vászon gyökerének osztálya (teljes stílusszámítás).
++ Mérőszkript: csomópont- és konténerhúzás, táblázat 1000 dobozos lapon, Chromium-mérés.
+
 ## Teljesítmény és erőforrásigény
 
 Ez várhatóan könnyű számítás, nem folyamatosan nagy terhelésű funkció. A rács kiszámítása alapvetően a közvetlen gyermekek számával arányos (O(n)), a szöveg tördelése pedig a szöveg hosszától függ.

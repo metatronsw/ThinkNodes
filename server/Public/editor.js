@@ -1056,7 +1056,7 @@ createApp({
     const htmlBusy = computed(() => !!tableEdit.value || !!editingObject.value || htmlTyping.value || mediaPlaying.value > 0);
     // A médiaesemények nem buborékolnak: elfogási fázisban figyeljük a vászon hanglejátszóit.
     const playing = new Set();
-    for (const type of ["play", "pause", "ended", "emptied"]) document.addEventListener(type, event => {
+    for (const type of ["play", "pause", "ended", "emptied"]) document.addEventListener?.(type, event => {
       if (!canvas.value?.contains?.(event.target)) return;
       if (type === "play") playing.add(event.target); else playing.delete(event.target);
       mediaPlaying.value = playing.size;

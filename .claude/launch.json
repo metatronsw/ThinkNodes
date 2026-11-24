@@ -4,7 +4,11 @@
     {
       "name": "thinknodes",
       "runtimeExecutable": "./server/run.sh",
-      "runtimeArgs": ["--http", "--port:8888", "--host:::"],
+      "runtimeArgs": [
+        "--http",
+        "--port:8888",
+        "--host:::"
+      ],
       "port": 8888,
       "url": "http://mtrn.local:8888",
       "autoPort": false
@@ -12,7 +16,12 @@
     {
       "name": "thinknodes-test",
       "runtimeExecutable": "./server/run.sh",
-      "runtimeArgs": ["--http", "--port:8888", "--host:::", "--test"],
+      "runtimeArgs": [
+        "--http",
+        "--port:8888",
+        "--host:::",
+        "--test"
+      ],
       "port": 8888,
       "url": "http://mtrn.local:8888",
       "autoPort": false
@@ -20,9 +29,29 @@
     {
       "name": "thinknodes-debug-test",
       "runtimeExecutable": "./server/run.sh",
-      "runtimeArgs": ["--debug", "--http", "--port:8888", "--host:::", "--test"],
+      "runtimeArgs": [
+        "--debug",
+        "--http",
+        "--port:8888",
+        "--host:::",
+        "--test"
+      ],
       "port": 8888,
       "url": "http://mtrn.local:8888",
+      "autoPort": false
+    },
+    {
+      "name": "thinknodes-perf",
+      "runtimeExecutable": "./server/run.sh",
+      "runtimeArgs": [
+        "--http",
+        "--port:8888",
+        "--host:::",
+        "--test",
+        "--project:/Users/Metatron/X-Code/ThinkNodes/server/.build/perf-data"
+      ],
+      "port": 8888,
+      "url": "http://localhost:8888",
       "autoPort": false
     }
   ]

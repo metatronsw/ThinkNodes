@@ -250,7 +250,9 @@ canvas().props.onPointerdownCapture(event(canvas(), 0, 0, {target: graphic("oute
 canvas().props.onPointermove(event(canvas(), 35, -12));
 await tick();
 assert.deepEqual([requestedZoom.x, requestedZoom.y], [35, -12]);
-assert.equal(canvas().props["data-drag-cursor"], "grabbing");
+// Húzás közben a kurzort a vászon fölötti pajzs adja (editor.js DragShield), a vászon attribútuma nem változik:
+// az attribútum váltása Safariban a teljes vászon stílusát újraszámoltatta (docs/PERF.md).
+assert.equal(canvas().props["data-drag-cursor"], undefined);
 canvas().props.onPointerup(event(canvas(), 35, -12));
 listeners.keyup({type: "keyup", code: "Space"});
 panLock.props.onClick(); await tick();
