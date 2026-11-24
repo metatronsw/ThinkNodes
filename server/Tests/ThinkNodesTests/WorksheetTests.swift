@@ -309,6 +309,31 @@ import VaporTesting
     }
 }
 
+@Test func loginPageWarnsWhenTheDataFolderHasNoAccounts() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-noaccounts-\(UUID().uuidString)")
+    let store = try WorksheetStore(root: root)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let notice = "még nincs felhasználói fiók"
+
+    try await withApp(configure: { app in configure(app, store: store) }) { app in
+        let browser = try app.testing()
+        let empty = try await browser.sendRequest(.GET, "/login")
+        #expect(empty.status == .ok)
+        #expect(empty.body.string.contains(notice))
+        // Sikertelen belépés után is látszik.
+        let token = try attribute("name=\"csrf\" value=\"", in: empty.body.string)
+        let failed = try await browser.sendRequest(.POST, "/login", headers: ["Cookie": try cookie(empty)]) { request in
+            try request.content.encode(Credentials(name: "admin", password: "rossz-jelszo", csrf: token), as: .urlEncodedForm)
+        }
+        #expect(failed.status == .unauthorized)
+        #expect(failed.body.string.contains(notice))
+
+        try store.setUser(name: "admin", role: .admin, passwordHash: try Bcrypt.hash("titkos-jelszo"))
+        let ready = try await browser.sendRequest(.GET, "/login")
+        #expect(!ready.body.string.contains(notice))
+    }
+}
+
 @Test func firstAdminCanBeCreatedFromLoopback() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-setup-\(UUID().uuidString)")
     let store = try WorksheetStore(root: root)

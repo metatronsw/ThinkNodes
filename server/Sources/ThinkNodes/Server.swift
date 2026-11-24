@@ -55,7 +55,18 @@ enum ThinkNodes {
             _ = try NIOSSLContext(configuration: configuration)
             tls = configuration
         }
-        if options.test { print("Test mode: every connecting browser gets admin rights.") }
+        print("Data folder: \(store.dataDirectoryPath)")
+        if options.test {
+            print("Test mode: every connecting browser gets admin rights.")
+        } else if try store.allUsers().isEmpty {
+            // Új (üres) adatmappa: a korábbi fiókok a régi mappa .settings.json fájljában maradtak.
+            let scheme = options.http ? "http" : "https"
+            print("""
+                No accounts in this data folder yet, so nobody can sign in. Create the first admin with
+                  ./run.sh user NAME admin --project:\(store.dataDirectoryPath)
+                or open \(scheme)://localhost:\(port)/admin in a browser on this machine.
+                """)
+        }
         for address in addresses {
             print("\(options.http ? "HTTP" : "HTTPS"): \(NetworkAddresses.url(scheme: options.http ? "http" : "https", address: address, port: port))")
         }
@@ -84,7 +95,7 @@ enum ThinkNodes {
         }
         let hash = try Bcrypt.hash(password)
         try store.setUser(name: name, role: role, passwordHash: hash)
-        print("Account saved: \(name) (\(role.rawValue))")
+        print("Account saved: \(name) (\(role.rawValue)) in \(store.dataDirectoryPath)")
     }
 }
 
@@ -191,12 +202,18 @@ private func signIn(_ req: Request, user: User) async throws {
 
 private let statusUpdatesScript = #"<script type="module" src="/status-updates.js"></script>"#
 
-private func loginPage(_ req: Request, next: String, message: String? = nil, updates: PageUpdates.Subscription? = nil) -> Response {
+private func loginPage(_ req: Request, next: String, message: String? = nil, noAccounts: Bool = false,
+                       updates: PageUpdates.Subscription? = nil) -> Response {
     let problem = message.map { "<p class=\"error\" role=\"alert\">\(escaped($0))</p>" } ?? ""
+    // Üres adatmappa (pl. új --project:): senki nem tud belépni, amíg nincs fiók.
+    let setup = !noAccounts ? "" : localSetup(req)
+        ? "<p class=\"error\" role=\"status\">Ebben az adatmappában még nincs felhasználói fiók. Az első adminisztrátort az <a href=\"/admin\">Adminisztráció</a> oldalon hozhatod létre.</p>"
+        : "<p class=\"error\" role=\"status\">Ebben az adatmappában még nincs felhasználói fiók. Az első adminisztrátort a szervergépen hozhatod létre: helyi böngészőből az /admin oldalon, vagy a <code>./run.sh user NÉV admin</code> paranccsal.</p>"
     return htmlPage(title: "Bejelentkezés", body: """
         \(siteHeader(user: nil, csrf: nil))
         <main class="shell narrow" data-page-status="login" data-watch-next="\(escaped(next))">
           <h1>Bejelentkezés</h1>
+          \(setup)
           \(problem)
           <form method="post" action="/login" class="stack panel">
             \(csrfInput(token(req)))
@@ -271,10 +288,16 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         return response(version.uuidString, type: "text/plain; charset=utf-8")
     }
 
-    app.get("login") { req -> Response in
+    // Nincs-e még egyetlen fiók sem az adatmappában (tesztmódban nem számít: ott mindenki admin).
+    @Sendable func withoutAccounts(_ req: Request) async throws -> Bool {
+        guard !store.testMode else { return false }
+        return try await req.application.threadPool.runIfActive { try store.allUsers().isEmpty }
+    }
+
+    app.get("login") { req async throws -> Response in
         let next = safeNext(req.query[String.self, at: "next"])
         let updates = next == "/" || next == "/admin" ? nil : live.pages.subscribe(.index)
-        return loginPage(req, next: next, updates: updates)
+        return loginPage(req, next: next, noAccounts: try await withoutAccounts(req), updates: updates)
     }
 
     app.post("login") { req async throws -> Response in
@@ -288,7 +311,8 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
             return user
         }
         guard let user else {
-            let response = loginPage(req, next: next, message: "Hibás felhasználónév vagy jelszó.")
+            let response = loginPage(req, next: next, message: "Hibás felhasználónév vagy jelszó.",
+                                     noAccounts: try await withoutAccounts(req))
             response.status = .unauthorized
             return response
         }
