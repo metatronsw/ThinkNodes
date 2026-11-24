@@ -531,12 +531,14 @@ createApp({
     // A dobozok kikeresése rajzolás közben: nem reaktív tükör (a nodeMap minden mentés után új objektum, és azzal minden
     // vonal újrarajzolódna); a doboz cseréjét a nodeUi kulcsa jelzi. Az összesítő frissíti, a rajzolás előtt.
     let nodeIndex = new Map();
+    // Rajzolás közben a nem reaktív tükör, egyébként a mindig friss nodeMap.
+    const nodeLookup = () => getCurrentInstance() ? nodeIndex : nodeMap.value;
     function displayPosition(node) {
       if (!nodeUiOf(node.id).shifted) return node.position;
       const drag = gesture.value;
       if (drag?.type === "batch" && drag.members.has(node.id)) return shifted(node.position, drag.delta);
       if (motions.value.size) {
-        const motion = [node, ...ancestors(node, nodeMap.value)].map(n => motions.value.get(n.id))
+        const motion = [node, ...ancestors(node, nodeLookup())].map(n => motions.value.get(n.id))
           .find(m => m && m.revision === board.value.revision);
         if (motion) return {x: node.position.x + motion.delta.x, y: node.position.y + motion.delta.y};
       }
@@ -544,15 +546,18 @@ createApp({
     }
     function drawnNode(id) {
       // Rajzolás közben a nem reaktív tükörből (lásd fent), egyébként a mindig friss nodeMap-ből.
-      const node = getCurrentInstance() ? nodeIndex.get(id) : nodeMap.value.get(id);
+      const node = nodeLookup().get(id);
       return node && nodeUiOf(id).shifted ? {...node, position: displayPosition(node)} : node;
     }
     const edgeGeometries = new WeakMap();
     const wireDrawings = new WeakMap();
     function nestingDirection(source, target) {
-      if (!source || !target) return 0;
-      if (ancestors(target, nodeMap.value).some(node => node.id === source.id)) return 1;
-      return ancestors(source, nodeMap.value).some(node => node.id === target.id) ? -1 : 0;
+      // Szülő nélküli végpontoknál nincs mit keresni – és így a vonal nem függ a teljes dobozlistától
+      // (különben minden mentés után minden vonal újrarajzolódna).
+      if (!source || !target || (!source.parent && !target.parent)) return 0;
+      const index = nodeLookup();
+      if (ancestors(target, index).some(node => node.id === source.id)) return 1;
+      return ancestors(source, index).some(node => node.id === target.id) ? -1 : 0;
     }
 
     function wireGeometry(edge) {
