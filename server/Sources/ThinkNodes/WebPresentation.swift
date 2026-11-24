@@ -11,9 +11,12 @@ struct WebPresentationReference: Sendable {
     let name: String
 
     init(_ reference: String) throws {
-        let parts = reference.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        let parts: [String] = reference.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
         guard let directory = parts.last, directory.hasSuffix(".web") else { throw Abort(.notFound) }
-        let checked = try WorksheetPath(["project"] + parts.dropLast() + [String(directory.dropLast(4))])
+        var segments: [String] = ["project"]
+        segments.append(contentsOf: parts.dropLast())
+        segments.append(String(directory.dropLast(4)))
+        let checked = try WorksheetPath(segments)
         let folders = Array(checked.parts.dropFirst().dropLast())
         guard !folders.contains("web") else { throw Abort(.notFound) }
         self.folders = folders
@@ -669,7 +672,8 @@ enum CommonLibrary {
             directory.appendPathComponent(folder, isDirectory: true)
         }
         let keys: [URLResourceKey] = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey]
-        guard (try? directory.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])).map({ $0.isDirectory == true && $0.isSymbolicLink != true }) == true
+        let folder: URLResourceValues? = try? directory.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        guard let folder, folder.isDirectory == true, folder.isSymbolicLink != true
         else { return BrowseListing(path: CanvasFile.common, parent: nil, manageable: false, entries: []) }
         var entries: [BrowseListing.Entry] = []
         for url in try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]) {

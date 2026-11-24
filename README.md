@@ -19,6 +19,9 @@ Mindegyik önállóan futtatható, és a `--help` kiírja a kapcsolóit.
 | `server/deploy/build.sh` | `git pull`, majd build macOS-en vagy Fedorán. Ha a frissítés nem megy, vagy helyi változás van, felajánlja a GitHub-ág pontos másolatára állítást. A release bináris a `server/thinknodes` helyre kerül. `--debug`, `--no-pull`. |
 | `server/deploy/daemon.sh` | Fedorán: `thinknodes` felhasználó, adatmappák, checkout a `/opt/ThinkNodes` alá, build, systemd szolgáltatás; végül kiírja a teendőket. |
 | `server/run.sh` | A szerver indítása (helyben és élesben). `--update`: előtte `deploy/build.sh`; `--debug`: a debug bináris. A többi kapcsoló a `thinknodes` binárisé. |
+| `server/test.sh` | Témakörönkénti tesztfuttatás: téma nélkül a commitolatlan módosításokból választja ki az érintett Swift- és JS-teszteket. `--all`: minden teszt; `--list`: csak kiírja, mit futtatna; témák (pl. `table`, `render`, `editor`): `--help`. Mindig debug buildet használ. |
+
+Fejlesztés közben a debug build sokkal gyorsabb: egy Swift-fájl módosítása után kb. 10 s, a release build ehhez képest kb. 85 s. Helyben ezért elég a `server/test.sh` (ez elkészíti a debug binárist is) és a `server/run.sh --debug --port:8888`; release build csak élesítés előtt kell.
 
 ## Indítás
 

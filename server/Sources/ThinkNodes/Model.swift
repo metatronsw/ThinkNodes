@@ -75,7 +75,10 @@ struct CanvasFile: Codable, Equatable, Sendable {
     static func validSource(_ source: String) -> Bool {
         if source == common { return true }
         let path = source.hasPrefix(common + "/") ? String(source.dropFirst(common.count + 1)) : source
-        return path.isEmpty || (try? WorksheetPath(["project"] + path.split(separator: "/", omittingEmptySubsequences: false).map(String.init))) != nil
+        if path.isEmpty { return true }
+        var segments: [String] = ["project"]
+        segments.append(contentsOf: path.split(separator: "/", omittingEmptySubsequences: false).map(String.init))
+        return (try? WorksheetPath(segments)) != nil
     }
 
     var isCommon: Bool { source == Self.common || source?.hasPrefix(Self.common + "/") == true }
@@ -83,15 +86,19 @@ struct CanvasFile: Codable, Equatable, Sendable {
     /// Közös könyvtárbeli fájl címe (`/common/...`), nyilvános statikus fájlként.
     var commonURL: String? {
         guard isCommon, let source else { return nil }
-        let folders = source.split(separator: "/").dropFirst().map { WorksheetPath.encodeSegment(String($0)) }
-        return "/" + (["common"] + folders + [WebPresentationRequest.encodeAsset(asset)]).joined(separator: "/")
+        var segments: [String] = ["common"]
+        segments.append(contentsOf: source.split(separator: "/").dropFirst().map { WorksheetPath.encodeSegment(String($0)) })
+        segments.append(WebPresentationRequest.encodeAsset(asset))
+        return "/" + segments.joined(separator: "/")
     }
 
     /// A fájlt tároló munkalap útvonala; `own` a doboz saját lapja. Közös könyvtárnál nil.
     func sheet(from own: WorksheetPath) -> WorksheetPath? {
         guard !isCommon else { return nil }
         guard let source else { return own }
-        return try? WorksheetPath([own.parts[0]] + (source.isEmpty ? [] : source.split(separator: "/").map(String.init)))
+        var segments: [String] = [own.parts[0]]
+        if !source.isEmpty { segments.append(contentsOf: source.split(separator: "/").map(String.init)) }
+        return try? WorksheetPath(segments)
     }
 
     var imageStem: String {

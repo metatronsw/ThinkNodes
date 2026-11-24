@@ -1,0 +1,206 @@
+import Foundation
+import Testing
+import VaporTesting
+@testable import ThinkNodes
+
+// Közös szerkesztés: kijelölés, munkamenetek, élő frissítés, vendégek.
+
+@Test func exclusiveSelectionAndCableChanges() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-live-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    let live = Collaboration(store: store)
+    let path = try WorksheetPath(["main", "lab"])
+    let a = User(name: "anna", role: .admin, passwordHash: "")
+    let b = User(name: "bela", role: .admin, passwordHash: "")
+    var sheet = try store.open(path, user: a)
+    sheet.nodes = [Idea(id: "box", text: "Doboz", position: Point(x: 0, y: 0))]
+    sheet = try store.update(path, worksheet: sheet, user: a)
+    let eventLoop = MultiThreadedEventLoopGroup.singleton.next()
+    func select(_ user: User, node: String?) throws -> LiveState {
+        try live.presence(path, user: user, client: user.name, action: "select", node: node, since: nil, loop: eventLoop).0
+    }
+    _ = try store.manage(WorksheetPath(["main"]), operation: DocumentAction(scope: "project", action: "mode", value: "public"), user: a, unlocks: [])
+    let viewer = User(name: "viewer", role: .editor, passwordHash: "")
+    _ = try live.presence(path, user: viewer, client: viewer.name, action: "view-select", node: "box", since: nil, loop: eventLoop)
+    let first = try select(a, node: "box")
+    #expect(first.participants.map(\.name) == ["anna", "viewer"])
+    #expect(first.participants.last?.node == "box" && first.participants.last?.viewing == true)
+    let poll = try #require(try live.presence(path, user: a, client: a.name, action: "poll", node: nil,
+                                             since: first.version, loop: eventLoop).1)
+    let both = try select(b, node: nil)
+    try await poll.get()
+    #expect(Set(both.participants.map(\.color)).count == 3)
+    #expect(throws: Abort.self) { try select(b, node: "box") }
+    var moved = sheet
+    moved.nodes[0].position.x = 40
+    #expect(throws: Abort.self) { try live.update(path, sheet: moved, user: b, client: b.name) }
+    #expect(throws: Abort.self) { try live.update(path, sheet: moved, user: b, client: nil) }
+    #expect(throws: Abort.self) { try live.update(path, sheet: moved, user: b, client: a.name) }
+    sheet.edges = [Connection(id: "wire", source: "box", target: ConnectionTarget(point: Point(x: 0, y: 50)), endArrow: false)]
+    sheet = try live.update(path, sheet: sheet, user: b, client: b.name)
+    sheet.edges[0].source = nil
+    sheet.edges[0].sourcePoint = Point(x: 0, y: 10)
+    sheet = try live.update(path, sheet: sheet, user: b, client: b.name)
+    _ = try live.presence(path, user: a, client: a.name, action: "leave", node: nil, since: nil, loop: eventLoop)
+    #expect(try select(b, node: "box").participants.first?.mine == true)
+    sheet.nodes[0].position.x = 40
+    #expect(try live.update(path, sheet: sheet, user: b, client: b.name).nodes[0].position.x == 40)
+}
+
+@Test func sharedSessionCheckpoint() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-checkpoint-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    let live = Collaboration(store: store)
+    let path = try WorksheetPath(["snapshot"])
+    let user = User(name: "anna", role: .admin, passwordHash: "")
+    var sheet = try store.open(path, user: user)
+    let loop = MultiThreadedEventLoopGroup.singleton.next()
+    func action(_ client: String, _ action: String, _ checkpoint: Int? = nil) throws -> LiveState {
+        try live.presence(path, user: user, client: client, action: action, node: nil, since: nil,
+                          loop: loop, editing: client != "viewer", revision: sheet.revision, checkpointRevision: checkpoint).0
+    }
+    #expect(try action("viewer", "poll").checkpointRevision == nil)
+    let initial = sheet
+    _ = try action("first", "poll")
+    sheet.title = "Piszkozat"
+    sheet = try live.update(path, sheet: sheet, user: user, client: "first")
+    #expect(try action("second", "poll").checkpointChanged)
+    #expect(try action("second", "poll").checkpointRevision == initial.revision)
+    _ = try action("second", "resign", initial.revision)
+    sheet = try store.load(path, user: user)
+    #expect(sheet.title == initial.title && sheet.resetRevision == sheet.revision)
+    let restored = sheet.revision
+    sheet.title = "Rögzített"
+    sheet = try live.update(path, sheet: sheet, user: user, client: "first")
+    let pinned = try action("first", "checkpoint", restored)
+    #expect(!pinned.checkpointChanged)
+    sheet.title = "Eldobott"
+    sheet = try live.update(path, sheet: sheet, user: user, client: "second")
+    #expect(throws: Abort.self) { try action("viewer", "resign", pinned.checkpointRevision) }
+    #expect(throws: Abort.self) { try action("first", "resign", restored) }
+    _ = try action("second", "resign", pinned.checkpointRevision)
+    sheet = try store.load(path, user: user)
+    #expect(sheet.title == "Rögzített")
+    _ = try action("first", "leave")
+    #expect(try action("second", "leave").checkpointRevision == nil)
+    #expect(try action("new", "poll").checkpointRevision == sheet.revision)
+}
+
+@Test func testerSessions() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-testers-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try WorksheetStore(root: root, testMode: true)
+    try await withApp(configure: { app in configure(app, store: store) }) { app in
+        let browser = try app.testing()
+        let first = try await browser.sendRequest(.GET, "/")
+        let second = try await browser.sendRequest(.GET, "/")
+        #expect(first.body.string.contains("Tester1") && second.body.string.contains("Tester2"))
+        let cookie = try cookie(first)
+        let csrf = try attribute("data-csrf=\"", in: first.body.string)
+        let created = try await browser.sendRequest(.POST, "/api/subworksheet/proba", headers: ["Cookie": cookie, "X-CSRF-Token": csrf])
+        #expect(created.status == .ok)
+        let page = try await browser.sendRequest(.GET, "/edit/proba", headers: ["Cookie": cookie])
+        #expect(page.status == .ok && page.body.string.contains("data-user=\"Tester1\""))
+        #expect(page.body.string.contains("data-role=\"admin\""))
+        #expect(try store.allUsers().isEmpty)
+    }
+}
+
+@Test func publishedProjectsAndViewerChangesWakeOpenPages() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-live-pages-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    let password = UUID().uuidString
+    let hash = try Bcrypt.hash(password, cost: 4)
+    try store.setUser(name: "admin", role: .admin, passwordHash: hash)
+    try store.setUser(name: "member", role: .editor, passwordHash: hash)
+    let admin = try #require(try store.user(named: "admin"))
+    let project = try WorksheetPath(["live-project"])
+    let child = try WorksheetPath(["live-project", "child"])
+    _ = try store.open(child, user: admin)
+
+    func watchURL(_ page: TestingHTTPResponse) throws -> String {
+        let html = page.body.string
+        let id = try attribute(#"name="thinknodes-updates" data-id=""#, in: html)
+        let version = try attribute(#"data-id=""# + id + #"" content=""#, in: html)
+        return "/api/page-changes/" + id + "?since=" + version
+    }
+
+    try await withApp(configure: { app in configure(app, store: store) }) { app in
+        let browser = try app.testing()
+        let administrator = try await login(browser, name: "admin", password: password, path: project.url)
+        let loginForm = try await browser.sendRequest(.GET, "/login")
+        let loginCookie = try cookie(loginForm)
+        let loginToken = try attribute(#"name="csrf" value=""#, in: loginForm.body.string)
+        let memberLogin = try await browser.sendRequest(.POST, "/login", headers: ["Cookie": loginCookie]) { request in
+            try request.content.encode(Credentials(name: "member", password: password, csrf: loginToken), as: .urlEncodedForm)
+        }
+        let memberCookie = try cookie(memberLogin)
+        let guestHome = try await browser.sendRequest(.GET, "/")
+        let memberHome = try await browser.sendRequest(.GET, "/", headers: ["Cookie": memberCookie])
+        #expect(!guestHome.body.string.contains("href=\"/live-project\""))
+        #expect(!memberHome.body.string.contains("href=\"/live-project\""))
+
+        let homeWatch = try watchURL(guestHome)
+        async let homeEvent = browser.sendRequest(.GET, homeWatch)
+        let published = try await browser.sendRequest(.POST, "/api/document/" + project.url, headers: [
+            "Cookie": administrator.cookie, "X-CSRF-Token": administrator.csrf,
+        ]) { request in
+            try request.content.encode(DocumentAction(scope: "project", action: "mode", value: "public"))
+        }
+        #expect(published.status == .ok)
+        let notice = try await homeEvent
+        #expect(notice.status == .ok && !homeWatch.hasSuffix(notice.body.string))
+        let freshGuest = try await browser.sendRequest(.GET, "/")
+        let freshMember = try await browser.sendRequest(.GET, "/", headers: ["Cookie": memberCookie])
+        #expect(freshGuest.body.string.contains("href=\"/live-project\""))
+        #expect(freshMember.body.string.contains("href=\"/live-project\""))
+
+        let childPage = try await browser.sendRequest(.GET, "/" + child.url)
+        let html = childPage.body.string
+        #expect(!html.contains("<h2>További munkalapok</h2>"))
+        #expect(!html.contains("<h2>Mappa tartalma</h2>"))
+        #expect(!html.contains("<h2>Külső hivatkozások</h2>"))
+        #expect(html.contains("viewer-edit-slot"))
+        let projectPage = try await browser.sendRequest(.GET, "/" + project.url)
+        let projectWatch = try watchURL(projectPage)
+        async let projectEvent = browser.sendRequest(.GET, projectWatch)
+        var changed = try store.load(child, user: admin)
+        changed.title = "Élő előnézet"
+        #expect(try await save(browser, path: child.url, worksheet: changed, session: administrator).status == .ok)
+        let parentNotice = try await projectEvent
+        #expect(parentNotice.status == .ok && !projectWatch.hasSuffix(parentNotice.body.string))
+        #expect(try await browser.sendRequest(.GET, "/" + project.url).body.string.contains("Élő előnézet"))
+    }
+}
+
+@Test func publicGuestCanEditWithoutProjectManagement() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-guest-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    let admin = User(name: "admin", role: .admin, passwordHash: "")
+    let project = try WorksheetPath(["project"])
+    let folder = try WorksheetPath(["project", "folder"])
+    let draft = try store.open(folder, user: admin)
+    _ = try store.manage(project, operation: DocumentAction(scope: "project", action: "mode", value: "public"), user: admin, unlocks: [])
+
+    try await withApp(configure: { app in configure(app, store: store) }) { app in
+        let browser = try app.testing()
+        let page = try await browser.sendRequest(.GET, "/edit/" + folder.url)
+        #expect(page.status == .ok)
+        let session = (cookie: try cookie(page), csrf: try attribute("data-csrf=\"", in: page.body.string))
+        let headers: HTTPHeaders = ["Cookie": session.cookie, "X-CSRF-Token": session.csrf]
+        var edited = draft
+        edited.title = "Vendég szerkesztése"
+        #expect(try await save(browser, path: folder.url, worksheet: edited, session: session).status == .ok)
+        #expect(try await browser.sendRequest(.POST, "/api/subworksheet/" + folder.url + "/new-page", headers: headers).status == .ok)
+        #expect(try await browser.sendRequest(.POST, "/api/subworksheet/new-project", headers: headers).status == .unauthorized)
+        #expect(try await remove(browser, path: project.url, session: session).status == .unauthorized)
+
+        _ = try store.manage(project, operation: DocumentAction(scope: "project", action: "mode", value: "internal"), user: admin, unlocks: [])
+        edited.revision += 1
+        #expect(try await save(browser, path: folder.url, worksheet: edited, session: session).status == .forbidden)
+    }
+}

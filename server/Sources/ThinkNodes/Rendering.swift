@@ -164,7 +164,9 @@ private func number(_ value: Double) -> String {
     guard length > 0, length < buffer.count else { return String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), value) }
     let text = String(cString: buffer)
     // Ha a folyamat C-locale-ja tizedesvesszőt használna, akkor is ponttal írjuk.
-    return text.contains(",") ? text.replacingOccurrences(of: ",", with: ".") : text
+    let comma: Character = ","
+    guard text.contains(comma) else { return text }
+    return text.replacingOccurrences(of: ",", with: ".")
 }
 
 private extension Shape {

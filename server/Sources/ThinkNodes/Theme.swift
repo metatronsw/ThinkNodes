@@ -88,25 +88,54 @@ struct VisualTheme: Content, Equatable {
     var modes: [String]
     var palettes: [Palette]
     var graphics: Graphics?
+    // Lépésenkénti guard: az egyetlen hosszú `&&`-lánc típusellenőrzése ~2 s fordítási időt vitt el.
     var valid: Bool {
-        (graphics?.validGeometry ?? true) && (0...24).contains(graphics?.boxChamfer ?? 0)
-        && version == 1 && !name.isEmpty && !modes.isEmpty && Set(modes).isSubset(of: ["light","dark"])
-        && Set(modes).count == modes.count && !palettes.isEmpty && Set(palettes.map(\.id)).count == palettes.count
-        && palettes.allSatisfy { palette in
-            let ids = Set(palette.colors.map(\.id))
-            return (16...64).contains(palette.colors.count) && ids.count == palette.colors.count
-                && Set(0..<16).isSubset(of: ids) && ids.isSubset(of: Set(0..<64))
-                && palette.colors.allSatisfy { color in
-                    let variants = [color.light, color.dark].compactMap { $0 }
-                    return !color.name.isEmpty && !variants.isEmpty && variants.allSatisfy { $0.range(of: "^#[0-9A-Fa-f]{6}$", options: .regularExpression) != nil }
-                }
-        } && (0...24).contains(graphics?.glow ?? 3)
-        && (0..<8).contains(graphics?.selection ?? 4) && (4...128).contains(graphics?.junctionSize ?? 12)
-        && ["dots","lines","drafting"].contains(graphics?.grid ?? "dots")
-        && (0...0.25).contains(graphics?.lineArc ?? 0)
-        && [.rectangle, .ellipse, .diamond].contains(graphics?.junction ?? .ellipse)
-        && (0.1...5).contains(graphics?.motionSpeed ?? 1)
-        && (graphics?.fonts.map { $0.count == 3 && $0.allSatisfy { !$0.isEmpty && $0.count <= 200 && !$0.contains(where: { "<>\";{}".contains($0) }) } } ?? true)
+        guard version == 1, !name.isEmpty, !modes.isEmpty, !palettes.isEmpty else { return false }
+        let modeSet = Set<String>(modes)
+        guard modeSet.count == modes.count, modeSet.isSubset(of: ["light", "dark"]) else { return false }
+        let paletteIDs = Set<Int>(palettes.map(\.id))
+        guard paletteIDs.count == palettes.count, palettes.allSatisfy(Self.validPalette) else { return false }
+        guard let graphics else { return true }
+        return Self.validGraphics(graphics)
+    }
+
+    private static func validPalette(_ palette: Palette) -> Bool {
+        let ids = Set<Int>(palette.colors.map(\.id))
+        guard (16...64).contains(palette.colors.count), ids.count == palette.colors.count else { return false }
+        guard Set<Int>(0..<16).isSubset(of: ids), ids.isSubset(of: Set<Int>(0..<64)) else { return false }
+        return palette.colors.allSatisfy(validColor)
+    }
+
+    private static func validColor(_ color: Color) -> Bool {
+        let variants: [String] = [color.light, color.dark].compactMap { $0 }
+        guard !color.name.isEmpty, !variants.isEmpty else { return false }
+        return variants.allSatisfy { (value: String) -> Bool in
+            value.range(of: "^#[0-9A-Fa-f]{6}$", options: .regularExpression) != nil
+        }
+    }
+
+    private static func validGraphics(_ graphics: Graphics) -> Bool {
+        guard graphics.validGeometry else { return false }
+        let boxChamfer: Double = graphics.boxChamfer ?? 0
+        let glow: Double = graphics.glow ?? 3
+        let selection: Int = graphics.selection ?? 4
+        let junctionSize: Double = graphics.junctionSize ?? 12
+        let lineArc: Double = graphics.lineArc ?? 0
+        let motionSpeed: Double = graphics.motionSpeed ?? 1
+        guard (0.0...24.0).contains(boxChamfer), (0.0...24.0).contains(glow), (0..<8).contains(selection),
+              (4.0...128.0).contains(junctionSize), (0.0...0.25).contains(lineArc), (0.1...5.0).contains(motionSpeed)
+        else { return false }
+        let grids: [String] = ["dots", "lines", "drafting"]
+        guard grids.contains(graphics.grid ?? "dots") else { return false }
+        let junctions: [Shape] = [.rectangle, .ellipse, .diamond]
+        guard junctions.contains(graphics.junction ?? .ellipse) else { return false }
+        guard let fonts = graphics.fonts else { return true }
+        return fonts.count == 3 && fonts.allSatisfy(validFont)
+    }
+
+    private static func validFont(_ font: String) -> Bool {
+        let forbidden: Set<Character> = ["<", ">", "\"", ";", "{", "}"]
+        return !font.isEmpty && font.count <= 200 && !font.contains(where: forbidden.contains)
     }
 }
 
