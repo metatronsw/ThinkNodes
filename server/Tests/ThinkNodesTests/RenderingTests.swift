@@ -350,6 +350,15 @@ import VaporTesting
     #expect(try offset("second") < wire)
 }
 
+@Test func formerAutoLayoutKeyLoadsAsTextFlow() throws {
+    // A 2026-11-25-i első változat `autoLayout` néven írta a szövegkörbefuttatás kapcsolóját.
+    let data = Data(#"{"id":"group","type":"box","text":"Konténer","pos":{"x":0,"y":0},"w":300,"h":200,"container":true,"autoLayout":false}"#.utf8)
+    let box = try JSONDecoder().decode(Idea.self, from: data)
+    #expect(box.textFlow == false)
+    let saved = String(decoding: try JSONEncoder().encode(box), as: UTF8.self)
+    #expect(saved.contains("\"textFlow\":false") && !saved.contains("autoLayout"))
+}
+
 @Test func boxesAboveAContainerAlsoCoverItsContents() throws {
     let container = Idea(id: "container", text: "Konténer", position: Point(x: 0, y: 0),
                          width: 300, height: 300, container: true)

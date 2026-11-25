@@ -569,7 +569,7 @@ createApp({
       if (Math.abs(element.scrollLeft - x) <= 1 && Math.abs(element.scrollTop - y) <= 1) element.__scrollKey = key;
     }
     // Szövegkörbefuttatás: a konténer szövege kikerüli a közvetlen gyermekdobozait; alapból be van kapcsolva, a
-    // konténeren kikapcsolható (`autoLayout: false`). Konténerenként a
+    // konténeren kikapcsolható (`textFlow: false`). Konténerenként a
     // gyermekek helye a konténer közepéhez mérve; csak akkor számol, ha van ilyen konténer a lapon.
     // Húzás közben ritkább újratördelés: a gyermekek helye ilyenkor 12 képpontos lépésekre kerekítve számít, így a szöveg
     // csak akkor tördelődik újra, ha a doboz egy lépésnyit elmozdult (a legfeljebb 6 képpontos eltérés a doboz körüli
@@ -582,7 +582,7 @@ createApp({
       const step = gesture.value?.moved ? flowStep : 0;
       const place = value => step ? Math.round(value / step) * step : value;
       const nodes = board.value?.nodes ?? [];
-      const flowing = new Map(nodes.filter(node => node.container && node.autoLayout !== false).map(node => [node.id, node]));
+      const flowing = new Map(nodes.filter(node => node.container && node.textFlow !== false).map(node => [node.id, node]));
       if (!flowing.size) return noObstacles;
       const found = new Map();
       for (const child of nodes) {
@@ -613,7 +613,7 @@ createApp({
           lastBlocksById.set(node.id, blocks);
           return blocks;
         });
-        const obstacles = computed(() => node.container && node.autoLayout !== false ? flowObstacles.value.get(node.id) : undefined);
+        const obstacles = computed(() => node.container && node.textFlow !== false ? flowObstacles.value.get(node.id) : undefined);
         layout = computed(() => labelLayout(node, text.value, obstacles.value));
         nodeLayouts.set(node, layout);
       }
@@ -4920,8 +4920,8 @@ createApp({
           ...backgroundTools(), elevation(),
           single && containerIDs.value.has(single.id) ? iconToggle("Tartalom rögzítése", !!single.locked,
             () => change("locked", single.locked ? undefined : true), icon(single.locked ? "lock" : "unlock")) : null,
-          single && containerIDs.value.has(single.id) ? iconToggle("Szöveg körbefuttatása a tartalom körül", single.autoLayout !== false,
-            () => change("autoLayout", single.autoLayout !== false ? false : undefined), icon("grid")) : null,
+          single && containerIDs.value.has(single.id) ? iconToggle("Szöveg körbefuttatása a tartalom körül", single.textFlow !== false,
+            () => change("textFlow", single.textFlow !== false ? false : undefined), icon("grid")) : null,
           linkButton(),
         ]),
       ]));

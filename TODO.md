@@ -55,7 +55,7 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 - A sor a doboz mellett a legszélesebb szabad szakaszt használja; egy rövid sorvég így a doboz túloldalára kerülhet. Lehetőség: a megkezdett bekezdés maradjon ugyanazon az oldalon.
 - Csak a közvetlen gyermekeket kerüli ki, a befoglaló téglalapjuk szerint (nem téglalap alakú gyermeknél is).
 - A szövegszerkesztő mező a vásznon (gépelés közben) nem követi a körbefuttatást.
-- A mező neve (`autoLayout`) és a megszűnt `home` mező átnevezhető / törölhető, ha már nincs régi lap.
+- A régi `autoLayout` kulcs olvasása (`Model.swift` `FormerKey`) törölhető, ha már egyik szerveren sincs ilyen lap.
 - Sebesség, további lehetőségek (2026-11-25):
   - csak az érintett bekezdések újratördelése és külön `<text>` bekezdésenként (kisebb csere);
   - a `dx` lista rövidítése (az utolsó szóköz utáni nullák elhagyása).

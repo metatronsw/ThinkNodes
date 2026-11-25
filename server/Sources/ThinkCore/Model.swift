@@ -266,7 +266,8 @@ package struct Idea: Codable, Equatable, Sendable {
     package var locked: Bool?
     /// konténer: szövegkörbefuttatás, alapból bekapcsolva (nil vagy true); false kapcsolja ki. A konténer saját szövege felülről folyik, és soronként kikerüli a közvetlen
     /// gyermekdobozokat (geometry.js labelLayout, Rendering.swift ideaDrawing); a gyermekek helye kézi marad.
-    var autoLayout: Bool?
+    /// A fájlban `textFlow`; a 2026-11-25-i első változat `autoLayout` néven írta, azt a név olvasáskor még elfogadjuk.
+    var textFlow: Bool?
     var elevated: Bool?
     /// .web doboz: true = nincs új előnézet-generálás, a meglévő kép vágódik a doboz arányára.
     /// Munkalap- és külső link: true = nincs előnézet, a doboz szövege látszik.
@@ -288,7 +289,7 @@ package struct Idea: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, type, text, file, hideText, fitText, shape, fill, backgroundMode, animation, bold, italic, underline, font, justified, link
-        case angle, parent, container, locked, autoLayout, elevated, staticPreview, webPublic, uppercase, frame, frameWidth, scroll, chart
+        case angle, parent, container, locked, textFlow, elevated, staticPreview, webPublic, uppercase, frame, frameWidth, scroll, chart
         case position = "pos", width = "w", height = "h", textColor = "textCol"
         case fontSize = "fontSz", alignment = "align", verticalAlignment = "vAlign"
     }
@@ -325,7 +326,7 @@ package struct Idea: Codable, Equatable, Sendable {
               [fill, textColor, border].allSatisfy(validColor),
               link.map({ $0.isValid && has("link") }) ?? true,
               angle.map({ $0.isFinite && isJunction }) ?? true, container != true || isBox,
-              autoLayout != true || isContainer,
+              textFlow != true || isContainer,
               !isJunction || (text.count <= 120 && !text.contains("\n")) else { return false }
         guard let kind = NodeTypes.fileKind(type) else { return file == nil }
         guard let file, validImageStem(file.asset), file.filename.map(validImageStem) ?? true,
@@ -2666,7 +2667,9 @@ extension Idea {
         parent = try? fields.decode(String.self, forKey: .parent)
         container = try? fields.decode(Bool.self, forKey: .container)
         locked = try? fields.decode(Bool.self, forKey: .locked)
-        autoLayout = try? fields.decode(Bool.self, forKey: .autoLayout)
+        enum FormerKey: String, CodingKey { case autoLayout }
+        textFlow = (try? fields.decode(Bool.self, forKey: .textFlow))
+            ?? (try? decoder.container(keyedBy: FormerKey.self).decode(Bool.self, forKey: .autoLayout))
         elevated = try? fields.decode(Bool.self, forKey: .elevated)
         staticPreview = try? fields.decode(Bool.self, forKey: .staticPreview)
         webPublic = try? fields.decode(Bool.self, forKey: .webPublic)

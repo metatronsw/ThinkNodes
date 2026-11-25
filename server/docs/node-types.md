@@ -95,7 +95,7 @@ Alap doboz; ha belehúznak valamit, konténer lesz (`has-children`).
 - Kijelölés kattintással, tulajdonságok dupla kattintással, szövegszerkesztés Alt+dupla kattintással.
 - Mozgatás húzással, klónozás Alt+húzással, összekötés Ctrl+húzással, méretezés Alt+sarokhúzással.
 - Cím és szöveg igazítása Ctrl+Alt+húzással a kilenc hely egyikére.
-- Konténer: a belehúzott doboz a gyereke lesz, együtt mozognak. „Tartalom rögzítése” zárja a tartalmát. „Szöveg körbefuttatása a tartalom körül” (`autoLayout`): a konténer saját szövege kikerüli a benne lévő dobozokat.
+- Konténer: a belehúzott doboz a gyereke lesz, együtt mozognak. „Tartalom rögzítése” zárja a tartalmát. „Szöveg körbefuttatása a tartalom körül” (`textFlow`; alapból be, `false` kapcsolja ki): a konténer saját szövege kikerüli a benne lévő dobozokat.
   Kiemelt (`elevation`) doboz nem lehet gyerek. Csak `box` lehet konténer.
 - Beillesztett szöveg: új `box`, a szöveg a Text részbe kerül. Kijelölt `box` esetén hozzáfűződik a szövegéhez.
 
