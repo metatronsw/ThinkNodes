@@ -1,12 +1,20 @@
 # Változások
 
+## 2026-11-25 – Konténer: automatikus elrendezés
+
+- **Kapcsoló:** a konténer tulajdonságpaneljén (Doboz csoport, rács ikon) „Automatikus elrendezés”. Bekapcsolva a konténer szövege felülre kerül, a közvetlen gyermekdobozok alatta sorokba rendeződnek, a saját méretükben; ami nem fér ki a sorba, új sorba kerül (keskeny konténernél egy oszlop).
+- **Döntések (2026-11-25):** a konténer mérete nem nő és nincs görgetés (a ki nem férő tartalom alul kilóg, a konténert kézzel kell nagyobbra venni); a gyermekek mérete nem változik; a gyermek húzása a konténeren belül sorrendet cserél (elengedéskor a helyére ugrik); a belső konténer egy cella, a saját tartalmát a saját beállítása szerint rendezi.
+- **Adatmodell:** a konténeren `autoLayout`, a gyermeken `home` (a kézi hely a konténer közepéhez mérve). Kikapcsoláskor a gyermekek visszaállnak a kézi helyükre. A kiszámított hely a gyermek pozíciójába kerül, de csak módosításkor (nem rajzoláskor), ugyanabban a visszavonási lépésben, mint a kiváltó módosítás – így a megtekintő, az előnézeti kép és az SVG-export változtatás nélkül ugyanazt mutatja. Ez eltér az eredeti javaslattól (csak megjelenítési réteg).
+- **Mikor számol újra:** minden szerkesztői módosítás végén (gyermek be / ki, átméretezés, szöveg, sorrendcsere), és amikor a konténer szövegének tördelése elkészül. Ha a tartalom egy részét más szerkesztő jelölte ki, a rendezés a következő módosításra marad.
+- Helye: `Public/editor.js` (`relayout`, `readingOrder`, `layoutHeader`, `toggleAutoLayout`), `Sources/ThinkCore/Model.swift` (`autoLayout`, `home`).
+- Kipróbálva Safariban (WebDriver, ideiglenes próbalap): bekapcsolás, sorrendcsere húzással, beágyazott konténer együtt mozog, kikapcsolás visszaállít; a rálógó doboz takarja a konténer tartalmát. `test.sh render editor worksheet` rendben. A szerver kódja változott (`Model.swift`): futó szervert újra kell indítani.
+
 ## 2026-11-25 – Konténer: a rálógó doboz a konténer tartalmát is kitakarja
 
 - **Rétegsorrend:** a konténer és a teljes tartalma (beágyazott konténerekkel együtt) egy tömbként kerül a rajzolási sorrendbe. Ami a konténer fölött van és nem a része, az a tartalmát is kitakarja. Eddig a konténer kisebb gyermekdobozai „átütöttek” a rálógó, náluk nagyobb idegen dobozon.
 - Testvérek között a szabály változatlan: előbb a konténerek, aztán a nagyobb doboz van alul. A kiemelt rétegben továbbra is csak a méret számít.
 - Helye: `Public/containers.js` (`layerOrder`, a szerkesztő ezt használja), `Sources/ThinkCore/Rendering.swift` (megtekintő, SVG-export). Teszt: `boxesAboveAContainerAlsoCoverItsContents`; `test.sh render editor` rendben.
 - Böngészőben (Safari) nincs külön kipróbálva. A szerver kódja változott (`Rendering.swift`): futó szervert újra kell indítani.
-- Az automatikus (rács) elrendezés nincs megvalósítva: a nyitott tervezési kérdések a TODO.md „Konténer” részében.
 
 ## 2026-11-25 – Grafikon önálló objektumként (D3), adatvonal, táblázat-igazítás
 

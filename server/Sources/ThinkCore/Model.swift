@@ -264,6 +264,11 @@ package struct Idea: Codable, Equatable, Sendable {
     /// box: konténer (egyszer belehúztak valamit); kiürülve is konténer marad.
     var container: Bool?
     package var locked: Bool?
+    /// konténer: automatikus (rács) elrendezés. A közvetlen gyermekdobozokat a szerkesztő sorokba rendezi a konténer
+    /// szövege alatt; a kiszámított hely a gyermek `position` mezőjébe kerül (a megtekintő és az export ezt rajzolja).
+    var autoLayout: Bool?
+    /// Automatikus elrendezésű konténer gyermeke: a kézi helye a konténer közepéhez mérve; kikapcsoláskor ide áll vissza.
+    var home: Point?
     var elevated: Bool?
     /// .web doboz: true = nincs új előnézet-generálás, a meglévő kép vágódik a doboz arányára.
     /// Munkalap- és külső link: true = nincs előnézet, a doboz szövege látszik.
@@ -285,7 +290,7 @@ package struct Idea: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, type, text, file, hideText, fitText, shape, fill, backgroundMode, animation, bold, italic, underline, font, justified, link
-        case angle, parent, container, locked, elevated, staticPreview, webPublic, uppercase, frame, frameWidth, scroll, chart
+        case angle, parent, container, locked, autoLayout, home, elevated, staticPreview, webPublic, uppercase, frame, frameWidth, scroll, chart
         case position = "pos", width = "w", height = "h", textColor = "textCol"
         case fontSize = "fontSz", alignment = "align", verticalAlignment = "vAlign"
     }
@@ -322,6 +327,7 @@ package struct Idea: Codable, Equatable, Sendable {
               [fill, textColor, border].allSatisfy(validColor),
               link.map({ $0.isValid && has("link") }) ?? true,
               angle.map({ $0.isFinite && isJunction }) ?? true, container != true || isBox,
+              autoLayout != true || isContainer, home.map({ $0.isValid && parent != nil }) ?? true,
               !isJunction || (text.count <= 120 && !text.contains("\n")) else { return false }
         guard let kind = NodeTypes.fileKind(type) else { return file == nil }
         guard let file, validImageStem(file.asset), file.filename.map(validImageStem) ?? true,
@@ -2662,6 +2668,8 @@ extension Idea {
         parent = try? fields.decode(String.self, forKey: .parent)
         container = try? fields.decode(Bool.self, forKey: .container)
         locked = try? fields.decode(Bool.self, forKey: .locked)
+        autoLayout = try? fields.decode(Bool.self, forKey: .autoLayout)
+        home = try? fields.decode(Point.self, forKey: .home)
         elevated = try? fields.decode(Bool.self, forKey: .elevated)
         staticPreview = try? fields.decode(Bool.self, forKey: .staticPreview)
         webPublic = try? fields.decode(Bool.self, forKey: .webPublic)

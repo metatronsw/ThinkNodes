@@ -1007,11 +1007,21 @@ createApp({
     }
 
     function modified() {
+      relayout();
       tidyChartLinks();
       if (editingField) fieldChanged = true;
       else recordChanges();
       markDirty();
     }
+
+    // A konténer szövegének tördelése a módosítás után készül el (canvasText): ha a fejléc magassága emiatt változik,
+    // az automatikus elrendezés újraszámol.
+    watch(canvasText, () => {
+      if (!online.value || gesture.value || !relayout()) return;
+      if (editingField) fieldChanged = true;
+      else recordChanges();
+      markDirty();
+    });
 
     function markDirty() {
       generation.value += 1;
@@ -1733,6 +1743,102 @@ createApp({
         dy = limit(dy, -100000-y, 100000-y);
       }
       for (const {id, x, y} of group) nodeMap.value.get(id).position = {x: x+dx, y: y+dy};
+    }
+
+    // Automatikus (rács) elrendezés: a konténer közvetlen gyermekdobozai sorokba rendeződnek a konténer szövege alatt,
+    // a saját méretükben; ami nem fér ki egy sorba, új sorba kerül (keskeny konténernél egy oszlop). A konténer mérete
+    // nem változik. A számítás a módosítások végén fut (modified), nem rajzoláskor, és a kiszámított hely a gyermek
+    // pozíciójába kerül – ugyanabba a visszavonási lépésbe, mint a kiváltó módosítás. A kézi hely a `home` mezőben marad.
+    const layoutPadding = 16, layoutGap = 12;
+    function readingOrder(boxes) {
+      const top = box => box.position.y - box.height / 2;
+      const rows = [];
+      for (const box of [...boxes].sort((a, b) => top(a) - top(b))) {
+        const row = rows.at(-1);
+        if (row && top(box) < row.limit) row.boxes.push(box);
+        else rows.push({limit: box.position.y, boxes: [box]});
+      }
+      return rows.flatMap(row => row.boxes.sort((a, b) => a.position.x - b.position.x));
+    }
+    function layoutHeader(container) {
+      const text = nodeLayout(container).lines.reduce((sum, line) => sum + line.step, 0);
+      if (!text) return 0;
+      // A felülre igazított szöveg a doboz címketerületének tetején kezdődik (geometry.js labelLayout).
+      const [, heightRatio] = shapeLabelRatios(container.shape);
+      const inset = (container.height - (container.height * heightRatio - 12)) / 2;
+      return Math.min(container.height / 2, inset + text + layoutGap);
+    }
+    function relayout() {
+      const nodes = board.value?.nodes;
+      if (!nodes?.some(node => node.autoLayout || node.home)) return false;
+      const index = new Map(nodes.map(node => [node.id, node]));
+      const inner = new Map();
+      for (const node of nodes) {
+        if (!node.parent) continue;
+        if (!inner.has(node.parent)) inner.set(node.parent, []);
+        inner.get(node.parent).push(node);
+      }
+      const automatic = node => node.autoLayout && isBox(node) && node.container;
+      let changed = false;
+      for (const node of nodes) {
+        const parent = index.get(node.parent);
+        if (node.home && !(parent && automatic(parent))) { node.home = undefined; changed = true; }
+      }
+      const subtree = node => {
+        const members = [node];
+        for (let i = 0; i < members.length && members.length <= nodes.length; i++) members.push(...(inner.get(members[i].id) ?? []));
+        return members;
+      };
+      const depth = node => ancestors(node, index).length;
+      // Kívülről befelé: a belső konténer egy cella, a saját tartalmát a saját beállítása szerint rendezi.
+      for (const container of nodes.filter(automatic).sort((a, b) => depth(a) - depth(b))) {
+        const boxes = (inner.get(container.id) ?? []).filter(node => !isJunction(node));
+        const groups = new Map(boxes.map(box => [box, subtree(box)]));
+        // Más által kijelölt dobozhoz nem nyúlhatunk (a szerver elutasítaná a mentést): a rendezés a következő alkalomra marad.
+        if (!boxes.length || [...groups.values()].some(group => group.some(member => occupied(member.id)))) continue;
+        const left = container.position.x - container.width / 2 + layoutPadding;
+        const right = container.position.x + container.width / 2 - layoutPadding;
+        let x = left, rowHeight = 0;
+        let rowTop = container.position.y - container.height / 2 + Math.max(layoutPadding, layoutHeader(container));
+        for (const box of readingOrder(boxes)) {
+          if (!box.home) {
+            box.home = {x: box.position.x - container.position.x, y: box.position.y - container.position.y};
+            changed = true;
+          }
+          if (x > left && x + box.width > right) { x = left; rowTop += rowHeight + layoutGap; rowHeight = 0; }
+          const dx = Math.round((x + box.width / 2) * 2) / 2 - box.position.x;
+          const dy = Math.round((rowTop + box.height / 2) * 2) / 2 - box.position.y;
+          if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01) {
+            for (const member of groups.get(box)) member.position = clampPoint({x: member.position.x + dx, y: member.position.y + dy});
+            changed = true;
+          }
+          x += box.width + layoutGap;
+          rowHeight = Math.max(rowHeight, box.height);
+        }
+      }
+      return changed;
+    }
+    function toggleAutoLayout(id) {
+      const container = nodeMap.value.get(id);
+      if (!container || occupied(id)) return;
+      if (container.autoLayout) {
+        // Kikapcsolás: a gyermekek (a tartalmukkal együtt) visszaállnak a kézi helyükre.
+        const boxes = board.value.nodes.filter(node => node.parent === id && node.home);
+        const groups = boxes.map(box => [box, moveGroup(box)]);
+        if (groups.some(([, group]) => group.some(member => occupied(member.id)))) {
+          problem.value = "Az elrendezés kikapcsolásához a konténer tartalmát más nem jelölheti ki.";
+          return;
+        }
+        for (const [box, group] of groups) {
+          translateGroup(group, container.position.x + box.home.x - box.position.x, container.position.y + box.home.y - box.position.y);
+          box.home = undefined;
+        }
+        container.autoLayout = undefined;
+      } else {
+        container.autoLayout = true;
+        container.verticalAlignment = "top";
+      }
+      modified();
     }
 
     function fitsInside(child, container) {
@@ -4848,6 +4954,8 @@ createApp({
           ...backgroundTools(), elevation(),
           single && containerIDs.value.has(single.id) ? iconToggle("Tartalom rögzítése", !!single.locked,
             () => change("locked", single.locked ? undefined : true), icon(single.locked ? "lock" : "unlock")) : null,
+          single && containerIDs.value.has(single.id) ? iconToggle("Automatikus elrendezés", !!single.autoLayout,
+            () => toggleAutoLayout(single.id), icon("grid"), occupied(single.id)) : null,
           linkButton(),
         ]),
       ]));

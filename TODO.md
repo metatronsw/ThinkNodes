@@ -48,13 +48,12 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 - A grafikon buboréksúgója a böngésző saját `<title>` súgója; a szerkesztő közös buboréksúgójára (tooltip.js) érdemes átállni.
 - A helyi próbalap (`projects/a/grafikon`) törölhető, ha már nem kell.
 
-# Konténer – automatikus (rács) elrendezés
+# Konténer – automatikus elrendezés
 
-- Terv: kapcsolható „Automatikus elrendezés” a konténeren; a konténer címe és szövege felül, a közvetlen gyermekek alatta rácsban, keskeny konténernél egy oszlopban. A számított hely csak megjelenítési réteg, a gyermekek tárolt pozíciója megmarad.
-- Megvalósítás előtt eldöntendő (2026-11-25):
-  - nőhet-e a konténer külső mérete, ha a gyermekek nem férnek el (vagy csak a meglévő méreten belül rendez);
-  - a gyermekek mérete a cellához igazodik-e (csak megjelenítésben), vagy megtartják a saját méretüket;
-  - mi történik kézi húzáskor automatikus módban (sorrendcsere a rácsban / átváltás kézire / tiltás);
-  - beágyazott konténer: egy cellaként viselkedik-e, a saját tartalmát a saját beállítása szerint rendezve.
-- Érinti: szerkesztő (`editor.js`), megtekintő és SVG-export (`Rendering.swift`), vonalak végpontjai, konténerbe ejtés, közös szerkesztés.
-
++ Kész (2026-11-25): kapcsoló a konténeren, sorokba rendezés a szöveg alatt, sorrendcsere húzással, kézi hely megőrzése (CHANGES.md).
+- Húzás és a konténer átméretezése közben nincs élő átrendezés: a dobozok elengedéskor ugranak a helyükre.
+- A ki nem férő tartalom alul kilóg a konténerből (döntés: a konténer nem nő, görgetés nincs). Lehetőség: jelzés a konténeren, ha a tartalom nem fér el.
+- Ha a tartalom egy részét más szerkesztő jelölte ki, a rendezés a következő módosításig elmarad.
+- Hiányzik az automatikus teszt (`gestures.mjs`); eddig Safariban, kézi szkripttel lett kipróbálva.
+- Nem téglalap alakú konténernél a rács a befoglaló téglalapot használja (a sarkoknál kilóghat).
+- Lehetőség: egyforma cellaméret (a gyermek a cellához igazodik), állítható térköz és belső margó.
