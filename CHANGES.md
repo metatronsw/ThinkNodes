@@ -1,5 +1,12 @@
 # Változások
 
+## 2026-11-25 – Címsor nem sorkizárt; alulra igazítás körbefuttatásnál; test-container próbaprojekt
+
+- **Címsor:** címsor sosem sorkizárt. Sorkizárt szövegű dobozban a címsor a vízszintes igazítást követi (bal / közép / jobb a 9 gombból), a törzsszöveg marad sorkizárt. Szerkesztő és szerver párban (`geometry.js labelLayout`, `Rendering.swift ideaDrawing`).
+- **Alulra igazítás konténerben:** körbefuttatott szövegnél az „alul” (és a „közép”) eddig visszaesett felülre, ha a lejjebb kezdett szöveg új akadályba ütközött és kilógott volna. Most ilyenkor csak annyival kezdődik feljebb, amennyivel kilógna, így a szöveg az alsó szélhez (középnél a közép közelébe) kerül.
+- **Projektek (helyi adat):** a `projects/b` törölve (a felhasználó kérésére); új `projects/test-container`: öt konténer (teljes markdown sorkizárva és belső konténerrel; középre; alulra-jobbra sorkizárva; keskeny; körbefuttatás kikapcsolva), egy sima doboz ugyanazzal a szöveggel és egy rálógó doboz. A szöveg minden támogatott markdown-elemet tartalmaz: három címsorszint, félkövér, dőlt, félkövér-dőlt, soron belüli kód, link, felsorolás három szinten, számozott lista, idézet, kódblokk, vízszintes vonal, soron belüli sortörés.
+- Ellenőrzés: Safari képernyőképen a próbalap (szerkesztő): körbefuttatás, alulra igazítás, jobbra álló címsor sorkizárt szöveg fölött. `test.sh render editor markdown` rendben. Szerverkód változott: release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – Körbefuttatás: ritkább újratördelés húzás közben, nagyobb térköz a doboz két oldalán
 
 - **Ritkább újratördelés:** húzás közben a konténer szövege csak akkor tördelődik újra, ha a belső doboz legalább 12 képpontot mozdult (a doboz helye ilyenkor 12-es lépésekre kerekítve számít); elengedéskor a pontos hellyel. A legfeljebb 6 képpontos eltérés a doboz körüli térközön belül marad. A konténer húzásakor a szöveg egyáltalán nem számolódik újra.

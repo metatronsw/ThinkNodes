@@ -59,4 +59,5 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 - Sebesség, további lehetőségek (2026-11-25):
   - csak az érintett bekezdések újratördelése és külön `<text>` bekezdésenként (kisebb csere);
   - a `dx` lista rövidítése (az utolsó szóköz utáni nullák elhagyása).
+- Keskeny konténerben a doboz melletti szűk helyre (40 képponttól) is kerül szöveg, szavanként egy sorban; lehetőség: nagyobb legkisebb szélesség, alatta a szöveg a doboz alatt folytatódjon.
 

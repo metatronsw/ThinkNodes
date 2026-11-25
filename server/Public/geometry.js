@@ -719,7 +719,8 @@ export function labelLayout(node, blocks = [], obstacles = []) {
       wrapRuns(runs, limit, code, measure).forEach(({pieces, wrapped, width, slot}, row) => {
         // Ahány üres sor van a forrásban, annyi üres sor marad a dobozon is.
         const gap = (row === 0 ? blank : 0) + (slot?.skip ?? 0);
-        lines.push({justify: node.justified && !code, wrapped, runs: pieces, text: pieces.map(piece => piece.text).join(""),
+        // Címsor sosem sorkizárt: a vízszintes igazítást (bal / közép / jobb) követi, sorkizárt szövegű dobozban is.
+        lines.push({justify: node.justified && !code && !heading, wrapped, runs: pieces, text: pieces.map(piece => piece.text).join(""),
           size, weight, indent, code, width, color: node.textColor, step: size * 1.25 + gap, gap,
           slotX: slot?.x, slotWidth: slot?.width});
       });
@@ -757,13 +758,18 @@ export function labelLayout(node, blocks = [], obstacles = []) {
   let flowStart = 0;
   if (flow && rank > 0 && !node.fitText) {
     const tall = rows => rows.reduce((sum, line) => sum + line.step, 0);
-    for (let attempt = 0; attempt < 4; attempt++) {
+    // 1. A kezdőpont közelítése: onnan induljon, ahonnan a saját magassága szerint középre / alulra kerül.
+    for (let attempt = 0; attempt < 3; attempt++) {
       const next = Math.max(0, Math.round((available - tall(lines)) * rank));
       if (next === flowStart) break;
       flowStart = next;
       lines = makeLines(node.fontSize ?? 16, flowStart);
     }
-    if (flowStart + tall(lines) > available) { flowStart = 0; lines = makeLines(node.fontSize ?? 16); }
+    // 2. Ha lejjebb kezdve több akadály kerül útba és a szöveg kilógna, annyival feljebb kezdődik, amennyivel kilóg.
+    for (let attempt = 0; attempt < 8 && flowStart > 0 && flowStart + tall(lines) > available; attempt++) {
+      flowStart = Math.max(0, flowStart - Math.ceil(flowStart + tall(lines) - available));
+      lines = makeLines(node.fontSize ?? 16, flowStart);
+    }
   }
   const visible = [];
   let remaining = available - flowStart;

@@ -505,7 +505,7 @@ private func ideaDrawing(_ idea: Idea, graphics: VisualTheme.Graphics? = nil, ob
                 let gap = (row == 0 ? blank : 0) + (wrappedLine.slot?.skip ?? 0)
                 lines.append(IdeaLabelLine(text: pieces.map(\.text).joined(), size: size, weight: weight,
                                            color: node.textColor, runs: pieces, gap: gap,
-                                           justify: node.justified == true && !code,
+                                           justify: node.justified == true && !code && !heading,
                                            wrapped: wrappedLine.wrapped, indent: indent, code: code, width: wrappedLine.width,
                                            slotX: wrappedLine.slot?.x, slotWidth: wrappedLine.slot?.width))
             }
@@ -549,15 +549,17 @@ private func ideaDrawing(_ idea: Idea, graphics: VisualTheme.Graphics? = nil, ob
     var flowStart = 0.0
     if flow && rank > 0 && !fitText {
         func tall(_ rows: [IdeaLabelLine]) -> Double { rows.reduce(0) { $0 + $1.step } }
-        for _ in 0..<4 {
+        for _ in 0..<3 {
             let next = max(0, ((available - tall(lines)) * rank).rounded())
             if next == flowStart { break }
             flowStart = next
             lines = makeLines(base: node.fontSize, start: flowStart)
         }
-        if flowStart + tall(lines) > available {
-            flowStart = 0
-            lines = makeLines(base: node.fontSize)
+        var attempt = 0
+        while attempt < 8 && flowStart > 0 && flowStart + tall(lines) > available {
+            flowStart = max(0, flowStart - (flowStart + tall(lines) - available).rounded(.up))
+            lines = makeLines(base: node.fontSize, start: flowStart)
+            attempt += 1
         }
     }
     var visible: [IdeaLabelLine] = []

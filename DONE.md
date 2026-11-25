@@ -187,3 +187,9 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 - **Körbefuttatott konténerben a belső doboz mozgatása nagyon lassú** (2026-11-25)
   - Javítva: a megváltozott szöveg egy lépésben cserélődik, a sorkizárás rajzolás előtt számolódik (CHANGES.md). Safari: 14 → 42 képkocka/mp sorkizárással, 55 anélkül. A felhasználó a kijelölt konténer háttérhibájának megszűnését is megerősítette.
 
+- **Konténerben az alulra igazítás nem működik (mindig felül vagy középen)** (2026-11-25)
+  - Javítva: a kezdőpont keresése nem esik vissza felülre, csak annyival megy feljebb, amennyivel a szöveg kilógna.
+
+- **Sorkizárt dobozban a címsor is sorkizárt** (2026-11-25)
+  - Javítva: a címsor sosem sorkizárt, a vízszintes igazítást követi.
+
