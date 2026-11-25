@@ -48,8 +48,8 @@ swift_files[table]="ThinkTableTests/*.swift"
 js_files[table]="table-engine.mjs table-fuzz.mjs"
 swift_files[markdown]="ThinkNodesTests/CanvasMarkdownTests.swift ThinkNodesTests/TextNoteTests.swift"
 js_files[markdown]="canvas-markdown.mjs"
-js_files[editor]="gestures.mjs text-flow.mjs"
-js_files[render]="text-flow.mjs"
+js_files[editor]="gestures.mjs text-flow.mjs wires.mjs"
+js_files[render]="text-flow.mjs wires.mjs"
 swift_files[render]="ThinkNodesTests/RenderingTests.swift ThinkNodesTests/ThemeTests.swift"
 swift_files[worksheet]="ThinkNodesTests/WorksheetTests.swift"
 swift_files[collab]="ThinkNodesTests/CollaborationTests.swift"
@@ -71,7 +71,7 @@ topics_for() {
         Tests/Editor/canvas-markdown.mjs|Tests/ThinkNodesTests/CanvasMarkdownTests.swift|Tests/ThinkNodesTests/TextNoteTests.swift) echo markdown ;;
         Public/package.js|Tests/Editor/package-upload.mjs) echo "package editor" ;;
         Public/chart.js|Public/lib/d3-chart.js|Tests/Editor/chart.mjs) echo "chart editor" ;;
-        Public/geometry.js|Tests/Fixtures/text-flow.json|Tests/Editor/text-flow.mjs) echo "editor render" ;;
+        Public/geometry.js|Tests/Fixtures/text-flow.json|Tests/Editor/text-flow.mjs|Tests/Fixtures/wires.json|Tests/Editor/wires.mjs) echo "editor render" ;;
         Tests/Editor/*|Public/*.js) echo editor ;;
         Sources/*/Rendering.swift|Sources/*/Theme.swift|Public/themes/*|docs/theme.schema.json) echo render ;;
         Tests/ThinkNodesTests/RenderingTests.swift|Tests/ThinkNodesTests/ThemeTests.swift) echo render ;;

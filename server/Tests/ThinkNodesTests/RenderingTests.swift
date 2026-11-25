@@ -350,6 +350,45 @@ import VaporTesting
     #expect(try offset("second") < wire)
 }
 
+/// A vonalak kirajzolt útvonala a szerveren pontosan egyezzen a szerkesztőével: oda-vissza kötések eltolása a
+/// vonalvastagság szerint, és a vonal vége a nyílhegy talpánál. Közös esetek: Tests/Fixtures/wires.json
+/// (kliensoldali párja: Tests/Editor/wires.mjs, Public/geometry.js edgeGeometry / wireHeads / pairShift).
+@Test func wirePathsMatchSharedFixtures() throws {
+    let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("Fixtures/wires.json")
+    enum Token: Decodable, Equatable {
+        case command(String), number(Double)
+        init(from decoder: Decoder) throws {
+            let value = try decoder.singleValueContainer()
+            if let number = try? value.decode(Double.self) { self = .number(number) } else { self = .command(try value.decode(String.self)) }
+        }
+    }
+    struct Path: Decodable { let id: String; let path: [Token] }
+    struct Case: Decodable { let name: String; let nodes: [Idea]; let edges: [Connection]; let paths: [Path] }
+    let cases = try JSONDecoder().decode([Case].self, from: Data(contentsOf: fixture))
+    #expect(cases.count >= 12)
+    let line = try NSRegularExpression(pattern: #"<path class="wire-line"[^>]* d="([^"]*)""#)
+    let piece = try NSRegularExpression(pattern: #"[A-Za-z]|-?[0-9]+(?:\.[0-9]+)?"#)
+    for item in cases {
+        let svg = boardSVG(Worksheet(title: "Vonalak", nodes: item.nodes, edges: item.edges))
+        let drawn = line.matches(in: svg, range: NSRange(svg.startIndex..., in: svg)).map { String(svg[Range($0.range(at: 1), in: svg)!]) }
+        #expect(drawn.count == item.paths.count, "Vonalak száma eltér: \(item.name)")
+        for (d, expected) in zip(drawn, item.paths) {
+            let tokens = piece.matches(in: d, range: NSRange(d.startIndex..., in: d)).map { match -> Token in
+                let text = String(d[Range(match.range, in: d)!])
+                return Double(text).map(Token.number) ?? .command(text)
+            }
+            let same = tokens.count == expected.path.count && zip(tokens, expected.path).allSatisfy { actual, wanted in
+                switch (actual, wanted) {
+                case let (.number(a), .number(b)): abs(a - b) < 0.002
+                default: actual == wanted
+                }
+            }
+            #expect(same, "Eltérés: \(item.name) / \(expected.id): \(d)")
+        }
+    }
+}
+
 /// A konténer szövegének körbefuttatása a szerveren pontosan egyezzen a szerkesztőével: közös esetek a
 /// Tests/Fixtures/text-flow.json fájlban (kliensoldali párja: Tests/Editor/text-flow.mjs, Public/geometry.js labelLayout).
 @Test func textFlowMatchesSharedFixtures() throws {

@@ -1,0 +1,888 @@
+[
+ {
+  "name": "egy vonal, nyíllal",
+  "nodes": [
+   {
+    "id": "a",
+    "type": "box",
+    "text": "a",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": -300,
+     "y": 0
+    },
+    "w": 140,
+    "h": 80
+   },
+   {
+    "id": "b",
+    "type": "box",
+    "text": "b",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": 300,
+     "y": 0
+    },
+    "w": 140,
+    "h": 80
+   }
+  ],
+  "edges": [
+   {
+    "id": "e1",
+    "source": "a",
+    "target": {
+     "node": "b"
+    },
+    "type": "straight",
+    "appearance": "plain",
+    "endArrow": true
+   }
+  ],
+  "paths": [
+   {
+    "id": "e1",
+    "path": [
+     "M",
+     -230,
+     0,
+     "L",
+     216.5,
+     0
+    ]
+   }
+  ]
+ },
+ {
+  "name": "egy vonal, nyíl nélkül",
+  "nodes": [
+   {
+    "id": "a",
+    "type": "box",
+    "text": "a",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": -300,
+     "y": 0
+    },
+    "w": 140,
+    "h": 80
+   },
+   {
+    "id": "b",
+    "type": "box",
+    "text": "b",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": 300,
+     "y": 0
+    },
+    "w": 140,
+    "h": 80
+   }
+  ],
+  "edges": [
+   {
+    "id": "e1",
+    "source": "a",
+    "target": {
+     "node": "b"
+    },
+    "type": "straight",
+    "appearance": "plain",
+    "endArrow": false
+   }
+  ],
+  "paths": [
+   {
+    "id": "e1",
+    "path": [
+     "M",
+     -230,
+     0,
+     "L",
+     230,
+     0
+    ]
+   }
+  ]
+ },
+ {
+  "name": "vastag vonal, nyíllal",
+  "nodes": [
+   {
+    "id": "a",
+    "type": "box",
+    "text": "a",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": -300,
+     "y": -120
+    },
+    "w": 140,
+    "h": 80
+   },
+   {
+    "id": "b",
+    "type": "box",
+    "text": "b",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": 280,
+     "y": 160
+    },
+    "w": 140,
+    "h": 80
+   }
+  ],
+  "edges": [
+   {
+    "id": "e1",
+    "source": "a",
+    "target": {
+     "node": "b"
+    },
+    "type": "straight",
+    "appearance": "plain",
+    "endArrow": true,
+    "w": 24
+   }
+  ],
+  "paths": [
+   {
+    "id": "e1",
+    "path": [
+     "M",
+     -230,
+     -86.207,
+     "L",
+     158.218,
+     101.209
+    ]
+   }
+  ]
+ },
+ {
+  "name": "két nyílhegy rövid vonalon",
+  "nodes": [
+   {
+    "id": "a",
+    "type": "box",
+    "text": "a",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": -150,
+     "y": 0
+    },
+    "w": 140,
+    "h": 80
+   },
+   {
+    "id": "b",
+    "type": "box",
+    "text": "b",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": 150,
+     "y": 0
+    },
+    "w": 140,
+    "h": 80
+   }
+  ],
+  "edges": [
+   {
+    "id": "e1",
+    "source": "a",
+    "target": {
+     "node": "b"
+    },
+    "type": "straight",
+    "appearance": "plain",
+    "endArrow": true,
+    "w": 32,
+    "startArrow": true
+   }
+  ],
+  "paths": [
+   {
+    "id": "e1",
+    "path": [
+     "M",
+     -6.5,
+     0,
+     "L",
+     6.5,
+     0
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oda-vissza pár, vékony",
+  "nodes": [
+   {
+    "id": "a",
+    "type": "box",
+    "text": "a",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": -300,
+     "y": 0
+    },
+    "w": 140,
+    "h": 80
+   },
+   {
+    "id": "b",
+    "type": "box",
+    "text": "b",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": 300,
+     "y": 0
+    },
+    "w": 140,
+    "h": 80
+   }
+  ],
+  "edges": [
+   {
+    "id": "e1",
+    "source": "a",
+    "target": {
+     "node": "b"
+    },
+    "type": "straight",
+    "appearance": "plain",
+    "endArrow": true
+   },
+   {
+    "id": "e2",
+    "source": "b",
+    "target": {
+     "node": "a"
+    },
+    "type": "straight",
+    "appearance": "plain",
+    "endArrow": true
+   }
+  ],
+  "paths": [
+   {
+    "id": "e1",
+    "path": [
+     "M",
+     -230,
+     6,
+     "L",
+     216.5,
+     6
+    ]
+   },
+   {
+    "id": "e2",
+    "path": [
+     "M",
+     230,
+     -6,
+     "L",
+     -216.5,
+     -6
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oda-vissza pár, ferde",
+  "nodes": [
+   {
+    "id": "a",
+    "type": "box",
+    "text": "a",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": -300,
+     "y": -120
+    },
+    "w": 140,
+    "h": 80
+   },
+   {
+    "id": "b",
+    "type": "box",
+    "text": "b",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": 280,
+     "y": 160
+    },
+    "w": 140,
+    "h": 80
+   }
+  ],
+  "edges": [
+   {
+    "id": "e1",
+    "source": "a",
+    "target": {
+     "node": "b"
+    },
+    "type": "straight",
+    "appearance": "plain",
+    "endArrow": true
+   },
+   {
+    "id": "e2",
+    "source": "b",
+    "target": {
+     "node": "a"
+    },
+    "type": "straight",
+    "appearance": "plain",
+    "endArrow": true
+   }
+  ],
+  "paths": [
+   {
+    "id": "e1",
+    "path": [
+     "M",
+     -232.608,
+     -80.804,
+     "L",
+     195.234,
+     125.741
+    ]
+   },
+   {
+    "id": "e2",
+    "path": [
+     "M",
+     212.608,
+     120.804,
+     "L",
+     -215.234,
+     -85.741
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oda-vissza pár, 12-es",
+  "nodes": [
+   {
+    "id": "a",
+    "type": "box",
+    "text": "a",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": -300,
+     "y": 0
+    },
+    "w": 140,
+    "h": 80
+   },
+   {
+    "id": "b",
+    "type": "box",
+    "text": "b",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": 300,
+     "y": 0
+    },
+    "w": 140,
+    "h": 80
+   }
+  ],
+  "edges": [
+   {
+    "id": "e1",
+    "source": "a",
+    "target": {
+     "node": "b"
+    },
+    "type": "straight",
+    "appearance": "plain",
+    "endArrow": true,
+    "w": 12
+   },
+   {
+    "id": "e2",
+    "source": "b",
+    "target": {
+     "node": "a"
+    },
+    "type": "straight",
+    "appearance": "plain",
+    "endArrow": true,
+    "w": 12
+   }
+  ],
+  "paths": [
+   {
+    "id": "e1",
+    "path": [
+     "M",
+     -230,
+     13.375,
+     "L",
+     196.5,
+     13.375
+    ]
+   },
+   {
+    "id": "e2",
+    "path": [
+     "M",
+     230,
+     -13.375,
+     "L",
+     -196.5,
+     -13.375
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oda-vissza pár, 2-es és 24-es",
+  "nodes": [
+   {
+    "id": "a",
+    "type": "box",
+    "text": "a",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": -300,
+     "y": -120
+    },
+    "w": 140,
+    "h": 80
+   },
+   {
+    "id": "b",
+    "type": "box",
+    "text": "b",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": 280,
+     "y": 160
+    },
+    "w": 140,
+    "h": 80
+   }
+  ],
+  "edges": [
+   {
+    "id": "e1",
+    "source": "a",
+    "target": {
+     "node": "b"
+    },
+    "type": "straight",
+    "appearance": "plain",
+    "endArrow": true
+   },
+   {
+    "id": "e2",
+    "source": "b",
+    "target": {
+     "node": "a"
+    },
+    "type": "straight",
+    "appearance": "plain",
+    "endArrow": true,
+    "w": 24
+   }
+  ],
+  "paths": [
+   {
+    "id": "e1",
+    "path": [
+     "M",
+     -237.336,
+     -71.01,
+     "L",
+     190.506,
+     135.535
+    ]
+   },
+   {
+    "id": "e2",
+    "path": [
+     "M",
+     217.336,
+     111.01,
+     "L",
+     -170.882,
+     -76.406
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oda-vissza pár, ellipszis és doboz",
+  "nodes": [
+   {
+    "id": "a",
+    "type": "box",
+    "text": "a",
+    "shape": "ellipse",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": -300,
+     "y": 0
+    },
+    "w": 120,
+    "h": 120
+   },
+   {
+    "id": "b",
+    "type": "box",
+    "text": "b",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": 300,
+     "y": 60
+    },
+    "w": 140,
+    "h": 80
+   }
+  ],
+  "edges": [
+   {
+    "id": "e1",
+    "source": "a",
+    "target": {
+     "node": "b"
+    },
+    "type": "straight",
+    "appearance": "plain",
+    "endArrow": true
+   },
+   {
+    "id": "e2",
+    "source": "b",
+    "target": {
+     "node": "a"
+    },
+    "type": "straight",
+    "appearance": "plain",
+    "endArrow": true
+   }
+  ],
+  "paths": [
+   {
+    "id": "e1",
+    "path": [
+     "M",
+     -240.895,
+     11.94,
+     "L",
+     215.97,
+     57.627
+    ]
+   },
+   {
+    "id": "e2",
+    "path": [
+     "M",
+     230.597,
+     47.03,
+     "L",
+     -226.268,
+     1.343
+    ]
+   }
+  ]
+ },
+ {
+  "name": "S-görbe, vastag",
+  "nodes": [
+   {
+    "id": "a",
+    "type": "box",
+    "text": "a",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": -300,
+     "y": -120
+    },
+    "w": 140,
+    "h": 80
+   },
+   {
+    "id": "b",
+    "type": "box",
+    "text": "b",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": 280,
+     "y": 160
+    },
+    "w": 140,
+    "h": 80
+   }
+  ],
+  "edges": [
+   {
+    "id": "e1",
+    "source": "a",
+    "target": {
+     "node": "b"
+    },
+    "type": "sCurve",
+    "appearance": "plain",
+    "endArrow": true,
+    "w": 12
+   }
+  ],
+  "paths": [
+   {
+    "id": "e1",
+    "path": [
+     "M",
+     -230,
+     -120,
+     "C",
+     -10,
+     -120,
+     -10,
+     160,
+     176.5,
+     160
+    ]
+   }
+  ]
+ },
+ {
+  "name": "kötél, vastag",
+  "nodes": [
+   {
+    "id": "a",
+    "type": "box",
+    "text": "a",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": -300,
+     "y": -120
+    },
+    "w": 140,
+    "h": 80
+   },
+   {
+    "id": "b",
+    "type": "box",
+    "text": "b",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": 280,
+     "y": 160
+    },
+    "w": 140,
+    "h": 80
+   }
+  ],
+  "edges": [
+   {
+    "id": "e1",
+    "source": "a",
+    "target": {
+     "node": "b"
+    },
+    "type": "rope",
+    "appearance": "plain",
+    "endArrow": true,
+    "w": 12
+   }
+  ],
+  "paths": [
+   {
+    "id": "e1",
+    "path": [
+     "M",
+     -275.319,
+     -80,
+     "Q",
+     -10,
+     350,
+     190.926,
+     218.359
+    ]
+   }
+  ]
+ },
+ {
+  "name": "konténer és belső doboza (nincs eltolás)",
+  "nodes": [
+   {
+    "id": "a",
+    "type": "box",
+    "text": "a",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": 0,
+     "y": 0
+    },
+    "w": 600,
+    "h": 400,
+    "container": true
+   },
+   {
+    "id": "b",
+    "type": "box",
+    "text": "b",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": 120,
+     "y": 60
+    },
+    "w": 140,
+    "h": 80,
+    "parent": "a"
+   }
+  ],
+  "edges": [
+   {
+    "id": "e1",
+    "source": "a",
+    "target": {
+     "node": "b"
+    },
+    "type": "straight",
+    "appearance": "plain",
+    "endArrow": true
+   },
+   {
+    "id": "e2",
+    "source": "b",
+    "target": {
+     "node": "a"
+    },
+    "type": "straight",
+    "appearance": "plain",
+    "endArrow": true
+   }
+  ],
+  "paths": [
+   {
+    "id": "e1",
+    "path": [
+     "M",
+     300,
+     150,
+     "L",
+     202.075,
+     101.037
+    ]
+   },
+   {
+    "id": "e2",
+    "path": [
+     "M",
+     190,
+     95,
+     "L",
+     287.925,
+     143.963
+    ]
+   }
+  ]
+ }
+]
