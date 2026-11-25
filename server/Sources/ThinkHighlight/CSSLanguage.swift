@@ -38,17 +38,17 @@ struct CSSLanguage: CodeLanguage {
     private func terminator(_ scanner: CodeScanner) -> UInt8 {
         let bytes = scanner.bytes
         var index = scanner.position, depth = 0
-        while index < bytes.count {
+        while index < scanner.end {
             let byte = bytes[index]
             switch byte {
             case UInt8(ascii: "\""), UInt8(ascii: "'"):
                 index += 1
-                while index < bytes.count, bytes[index] != byte, bytes[index] != UInt8(ascii: "\n") {
+                while index < scanner.end, bytes[index] != byte, bytes[index] != UInt8(ascii: "\n") {
                     index += bytes[index] == UInt8(ascii: "\\") ? 2 : 1
                 }
-            case UInt8(ascii: "/") where index + 1 < bytes.count && bytes[index + 1] == UInt8(ascii: "*"):
+            case UInt8(ascii: "/") where index + 1 < scanner.end && bytes[index + 1] == UInt8(ascii: "*"):
                 index += 2
-                while index < bytes.count, !(bytes[index] == UInt8(ascii: "*") && index + 1 < bytes.count && bytes[index + 1] == UInt8(ascii: "/")) { index += 1 }
+                while index < scanner.end, !(bytes[index] == UInt8(ascii: "*") && index + 1 < scanner.end && bytes[index + 1] == UInt8(ascii: "/")) { index += 1 }
                 index += 1
             case UInt8(ascii: "("): depth += 1
             case UInt8(ascii: ")"): depth = max(0, depth - 1)
@@ -81,7 +81,7 @@ struct CSSLanguage: CodeLanguage {
                 while !scanner.atEnd, isSelectorByte(scanner.current) {
                     scanner.position += scanner.current == UInt8(ascii: "\\") ? 2 : 1
                 }
-                scanner.position = min(scanner.position, scanner.bytes.count)
+                scanner.position = min(scanner.position, scanner.end)
                 scanner.mark(.type, from: start)
             } else {
                 scanner.position += 1
@@ -100,8 +100,8 @@ struct CSSLanguage: CodeLanguage {
         let start = scanner.position
         scanner.skipWhile { $0.isWord || $0 == UInt8(ascii: "-") }
         var next = scanner.position
-        while next < scanner.bytes.count, scanner.bytes[next].isSpace { next += 1 }
-        if scanner.position > start, next < scanner.bytes.count, scanner.bytes[next] == UInt8(ascii: ":") {
+        while next < scanner.end, scanner.bytes[next].isSpace { next += 1 }
+        if scanner.position > start, next < scanner.end, scanner.bytes[next] == UInt8(ascii: ":") {
             scanner.mark(.name, from: start)
             scanner.position = next + 1
             scanner.mark(.punctuation, from: next)

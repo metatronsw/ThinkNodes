@@ -12,8 +12,9 @@ private func marks(_ source: String, _ ext: String) -> [String] {
 
 @Test func highlightKnowsItsLanguages() {
     #expect(CodeHighlight.supports("json") && CodeHighlight.supports("CSS"))
-    #expect(!CodeHighlight.supports("swift") && !CodeHighlight.supports(""))
-    #expect(CodeHighlight.html("let a = 1", ext: "swift") == nil)
+    for ext in ["js", "mjs", "cjs", "swift", "html", "htm"] { #expect(CodeHighlight.supports(ext)) }
+    #expect(!CodeHighlight.supports("py") && !CodeHighlight.supports(""))
+    #expect(CodeHighlight.html("a = 1", ext: "py") == nil)
 }
 
 @Test func highlightJSON() {
@@ -52,9 +53,11 @@ private func marks(_ source: String, _ ext: String) -> [String] {
     #expect(CodeHighlight.html(source, ext: "json")
             == "<span class=\"hl-o\">{</span><span class=\"hl-p\">\"&lt;b&gt;&amp;\"</span><span class=\"hl-o\">:</span> <span class=\"hl-s\">\"é&gt;\"</span><span class=\"hl-o\">}</span>")
     // Hibás, lezáratlan vagy értelmetlen bemenet: a kimenet a címkék nélkül mindig a teljes forrás.
-    let broken = ["", "}", "{{{", "a { b: url(", "/* nyitott", "\"", "a:b:c;;}}{{ @ ! # - .", "((((;;;;", "é\u{1F600}{\u{0}}", "x\\"]
+    let broken = ["", "}", "{{{", "a { b: url(", "/* nyitott", "\"", "a:b:c;;}}{{ @ ! # - .", "((((;;;;", "é\u{1F600}{\u{0}}", "x\\",
+                  "`a${`b${", "\"a\\(\"b\\(", "#\"\"\"x", "<script>`${", "<style>a{", "<a b='c", "<!--", "</", "a / b /", "'\\é", "\"\\é\"é",
+                  String(repeating: "`${", count: 3000), String(repeating: "\"\\(", count: 3000), String(repeating: "/*", count: 3000)]
     for text in broken + broken.map({ $0 + "\n" + source }) {
-        for ext in ["json", "css"] {
+        for ext in ["json", "css", "js", "swift", "html"] {
             let html = try? #require(CodeHighlight.html(text, ext: ext))
             let plain = (html ?? "").replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
                 .replacingOccurrences(of: "&lt;", with: "<").replacingOccurrences(of: "&gt;", with: ">").replacingOccurrences(of: "&amp;", with: "&")
@@ -78,4 +81,50 @@ private func marks(_ source: String, _ ext: String) -> [String] {
     let lines = Set(try String(contentsOf: css, encoding: .utf8).split(separator: "\n").map(String.init))
     #expect(CodeHighlight.colourRules.count == lines.filter { $0.hasPrefix(".hl-") }.count)
     for rule in CodeHighlight.colourRules { #expect(lines.contains(rule), "Hiányzik az app.css-ből: \(rule)") }
+}
+
+@Test func highlightJavaScript() {
+    #expect(marks("// x\nconst a = new Map(); let n = 0x1F + 1e-3;", "js") == [
+        "c:// x", "k:const", "o:=", "k:new", "t:Map", "o:();", "k:let", "o:=", "n:0x1F", "o:+", "n:1e-3", "o:;",
+    ])
+    // Osztás és reguláris kifejezés: érték után osztás, írásjel vagy kulcsszó után reguláris kifejezés.
+    #expect(marks("x = a / b / c; y = /[/]\\/+/gi.test(s); return /re/", "js") == [
+        "o:=", "o:/", "o:/", "o:;", "o:=", "s:/[/]\\/+/gi", "o:.", "f:test", "o:(", "o:);", "k:return", "s:/re/",
+    ])
+    // Sablonszöveg beágyazással; a beágyazott kapcsos zárójel nem zárja a beágyazást.
+    #expect(marks("`a ${f({b: 1})} c` + 'd'", "js") == [
+        "s:`a ", "o:${", "f:f", "o:({", "o::", "n:1", "o:})}", "s: c`", "o:+", "s:'d'",
+    ])
+    // Pont utáni név nem kulcsszó; érték jellegű kulcsszó után a `/` osztás.
+    #expect(marks("Array.from(x).default; this / 2", "js") == ["t:Array", "o:.", "f:from", "o:(", "o:).", "p:default", "o:;", "k:this", "o:/", "n:2"])
+}
+
+@Test func highlightSwift() {
+    #expect(marks("@MainActor final class A: B { var n = 1_000.5 /* a /* b */ c */ }", "swift") == [
+        "k:@MainActor", "k:final", "k:class", "t:A", "o::", "t:B", "o:{", "k:var", "o:=", "n:1_000.5", "c:/* a /* b */ c */", "o:}",
+    ])
+    // Szövegbeágyazás, benne szöveggel és zárójellel; nyers szöveg; többsoros szöveg.
+    #expect(marks(##"let s = "a \(f("b") + (1)) c" + #"x\(y)"\#(z)"# "##, "swift") == [
+        "k:let", "o:=", "s:\"a ", "o:\\(", "f:f", "o:(", "s:\"b\"", "o:)", "o:+", "o:(", "n:1", "o:))", "s: c\"", "o:+",
+        "s:#\"x\\(y)\"", "o:\\#(", "o:)", "s:\"#",
+    ])
+    #expect(marks("\"\"\"\nsor \"idézet\"\n\"\"\" + x", "swift") == ["s:\"\"\"\nsor \"idézet\"\n\"\"\"", "o:+"])
+    // Helyzetfüggő kulcsszó névként; pont utáni tag; fordítási utasítás.
+    #expect(marks("#if DEBUG\nlist.prefix(3).count; set = [.red]; get { self }", "swift") == [
+        "k:#if", "t:DEBUG", "o:.", "f:prefix", "o:(", "n:3", "o:).", "p:count", "o:;", "o:=", "o:[.", "p:red", "o:];", "k:get", "o:{", "k:self", "o:}",
+    ])
+}
+
+@Test func highlightHTML() {
+    #expect(marks("<!DOCTYPE html><!-- j --><a href=\"x\" hidden>T &amp; U</a><br/>", "html") == [
+        "k:<!DOCTYPE html>", "c:<!-- j -->", "o:<", "t:a", "p:href", "o:=", "s:\"x\"", "p:hidden", "o:>", "k:&amp;", "o:</", "t:a", "o:><", "t:br", "o:/>",
+    ])
+    // Beágyazott nyelvek: a script JavaScript (JSON típusnál JSON), a style CSS; a záró címke után újra HTML.
+    #expect(marks("<style>a { top: 0 }</STYLE><script>let x = '</b>';</script><p>", "html") == [
+        "o:<", "t:style", "o:>", "t:a", "o:{", "p:top", "o::", "n:0", "o:}</", "t:STYLE", "o:><", "t:script", "o:>",
+        "k:let", "o:=", "s:'</b>'", "o:;</", "t:script", "o:><", "t:p", "o:>",
+    ])
+    #expect(marks("<script type=\"application/json\">{\"a\": null}</script>", "html") == [
+        "o:<", "t:script", "p:type", "o:=", "s:\"application/json\"", "o:>{", "p:\"a\"", "o::", "k:null", "o:}</", "t:script", "o:>",
+    ])
 }

@@ -1,5 +1,16 @@
 # Változások
 
+## 2026-11-25 – Kódszínezés: JavaScript, Swift, HTML
+
+- Három új nyelv a `ThinkHighlight` modulban, nyelvenként egy fájl:
+  - **JavaScript** (`.js`, `.mjs`, `.cjs`): megjegyzés, szöveg, sablonszöveg `${…}` beágyazással, reguláris kifejezés, szám, kulcsszó, nagybetűs név, függvényhívás, pont utáni tulajdonság. A `/` jelről a megelőző szakasz dönt: érték után osztás, egyébként reguláris kifejezés.
+  - **Swift** (`.swift`): egymásba ágyazott megjegyzés, szöveg `\(…)` beágyazással, többsoros (`"""`) és nyers (`#"…"#`) szöveg, attribútum (`@MainActor`), fordítási utasítás (`#if`), típus, függvényhívás, pont utáni tag. A helyzetfüggő kulcsszavak (`get`, `set`, `prefix`, `open`…) névként használva nem kapnak kulcsszó-színt.
+  - **HTML** (`.html`, `.htm`): megjegyzés, `<!DOCTYPE>`, elemnév, attribútum és érték, karakterhivatkozás. A `<script>` tartalma JavaScriptként (JSON típusnál JSON-ként), a `<style>` tartalma CSS-ként színeződik.
+- **Közös olvasó:** beágyazott nyelv olvasása résztartományon (`CodeScanner.scan(_:until:)`, `end`). A beágyazások mélysége korlátos (24), így a szándékosan mélyre ágyazott bemenet sem terheli a szervert.
+- Tesztek: `test.sh highlight` (9 teszt; nyelvenként a nehéz esetek, és hibás / lezáratlan / mélyen ágyazott bemenetre a kimenet mindig a teljes forrás). `test.sh --swift highlight render`: 36 teszt rendben.
+- Safariban kipróbálva (`projects/test-container`): a behúzott `demo.mjs`, `demo.swift`, `demo.html` doboz színezett szakaszokat kap (a DOM-ból ellenőrizve; a színek szemmel nézendők).
+- Szerverkód változott: release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – Kódszínezés a letölthető SVG-ben
 
 - Az önálló SVG-be (letöltés: `/export/svg/…`, és a lap előnézeti rajza) beágyazódnak a kódszínezés színszabályai és a kód alapformája (egyenközű betű, tördelés), ha a lapon van színezhető kódfájl (`codeStyle`, `Rendering.swift`). A megtekintő oldalon nincs beágyazás, ott az `app.css` adja.

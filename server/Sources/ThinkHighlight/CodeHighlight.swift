@@ -43,19 +43,49 @@ package struct CodeScanner {
     package var position = 0
     package private(set) var tokens: [CodeToken] = []
 
-    package init(_ text: String) { bytes = Array(text.utf8) }
+    /// Az olvasás vége: a forrás vége, beágyazott nyelvnél (HTML-ben `<script>`, `<style>`) a beágyazott rész vége.
+    package private(set) var end: Int
 
-    package var atEnd: Bool { position >= bytes.count }
+    package init(_ text: String) {
+        bytes = Array(text.utf8)
+        end = bytes.count
+    }
+
+    /// Beágyazott nyelv: a `limit` pozícióig a másik nyelv elemzője olvas, utána az olvasó ott folytatja.
+    package mutating func scan(_ language: any CodeLanguage, until limit: Int) {
+        let outer = end
+        end = max(position, min(limit, outer))
+        language.scan(&self)
+        position = end
+        end = outer
+    }
+
+    /// A következő nem szóköz bájt az aktuális pozíciótól (0 a végén).
+    package var nextSignificant: UInt8 {
+        var index = position
+        while index < end, bytes[index].isSpace { index += 1 }
+        return index < end ? bytes[index] : 0
+    }
+
+    /// Az utoljára megjelölt szakasz az aktuális pozíció előtt, a köztes szóközöket átlépve; `nil`, ha jelöletlen szöveg áll ott.
+    package var previousToken: CodeToken? {
+        var index = position
+        while index > 0, bytes[index - 1].isSpace { index -= 1 }
+        guard let last = tokens.last, last.range.upperBound == index else { return nil }
+        return last
+    }
+
+    package var atEnd: Bool { position >= end }
     /// Az aktuális bájt, a végén 0.
-    package var current: UInt8 { position < bytes.count ? bytes[position] : 0 }
+    package var current: UInt8 { position < end ? bytes[position] : 0 }
     package func peek(_ offset: Int = 1) -> UInt8 {
         let index = position + offset
-        return index >= 0 && index < bytes.count ? bytes[index] : 0
+        return index >= 0 && index < end ? bytes[index] : 0
     }
 
     package func starts(with text: StaticString, at index: Int? = nil) -> Bool {
         let start = index ?? position
-        guard start + text.utf8CodeUnitCount <= bytes.count else { return false }
+        guard start + text.utf8CodeUnitCount <= end else { return false }
         return text.withUTF8Buffer { buffer in
             for offset in 0..<buffer.count where bytes[start + offset] != buffer[offset] { return false }
             return true
@@ -81,16 +111,16 @@ package struct CodeScanner {
     }
 
     package mutating func skipWhile(_ matches: (UInt8) -> Bool) {
-        while position < bytes.count, matches(bytes[position]) { position += 1 }
+        while position < end, matches(bytes[position]) { position += 1 }
     }
 
     /// Idézőjeles szöveg a záró jelig (vagy a sor végéig, ha nincs lezárva); `\` a következő bájtot védi.
     package mutating func scanString(as kind: CodeTokenKind = .string) {
         let start = position, quote = current
         position += 1
-        while position < bytes.count {
+        while position < end {
             let byte = bytes[position]
-            if byte == UInt8(ascii: "\\"), position + 1 < bytes.count, bytes[position + 1] != UInt8(ascii: "\n") { position += 2; continue }
+            if byte == UInt8(ascii: "\\"), position + 1 < end, bytes[position + 1] != UInt8(ascii: "\n") { position += 2; continue }
             if byte == UInt8(ascii: "\n") { break }
             position += 1
             if byte == quote { break }
@@ -102,8 +132,8 @@ package struct CodeScanner {
     package mutating func scanBlockComment() {
         let start = position
         position += 2
-        while position < bytes.count, !(bytes[position] == UInt8(ascii: "*") && peek() == UInt8(ascii: "/")) { position += 1 }
-        position = min(position + 2, bytes.count)
+        while position < end, !(bytes[position] == UInt8(ascii: "*") && peek() == UInt8(ascii: "/")) { position += 1 }
+        position = min(position + 2, end)
         mark(.comment, from: start)
     }
 
@@ -126,7 +156,7 @@ package extension UInt8 {
 
 package enum CodeHighlight {
     /// A színezett nyelvek. Új nyelv felvétele: egy új sor.
-    static let languages: [any CodeLanguage] = [JSONLanguage(), CSSLanguage()]
+    static let languages: [any CodeLanguage] = [JSONLanguage(), CSSLanguage(), JavaScriptLanguage(), SwiftLanguage(), HTMLLanguage()]
 
     private static let byExtension: [String: any CodeLanguage] = {
         var result: [String: any CodeLanguage] = [:]

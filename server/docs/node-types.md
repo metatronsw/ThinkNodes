@@ -165,7 +165,7 @@ Importált szöveges fájl: minden nem bináris fájl (UTF-8, NUL bájt nélkül
 - Panel: Cím (+ elrejtés), Fájlnév, Megjelenés (háttér, kiemelés, fájlnév mutatása), Szöveg (szerkesztő, sorkizárás, mentés, újratöltés).
 
 **Kódszínezés és dobozon szerkesztés (2026-11-25):**
-- A `code` doboz sorai tördelődnek. A `.json` és a `.css` színezve jelenik meg; a színezést a szerver készíti
+- A `code` doboz sorai tördelődnek. A `.json`, `.css`, `.js` / `.mjs` / `.cjs`, `.swift`, `.html` / `.htm` színezve jelenik meg; a színezést a szerver készíti
   (`Sources/ThinkHighlight`, saját könnyű elemző, nyelvenként egy fájl), a kliens a kész HTML-t mutatja
   (`<span class="hl-…">`, színek: `app.css`). A szerkesztő a `GET /api/attachment/…&highlight=<kiterjesztés>` címről kéri.
 - Dobozon szerkesztés: a szövegfájl (`.txt`, `.md`, kód) a vásznon szerkeszthető, a panelen nincs szövegmező.

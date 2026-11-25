@@ -10,8 +10,8 @@ struct JSONLanguage: CodeLanguage {
                 scanner.scanString()
                 // Kulcs az a szöveg, amelyet (szóközök után) kettőspont követ.
                 var next = scanner.position
-                while next < scanner.bytes.count, scanner.bytes[next].isSpace { next += 1 }
-                if next < scanner.bytes.count, scanner.bytes[next] == UInt8(ascii: ":") { scanner.relabelLast(.name, from: start) }
+                while next < scanner.end, scanner.bytes[next].isSpace { next += 1 }
+                if next < scanner.end, scanner.bytes[next] == UInt8(ascii: ":") { scanner.relabelLast(.name, from: start) }
             case UInt8(ascii: "/") where scanner.peek() == UInt8(ascii: "/"):
                 scanner.scanLineComment()
             case UInt8(ascii: "/") where scanner.peek() == UInt8(ascii: "*"):
