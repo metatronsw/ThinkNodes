@@ -229,6 +229,14 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .worksheet-notes { margin-top: 18px; padding: 22px; }
 .context-menu { position: fixed; z-index: 8; width: 228px; padding: 7px; display: grid; gap: 3px; box-shadow: 0 10px 25px #1c315326; }
 .context-menu .button { justify-content: flex-start; border-color: transparent; white-space: normal; }
+/* Gyors eszközök (editor.js renderQuickTools, próba): a tulajdonságpanel gombjai a mutatónál, csoportonként egy
+   sorban, háttér és keret nélkül. */
+.quick-tools { position: fixed; z-index: 8; display: grid; gap: 10px; justify-items: start; max-width: 380px; }
+.quick-tools-group { display: grid; gap: 4px; justify-items: start; }
+.quick-tools-row { gap: 4px; }
+.quick-tools-row > .button:not(.option-icon) { min-height: 32px; padding: 0 10px; }
+.quick-tools .option-icon { display: inline-flex; width: 32px; height: 32px; min-height: 0; padding: 0; }
+.quick-tools .property-options .link-add { margin-left: 0; }
 
 @media (max-width: 680px) {
   .site-header { padding-inline: 12px; }

@@ -1,5 +1,14 @@
 # Változások
 
+## 2026-11-25 – Próba: gyors eszközök a mutatónál (a tulajdonságpanel alternatívája)
+
+- **Objektum fölötti helyi menü kikapcsolva** (nem törölve: `editor.js objectContextMenu = false`, a menü kódja megmaradt). A vászon üres részén a helyi menü változatlan.
+- **Jobb kattintás objektumon:** az objektum kijelölődik, és a mutató mellett megjelennek a tulajdonságpanel gombjai (`renderQuickTools`), a panel csoportjai és sorai szerint, háttér és keret nélkül. A gombok ugyanazok, mint a panelen (`nodePanels` / `edgePanels` kimenetéből szűrve, `toolRows`), így a kettő nem térhet el. Szövegmező, számmező (betűméret, elforgatás, vonalvastagság), lista és felirat nincs benne; azok a panelen maradtak. Csoportos kijelölés tagjára kattintva a kijelölés megmarad.
+- Kattintásra nyitva marad (több gomb is megnyomható); Esc, a vászonra kattintás, pásztázás / nagyítás zárja.
+- Ami a helyi menüben volt, és most jobb kattintással nem érhető el: Törlés, Link másolása, Cellák szerkesztése, Grafikon létrehozása, vonal leválasztása / törlése (billentyűről és a panelről részben elérhetők) – a finomításnál eldöntendő, mi kerüljön át.
+- Safariban kipróbálva (próbalap): doboz és fájldoboz jobb kattintása, gomb megnyomása (Üres) hat és a készlet nyitva marad, Esc zár, a vászon helyi menüje megjelenik. A `gestures.mjs` rendben.
+- Szerverkód: csak a szkript- és stíluslap-verzió változott; release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – Vizuális módosítások: elmosott háttér törölve, vászonszín minden dobozon, szaggatott konténerkeret, dobozszöveg szerkesztése a dobozon
 
 - **Elmosott háttér megszűnt:** a mód, a gombja, az ikonja (`box-blur`) és az SVG-szűrő (`box-background-blur`) kikerült a szerkesztőből és a szerver rajzolójából (`BoxBackgroundMode.blurred`). Régi munkalap „blurred” doboza kitöltött háttérrel töltődik be (ismeretlen háttérmód nem hiba), a következő mentéskor a mező eltűnik.

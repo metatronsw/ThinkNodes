@@ -2709,10 +2709,26 @@ createApp({
       if (!rightPress || event.ctrlKey || event.button !== 2 || gesture.value?.type === "cable") return;
       rightPress = false;
       lastClick = null;
+      // Objektum fölött a helyi menü ki van kapcsolva (objectContextMenu): helyette a tulajdonságpanel gombjai jelennek
+      // meg a mutatónál (renderQuickTools). A vászon üres részén a helyi menü megmaradt.
+      if (!objectContextMenu && kind !== "canvas") { openQuickTools(event, kind, itemID); return; }
       menu.value = {
         kind, id: itemID, x: Math.max(8, Math.min(event.clientX, innerWidth - 244)),
         y: Math.max(8, Math.min(event.clientY, innerHeight - 195)), position: world(event),
       };
+    }
+
+    // Gyors eszközök (próba, a tulajdonságpanel alternatívája): jobb kattintásra az objektum kijelölődik, és a panel
+    // gombjai a mutató mellett jelennek meg. Csoportos kijelölés tagjára kattintva a kijelölés megmarad.
+    const objectContextMenu = false;
+    async function openQuickTools(event, kind, itemID) {
+      const x = event.clientX, y = event.clientY;
+      const grouped = kind === "edge" ? batch.value?.edges.has(itemID) : batch.value?.nodes.has(itemID);
+      if (!grouped) {
+        await openProperties(kind, itemID);
+        if (selected.value?.id !== itemID) return;
+      }
+      menu.value = {kind, id: itemID, x: x + 14, y: y + 14, tools: true};
     }
 
     function updateItem(item, key, value) {
@@ -4845,6 +4861,7 @@ createApp({
     function renderMenu() {
       const open = menu.value;
       if (!open) return null;
+      if (open.tools) return renderQuickTools(open);
       const node = nodeMap.value.get(open.id);
       const edge = board.value?.edges.find(item => item.id === open.id);
       const type = open.kind;
@@ -4884,6 +4901,59 @@ createApp({
       };
       return h("div", {class: "context-menu panel", "aria-label": "Műveletek",
         style: {left: open.x + "px", top: open.y + "px"}, onVnodeMounted: fit, onVnodeUpdated: fit}, entries);
+    }
+
+    // A tulajdonságpanel csoportjaiból csak a gombok (és a színválasztók), a panel sorai szerint: a szövegmezők,
+    // számmezők, listák és feliratok kimaradnak (azok a panelen érhetők el). Az igazítás 3×3-as rácsa egyben marad.
+    // Eredmény: csoportonként a sorok listája (egy sor = a panel egy gombsora).
+    function toolRows(panels) {
+      const skipped = new Set(["input", "textarea", "select", "legend", "p", "small", "label"]);
+      const named = (vnode, name) => [vnode.props?.class].flat().some(value => typeof value === "string" && value.split(" ").includes(name));
+      return panels.map(panel => {
+        const rows = [];
+        const collect = (vnode, row) => {
+          if (Array.isArray(vnode)) { for (const child of vnode) collect(child, row); return; }
+          if (!vnode || typeof vnode !== "object") return;
+          if (vnode.type === ColorPicker || vnode.type === "button" || named(vnode, "alignment-picker")) { row.push(vnode); return; }
+          if (typeof vnode.type !== "string" || skipped.has(vnode.type)) return;
+          // A panel egy gombsora (property-options, link-row) itt is külön sor.
+          const own = named(vnode, "property-options") || named(vnode, "link-row") ? [] : row;
+          if (own !== row) rows.push(own);
+          collect(vnode.children, own);
+        };
+        // Ami nem gombsorban áll (pl. az igazítás rácsa), a csoport végére kerül.
+        const loose = [];
+        collect(panel, loose);
+        return [...rows, loose].filter(row => row.length);
+      }).filter(rows => rows.length);
+    }
+    function renderQuickTools(open) {
+      let panels = [];
+      if (batch.value) {
+        const nodes = board.value.nodes.filter(n => batch.value.nodes.has(n.id) && !occupied(n.id));
+        const edges = board.value.edges.filter(e => batch.value.edges.has(e.id));
+        panels = [...(nodes.length ? nodePanels(nodes) : []), ...(edges.length ? edgePanels(edges) : [])];
+      } else if (inspector.value?.kind === "edge") {
+        const edge = board.value.edges.find(item => item.id === inspector.value.id);
+        if (edge) panels = edgePanels([edge]);
+      } else if (inspector.value) {
+        const node = nodeMap.value.get(inspector.value.id);
+        if (node && held.value === node.id && !occupied(node.id)) panels = nodePanels([node]);
+      }
+      const rows = toolRows(panels);
+      if (!rows.length) return null;
+      // Az ablakon belül marad (jobbra / lent kilógás helyett eltolódik).
+      const fit = ({el}) => {
+        if (!el?.getBoundingClientRect || typeof innerWidth !== "number") return;
+        const box = el.getBoundingClientRect(), margin = 8;
+        el.style.left = Math.max(margin, Math.min(open.x, innerWidth - box.width - margin)) + "px";
+        el.style.top = Math.max(margin, Math.min(open.y, innerHeight - box.height - margin)) + "px";
+      };
+      const stop = event => event.stopPropagation();
+      return h("div", {class: "quick-tools", role: "toolbar", "aria-label": "Gyors eszközök",
+        style: {left: open.x + "px", top: open.y + "px"}, onVnodeMounted: fit, onVnodeUpdated: fit,
+        onPointerdown: stop, onDblclick: stop, onContextmenu: event => { event.preventDefault(); event.stopPropagation(); }},
+        rows.map(group => h("div", {class: "quick-tools-group"}, group.map(row => h("div", {class: "property-options property-tools quick-tools-row"}, row)))));
     }
 
     // NAGYBETŰS kapcsoló minden Text-csoportban (doboz szövege, doboz alatti Text, szövegfájl).
