@@ -53,6 +53,7 @@ js_files[editor]="gestures.mjs text-flow.mjs wires.mjs"
 js_files[render]="text-flow.mjs wires.mjs"
 swift_files[render]="ThinkNodesTests/RenderingTests.swift ThinkNodesTests/ThemeTests.swift"
 swift_files[highlight]="ThinkHighlightTests/*.swift"
+js_files[highlight]="highlight.mjs"
 swift_files[worksheet]="ThinkNodesTests/WorksheetTests.swift"
 swift_files[collab]="ThinkNodesTests/CollaborationTests.swift"
 swift_files[access]="ThinkNodesTests/AccessTests.swift"
@@ -78,6 +79,7 @@ topics_for() {
         Sources/*/Rendering.swift|Sources/*/Theme.swift|Public/themes/*|docs/theme.schema.json) echo render ;;
         Tests/ThinkNodesTests/RenderingTests.swift|Tests/ThinkNodesTests/ThemeTests.swift) echo render ;;
         Sources/ThinkHighlight/*|Tests/ThinkHighlightTests/*) echo "highlight render" ;;
+        Public/highlight/*|Tests/Editor/highlight.mjs|Tests/Fixtures/highlight.json|Tests/Fixtures/highlight/*) echo highlight ;;
         Sources/*/Collaboration.swift|Sources/*/PageUpdates.swift) echo "collab access" ;;
         Tests/ThinkNodesTests/CollaborationTests.swift) echo collab ;;
         Tests/ThinkNodesTests/AccessTests.swift) echo access ;;

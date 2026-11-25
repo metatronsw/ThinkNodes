@@ -26,6 +26,7 @@ import {askNewTable, askReimport, createEmptyTable, createTableFromTSV, exportUR
 import {looksTabular} from "./table/table-clipboard.js";
 import {detectSeparator, parseCSVRows, writeCSVRows} from "./table/table-csv.js";
 import {attachScrollbars, detachScrollbars} from "./scrollbar-drag.js";
+import {highlightHTML, supportsHighlight} from "./highlight/index.js";
 
 const mount = document.querySelector("#editor");
 const {path, csrf, user, motionRate} = mount.dataset;
@@ -3217,6 +3218,7 @@ createApp({
     function stopTextEdit() {
       const id = textEdit.value;
       if (!id) return;
+      editHighlights.delete(id);
       textEdit.value = null;
       htmlTyping.value = false;
       if (pendingFileSaves.has(id)) transfer(() => saveFileText(id));
@@ -3240,14 +3242,35 @@ createApp({
         if (indent) { event.preventDefault(); insertTyped(area, "\n" + indent); }
       }
     }
+    // Kódfájl (színezhető nyelv): a szövegmező alatt, pontosan vele fedésben a böngészőben színezett szöveg áll
+    // (Public/highlight – a szerveroldali ThinkHighlight mása), a szövegmező betűi átlátszók, csak a kurzor és a
+    // kijelölés látszik. A két réteg egy rácscellában van (nem pozicionált: Safariban a foreignObject-beli pozicionált
+    // elem nagyított vásznon nem kattintható); a magasságot a színezett réteg adja, a görgetés a dobozé (`.node-note`).
+    // Más szövegfájl: sima szövegmező, saját görgetéssel. A szerver színezése szerkesztés alatt nem látszik.
+    const editHighlights = new Map();    // doboz → {text, ext, html}: az utolsó színezés, hogy a rajzolás ne ismételje
+    function editHighlight(node, text, ext) {
+      const known = editHighlights.get(node.id);
+      if (known && known.text === text && known.ext === ext) return known.html;
+      const html = highlightHTML(text, ext);
+      editHighlights.set(node.id, {text, ext, html});
+      return html;
+    }
     function renderTextEditor(node, text) {
       const stop = e => e.stopPropagation();
-      return h("textarea", {key: "edit", class: ["node-text-editor", {"is-code": node.type === "code"}], "aria-label": "Fájl tartalma", value: text,
+      const ext = (node.file.filename ?? "").split(".").pop().toLowerCase();
+      const layered = node.type === "code" && supportsHighlight(ext);
+      const area = h("textarea", {key: "edit", class: ["node-text-editor", {"is-layered": layered}], "aria-label": "Fájl tartalma", value: text,
         spellcheck: node.type !== "code", autocapitalize: "off", autocomplete: "off",
         onInput: event => { const current = nodeMap.value.get(node.id); if (current?.file && held.value === node.id) editFileText(current, event.target.value); },
         onKeydown: event => textEditKey(event, node), onPointerdown: stop, onMousedown: stop, onTouchstart: stop, onClick: stop, onDblclick: stop,
-        onContextmenu: stop, onWheel: stop, onCopy: stop, onCut: stop, onPaste: stop,
+        onContextmenu: stop, onWheel: layered ? undefined : stop, onCopy: stop, onCut: stop, onPaste: stop,
         onVnodeMounted: ({el}) => el.focus({preventScroll: true})});
+      if (!layered) return area;
+      // A záró sortörés után a szövegmező üres sort mutat; a színezett rétegben ehhez egy további sortörés kell.
+      return h("div", {key: "edit-layers", class: "node-code-edit"}, [
+        h("pre", {class: "node-code", "aria-hidden": "true"}, [h("code", {innerHTML: editHighlight(node, text, ext) + "\n"})]),
+        area,
+      ]);
     }
 
     // Táblázat doboz (docs/EXCEL.md): olvasó nézet a fájl szövegéből, szerkesztési mód a TableEditor vezérlővel.

@@ -128,3 +128,31 @@ private func marks(_ source: String, _ ext: String) -> [String] {
         "o:<", "t:script", "p:type", "o:=", "s:\"application/json\"", "o:>{", "p:\"a\"", "o::", "k:null", "o:}</", "t:script", "o:>",
     ])
 }
+
+/// A szerver színezése egyezzen a közös tesztkészlettel; ugyanezt a fájlt ellenőrzi a böngészőbeli párja is
+/// (Tests/Editor/highlight.mjs, Public/highlight – szerkesztés közbeni színezés). Rövid esetek a szakaszok teljes
+/// listájával, mintafájlok a szakaszok számával és ellenőrző összegével (FNV-1a).
+@Test func highlightMatchesSharedFixtures() throws {
+    struct Fixture: Decodable {
+        struct Case: Decodable { var ext: String, source: String, marks: [String] }
+        struct Sample: Decodable { var file: String, count: Int, checksum: UInt32 }
+        var cases: [Case], samples: [Sample]
+    }
+    let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Fixtures")
+    let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: fixtures.appendingPathComponent("highlight.json")))
+    #expect(fixture.cases.count >= 150 && fixture.samples.count == 5)
+    for item in fixture.cases {
+        #expect(marks(item.source, item.ext) == item.marks, "\(item.ext): \(item.source.prefix(60))")
+    }
+    for sample in fixture.samples {
+        let source = try String(contentsOf: fixtures.appendingPathComponent("highlight/" + sample.file), encoding: .utf8)
+        let list = marks(source, (sample.file as NSString).pathExtension)
+        var hash: UInt32 = 0x811c9dc5
+        for item in list {
+            for byte in item.utf8 { hash = (hash ^ UInt32(byte)) &* 0x01000193 }
+            hash = (hash ^ 1) &* 0x01000193
+        }
+        #expect(list.count == sample.count, "\(sample.file): szakaszok száma")
+        #expect(hash == sample.checksum, "\(sample.file): ellenőrző összeg")
+    }
+}

@@ -169,7 +169,9 @@ Importált szöveges fájl: minden nem bináris fájl (UTF-8, NUL bájt nélkül
   (`Sources/ThinkHighlight`, saját könnyű elemző, nyelvenként egy fájl), a kliens a kész HTML-t mutatja
   (`<span class="hl-…">`, színek: `app.css`). A szerkesztő a `GET /api/attachment/…&highlight=<kiterjesztés>` címről kéri.
 - Dobozon szerkesztés: a szövegfájl (`.txt`, `.md`, kód) a vásznon szerkeszthető, a panelen nincs szövegmező.
-  Dupla kattintás nyitja (Alt-tal a panel), Esc vagy a doboz elengedése zárja; közben sima szöveg látszik.
+  Dupla kattintás nyitja (Alt-tal a panel), Esc vagy a doboz elengedése zárja. Színezhető kódfájl szerkesztés közben
+  is színes: ezt a böngésző végzi (`Public/highlight`, a Swift-modul pontos mása; egyezésüket a
+  `Tests/Fixtures/highlight.json` őrzi), kilépéskor a szerver színezése váltja fel. Más szövegfájl közben sima szöveg.
   Nagy fájl (256 KB fölött) továbbra is külön ablakban szerkeszthető.
 
 **Döntések:**

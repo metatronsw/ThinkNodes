@@ -32,13 +32,13 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 + Kész (2026-11-25): JavaScript, Swift, HTML színezés.
 - Ismert egyszerűsítések: JS-ben a `)` / `]` / `}` utáni `/` mindig osztás, az objektumkulcsok és a JSX nem kapnak külön színt; Swiftben a `/…/` reguláris kifejezés nincs felismerve; HTML-ben a `style="…"` attribútum és az eseménykezelők tartalma sima szöveg.
 - További nyelvek igény szerint (`.ts`, `.py`, `.xml` / `.svg` – az utóbbi a HTML elemzővel).
-- Szerkesztés közbeni színezés a böngészőben (kérés: 2026-11-25): a megoldás egyeztetés alatt.
++ Kész (2026-11-25): szerkesztés közbeni színezés a böngészőben (`Public/highlight`, a Swift-modul pontos mása, közös tesztkészlettel).
+- Szerkesztés közben minden leütés a teljes szöveget újraszínezi és kicseréli a réteg HTML-jét; nagyobb (100 KB körüli) fájlnál mérendő, kell-e csak az érintett sorokat frissíteni.
 + Kész (2026-11-25): a letölthető SVG-ben a kód színes (beágyazott színszabályok).
 - A letölthető SVG-ben a fájldobozok tartalma egyébként formázatlan (nincs belső térköz, a doboz betűmérete, a túlnyúló szöveg levágása; a `.txt` / `.md` doboz is ilyen): az exportba a fájldobozok alapstílusát is be kellene ágyazni.
 - Nincs ellenőrizve: az előnézeti rajz (`/api/preview`) képként (`<img>`) megjelenítve is színes-e – a válasz `style-src 'self'` szabálya a beágyazott stílust tilthatja.
 - A közös könyvtár (`@common`) kódfájljai a szerkesztőben színezetlenek (statikus címről töltődnek); a megtekintőben színesek.
 - Dobozon szerkesztés kiterjesztése más dobozokra (sima doboz szövege, megjegyzés); a külön ablakos nagyfájl-szerkesztő színezés nélküli.
-- Szerkesztés közben a szöveg nem színes (döntés: elsőre így); ha zavaró, átlátszó szövegmező a színezett réteg fölött.
 - Szemmel nézendő Safariban: a szövegmező háttere és betűje szerkesztés közben, a kurzor és a görgetés nagyított vásznon, mentetlen szöveg rövid színezetlen állapota bezárás után.
 
 # Google-bejelentkezés

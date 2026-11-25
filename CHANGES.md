@@ -1,5 +1,16 @@
 # Változások
 
+## 2026-11-25 – Kódszínezés szerkesztés közben (a böngészőben)
+
+- **Szerkesztés közben is színes a kód:** a dobozon szerkesztett kódfájl gépelés közben azonnal színeződik. A színezést ilyenkor a böngésző végzi; a szerver színezése szerkesztés alatt nem látszik, kilépéskor (mentés után) az váltja fel.
+- **Pontos másolat:** `Public/highlight/` – a `ThinkHighlight` Swift-modul mása JavaScriptben, nyelvenként egy fájl (`scanner.js`, `json.js`, `css.js`, `javascript.js`, `swift.js`, `html.js`, `index.js`), ugyanazzal a felépítéssel és nevekkel, hogy a két oldal sorról sorra összevethető legyen.
+- **Közös tesztkészlet:** `Tests/Fixtures/highlight.json` – 191 rövid eset a szakaszok teljes listájával (nyelvenként a nehéz helyek, és hibás / lezáratlan bemenetek minden nyelven), és 5 valódi mintafájl (`Tests/Fixtures/highlight/`, kb. 100 KB kód) a szakaszok számával és ellenőrző összegével. Mindkét oldal ugyanezt ellenőrzi: `Tests/Editor/highlight.mjs` és `highlightMatchesSharedFixtures`. A két megvalósítás minden eseten egyezik. A fixture újraírása: `node Tests/Editor/highlight.mjs --write`.
+- **Megjelenítés:** a színezett szöveg és egy átlátszó betűjű szövegmező egy rácscellában, fedésben (`.node-code-edit`, `renderTextEditor`); csak a kurzor és a kijelölés látszik a szövegmezőből. A magasságot a színezett réteg adja, a görgetés a dobozé. Nem színezhető szövegfájl (`.txt`, `.md`, más kód) változatlanul sima szövegmező.
+- **Új nyelv ezentúl:** egy Swift-fájl (`Sources/ThinkHighlight`), egy JS-fájl (`Public/highlight`), egy-egy sor a két listában, és esetek a közös tesztkészletben.
+- Tesztek: `test.sh highlight` (10 Swift-teszt és `highlight.mjs`) rendben; `--js editor` rendben.
+- Ellenőrzés: fej nélküli Chromiumban a két réteg helye, mérete és betűje azonos, gépelésre a színezés azonnal frissül (41 → 63 szakasz), kilépés után a szerver HTML-je ugyanannyi szakaszt ad. **Safariban nincs ellenőrizve** (az automatizált Safari a munkamenet közben elakadt) – BUGS.md.
+- Szerverkód: csak a szkript- és stíluslap-verzió változott (`Rendering.swift`); release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – Kódszínezés: JavaScript, Swift, HTML
 
 - Három új nyelv a `ThinkHighlight` modulban, nyelvenként egy fájl:
