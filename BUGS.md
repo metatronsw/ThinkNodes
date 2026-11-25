@@ -4,8 +4,9 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 ## Nyitott
 
-- **Kódfájl egyrétegű szerkesztése: kézzel, Safariban nézendő tételek** (2026-11-25)
-  - Automatizált Safariban rendben: gépelés, Enter, törlés, visszavonás, minden kijelölése, kilépés. Kézzel nézendő, mert a vezérelt böngészőben nem próbálható megbízhatóan: kijelölés egérhúzással (a szintetikus húzás a vásznon nem jelöl ki, sem Safariban, sem Chromiumban – a sima szövegmezőn igen; a felhasználó valódi egérrel ki tudott jelölni), holt billentyűs / összetett bevitel, a jobb gombos menü, hosszú fájlnál a kurzor követése görgetéssel, nagyított vásznon a kurzor helye.
+- **Kódfájl szerkesztése: kézzel, Safariban nézendő tételek** (2026-11-25)
+  - Automatizált Safariban, valódi egérmozgással rendben: gépelés, törlés, visszavonás, kattintás, dupla kattintás, húzásos kijelölés görgetve is, nyílbillentyűk. Kézzel nézendő (a vezérelt böngészőben nem próbálható): holt billentyűs / összetett bevitel, a jobb gombos menü, érintéses kijelölés, Shift+nyíl kijelölés közben a doboz görgetése.
+  - A szövegfájl (`.txt`, `.md`) szövegmezője a böngésző saját kijelölését használja: ott a húzásos kijelölés ugrása nincs külön megnézve (a mező maga görget, nem a doboz).
 
 - **Éles kirajzolás nagyítva: Safariban nincs mérve** (2026-11-24)
   - 100% fölött a nyugalmi réteg megszűnik (`restLayer`), hogy a táblázat / CSV / szövegfájl éles legyen. Safariban ellenőrizendő az élesség, és hogy a pásztázás / nagyítás indulásakor mekkora a megakadás (a réteg visszakapcsolása; PERF.md szerint 40–70 ms lehet).

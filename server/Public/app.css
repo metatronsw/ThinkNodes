@@ -728,7 +728,7 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
    !important: sötét módban az általános űrlapmező-szabály (:root[data-display="dark"] … textarea) erősebb, és a
    szövegmező háttere eltakarná a doboz felületét, kódfájlnál a színezett réteget. */
 .node-note:has(> .node-text-editor) { padding: 0; overflow: hidden; }
-.node-text-editor { display: block; width: 100%; height: 100%; box-sizing: border-box; margin: 0; padding: 8px 10px; border: 0; outline: 0; resize: none;
+.node-text-editor { display: block; width: 100%; height: 100%; box-sizing: border-box; margin: 0; padding: 8px 20px 8px 10px; border: 0; outline: 0; resize: none;
   background: transparent !important; color: inherit !important; font: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92em; line-height: 1.4;
   white-space: pre-wrap; overflow-wrap: anywhere; overscroll-behavior: contain;
   /* A vászon tiltja a kijelölést (.editor-canvas); a szövegmezőben egérrel is ki kell tudni jelölni. */

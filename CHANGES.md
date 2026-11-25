@@ -1,5 +1,14 @@
 # Változások
 
+## 2026-11-25 – Kódszerkesztő: azonos betű, saját egérkijelölés; „tényleges méret” szöveg- és kóddobozra
+
+- **Betű és magasság:** szerkesztésbe lépve a kód betűje és a tartalom magassága megváltozott. Ok: megjelenítéskor a szöveg `<pre><code>` elemben áll (a `code` a böngésző saját egyenközű betűjét kapja), a szerkesztő viszont közvetlenül a `<pre>`-be írt. Most a szerkesztő is `<code>` elembe ír, a kettő azonos (Safariban mérve: 900 → 900 képpont).
+- **Kijelölés ugrása:** ha a szöveg hosszabb volt a doboznál, egérhúzásra a kijelölés a szöveg végére ugrott, és a doboz az aljára görgetett (Safari: a foreignObject-en belül a böngésző saját húzásos kijelölése és automatikus görgetése téves). A kódszerkesztő egérkijelölése most saját: a mutató helyét a doboz vászonbeli helyéből számolja (mint a táblázat cellájánál), a karakterpozíciót a szöveg kurzorhelyeiből felezéssel keresi. Kattintás, Shift+kattintás, húzás, dupla kattintás (szó), tripla (sor); a doboz szélén túl húzva a tartalom görög. A kurzor követése (gépelés, nyílbillentyűk) is ebből a geometriából számol.
+- **Tényleges méret gomb** a szöveg- és kódfájl dobozok paneljén is (Text csoport), ahogy a táblázatnál: a doboz a leghosszabb sor tördelés nélküli szélességére és a teljes magasságra áll; `.md` doboznál a szélesség marad, a magasság igazodik (`fitBoxToContent`). Szerkesztés közben előbb kilép a szerkesztésből.
+- A `.txt` / `.md` szövegmező belső térköze a megjelenítéséhez igazítva (a jobb oldali sávhely miatt eltérő szélességen tördelt).
+- Safariban kipróbálva, valódi egérmozgással: betű és magasság azonos megjelenítéskor és szerkesztéskor; kattintás görgetve is a várt sorra teszi a kurzort; dupla kattintás szót jelöl ki; húzásra a kijelölés nem ugrik, a görgetés marad; a doboz alá húzva lefelé görget és a kijelölés bővül; nyílbillentyűkkel a doboz követi a kurzort; a „tényleges méret” után a kód-, JSON-, szöveg- és markdown-doboz sem görget.
+- Szerverkód: csak a szkript- és stíluslap-verzió változott; release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – Kódfájl szerkesztése egy rétegben
 
 - **Egy réteg (kérés szerint):** szerkesztés közben nincs szövegmező a színezett szöveg fölött. Maga a böngészőben színezett szöveg szerkeszthető (`contenteditable`, `renderCodeEditor`); a szerver színezése szerkesztés alatt nem látszik, kilépéskor (mentés után) az váltja fel. A korábbi kétrétegű megoldás (átlátszó betűjű szövegmező a színezett réteg fölött) megszűnt: Safariban kijelöléskor a két réteg fél sorral elcsúszott egymáson.

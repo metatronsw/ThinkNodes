@@ -6,6 +6,14 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **Safari: kódfájl szerkesztésébe lépve megváltozott a betű és a tartalom magassága** (2026-11-25)
+  - Ok: megjelenítéskor a szöveg `<pre><code>` elemben áll, a szerkesztő közvetlenül a `<pre>`-be írt, a `code` elem pedig a böngésző saját egyenközű betűjét kapja.
+  - Javítás: a szerkesztő is `<code>` elembe ír (`renderCodeEdit`).
+
+- **Safari: hosszú kódfájlban egérhúzásra a kijelölés a szöveg végére ugrott, a doboz az aljára görgetett** (2026-11-25)
+  - Ok: a foreignObject-en belül a böngésző saját húzásos kijelölése és automatikus görgetése téves helyről számol.
+  - Javítás: saját egérkijelölés a doboz vászonbeli helyéből (`codePointerDown`, `codeOffsetAt`, `editor.js`).
+
 - **Safari: kódfájl szerkesztésekor kijelöléstől a szöveg fél sorral elugrott, és megjelent alatta a másik réteg** (2026-11-25)
   - Ok: a szerkesztő két rétegből állt (színezett szöveg, fölötte átlátszó betűjű szövegmező), és Safariban kijelöléskor a kettő elcsúszott egymáson.
   - Javítás: egyetlen réteg – maga a színezett szöveg szerkeszthető (`renderCodeEditor`, `editor.js`).

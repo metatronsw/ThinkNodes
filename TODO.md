@@ -36,6 +36,7 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 + Kész (2026-11-25): a kódfájl szerkesztése egy rétegben (szerkeszthető színezett szöveg, saját visszavonással).
 - Szerkesztés közben minden leütés a teljes szöveget újraszínezi és újraépíti a doboz tartalmát; nagyobb (100 KB körüli) fájlnál mérendő, kell-e csak az érintett sorokat frissíteni.
 - A kódszerkesztőben nincs Shift+Tab (behúzás csökkentése) és több sor együttes behúzása.
+- A szövegmezőben (`.txt`, `.md`) szerkesztéskor a záró üres sor miatt a tartalomra igazított doboz egy sorral görgetős; a `.txt` is átállhatna a kódszerkesztő egyrétegű megoldására (színezés nélkül).
 + Kész (2026-11-25): a letölthető SVG-ben a kód színes (beágyazott színszabályok).
 - A letölthető SVG-ben a fájldobozok tartalma egyébként formázatlan (nincs belső térköz, a doboz betűmérete, a túlnyúló szöveg levágása; a `.txt` / `.md` doboz is ilyen): az exportba a fájldobozok alapstílusát is be kellene ágyazni.
 - Nincs ellenőrizve: az előnézeti rajz (`/api/preview`) képként (`<img>`) megjelenítve is színes-e – a válasz `style-src 'self'` szabálya a beágyazott stílust tilthatja.

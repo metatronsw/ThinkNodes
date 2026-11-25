@@ -3248,7 +3248,7 @@ createApp({
     // fog el, a szöveget mi írjuk át, újraszínezzük, és a kurzort karakterpozíció szerint visszatesszük. Kivétel az
     // összetett bevitel (holt billentyű, IME): az a DOM-ba ír, a végén onnan olvassuk vissza. A visszavonás saját
     // (a tartalom cseréje a böngésző visszavonási listáját törli). Más szövegfájl: sima szövegmező (renderTextEditor).
-    const codeEdit = {el: null, id: null, ext: "", text: "", undo: [], redo: [], kind: null, stamp: 0, composing: false};
+    const codeEdit = {el: null, id: null, ext: "", text: "", nodes: null, undo: [], redo: [], kind: null, stamp: 0, composing: false};
     function codeOffset(container, offset) {
       const range = document.createRange();
       range.selectNodeContents(codeEdit.el);
@@ -3262,36 +3262,164 @@ createApp({
       const range = selection.getRangeAt(0);
       return [codeOffset(range.startContainer, range.startOffset), codeOffset(range.endContainer, range.endOffset)];
     }
-    function setCodeSelection(start, end = start, reveal = true) {
-      const el = codeEdit.el;
-      const locate = target => {
-        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-        let node, left = target;
-        while ((node = walker.nextNode())) {
-          if (left <= node.length) return [node, left];
-          left -= node.length;
-        }
-        return [el, el.childNodes.length];
-      };
-      const range = document.createRange();
-      range.setStart(...locate(start));
-      range.setEnd(...locate(end));
+    // A szöveg csomópontjai a kezdő karakterpozíciójukkal (a tartalom minden cseréje után újraépül).
+    function codeNodes() {
+      if (codeEdit.nodes) return codeEdit.nodes;
+      const walker = document.createTreeWalker(codeEdit.el, NodeFilter.SHOW_TEXT), nodes = [];
+      let node, total = 0;
+      while ((node = walker.nextNode())) { nodes.push([node, total]); total += node.length; }
+      return codeEdit.nodes = nodes;
+    }
+    function codeLocate(offset) {
+      const nodes = codeNodes();
+      if (!nodes.length) return [codeEdit.el, 0];
+      let low = 0, high = nodes.length - 1;
+      while (low < high) { const middle = (low + high + 1) >> 1; if (nodes[middle][1] <= offset) low = middle; else high = middle - 1; }
+      return [nodes[low][0], Math.min(offset - nodes[low][1], nodes[low][0].length)];
+    }
+    // `anchor` → `focus`: a kijelölés iránya megmarad (visszafelé húzott kijelölésnél a kurzor az elején áll).
+    function setCodeSelection(anchor, focus = anchor, reveal = true) {
       const selection = window.getSelection();
-      selection.removeAllRanges();
-      selection.addRange(range);
-      if (!reveal) return;
-      // A doboz (`.node-note`) görgetése a kurzorhoz. A két téglalap ugyanabban a rendszerben van (Safariban a
-      // foreignObject-beli téglalapok nem követik a vászon nagyítását, máshol igen): a különbségüket a doboz
-      // mért és valódi magasságának aránya váltja át a doboz saját képpontjaira.
-      const note = el.closest(".node-note"), caret = range.getClientRects()[0] ?? range.getBoundingClientRect();
-      if (!note || !caret || (!caret.height && !caret.top)) return;
-      const box = note.getBoundingClientRect(), scale = box.height / note.offsetHeight || 1;
-      const top = (caret.top - box.top) / scale, bottom = (caret.bottom - box.top) / scale;
-      if (top < 4) note.scrollTop += top - 8;
-      else if (bottom > note.clientHeight - 4) note.scrollTop += bottom - note.clientHeight + 8;
+      selection.setBaseAndExtent(...codeLocate(anchor), ...codeLocate(focus));
+      if (reveal) revealCodeCaret(focus);
+    }
+    // Egy karakterpozíció kurzorának helye a szerkesztő saját képpontjaiban (bal, felső, alsó). A böngésző téglalapjai
+    // Safariban a foreignObject-en belül nem követik a vászon nagyítását és eltolását, de egymáshoz képest pontosak
+    // (görgetve és nagyítva is mérve): a szerkesztő téglalapjához viszonyítunk, és a mért / valódi magasság aránya vált át.
+    function codeCaretRect(offset) {
+      const el = codeEdit.el, box = el.getBoundingClientRect(), scale = box.height / el.offsetHeight || 1;
+      const range = document.createRange(), [node, index] = codeLocate(offset);
+      range.setStart(node, index);
+      range.collapse(true);
+      let rect = range.getClientRects()[0];
+      if (!rect || !rect.height) {
+        // Ahol az összecsukott tartomány nem ad téglalapot: a következő karakter bal széle.
+        const [next, nextIndex] = codeLocate(Math.min(offset + 1, codeEdit.text.length + 1));
+        range.setEnd(next, nextIndex);
+        rect = range.getClientRects()[0] ?? range.getBoundingClientRect();
+      }
+      if (!rect || (!rect.height && !rect.top)) return null;
+      return {x: (rect.left - box.left) / scale, top: (rect.top - box.top) / scale, bottom: (rect.bottom - box.top) / scale};
+    }
+    // A doboz (`.node-note`) görgetése úgy, hogy a kurzor sora látsszon.
+    function revealCodeCaret(offset) {
+      const note = codeEdit.el.closest(".node-note"), caret = codeCaretRect(offset);
+      if (!note || !caret) return;
+      const inset = parseFloat(getComputedStyle(note).paddingTop) || 0;
+      const top = inset + caret.top, bottom = inset + caret.bottom;
+      if (top < note.scrollTop + 4) note.scrollTop = Math.max(0, top - 8);
+      else if (bottom > note.scrollTop + note.clientHeight - 4) note.scrollTop = bottom - note.clientHeight + 8;
+    }
+    // A mutató helye a szerkesztő saját képpontjaiban: a doboz vászonbeli helyéből számolva (mint a táblázat cellájánál,
+    // clickedCell), nem találatvizsgálatból – az Safariban a foreignObject-en belül, görgetett dobozban téves.
+    function codePoint(event) {
+      const node = nodeMap.value.get(codeEdit.id), note = codeEdit.el.closest(".node-note");
+      if (!node || !note) return null;
+      const pixels = (element, key) => parseFloat(getComputedStyle(element)[key]) || 0;
+      const frame = note.closest(".node-file"), point = world(event);
+      return {
+        x: point.x - (node.position.x - node.width / 2) - pixels(frame, "paddingLeft") - pixels(note, "paddingLeft") + note.scrollLeft,
+        y: point.y - (node.position.y - node.height / 2) - pixels(frame, "paddingTop") - pixels(note, "paddingTop") + note.scrollTop,
+        // A mutató a látható rész fölött (< 0) vagy alatt (> 0) van-e: húzás közben ennyit görget a doboz.
+        beyond: point.y < node.position.y - node.height / 2 ? -1 : point.y > node.position.y + node.height / 2 ? 1 : 0,
+      };
+    }
+    // A (x, y) ponthoz legközelebbi karakterpozíció: a sor felezéssel a kurzor felső széle, azon belül a vízszintes
+    // hely szerint (a pozíciók a szövegben előre haladva lefelé, soron belül jobbra haladnak).
+    function codeOffsetAt({x, y}) {
+      const length = codeEdit.text.length, rect = offset => codeCaretRect(offset) ?? {x: 0, top: 0, bottom: 0};
+      // Az utolsó pozíció, amelynek sora a pont fölött kezdődik.
+      let low = 0, high = length;
+      while (low < high) { const middle = (low + high + 1) >> 1; if (rect(middle).top <= y) low = middle; else high = middle - 1; }
+      const line = rect(low).top;
+      // A sor első pozíciója.
+      let first = 0, last = low;
+      while (first < last) { const middle = (first + last) >> 1; if (rect(middle).top >= line - 1) last = middle; else first = middle + 1; }
+      // A soron belül az utolsó pozíció, amely a ponttól balra van; ha a következő közelebb esik, az.
+      let left = first, right = low;
+      while (left < right) { const middle = (left + right + 1) >> 1; if (rect(middle).x <= x) left = middle; else right = middle - 1; }
+      if (left < low && Math.abs(rect(left + 1).x - x) < Math.abs(rect(left).x - x)) left++;
+      return left;
+    }
+    // Egérkijelölés: kattintás (kurzor), Shift+kattintás és húzás (kijelölés), dupla kattintás (szó), tripla (sor).
+    // A böngésző saját kijelölése le van tiltva: Safariban húzáskor a szöveg végére ugrott, és a dobozt az aljára görgette.
+    const codeDrag = {pointer: null, anchor: 0, last: 0, at: 0, x: 0, y: 0, clicks: 0, timer: null, event: null};
+    function codeWordRange(offset) {
+      const text = codeEdit.text, word = /[\p{L}\p{N}_$]/u;
+      let start = offset, end = offset;
+      if (offset < text.length && word.test(text[offset])) end++;
+      else if (offset > 0 && word.test(text[offset - 1])) start--;
+      else return [offset, Math.min(text.length, offset + (text[offset] === "\n" ? 0 : 1))];
+      while (start > 0 && word.test(text[start - 1])) start--;
+      while (end < text.length && word.test(text[end])) end++;
+      return [start, end];
+    }
+    function codePointerDown(event) {
+      event.stopPropagation();
+      if (event.button !== 0 || !codeEdit.el) return;
+      event.preventDefault();
+      const point = codePoint(event);
+      if (!point) return;
+      codeEdit.el.focus({preventScroll: true});
+      const offset = codeOffsetAt(point), now = performance.now();
+      const repeated = now - codeDrag.at < 450 && Math.hypot(event.clientX - codeDrag.x, event.clientY - codeDrag.y) < 5;
+      Object.assign(codeDrag, {pointer: event.pointerId, at: now, x: event.clientX, y: event.clientY, clicks: repeated ? codeDrag.clicks + 1 : 1});
+      if (codeDrag.clicks === 2) {
+        const [start, end] = codeWordRange(offset);
+        setCodeSelection(start, end, false);
+        codeDrag.pointer = null;
+        return;
+      }
+      if (codeDrag.clicks >= 3) {
+        const text = codeEdit.text, start = text.lastIndexOf("\n", offset - 1) + 1, end = text.indexOf("\n", offset);
+        setCodeSelection(start, end < 0 ? text.length : end + 1, false);
+        codeDrag.pointer = null;
+        return;
+      }
+      codeDrag.anchor = event.shiftKey ? codeSelectionEnds()[0] : offset;
+      codeDrag.last = offset;
+      setCodeSelection(codeDrag.anchor, offset, false);
+      codeEdit.kind = null;
+      try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* a húzás a dobozon belül így is követhető */ }
+    }
+    function codePointerMove(event) {
+      if (codeDrag.pointer !== event.pointerId || !codeEdit.el) return;
+      event.stopPropagation();
+      const point = codePoint(event);
+      if (!point) return;
+      const offset = codeOffsetAt(point);
+      if (offset !== codeDrag.last) { codeDrag.last = offset; setCodeSelection(codeDrag.anchor, offset, false); }
+      // A doboz szélén túl húzva a tartalom görög, amíg a mutató kint van.
+      codeDrag.event = point.beyond ? {clientX: event.clientX, clientY: event.clientY} : null;
+      if (point.beyond && !codeDrag.timer) codeDrag.timer = setInterval(() => {
+        const note = codeEdit.el?.closest(".node-note"), held = codeDrag.event && codePoint(codeDrag.event);
+        if (!note || !held?.beyond || codeDrag.pointer == null) { clearInterval(codeDrag.timer); codeDrag.timer = null; return; }
+        note.scrollTop += held.beyond * 24;
+        const next = codeOffsetAt(codePoint(codeDrag.event));
+        if (next !== codeDrag.last) { codeDrag.last = next; setCodeSelection(codeDrag.anchor, next, false); }
+      }, 50);
+    }
+    function codePointerUp(event) {
+      if (codeDrag.pointer !== event.pointerId) return;
+      event.stopPropagation();
+      codeDrag.pointer = null;
+      codeDrag.event = null;
+      clearInterval(codeDrag.timer);
+      codeDrag.timer = null;
+    }
+    // A kijelölés két vége a húzás iránya szerint: [horgony, kurzor].
+    function codeSelectionEnds() {
+      const selection = window.getSelection(), end = codeEdit.text.length;
+      if (!selection.rangeCount || !codeEdit.el.contains(selection.anchorNode)) return [end, end];
+      return [codeOffset(selection.anchorNode, selection.anchorOffset), codeOffset(selection.focusNode, selection.focusOffset)];
     }
     // A záró sortörés után a böngésző csak akkor mutat üres sort (és tesz oda kurzort), ha még egy sortörés követi.
-    const renderCodeEdit = () => { codeEdit.el.innerHTML = highlightHTML(codeEdit.text, codeEdit.ext) + "\n"; };
+    // A szöveg ugyanúgy `<code>` elemben áll, mint megjelenítéskor (renderFileText): a betű és a sormagasság így a
+    // szerkesztésbe lépve nem változik.
+    const renderCodeEdit = () => {
+      codeEdit.el.innerHTML = "<code>" + highlightHTML(codeEdit.text, codeEdit.ext) + "\n</code>";
+      codeEdit.nodes = null;
+    };
     function commitCodeEdit() {
       const current = nodeMap.value.get(codeEdit.id);
       if (current?.file && held.value === codeEdit.id) editFileText(current, codeEdit.text);
@@ -3326,6 +3454,7 @@ createApp({
     }
     // A DOM-ból visszaolvasott szöveg (összetett bevitel vége, vagy el nem fogható bevitel után).
     function resyncCodeEdit() {
+      codeEdit.nodes = null;
       const raw = codeEdit.el.textContent.replace(/\r\n?/g, "\n"), text = raw.endsWith("\n") ? raw.slice(0, -1) : raw;
       const selection = window.getSelection();
       let caret = text.length;
@@ -3421,9 +3550,12 @@ createApp({
           event.clipboardData?.setData("text/plain", codeEdit.text.slice(start, end));
         },
         onDrop: event => { event.stopPropagation(); event.preventDefault(); },
-        onPointerdown: stop, onMousedown: stop, onTouchstart: stop, onClick: stop, onDblclick: stop, onContextmenu: stop,
+        onPointerdown: codePointerDown, onPointermove: codePointerMove, onPointerup: codePointerUp, onPointercancel: codePointerUp,
+        onMousedown: stop, onTouchstart: stop, onClick: stop, onDblclick: stop, onContextmenu: stop,
+        // A billentyűzettel mozgatott kurzor után a doboz görgetését is mi igazítjuk (a böngészőé itt nem megbízható).
+        onKeyup: event => { if (/^(Arrow|Page|Home|End)/.test(event.key) && codeEdit.el) revealCodeCaret(codeSelectionEnds()[1]); },
         onVnodeMounted: ({el}) => {
-          Object.assign(codeEdit, {el, id: node.id, ext, text, undo: [], redo: [], kind: null, stamp: 0, composing: false});
+          Object.assign(codeEdit, {el, id: node.id, ext, text, nodes: null, undo: [], redo: [], kind: null, stamp: 0, composing: false});
           renderCodeEdit();
           el.focus({preventScroll: true});
           setCodeSelection(0, 0, false);
@@ -3669,26 +3801,52 @@ createApp({
       if (result.truncated) problem.value = "A táblázat túl nagy volt; a korlát (1000 sor × 100 oszlop) fölötti rész kimaradt.";
     }
 
-    // A doboz átméretezése a tartalom tényleges méretére (táblázat, CSV): a kirajzolt táblázat mérete a doboz belső
-    // térközeivel. Szerkesztés közben előbb kilép a cellaszerkesztésből (az olvasó nézet méretét mérjük).
+    // A doboz átméretezése a tartalom tényleges méretére. Táblázat, CSV: a kirajzolt táblázat mérete. Szöveg- és
+    // kódfájl: a leghosszabb sor tördelés nélküli szélessége és a teljes magasság; ha a szélesség a legnagyobb
+    // dobozméretbe ütközik, a magasság az ott tördelt szövegé. Formázott (.md) szövegnél a szélesség marad, csak a
+    // magasság igazodik. Szerkesztés közben előbb kilép a szerkesztésből (az olvasó nézet méretét mérjük).
     async function fitBoxToContent(node) {
       if (!(await selectNode(node.id))) return;
       if (tableEdit.value?.id === node.id) { stopTableEdit(); await nextTick(); }
+      if (textEdit.value === node.id) { stopTextEdit(); await nextTick(); }
       const note = canvas.value?.querySelector('[data-node="' + CSS.escape(node.id) + '"] .node-note');
-      const table = note?.querySelector("table");
+      const table = note?.querySelector("table"), content = table ?? note?.firstElementChild;
       const current = nodeMap.value.get(node.id);
-      if (!table || !current || held.value !== node.id) return;
+      if (!content || !current || held.value !== node.id) return;
       const pixels = (element, ...keys) => { const style = getComputedStyle(element); return keys.reduce((sum, key) => sum + (parseFloat(style[key]) || 0), 0); };
       const frame = note.closest(".node-file");
-      const more = note.querySelector(".tn-table-more");
-      let width = table.offsetWidth + pixels(note, "paddingLeft", "paddingRight") + pixels(frame, "paddingLeft", "paddingRight") + 2;
-      let height = table.offsetHeight + (more ? more.offsetHeight + pixels(more, "marginTop", "marginBottom") : 0)
-        + pixels(note, "paddingTop", "paddingBottom") + pixels(frame, "paddingTop", "paddingBottom") + 2;
-      // Ha az egyik irányban a tartalom nem fér bele a legnagyobb dobozméretbe, ott görgetősáv marad: a másik irányban
-      // a sáv helyét rá kell hagyni, különben az is görgetős lenne.
-      const scrollbar = 16;
-      if (height > 4096) width += scrollbar;
-      if (width > 4096 + scrollbar) height += scrollbar;
+      const insetX = pixels(note, "paddingLeft", "paddingRight") + pixels(frame, "paddingLeft", "paddingRight") + 2;
+      const insetY = pixels(note, "paddingTop", "paddingBottom") + pixels(frame, "paddingTop", "paddingBottom") + 2;
+      let width, height;
+      if (table) {
+        const more = note.querySelector(".tn-table-more");
+        width = table.offsetWidth + insetX;
+        height = table.offsetHeight + (more ? more.offsetHeight + pixels(more, "marginTop", "marginBottom") : 0) + insetY;
+        // Ha az egyik irányban a tartalom nem fér bele a legnagyobb dobozméretbe, ott görgetősáv marad: a másik irányban
+        // a sáv helyét rá kell hagyni, különben az is görgetős lenne.
+        const scrollbar = 16;
+        if (height > 4096) width += scrollbar;
+        if (width > 4096 + scrollbar) height += scrollbar;
+      } else {
+        // Mérés a tartalom rejtett másolatán (a doboz elrendezését nem mozdítja; a méretek a doboz saját képpontjai).
+        const copy = content.cloneNode(true);
+        Object.assign(copy.style, {position: "absolute", visibility: "hidden", pointerEvents: "none", left: "0", top: "0", height: "auto", minHeight: "0", maxWidth: "none"});
+        note.append(copy);
+        try {
+          // A doboz mérete és a tartalom helye közti különbség a ténylegesen kirajzolt dobozból (keret, belső térközök).
+          const padX = pixels(note, "paddingLeft", "paddingRight"), padY = pixels(note, "paddingTop", "paddingBottom");
+          const chromeX = current.width - (note.clientWidth - padX), chromeY = current.height - (note.clientHeight - padY);
+          if (content.matches("pre")) {
+            Object.assign(copy.style, {whiteSpace: "pre", overflowWrap: "normal", width: "max-content"});
+            width = Math.min(Math.ceil(copy.offsetWidth) + 1, 4096 - chromeX);
+          } else {
+            width = note.clientWidth - padX;
+          }
+          Object.assign(copy.style, {whiteSpace: "", overflowWrap: "", width: width + "px"});
+          height = Math.ceil(copy.offsetHeight) + chromeY + 1;
+          width += chromeX;
+        } finally { copy.remove(); }
+      }
       const next = {width: Math.round(limit(width, 64, 4096)), height: Math.round(limit(height, 40, 4096))};
       if (next.width === current.width && next.height === current.height) return;
       // A bal felső sarok a helyén marad.
@@ -5095,6 +5253,7 @@ createApp({
             numeric(single.fontSize ?? 14, v => change("fontSize", Math.round(v)), 6, 72, {...controlName("Betűméret"), step: 1, clampValue: true}),
             color("Szövegszín", "textColor", 1),
             single.type === "code" ? null : uppercaseToggle(nodes, change),
+            single.type === "csv" ? null : fitContentButton(single),
             single.type === "text" ? iconToggle("Sorkizárás", justified, () => change("justified", justified ? undefined : true), icon("justify")) : null,
             h("small", {class: "muted", role: "status"}, fileSaveState.value.get(single.id) ?? ""),
           ),
