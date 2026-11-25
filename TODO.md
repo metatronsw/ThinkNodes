@@ -47,3 +47,14 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 - További lehetőségek: halmozott oszlop, vízszintes sáv, területdiagram, tengelycím, saját színek, sorok helyett oszlopok mint sorozatok, dátumtengely.
 - A grafikon buboréksúgója a böngésző saját `<title>` súgója; a szerkesztő közös buboréksúgójára (tooltip.js) érdemes átállni.
 - A helyi próbalap (`projects/a/grafikon`) törölhető, ha már nem kell.
+
+# Konténer – automatikus (rács) elrendezés
+
+- Terv: kapcsolható „Automatikus elrendezés” a konténeren; a konténer címe és szövege felül, a közvetlen gyermekek alatta rácsban, keskeny konténernél egy oszlopban. A számított hely csak megjelenítési réteg, a gyermekek tárolt pozíciója megmarad.
+- Megvalósítás előtt eldöntendő (2026-11-25):
+  - nőhet-e a konténer külső mérete, ha a gyermekek nem férnek el (vagy csak a meglévő méreten belül rendez);
+  - a gyermekek mérete a cellához igazodik-e (csak megjelenítésben), vagy megtartják a saját méretüket;
+  - mi történik kézi húzáskor automatikus módban (sorrendcsere a rácsban / átváltás kézire / tiltás);
+  - beágyazott konténer: egy cellaként viselkedik-e, a saját tartalmát a saját beállítása szerint rendezve.
+- Érinti: szerkesztő (`editor.js`), megtekintő és SVG-export (`Rendering.swift`), vonalak végpontjai, konténerbe ejtés, közös szerkesztés.
+

@@ -64,3 +64,32 @@ export function overlapFraction(node, container) {
   }
   return area(polygon) / total;
 }
+
+// Rajzolási sorrend (alulról felfelé). A konténer és a teljes tartalma egy tömb: ami a konténer fölött van
+// és nem a része, az a tartalmát is kitakarja. Testvérek között: előbb a konténerek, aztán a nagyobb doboz.
+// A kiemelt rétegben csak a méret számít (a kisebb takarja a nagyobbat).
+export function layerOrder(nodes, elevated, containers) {
+  const bySize = (a, b) => b.width*b.height - a.width*a.height;
+  const siblings = (a, b) => Number(containers.has(b.id)) - Number(containers.has(a.id)) || bySize(a, b);
+  const lower = nodes.filter(node => !elevated.has(node.id));
+  const ids = new Set(lower.map(node => node.id));
+  const children = new Map();
+  for (const node of lower) {
+    const parent = node.parent !== node.id && ids.has(node.parent) ? node.parent : "";
+    if (!children.has(parent)) children.set(parent, []);
+    children.get(parent).push(node);
+  }
+  const ordered = [], seen = new Set();
+  const stack = [...(children.get("") ?? [])].sort(siblings).reverse();
+  while (stack.length) {
+    const node = stack.pop();
+    if (seen.has(node.id)) continue;
+    seen.add(node.id);
+    ordered.push(node);
+    const inner = children.get(node.id);
+    if (inner) stack.push(...[...inner].sort(siblings).reverse());
+  }
+  // Hibás (körkörös) szülőlánc esetén se tűnjön el doboz.
+  if (ordered.length < lower.length) ordered.push(...lower.filter(node => !seen.has(node.id)).sort(siblings));
+  return ordered.concat(nodes.filter(node => elevated.has(node.id)).sort(bySize));
+}

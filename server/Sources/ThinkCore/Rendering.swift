@@ -1146,14 +1146,30 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
         }
     }
     let containers = Set(renderedIdeas.filter(\.isContainer).map(\.id))
-    let ordered = drawings.sorted { a, b in
-        let raisedA = elevated.contains(a.node.id), raisedB = elevated.contains(b.node.id)
-        if raisedA != raisedB { return raisedB }
-        // Kiemelt rétegben csak a méret számít (a kisebb takarja a nagyobbat), a konténer-szabály ott nem hat.
+    // A konténer és a teljes tartalma egy tömb a sorrendben: ami a konténer fölött van és nem a része,
+    // az a tartalmát is kitakarja. Testvérek között: előbb a konténerek, aztán a nagyobb doboz.
+    // Kiemelt rétegben csak a méret számít (a kisebb takarja a nagyobbat), a konténer-szabály ott nem hat.
+    let bySize: (IdeaDrawing, IdeaDrawing) -> Bool = { $0.node.width * $0.node.height > $1.node.width * $1.node.height }
+    let siblings: (IdeaDrawing, IdeaDrawing) -> Bool = { a, b in
         let outerA = containers.contains(a.node.id), outerB = containers.contains(b.node.id)
-        if !raisedA, outerA != outerB { return outerA }
-        return a.node.width * a.node.height > b.node.width * b.node.height
+        return outerA != outerB ? outerA : bySize(a, b)
     }
+    let lower = drawings.filter { !elevated.contains($0.node.id) }
+    let lowerIDs = Set(lower.map(\.node.id))
+    let inner = Dictionary(grouping: lower) { drawing -> String in
+        guard let parent = drawing.node.parent, parent != drawing.node.id, lowerIDs.contains(parent) else { return "" }
+        return parent
+    }
+    var ordered: [IdeaDrawing] = []
+    var placed = Set<String>()
+    var stack = Array(inner["", default: []].sorted(by: siblings).reversed())
+    while let drawing = stack.popLast() {
+        guard placed.insert(drawing.node.id).inserted else { continue }
+        ordered.append(drawing)
+        stack.append(contentsOf: inner[drawing.node.id, default: []].sorted(by: siblings).reversed())
+    }
+    ordered += lower.filter { !placed.contains($0.node.id) }.sorted(by: siblings)
+    ordered += drawings.filter { elevated.contains($0.node.id) }.sorted(by: bySize)
     let nodeLayers = Dictionary(uniqueKeysWithValues: ordered.enumerated().map { ($0.element.node.id, $0.offset) })
     let freeWireLayer = ordered.firstIndex { elevated.contains($0.node.id) } ?? ordered.count
     func isInside(_ node: Idea?, _ outer: Idea?) -> Bool {

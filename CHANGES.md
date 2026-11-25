@@ -1,5 +1,13 @@
 # Változások
 
+## 2026-11-25 – Konténer: a rálógó doboz a konténer tartalmát is kitakarja
+
+- **Rétegsorrend:** a konténer és a teljes tartalma (beágyazott konténerekkel együtt) egy tömbként kerül a rajzolási sorrendbe. Ami a konténer fölött van és nem a része, az a tartalmát is kitakarja. Eddig a konténer kisebb gyermekdobozai „átütöttek” a rálógó, náluk nagyobb idegen dobozon.
+- Testvérek között a szabály változatlan: előbb a konténerek, aztán a nagyobb doboz van alul. A kiemelt rétegben továbbra is csak a méret számít.
+- Helye: `Public/containers.js` (`layerOrder`, a szerkesztő ezt használja), `Sources/ThinkCore/Rendering.swift` (megtekintő, SVG-export). Teszt: `boxesAboveAContainerAlsoCoverItsContents`; `test.sh render editor` rendben.
+- Böngészőben (Safari) nincs külön kipróbálva. A szerver kódja változott (`Rendering.swift`): futó szervert újra kell indítani.
+- Az automatikus (rács) elrendezés nincs megvalósítva: a nyitott tervezési kérdések a TODO.md „Konténer” részében.
+
 ## 2026-11-25 – Grafikon önálló objektumként (D3), adatvonal, táblázat-igazítás
 
 - **Grafikon (`chart` típus):** önálló objektum, saját fájl nélkül: oszlop-, vonal-, kör- és pontdiagram. Az adatát a vonallal bekötött táblázat (`.tntable`) vagy CSV adja; bekötött táblázat nélkül üres. A táblázat csak táblázat marad (a korábbi, ágon belüli „megjelenítés: grafikon” mód megszűnt). A grafikon törlése a táblázatot nem érinti; a táblázat törlése után a grafikon megmarad üresen.

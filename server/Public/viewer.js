@@ -14,7 +14,7 @@ import {attachScrollbars} from "./scrollbar-drag.js";
 import {liveConnection} from "./collaboration.js";
 
 import {useWorksheetGeometry, arrowLength, arrowTransform, plugTransform, edgeGeometry, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireGradientValues, wireLabelLayout} from "./geometry.js?v=25";
-import {ancestors} from "./containers.js?v=3";
+import {ancestors} from "./containers.js?v=4";
 import {ensureGlow, glowReach} from "./glow.js";
 
 let selection;

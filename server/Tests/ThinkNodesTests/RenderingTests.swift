@@ -332,6 +332,17 @@ import VaporTesting
     #expect(containerOffset < wireOffset && wireOffset < sourceOffset && wireOffset < targetOffset)
 }
 
+@Test func boxesAboveAContainerAlsoCoverItsContents() throws {
+    let container = Idea(id: "container", text: "Konténer", position: Point(x: 0, y: 0),
+                         width: 300, height: 300, container: true)
+    let child = Idea(id: "child", text: "Tartalom", position: Point(x: 0, y: 0), width: 100, height: 60, parent: container.id)
+    let cover = Idea(id: "cover", text: "Rálógó doboz", position: Point(x: 150, y: 0), width: 500, height: 400)
+    let svg = boardSVG(Worksheet(title: "Kitakarás", nodes: [cover, child, container]), noteBase: "/kitakaras")
+    let offset = { (id: String) in try #require(svg.range(of: "id=\"object-\(id)\"")).lowerBound }
+    #expect(try offset("container") < offset("child"))
+    #expect(try offset("child") < offset("cover"))
+}
+
 @Test(arguments: [
     (Shape.triangle, 3, "30.000"),
     (.pentagon, 5, "55.587"),

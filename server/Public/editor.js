@@ -16,7 +16,7 @@ import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
 import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=25";
 
-import {ancestors, overlapFraction} from "./containers.js?v=3";
+import {ancestors, layerOrder, overlapFraction} from "./containers.js?v=4";
 import {glowFilter, glowId, glowReach, glowVNode} from "./glow.js";
 import {awaitWebPreview} from "./web-preview-refresh.js";
 import {cellName, columnName, decodeTable, encodeTable, limits as tableLimits} from "./table/table-document.js";
@@ -471,10 +471,7 @@ createApp({
       return elevated;
     });
     const containerIDs = computed(() => new Set(sceneNodes.value.filter(node => isBox(node) && node.container).map(node => node.id)));
-    const orderedNodes = computed(() => [...sceneNodes.value].sort((a,b) =>
-      Number(elevatedNodes.value.has(a.id))-Number(elevatedNodes.value.has(b.id)) ||
-      // Kiemelt rétegben csak a méret számít (a kisebb takarja a nagyobbat), a konténer-szabály ott nem hat.
-      (elevatedNodes.value.has(a.id) ? 0 : Number(containerIDs.value.has(b.id))-Number(containerIDs.value.has(a.id))) || b.width*b.height-a.width*a.height));
+    const orderedNodes = computed(() => layerOrder(sceneNodes.value, elevatedNodes.value, containerIDs.value));
     const wireLayers = computed(() => {
       const nodes = orderedNodes.value;
       const order = new Map(nodes.map((node, index) => [node.id, index]));
