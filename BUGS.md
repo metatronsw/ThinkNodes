@@ -5,8 +5,9 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 ## Nyitott
 
 - **Gyors eszközök (próba): ismert hiányok** (2026-11-25)
-  - A lenyíló lista és a mellette álló csoportok a böngészőablak jobb szélén kilóghatnak (csak a teljes keret igazodik az ablakhoz).
-  - A Doboz csoportban a Forma és az Animáció gombja az effektsor alá kerül (a panelen fölötte van).
+  - Dobozon a hagyományos menü kikapcsolásával jobb kattintásra nincs Törlés, Ping, Szerkesztés (eldöntendő, melyik kerüljön a gombok közé).
+  - A képernyőn belül tartás Safariban az ablak közepén és egy doboz sarkánál mérve; közvetlenül az ablak szélénél és kis ablakban kézzel nézendő.
+  - A kinyitott lista csak a saját gombjára vagy választásra zárul; máshová kattintva nyitva marad, amíg a gyors eszközök látszanak.
   - Háttér nélküli gombok tarka tartalom fölött nehezebben olvashatók.
 
 - **Doboz szövegének szerkesztése a dobozon: kézzel nézendő / nyitott tételek** (2026-11-25)

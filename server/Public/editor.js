@@ -100,7 +100,9 @@ function paint(value, role) {
 }
 
 const ColorPicker = {
-  props: {label: String, color: [String, Number], role: Number, disabled: Boolean, compact: Boolean, transparent: Boolean, clear: Function},
+  props: {label: String, color: [String, Number], role: Number, disabled: Boolean, compact: Boolean, transparent: Boolean, clear: Function,
+    // floating: a színlista rögzített helyzetű rétegként nyílik (nem tolja el a többi gombot); gyors eszközök.
+    floating: Boolean},
   emits: ["update"],
   setup(props, {emit}) {
     const expanded = ref(false);
@@ -112,7 +114,8 @@ const ColorPicker = {
         onClick: () => { expanded.value = !expanded.value; }}, [
           props.transparent ? h("span", {class: "palette-tile transparent-swatch"}) : tile(props.color),
         ]),
-      expanded.value && !props.disabled ? h("div", {class: "color-tools color-presets"}, [
+      expanded.value && !props.disabled ? h("div", {class: ["color-tools color-presets", {floating: props.floating}],
+        onVnodeMounted: props.floating ? ({el}) => placePopup(el, el.parentNode?.querySelector?.(".color-sample")) : undefined}, [
         h("button", {type: "button", ...controlName(props.clear ? "Háttér törlése" : "Alapértelmezett szín"),
           onClick: () => props.clear ? props.clear() : emit("update", props.role)}, [icon("clear-color")]),
         ...(activePalette.value?.colors ?? []).map(c => h("button", {type: "button", key: c.id, title: c.name,
@@ -136,28 +139,35 @@ function iconToggle(title, pressed, onClick, symbol, disabled = false) {
     "aria-pressed": pressed, onClick, disabled}, [symbol]);
 }
 
-// Választócsoportok jegyzéke: olyan gombcsoportok, amelyek egyetlen tulajdonság értékei közül választanak (felsorolás).
-// Itt szabályozható, hogy a gyors eszközökben (renderQuickTools) melyik csoport jelenjen meg egyetlen gombként, amely
-// kattintásra nyitja ki a többit (`flyout: true`), és melyik maradjon kiterítve (`flyout: false`). A csoportot a
-// forrásában a `data-choice` jelöli (optionPicker `set` paramétere, illetve choiceSet); új csoporthoz elég ott megjelölni
-// és ide felvenni. A tulajdonságpanelen minden csoport kiterítve marad.
-const choiceSets = {
-  shape: {label: "Forma", flyout: true},
-  animation: {label: "Animáció", flyout: true},
-  background: {label: "Háttér mód", flyout: true},
-  font: {label: "Betűtípus", flyout: true},
-  lineType: {label: "Vonaltípus", flyout: true},
-  lineAppearance: {label: "Vonal megjelenése", flyout: true},
-};
-// Egy választócsoport tagjai a panel elrendezésének megbontása nélkül (app.css .choice-set: display: contents).
-function choiceSet(set, buttons) {
-  return h("div", {class: "choice-set", role: "group", "aria-label": choiceSets[set].label, "data-choice": set}, buttons);
+// Gyors eszközök leírója (Public/quick-tools.json, kézzel szerkeszthető): melyik gomb melyik lenyíló csoportba tartozik
+// (`groups`), a csoport hogyan nyílik (sor / oszlop / rács), és típusonként mely gombok, milyen sorokban jelennek meg a
+// helyi menü fölött (`layouts`). A gombokat az azonosítójuk nevezi meg: a forrásukban a `tool(azonosító, gomb)` jelöli
+// meg őket (`data-tool`), a választócsoportok gombjai az optionPicker `set` paraméteréből kapnak nevet (pl. shape-ellipse).
+const quickLayout = globalThis.ThinkNodesQuickTools
+  ?? await fetch("/quick-tools.json", {cache: "no-cache"}).then(response => response.json()).catch(() => ({}));
+function tool(id, vnode) {
+  if (vnode && typeof vnode === "object") (vnode.props ??= {})["data-tool"] = id;
+  return vnode;
+}
+// Felugró lista (lenyíló csoport, színválasztó) helye a kiváltó gombjához képest: arra nyílik, amerre több a hely
+// (lefelé vagy felfelé, jobbra vagy balra), a gombot és a többi gombot nem mozdítja el (rögzített helyzetű réteg), és
+// semmilyen része nem kerül az ablakon kívülre.
+function placePopup(el, anchor) {
+  if (!el?.getBoundingClientRect || !anchor?.getBoundingClientRect || typeof innerWidth !== "number") return;
+  const a = anchor.getBoundingClientRect(), b = el.getBoundingClientRect(), margin = 8, gap = 4;
+  const top = innerHeight - a.bottom >= a.top ? a.bottom + gap : a.top - gap - b.height;
+  const left = innerWidth - a.left >= a.right ? a.left : a.right - b.width;
+  el.style.left = Math.max(margin, Math.min(left, innerWidth - b.width - margin)) + "px";
+  el.style.top = Math.max(margin, Math.min(top, innerHeight - b.height - margin)) + "px";
 }
 
+// `set`: a gombok azonosítójának előtagja a gyors eszközökhöz (pl. "shape" → shape-ellipse).
 function optionPicker(label, choices, current, change, preview, set) {
-  return h("div", {class: "property-options", role: "group", "aria-label": label, "data-choice": set},
-    Object.entries(choices).map(([value, title]) =>
-      iconToggle(title, current === value, () => change(value), preview(value))));
+  return h("div", {class: "property-options", role: "group", "aria-label": label},
+    Object.entries(choices).map(([value, title]) => {
+      const choice = iconToggle(title, current === value, () => change(value), preview(value));
+      return set ? tool(set + "-" + value, choice) : choice;
+    }));
 }
 
 function optionSymbol(tag, attributes, viewBox = "0 0 24 24") {
@@ -4882,7 +4892,6 @@ createApp({
       const entries = type === "node" && node ? [
         node.file ? button("Link másolása", () => { menu.value = null; transfer(() => writeText(objectURL(path,node.id))); }, {symbol: "link"}) : null,
         button("Ping", () => ping({node: node.id}), {symbol: "center", disabled: !online.value}),
-        !isJunction(node) ? elevationButton(node, true) : null,
         // Link csak hozzáadható innen; eltávolítása a tulajdonságpanel ✕ gombjával.
         hasTrait(node, "link") && !node.link ? button("Link hozzáadása", () => {
           chooseLink(node);
@@ -4914,75 +4923,105 @@ createApp({
         el.style.top = Math.max(margin, Math.min(open.y, innerHeight - box.height - margin)) + "px";
       };
       // Objektumon a menü a gyors eszközök keretében áll (a keret pozicionál), egyébként önállóan.
-      if (open.tools) return renderQuickTools(open, h("div", {class: "context-menu panel", "aria-label": "Műveletek"}, entries));
+      // A leíró `noMenu` típusain (pl. doboz) a hagyományos menü ki van kapcsolva: csak a gombok jelennek meg.
+      if (open.tools) return renderQuickTools(open, type === "node" && node && (quickLayout.noMenu ?? []).includes(node.type) && !batch.value
+        ? null : h("div", {class: "context-menu panel", "aria-label": "Műveletek"}, entries));
       return h("div", {class: "context-menu panel", "aria-label": "Műveletek",
         style: {left: open.x + "px", top: open.y + "px"}, onVnodeMounted: fit, onVnodeUpdated: fit}, entries);
     }
 
     // A tulajdonságpanel csoportjaiból csak a gombok (és a színválasztók), a panel sorai szerint: a szövegmezők,
-    // számmezők, listák és feliratok kimaradnak (azok a panelen érhetők el). Az igazítás 3×3-as rácsa egyben marad.
-    // Eredmény: csoportonként a sorok listája (egy sor = a panel egy gombsora).
+    // számmezők, listák és feliratok kimaradnak (azok a panelen érhetők el). Eredmény: a sorok listája (egy sor = a
+    // panel egy gombsora); ami nem gombsorban áll (pl. az igazítás gombjai), a csoportja végére kerül.
     function toolRows(panels) {
       const skipped = new Set(["input", "textarea", "select", "legend", "p", "small", "label"]);
       const named = (vnode, name) => [vnode.props?.class].flat().some(value => typeof value === "string" && value.split(" ").includes(name));
-      return panels.map(panel => {
+      return panels.flatMap(panel => {
         const rows = [];
         const collect = (vnode, row) => {
           if (Array.isArray(vnode)) { for (const child of vnode) collect(child, row); return; }
           if (!vnode || typeof vnode !== "object") return;
-          if (vnode.type === ColorPicker || vnode.type === "button" || named(vnode, "alignment-picker")) { row.push(vnode); return; }
+          if (vnode.type === ColorPicker || vnode.type === "button") { row.push(vnode); return; }
           if (typeof vnode.type !== "string" || skipped.has(vnode.type)) return;
-          // Lenyíló választócsoport (choiceSets): a tagjai egyetlen elemként kerülnek a sorba (renderFlyout rajzolja ki).
-          const set = vnode.props?.["data-choice"];
-          if (set && choiceSets[set]?.flyout) {
-            const buttons = [];
-            collect(vnode.children, buttons);
-            if (buttons.length > 1) { row.push({flyout: set, buttons}); return; }
-          }
-          // A panel egy gombsora (property-options, link-row) itt is külön sor.
           const own = named(vnode, "property-options") || named(vnode, "link-row") ? [] : row;
           if (own !== row) rows.push(own);
           collect(vnode.children, own);
         };
-        // Ami nem gombsorban áll (pl. az igazítás rácsa), a csoport végére kerül.
         const loose = [];
         collect(panel, loose);
         return [...rows, loose].filter(row => row.length);
-      }).filter(rows => rows.length);
+      });
     }
-    // Lenyíló választócsoport: egy gomb az aktuális érték ikonjával; kattintásra alatta kinyílik a többi, választás után
-    // bezárul. Egyszerre egy lehet nyitva; a gyors eszközök bezárásakor ez is bezárul.
+    // A gyors eszközök sorai a leíró (quick-tools.json) szerint. Egyetlen kijelölt objektumnál, ha a típusának van
+    // elrendezése (`layouts`), pontosan az ott felsorolt gombok jelennek meg, a megadott sorokban; egyébként a panel
+    // sorai, de a leíró csoportjaiba tartozó gombok ott is egy lenyíló gombbá állnak össze (az első tagjuk helyén).
+    // Egy sor eleme: gomb (vnode) vagy {group, buttons} (lenyíló csoport).
+    function quickRows(panels, type) {
+      const groups = quickLayout.groups ?? {}, layout = type ? quickLayout.layouts?.[type] : null;
+      const rows = toolRows(panels), id = vnode => vnode.props?.["data-tool"];
+      const tools = new Map(rows.flat().filter(id).map(vnode => [id(vnode), vnode]));
+      const members = name => (groups[name].items ?? []).map(item => tools.get(item)).filter(Boolean);
+      if (layout) return layout.map(row => row.flatMap(name => {
+        if (!groups[name]) return tools.get(name) ?? [];
+        const buttons = members(name);
+        return buttons.length > 1 ? [{group: name, buttons}] : buttons;
+      })).filter(row => row.length);
+      const owner = new Map(Object.entries(groups).flatMap(([name, group]) => (group.items ?? []).map(item => [item, name])));
+      const placed = new Set();
+      return rows.map(row => row.flatMap(vnode => {
+        const name = owner.get(id(vnode));
+        if (!name || members(name).length < 2) return vnode;
+        if (placed.has(name)) return [];
+        placed.add(name);
+        return {group: name, buttons: members(name)};
+      })).filter(row => row.length);
+    }
+    // A gyors eszközökben minden gomb egyforma (a panel saját elrendezéséből kiemelt gombok, pl. az igazítás, is), a
+    // színválasztó listája pedig rögzített rétegként nyílik.
+    function quickButton(vnode) {
+      if (vnode.type === ColorPicker) return cloneVNode(vnode, {floating: true});
+      const named = [vnode.props?.class].flat().some(value => typeof value === "string" && value.split(" ").includes("button"));
+      return named ? vnode : cloneVNode(vnode, {class: "button option-icon"});
+    }
+    // Lenyíló csoport: egy gomb az aktuális érték ikonjával (vagy a leíróban megadott ikonnal); kattintásra kinyílik a
+    // lista sorban, oszlopban vagy rácsban (`open`, `columns`), rögzített rétegként (placePopup): sem a megnyomott gombot,
+    // sem a többit nem mozdítja el. Választás után bezárul. Egyszerre egy lehet nyitva.
     const openFlyout = ref(null);
     watch(menu, () => { openFlyout.value = null; });
-    function renderFlyout({flyout: set, buttons}) {
-      const label = choiceSets[set].label, open = openFlyout.value === set;
+    function renderFlyout({group: name, buttons}) {
+      const group = quickLayout.groups[name], label = group.label ?? name, open = openFlyout.value === name;
       const current = buttons.find(item => item.props?.["aria-pressed"] === true);
-      const face = [(current ?? buttons[0]).children].flat().map(child => child && typeof child === "object" ? cloneVNode(child) : child);
-      const name = label + (current ? ": " + (current.props.title ?? "") : "");
-      return h("div", {class: "quick-flyout", key: "flyout-" + set}, [
-        h("button", {type: "button", class: ["button option-icon quick-flyout-trigger", {idle: !current}], title: name, "aria-label": name,
-          "aria-haspopup": "true", "aria-expanded": open, onClick: () => { openFlyout.value = open ? null : set; }},
+      const face = group.icon ? [icon(group.icon)]
+        : [(current ?? buttons[0]).children].flat().map(child => child && typeof child === "object" ? cloneVNode(child) : child);
+      const title = label + (current ? ": " + (current.props.title ?? "") : "");
+      const mode = ["row", "column", "grid"].includes(group.open) ? group.open : "row";
+      const place = ({el}) => placePopup(el, el.parentNode?.querySelector?.(".quick-flyout-trigger"));
+      return h("div", {class: "quick-flyout", key: "flyout-" + name}, [
+        h("button", {type: "button", class: ["button option-icon quick-flyout-trigger", {idle: !current && !group.icon}], title, "aria-label": title,
+          "aria-haspopup": "true", "aria-expanded": open, onClick: () => { openFlyout.value = open ? null : name; }},
           [...face, h("span", {class: "quick-flyout-mark", "aria-hidden": "true"})]),
-        open ? h("div", {class: "quick-flyout-list", role: "group", "aria-label": label, onClick: () => { openFlyout.value = null; }}, buttons) : null,
+        open ? h("div", {class: ["quick-flyout-list", "open-" + mode], role: "group", "aria-label": label,
+          style: mode === "grid" ? {gridTemplateColumns: "repeat(" + Math.max(1, group.columns ?? 3) + ", 32px)"} : undefined,
+          onVnodeMounted: place, onVnodeUpdated: place, onClick: () => { openFlyout.value = null; }}, buttons.map(quickButton)) : null,
       ]);
     }
-    // `list`: a helyi menü. Elrendezés: a menü bal felső sarka a mutatónál; az első csoport (jellemzően a Text) a menü
-    // fölött, a többi csoport a menü mellett, egymás alatt, térközzel elválasztva.
+    // `list`: a helyi menü. Elrendezés: a menü bal felső sarka a mutatónál; a gombok sorai a menü fölött állnak
+    // (mellette nincs gomb). A keret semmilyen része nem kerül az ablakon kívülre.
     function renderQuickTools(open, list) {
-      let panels = [];
+      let panels = [], type = null;
       if (batch.value) {
         const nodes = board.value.nodes.filter(n => batch.value.nodes.has(n.id) && !occupied(n.id));
         const edges = board.value.edges.filter(e => batch.value.edges.has(e.id));
         panels = [...(nodes.length ? nodePanels(nodes) : []), ...(edges.length ? edgePanels(edges) : [])];
       } else if (inspector.value?.kind === "edge") {
         const edge = board.value.edges.find(item => item.id === inspector.value.id);
-        if (edge) panels = edgePanels([edge]);
+        if (edge) { panels = edgePanels([edge]); type = "edge"; }
       } else if (inspector.value) {
         const node = nodeMap.value.get(inspector.value.id);
-        if (node && held.value === node.id && !occupied(node.id)) panels = nodePanels([node]);
+        if (node && held.value === node.id && !occupied(node.id)) { panels = nodePanels([node]); type = node.type; }
       }
-      const groups = toolRows(panels);
-      // Az ablakon belül marad; ha elfér, a menü (nem a fölötte álló gombsor) sarka kerül a mutatóhoz.
+      const rows = quickRows(panels, type);
+      if (!rows.length && !list) return null;
       const fit = ({el}) => {
         if (!el?.getBoundingClientRect || typeof innerWidth !== "number") return;
         const box = el.getBoundingClientRect(), margin = 8, above = el.querySelector(".context-menu")?.offsetTop ?? 0;
@@ -4990,21 +5029,19 @@ createApp({
         el.style.top = Math.max(margin, Math.min(open.y - above, innerHeight - box.height - margin)) + "px";
       };
       const stop = event => event.stopPropagation();
-      const group = rows => h("div", {class: "quick-tools-group"}, rows.map(row => h("div", {class: "property-options property-tools quick-tools-row"},
-        row.map(item => item.flyout ? renderFlyout(item) : item))));
       return h("div", {class: "quick-tools", role: "toolbar", "aria-label": "Gyors eszközök",
         style: {left: open.x + "px", top: open.y + "px"}, onVnodeMounted: fit, onVnodeUpdated: fit,
         onPointerdown: stop, onDblclick: stop, onContextmenu: event => { event.preventDefault(); event.stopPropagation(); }}, [
-        groups.length ? h("div", {class: "quick-tools-above"}, [group(groups[0])]) : null,
+        rows.length ? h("div", {class: "quick-tools-above"}, rows.map(row => h("div", {class: "property-options property-tools quick-tools-row"},
+          row.map(item => item.group ? renderFlyout(item) : quickButton(item))))) : null,
         list,
-        groups.length > 1 ? h("div", {class: "quick-tools-side"}, groups.slice(1).map(group)) : null,
       ]);
     }
 
     // NAGYBETŰS kapcsoló minden Text-csoportban (doboz szövege, doboz alatti Text, szövegfájl).
     function uppercaseToggle(nodes, change) {
       const upper = nodes.every(n => n.uppercase);
-      return iconToggle(upper ? "NAGYBETŰS: be" : "NAGYBETŰS: ki", upper, () => change("uppercase", upper ? undefined : true), icon("uppercase"));
+      return tool("uppercase", iconToggle(upper ? "NAGYBETŰS: be" : "NAGYBETŰS: ki", upper, () => change("uppercase", upper ? undefined : true), icon("uppercase")));
     }
 
     function sidebar(label, contents, canvasSettings = false) {
@@ -5299,26 +5336,24 @@ createApp({
         modified();
       };
       const backgroundTools = () => [
-        nodes.some(isImage) ? null : colorPicker("Háttér", value("fill", 2),
+        nodes.some(isImage) ? null : tool("fill", colorPicker("Háttér", value("fill", 2),
           v => setBackground(mode === "free" ? "solid" : mode, v), nodes.map(n => n.id).join(",") + "/fill", false, true, 2,
-          {transparent: mode === "free"}),
-        // Képnél a Free és az Üres értelmetlen. A háttérmódok egy választócsoport (choiceSets.background).
-        choiceSet("background", [
-          nodes.some(isImage) ? null : iconToggle("Free", mode === "free", () => setBackground(mode === "free" ? "solid" : "free"), icon("box-free")),
-          nodes.some(isImage) ? null : iconToggle("Üres", mode === "empty", () => setBackground(mode === "empty" ? "solid" : "empty"), icon("box-empty")),
-          iconToggle("Áttetsző", mode === "translucent", () => setBackground(mode === "translucent" ? "solid" : "translucent"), icon("box-background")),
-          canvasTintTool(),
-        ]),
+          {transparent: mode === "free"})),
+        // Képnél a Free és az Üres értelmetlen.
+        nodes.some(isImage) ? null : tool("background-free", iconToggle("Free", mode === "free", () => setBackground(mode === "free" ? "solid" : "free"), icon("box-free"))),
+        nodes.some(isImage) ? null : tool("background-empty", iconToggle("Üres", mode === "empty", () => setBackground(mode === "empty" ? "solid" : "empty"), icon("box-empty"))),
+        tool("background-translucent", iconToggle("Áttetsző", mode === "translucent", () => setBackground(mode === "translucent" ? "solid" : "translucent"), icon("box-background"))),
+        canvasTintTool(),
       ];
       // Vászonszín: a háttér a munkalap háttérszíne, a vászon rácsa nélkül (minden dobozon).
-      const canvasTintTool = () => iconToggle("Vászonszín (a rács nem látszik át)", mode === "canvas", () => setBackground(mode === "canvas" ? "solid" : "canvas"), icon("box-canvas"));
-      const elevation = () => single ? elevationButton(single) : iconToggle("Kiemelés", nodes.every(n => n.elevated === true), () => {
+      const canvasTintTool = () => tool("background-canvas", iconToggle("Vászonszín (a rács nem látszik át)", mode === "canvas", () => setBackground(mode === "canvas" ? "solid" : "canvas"), icon("box-canvas")));
+      const elevation = () => tool("elevation", single ? elevationButton(single) : iconToggle("Kiemelés", nodes.every(n => n.elevated === true), () => {
         const raise = !nodes.every(n => n.elevated === true);
         change("elevated", node => { if (raise) node.parent = undefined; return raise ? true : undefined; });
-      }, icon("box-elevated"));
+      }, icon("box-elevated")));
       const linkButton = () => single && common.has("link") && !single.link
-        ? h("button", {type: "button", class: "button option-icon link-add", ...controlName("Link hozzáadása"),
-            disabled: !online.value, onClick: () => chooseLink(single)}, [icon("link")]) : null;
+        ? tool("link-add", h("button", {type: "button", class: "button option-icon link-add", ...controlName("Link hozzáadása"),
+            disabled: !online.value, onClick: () => chooseLink(single)}, [icon("link")])) : null;
       const panels = [];
 
       if (common.has("label")) panels.push(group("Címke", [
@@ -5349,30 +5384,30 @@ createApp({
       if (common.has("text")) {
         const fontSize = numeric(value("fontSize", 16), v => change("fontSize", Math.round(v)), 1, 10000,
           {...controlName("Betűméret"), step: 1, clampValue: true, disabled: nodes.every(n => n.fitText)});
-        const fontButton = (index, label) => iconToggle(label, nodes.every(n => (n.font ?? 1) === index),
+        const fontButton = (index, label) => tool("font-" + index, iconToggle(label, nodes.every(n => (n.font ?? 1) === index),
           () => change("font", index === 1 ? undefined : index),
-          h("span", {class: "font-sample", style: {fontFamily: fontFamily(index)}}, "Aa"));
+          h("span", {class: "font-sample", style: {fontFamily: fontFamily(index)}}, "Aa")));
         const justified = nodes.every(n => n.justified === true);
         panels.push(group("Text", [
           single ? markdownEditor(single.text ?? "", v => change("text", v), 6, "Text", true) : null,
           h("div", {class: "typography-tools"}, [
             h("div", {class: "typography-rows"}, [propertyTools(
-              iconToggle("AutoSize", nodes.every(n => n.fitText), () => change("fitText", !nodes.every(n => n.fitText) || undefined),
-                optionSymbol("path", {d: "M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M8 16l4-8 4 8m-6.5-3h5"})),
+              tool("autosize", iconToggle("AutoSize", nodes.every(n => n.fitText), () => change("fitText", !nodes.every(n => n.fitText) || undefined),
+                optionSymbol("path", {d: "M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M8 16l4-8 4 8m-6.5-3h5"}))),
               fontSize,
-              choiceSet("font", [fontButton(1, "Alap betűtípus"), fontButton(2, "Második betűtípus"), fontButton(3, "Harmadik betűtípus")]),
+              fontButton(1, "Alap betűtípus"), fontButton(2, "Második betűtípus"), fontButton(3, "Harmadik betűtípus"),
             ), propertyTools(
-              color("Szövegszín", "textColor", 1),
-              iconToggle("Sorkizárás", justified, () => change("justified", justified ? undefined : true), icon(justified ? "justify" : "text-" + value("alignment", "center"))),
-              iconToggle("Összecsukás (csak az első sor)", nodes.every(n => n.hideText), () => change("hideText", nodes.every(n => n.hideText) ? undefined : true), icon("more")),
+              tool("text-color", color("Szövegszín", "textColor", 1)),
+              tool("justify", iconToggle("Sorkizárás", justified, () => change("justified", justified ? undefined : true), icon(justified ? "justify" : "text-" + value("alignment", "center")))),
+              tool("collapse", iconToggle("Összecsukás (csak az első sor)", nodes.every(n => n.hideText), () => change("hideText", nodes.every(n => n.hideText) ? undefined : true), icon("more"))),
               uppercaseToggle(nodes, change),
             )]),
             h("div", {class: "alignment-picker", role: "group", "aria-label": "Igazítás"},
-              alignmentPositions.map(([vertical, horizontal, label, symbol]) => h("button", {
+              alignmentPositions.map(([vertical, horizontal, label, symbol]) => tool("align-" + vertical + "-" + horizontal, h("button", {
                 type: "button", ...controlName(label),
                 "aria-pressed": vertical === value("verticalAlignment", "middle") && horizontal === value("alignment", "center"),
                 onClick: () => { change("verticalAlignment", vertical); change("alignment", horizontal); },
-              }, symbol))),
+              }, symbol)))),
           ]),
         ]));
       }
@@ -5547,10 +5582,10 @@ createApp({
         optionPicker("Animáció", boxAnimations, value("animation", "none") ?? "none", v => change("animation", v === "none" ? undefined : v), v => icon("box-" + v), "animation"),
         h("div", {class: "property-options property-tools box-effect-options"}, [
           ...backgroundTools(), elevation(),
-          single && containerIDs.value.has(single.id) ? iconToggle("Tartalom rögzítése", !!single.locked,
-            () => change("locked", single.locked ? undefined : true), icon(single.locked ? "lock" : "unlock")) : null,
-          single && containerIDs.value.has(single.id) ? iconToggle("Szöveg körbefuttatása a tartalom körül", single.textFlow !== false,
-            () => change("textFlow", single.textFlow !== false ? false : undefined), icon("grid")) : null,
+          single && containerIDs.value.has(single.id) ? tool("lock", iconToggle("Tartalom rögzítése", !!single.locked,
+            () => change("locked", single.locked ? undefined : true), icon(single.locked ? "lock" : "unlock"))) : null,
+          single && containerIDs.value.has(single.id) ? tool("text-flow", iconToggle("Szöveg körbefuttatása a tartalom körül", single.textFlow !== false,
+            () => change("textFlow", single.textFlow !== false ? false : undefined), icon("grid"))) : null,
           linkButton(),
         ]),
       ]));
@@ -5622,18 +5657,18 @@ createApp({
                   if (!target) { problem.value = "Érvénytelen hivatkozás."; event.target.value = single.link.target; return; }
                   change("link", {kind: single.link.kind, target});
                 }}),
-            destination ? button("", () => followBoxLink(destination), {symbol: single.link.kind === "url" ? "website" : "right", class: "button option-icon", ...controlName("Megnyitás")}) : null,
+            destination ? tool("link-open", button("", () => followBoxLink(destination), {symbol: single.link.kind === "url" ? "website" : "right", class: "button option-icon", ...controlName("Megnyitás")})) : null,
           ]),
           // Második sor: a többi gomb.
           h("div", {class: "link-row link-actions"}, [
             // .web: előnézet generálása be/ki; munkalap- és külső link: előnézet megjelenítése be/ki (kikapcsolva a szöveg látszik).
-            iconToggle(single.link.kind === "web" ? (single.staticPreview ? "Előnézet generálása: ki" : "Előnézet generálása: be")
+            tool("link-preview", iconToggle(single.link.kind === "web" ? (single.staticPreview ? "Előnézet generálása: ki" : "Előnézet generálása: be")
               : (single.staticPreview ? "Előnézet: ki (a szöveg látszik)" : "Előnézet: be"),
-              !single.staticPreview, () => change("staticPreview", single.staticPreview ? undefined : true), icon("camera")),
-            single.link.kind === "web" ? iconToggle(single.webPublic ? "Publikus: bárki megnézheti" : "Publikus: ki",
-              !!single.webPublic, () => toggleWebPublic(single), icon("butterfly"), !online.value) : null,
-            h("button", {type: "button", class: "button option-icon link-remove", ...controlName("Link törlése"),
-              onClick: () => removeLink(single)}, [icon("close")]),
+              !single.staticPreview, () => change("staticPreview", single.staticPreview ? undefined : true), icon("camera"))),
+            single.link.kind === "web" ? tool("link-public", iconToggle(single.webPublic ? "Publikus: bárki megnézheti" : "Publikus: ki",
+              !!single.webPublic, () => toggleWebPublic(single), icon("butterfly"), !online.value)) : null,
+            tool("link-remove", h("button", {type: "button", class: "button option-icon link-remove", ...controlName("Link törlése"),
+              onClick: () => removeLink(single)}, [icon("close")])),
           ]),
         ]));
       }

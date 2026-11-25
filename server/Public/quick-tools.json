@@ -1,0 +1,139 @@
+{
+ "about": "Gyors eszközök leírója (jobb kattintás objektumon: gombok a helyi menü fölött; editor.js quickRows / renderFlyout). Kézzel szerkeszthető. 'groups': lenyíló csoportok – label: felirat; open: 'row' (sor), 'column' (oszlop) vagy 'grid' (rács, 'columns' oszloppal); items: a csoport gombjai; icon (nem kötelező): állandó ikon neve az icons.svg-ből, nélküle az aktuális érték ikonja látszik. 'layouts': objektumtípusonként (node-types.json típusnév, vonalnál 'edge') a sorok, soronként gomb- vagy csoportnevek. Amelyik típusnak nincs elrendezése, ott a tulajdonságpanel sorai jelennek meg, a csoportok lenyílóként. Ami egy objektumon éppen nem érvényes (pl. link-open link nélkül), kimarad. 'tools': a használható gombazonosítók jegyzéke (csak tájékoztató, a program nem olvassa). 'noMenu': azok a típusok, amelyeken jobb kattintásra csak a gombok jelennek meg, a hagyományos (szöveges) helyi menü nem.",
+ "noMenu": [
+  "box"
+ ],
+ "groups": {
+  "font": {
+   "label": "Betűtípus",
+   "open": "row",
+   "items": [
+    "font-1",
+    "font-2",
+    "font-3"
+   ]
+  },
+  "align": {
+   "label": "Igazítás",
+   "open": "grid",
+   "columns": 3,
+   "items": [
+    "align-top-left",
+    "align-top-center",
+    "align-top-right",
+    "align-middle-left",
+    "align-middle-center",
+    "align-middle-right",
+    "align-bottom-left",
+    "align-bottom-center",
+    "align-bottom-right"
+   ]
+  },
+  "shape": {
+   "label": "Forma",
+   "open": "grid",
+   "columns": 4,
+   "items": [
+    "shape-rounded",
+    "shape-rectangle",
+    "shape-ellipse",
+    "shape-diamond",
+    "shape-triangle",
+    "shape-pentagon",
+    "shape-hexagon",
+    "shape-parallelogram"
+   ]
+  },
+  "animation": {
+   "label": "Animáció",
+   "open": "column",
+   "items": [
+    "animation-none",
+    "animation-pulse",
+    "animation-blink",
+    "animation-rock",
+    "animation-hop"
+   ]
+  },
+  "background": {
+   "label": "Háttér mód",
+   "open": "row",
+   "items": [
+    "background-free",
+    "background-empty",
+    "background-translucent",
+    "background-canvas"
+   ]
+  },
+  "lineType": {
+   "label": "Vonaltípus",
+   "open": "row",
+   "items": [
+    "lineType-straight",
+    "lineType-sCurve",
+    "lineType-zigzag",
+    "lineType-lightning",
+    "lineType-arc",
+    "lineType-rope"
+   ]
+  },
+  "lineAppearance": {
+   "label": "Vonal megjelenése",
+   "open": "row",
+   "items": [
+    "lineAppearance-plain",
+    "lineAppearance-thick",
+    "lineAppearance-dashed",
+    "lineAppearance-dotted"
+   ]
+  }
+ },
+ "layouts": {
+  "box": [
+   [
+    "autosize",
+    "font",
+    "text-color",
+    "justify",
+    "collapse",
+    "uppercase",
+    "align"
+   ],
+   [
+    "shape",
+    "animation",
+    "fill",
+    "background",
+    "elevation",
+    "lock",
+    "text-flow",
+    "link-add"
+   ],
+   [
+    "link-preview",
+    "link-public",
+    "link-open",
+    "link-remove"
+   ]
+  ]
+ },
+ "tools": {
+  "autosize": "AutoSize (a betűméret a dobozhoz igazodik)",
+  "font-1 … font-3": "Betűtípus (alap, második, harmadik)",
+  "text-color": "Szövegszín (színválasztó)",
+  "justify": "Sorkizárás",
+  "collapse": "Összecsukás (csak az első sor)",
+  "uppercase": "NAGYBETŰS",
+  "align-<top|middle|bottom>-<left|center|right>": "Szöveg igazítása (9 hely)",
+  "shape-<forma>": "Forma (rounded, rectangle, ellipse, diamond, triangle, pentagon, hexagon, parallelogram)",
+  "animation-<none|pulse|blink|rock|hop>": "Animáció",
+  "fill": "Háttérszín (színválasztó)",
+  "background-<free|empty|translucent|canvas>": "Háttér mód",
+  "elevation": "Kiemelés",
+  "lock": "Tartalom rögzítése (csak konténeren)",
+  "text-flow": "Szöveg körbefuttatása (csak konténeren)",
+  "link-add": "Link hozzáadása (ha még nincs link)",
+  "link-preview, link-public, link-open, link-remove": "Link: előnézet, publikus, megnyitás, törlés (ha van link)",
+  "lineType-<típus>, lineAppearance-<megjelenés>": "Vonal típusa és megjelenése"
+ }
+}

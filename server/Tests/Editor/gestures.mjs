@@ -12,6 +12,7 @@ globalThis.setTimeout = (callback, delay = 0, ...rest) => realSetTimeout(callbac
 performance.now = () => realNow() * speed;
 const read = name => readFileSync("Public/vendor/" + name + ".js", "utf8");
 globalThis.ThinkNodesNodeTypes = JSON.parse(readFileSync("Public/node-types.json", "utf8"));
+globalThis.ThinkNodesQuickTools = JSON.parse(readFileSync("Public/quick-tools.json", "utf8"));
 runInThisContext(read("vue"));
 // A d3 szűkített csomagja (zoom, zoomIdentity, select, pointer): Public/lib/d3-zoom.js, deploy/d3-slim.sh.
 runInThisContext(readFileSync("Public/lib/d3-zoom.js", "utf8"));

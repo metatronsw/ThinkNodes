@@ -1,5 +1,18 @@
 # Változások
 
+## 2026-11-25 – Gyors eszközök: szerkeszthető leíró (quick-tools.json), doboz lebegő menüje, semmit el nem toló lenyílók
+
+- **Leíró: `server/Public/quick-tools.json`** (kézzel szerkeszthető, a fájl elején magyar leírással): `groups` – melyik gomb melyik lenyíló csoportba tartozik, és a csoport hogyan nyílik (`open`: `row` / `column` / `grid` + `columns`; `icon`: állandó ikon, nélküle az aktuális érték ikonja); `layouts` – típusonként a gombok sorai (kézi elrendezés); `noMenu` – mely típusokon nincs hagyományos menü; `tools` – a gombazonosítók jegyzéke (tájékoztató). A szerkesztő betöltéskor olvassa (gyorsítótár nélkül), a lap újratöltése elég, build nem kell. A korábbi `choiceSets` jegyzék (editor.js) megszűnt, ez váltotta fel.
+- **Gombazonosítók:** a panel gombjait a forrásukban a `tool(azonosító, gomb)` jelöli (`data-tool`); a választócsoportok gombjai az `optionPicker` `set` paraméteréből kapnak nevet (pl. `shape-ellipse`).
+- **Doboz:** első elrendezés a leíróban (két sor + linksor); a 9 szövegigazítás egy lenyíló csoport (3×3 rács). A dobozon a hagyományos helyi menü ki van kapcsolva (`noMenu: ["box"]`, a kód megmaradt) – így a dobozon jobb kattintással most nincs Törlés, Ping és Szerkesztés (Delete billentyű, panel).
+- **Csak a menü fölött vannak gombok**, mellette nincsenek. A leíróban nem szereplő típusoknál a panel sorai jelennek meg, a csoportok lenyílóként.
+- **Semmit nem tol el:** a lenyíló lista és a színválasztó listája rögzített helyzetű réteg (`placePopup`), sem a megnyomott gombot, sem a többit nem mozdítja. Arra nyílik, amerre több a hely (le / fel, jobbra / balra).
+- **Képernyőn belül:** sem a keret, sem a kinyíló listák semmilyen része nem kerül az ablakon kívülre.
+- **Kiemelés** kikerült a hagyományos menü felsorolásából (a gombok között szerepel).
+- A tulajdonságpanel színválasztója még a régi módon nyílik (eltolja a többi gombot) – későbbi feladat (TODO.md).
+- Safariban mérve (próbalap): dobozon nincs menü, a két sor megjelenik; mind az öt csoport és a színválasztó nyitásakor a rögzített gombok helye képpontra változatlan, és semmi nem lóg ki az ablakból; igazítás választása hat; fájldobozon a menü megvan (Kiemelés nélkül), gombok csak fölötte. A `gestures.mjs` rendben.
+- Szerverkód: csak a szkript- és stíluslap-verzió változott; release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – Gyors eszközök: helyi menü vissza, gombok fölötte és mellette, rámutatás kiemelése, lenyíló választócsoportok
 
 - **Helyi menü visszakapcsolva** objektumokon. Jobb kattintásra az objektum kijelölődik, a menü bal felső sarka a mutatónál áll; **fölötte** az első csoport (jellemzően a Text), **mellette** a többi csoport egymás alatt, térközzel elválasztva (`renderQuickTools`, kapcsoló: `quickTools`). Ha az objektum nem jelölhető ki (más fogja), csak a menü jelenik meg.

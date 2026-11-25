@@ -86,3 +86,9 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 - Modulverziók (`?v=`) kézi léptetése négy fájlban: automatizálható (a szerver adja a verziót).
 - `perf.py`: a téglalap-kijelölő lépés Alt nélkül fut (`ALT = ""`), így alapból nem kijelölést mér.
 - A `gestures.mjs`-ből kimaradt a „csomópont tartalmas konténerre ejtve a tartalma lesz” eset (Safariban kézi szkripttel ellenőrizve); pótolandó.
+
+
+# GYORS ESZKÖZÖK / TULAJDONSÁGPANEL
+
++ A „kinyíló rész semmit nem tol el” szabály bevezetése a tulajdonságpanelen is: a színválasztó listája ott még eltolja a többi gombot (a gyors eszközökben már rögzített réteg: `ColorPicker floating`, `placePopup`).
++ A többi típus (fájldobozok, kép, vonal, csomópont) elrendezése a `quick-tools.json`-ban; a tulajdonságpanel kiváltása (szöveg- és számmezők helye).
