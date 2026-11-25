@@ -40,3 +40,7 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 - **Az új doboz ugyanolyan színű, mint a konténer, amibe kerül** (2026-11-25)
   - Az új doboz mindig a 2-es színt kapja; ha a konténer is 2-es színű (alapértelmezett doboz), a belehelyezett doboz csak a keretéről látszik, amíg más színt nem kap (`projects/b`). Döntés kell: kapjon-e az új / belehúzott doboz automatikusan eltérő színt.
+
+- **Doboz háttérszíne időnként eltűnik kijelölés (kattintás a konténerre) vagy mozgatás után** (2026-11-25)
+  - A felhasználó jelezte, nem minden esetben jön elő. Automatizált Safariban a `projects/b` másolatán (konténer + gyermek kijelölése, mozgatása) nem jött elő: a kitöltés attribútuma és a számított kitöltés végig megvolt, a rétegsorrend helyes. Nyom: a kijelölt doboz felületén ilyenkor SVG-szűrő van (`glow-ownSurface`), Safariban a szűrős elem kirajzolása hibázhat. A vizsgálat a felhasználó kérésére félbemaradt.
+

@@ -563,12 +563,13 @@ createApp({
       element.scrollTop = y;
       if (Math.abs(element.scrollLeft - x) <= 1 && Math.abs(element.scrollTop - y) <= 1) element.__scrollKey = key;
     }
-    // Szövegkörbefuttatás (`autoLayout`): a konténer szövege kikerüli a közvetlen gyermekdobozait. Konténerenként a
+    // Szövegkörbefuttatás: a konténer szövege kikerüli a közvetlen gyermekdobozait; alapból be van kapcsolva, a
+    // konténeren kikapcsolható (`autoLayout: false`). Konténerenként a
     // gyermekek helye a konténer közepéhez mérve; csak akkor számol, ha van ilyen konténer a lapon.
     const noObstacles = new Map();
     const flowObstacles = computed(() => {
       const nodes = board.value?.nodes ?? [];
-      const flowing = new Map(nodes.filter(node => node.autoLayout && node.container).map(node => [node.id, node]));
+      const flowing = new Map(nodes.filter(node => node.container && node.autoLayout !== false).map(node => [node.id, node]));
       if (!flowing.size) return noObstacles;
       const found = new Map();
       for (const child of nodes) {
@@ -594,7 +595,7 @@ createApp({
           lastBlocksById.set(node.id, blocks);
           return blocks;
         });
-        layout = computed(() => labelLayout(node, text.value, node.autoLayout ? flowObstacles.value.get(node.id) : undefined));
+        layout = computed(() => labelLayout(node, text.value, node.container && node.autoLayout !== false ? flowObstacles.value.get(node.id) : undefined));
         nodeLayouts.set(node, layout);
       }
       return layout.value;
@@ -4881,8 +4882,8 @@ createApp({
           ...backgroundTools(), elevation(),
           single && containerIDs.value.has(single.id) ? iconToggle("Tartalom rögzítése", !!single.locked,
             () => change("locked", single.locked ? undefined : true), icon(single.locked ? "lock" : "unlock")) : null,
-          single && containerIDs.value.has(single.id) ? iconToggle("Szöveg körbefuttatása a tartalom körül", !!single.autoLayout,
-            () => change("autoLayout", single.autoLayout ? undefined : true), icon("grid")) : null,
+          single && containerIDs.value.has(single.id) ? iconToggle("Szöveg körbefuttatása a tartalom körül", single.autoLayout !== false,
+            () => change("autoLayout", single.autoLayout !== false ? false : undefined), icon("grid")) : null,
           linkButton(),
         ]),
       ]));

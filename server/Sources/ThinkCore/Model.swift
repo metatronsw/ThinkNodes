@@ -264,7 +264,7 @@ package struct Idea: Codable, Equatable, Sendable {
     /// box: konténer (egyszer belehúztak valamit); kiürülve is konténer marad.
     var container: Bool?
     package var locked: Bool?
-    /// konténer: szövegkörbefuttatás. A konténer saját szövege felülről folyik, és soronként kikerüli a közvetlen
+    /// konténer: szövegkörbefuttatás, alapból bekapcsolva (nil vagy true); false kapcsolja ki. A konténer saját szövege felülről folyik, és soronként kikerüli a közvetlen
     /// gyermekdobozokat (geometry.js labelLayout, Rendering.swift ideaDrawing); a gyermekek helye kézi marad.
     var autoLayout: Bool?
     /// Megszűnt (az első, rácsba rendező változat tárolta ide a gyermek kézi helyét); a szerkesztő a következő

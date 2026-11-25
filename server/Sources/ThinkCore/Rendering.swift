@@ -1146,8 +1146,8 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
     // Vászonszín háttérmód: a doboz felülete a munkalap háttérszínét kapja (editor.js surfaceColor).
     var board = board
     for index in board.nodes.indices where board.nodes[index].backgroundMode == .canvas { board.nodes[index].fill = board.backgroundColor }
-    // Szövegkörbefuttatás (`autoLayout`): a konténer szövege kikerüli a közvetlen gyermekdobozait.
-    let flowing = Set(board.nodes.filter { $0.autoLayout == true && $0.isContainer }.map(\.id))
+    // Szövegkörbefuttatás: a konténer szövege kikerüli a közvetlen gyermekdobozait; alapból be, `autoLayout: false` kapcsolja ki.
+    let flowing = Set(board.nodes.filter { $0.autoLayout != false && $0.isContainer }.map(\.id))
     var obstacles: [String: [TextObstacle]] = [:]
     if !flowing.isEmpty {
         let places = Dictionary(board.nodes.map { ($0.id, $0.position) }, uniquingKeysWith: { first, _ in first })

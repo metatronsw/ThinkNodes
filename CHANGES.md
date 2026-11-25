@@ -1,5 +1,11 @@
 # Változások
 
+## 2026-11-25 – Konténer: a szövegkörbefuttatás alapból be van kapcsolva
+
+- Minden konténer saját szövege kikerüli a benne lévő dobozokat, külön bekapcsolás nélkül. A konténer paneljén a rács ikonnal („Szöveg körbefuttatása a tartalom körül”) kikapcsolható (`autoLayout: false`).
+- Következmény: a meglévő lapokon is, ahol egy konténernek szövege és gyermekdoboza is van, a szöveg mostantól felülről folyik és kikerüli a dobozokat (szerkesztő, megtekintő, export). Gyermek nélküli konténer változatlan.
+- `test.sh render editor worksheet` rendben. A szerver kódja változott (`Rendering.swift`): release build készült, a helyi szerver újraindítva.
+
 ## 2026-11-25 – Sorkizárt szövegű doboz mozgatása gyorsabb
 
 - **Ok:** a sorkizárás (`Public/justify.js`) a doboz minden újrarajzolásakor – húzás közben képkockánként – újramérte a sorok szélességét (`getComputedTextLength`, kényszerített elrendezés). A `projects/b` lap másolatán a 22 soros, sorkizárt konténer húzása Safariban 30 fps volt (60 képkocka alatt 732 mérés, kb. 1,5 mp).
