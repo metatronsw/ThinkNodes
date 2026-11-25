@@ -229,26 +229,39 @@ function roundedCorners(start, bends, end, wide) {
 }
 
 // Oda-vissza kötés (A → B és B → A): a két vonal ne fedje egymást. Mindkettő a saját haladási irányához képest jobbra
-// tolódik `pairGap` képponttal (a két doboz ennyivel eltolt helyéből számolva), így egymás mellett, párhuzamosan futnak,
-// és a csatlakozási pontjaik is egymás mellé kerülnek. (Rendering.swift ugyanígy számol.)
-export const pairGap = 6;
-// A lap vonalainak útvonalai ("forrás>cél"); ebből derül ki, van-e egy vonalnak ellenirányú párja.
+// tolódik (a két doboz ennyivel eltolt helyéből számolva), így egymás mellett, párhuzamosan futnak, és a csatlakozási
+// pontjaik is egymás mellé kerülnek. Az eltolás a két vonal vastagságával nő, hogy vastag vonalak se érjenek össze, és
+// egyik nyílhegye se lógjon rá a másik vonalra: a két középvonal távolsága az egyik nyílhegy fél szélessége (a nyílhegy
+// fél hossza) + a másik vonal fél vastagsága + 4 képpont, a két irány közül a nagyobb, de legalább 12. Két 2-es vonalnál
+// 12, két 12-esnél 27, két 24-esnél 45 képpont. (Rendering.swift ugyanígy számol.)
+export function pairShift(width, partner) {
+  const reach = (own, other) => arrowLength(own) / 2 + other / 2 + 4;
+  return Math.max(12, reach(width, partner), reach(partner, width)) / 2;
+}
+// A lap vonalainak útvonalai ("forrás>cél" → a vonal vastagsága); ebből derül ki, van-e egy vonalnak ellenirányú párja.
 export function wireRoutes(edges) {
-  const routes = new Set();
-  for (const edge of edges) if (edge.source && edge.target?.node) routes.add(edge.source + ">" + edge.target.node);
+  const routes = new Map();
+  for (const edge of edges) {
+    if (!edge.source || !edge.target?.node) continue;
+    const route = edge.source + ">" + edge.target.node;
+    routes.set(route, Math.max(routes.get(route) ?? 0, edgePaint(edge).lineWidth));
+  }
   return routes;
 }
-export const hasReverse = (edge, routes) => !!(edge.source && edge.target?.node && edge.source !== edge.target.node &&
-  routes.has(edge.target.node + ">" + edge.source));
+// Az ellenirányú pár vastagsága, vagy 0, ha a vonalnak nincs párja.
+export const reverseWidth = (edge, routes) => edge.source && edge.target?.node && edge.source !== edge.target.node
+  ? routes.get(edge.target.node + ">" + edge.source) ?? 0 : 0;
 
-export function edgeGeometry(edge, findNode, nested = 0, paired = false) {
+// `paired`: az ellenirányú pár vastagsága (0 = nincs pár).
+export function edgeGeometry(edge, findNode, nested = 0, paired = 0) {
   let sourceNode = findNode(edge.source);
   let targetNode = findNode(edge.target.node);
   if (paired && !nested && sourceNode && targetNode && !isDataLink(edge, findNode)) {
     const across = targetNode.position.x - sourceNode.position.x, down = targetNode.position.y - sourceNode.position.y;
     const length = Math.hypot(across, down);
     if (length > 0) {
-      const shift = {x: -down / length * pairGap, y: across / length * pairGap};
+      const gap = pairShift(edgePaint(edge).lineWidth, paired);
+      const shift = {x: -down / length * gap, y: across / length * gap};
       sourceNode = {...sourceNode, position: {x: sourceNode.position.x + shift.x, y: sourceNode.position.y + shift.y}};
       targetNode = {...targetNode, position: {x: targetNode.position.x + shift.x, y: targetNode.position.y + shift.y}};
     }
@@ -511,7 +524,7 @@ export function canvasBounds(board) {
   }
   const routes = wireRoutes(board.edges);
   for (const edge of board.edges) {
-    const geometry = edgeGeometry(edge, id => nodes.get(id), 0, hasReverse(edge, routes));
+    const geometry = edgeGeometry(edge, id => nodes.get(id), 0, reverseWidth(edge, routes));
     for (const {x, y} of geometry.boundsPoints) {
       halfWidth = Math.max(halfWidth, Math.abs(x) + 40);
       halfHeight = Math.max(halfHeight, Math.abs(y) + 40);

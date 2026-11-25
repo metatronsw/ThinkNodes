@@ -1,5 +1,11 @@
 # Változások
 
+## 2026-11-25 – Oda-vissza kötés: a távolság a vonalvastagsághoz igazodik
+
+- Az oda-vissza kötés két vonala közti távolság eddig fix 12 képpont volt, így két vastag (pl. 12-es) vonal összeért. Most a két középvonal távolsága: az egyik nyílhegy fél szélessége + a másik vonal fél vastagsága + 4 képpont (a két irány közül a nagyobb), de legalább 12. Két 2-es vonalnál 12 (változatlan), két 12-esnél 27, két 24-esnél 45, 2-es és 12-es párnál 22 képpont. Így sem a vonalak, sem a nyílhegyek nem érnek a másik vonalhoz.
+- A vastagság változtatásakor a pár mindkét vonala újraszámolódik. Szerkesztő, megtekintő és szerver párban (`geometry.js pairShift`, `wireRoutes`, `reverseWidth`; `Rendering.swift`).
+- Ellenőrzés: Safari képernyőkép a szerkesztőről és a megtekintőről 12-es, 24-es és vegyes (2 + 12) párral. `test.sh render editor` rendben. Szerverkód változott: release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – Oda-vissza kötés: a két vonal egymás mellett fut
 
 - Ha két doboz között mindkét irányban van vonal (A → B és B → A), a két vonal nem fedi egymást: mindkettő a saját haladási irányához képest jobbra tolódik 6 képponttal, így párhuzamosan, 12 képpontra egymástól futnak, és a csatlakozási pontjaik is egymás mellé kerülnek. Egyirányú kötés változatlan. Azonos irányú második vonal továbbra sem húzható.

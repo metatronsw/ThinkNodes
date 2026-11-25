@@ -1275,22 +1275,27 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
         return false
     }
     var definitions: [String] = []
-    // Oda-vissza kötés (A → B és B → A): mindkét vonal a saját haladási irányához képest jobbra tolódik 6 képponttal
-    // (a két doboz eltolt helyéből számolva), így egymás mellett futnak (geometry.js edgeGeometry, pairGap).
-    let pairGap = 6.0
-    let routes = Set(board.edges.compactMap { edge -> String? in
-        guard let from = edge.source, let to = edge.target.node else { return nil }
-        return from + ">" + to
-    })
+    // Oda-vissza kötés (A → B és B → A): mindkét vonal a saját haladási irányához képest jobbra tolódik (a két doboz
+    // eltolt helyéből számolva), így egymás mellett futnak; az eltolás a két vonal vastagságával és nyílhegyével nő
+    // (geometry.js edgeGeometry, pairShift).
+    var routes: [String: Double] = [:]
+    for edge in board.edges {
+        guard let from = edge.source, let to = edge.target.node else { continue }
+        routes[from + ">" + to] = max(routes[from + ">" + to] ?? 0, edge.lineWidth)
+    }
     let edges = board.edges.compactMap { edge -> (layer: Int, markup: String)? in
         var sourceNode = edge.source.flatMap { nodes[$0] }
         var targetNode = edge.target.node.flatMap { nodes[$0] }
-        if let from = sourceNode, let to = targetNode, from.id != to.id, routes.contains(to.id + ">" + from.id),
+        if let from = sourceNode, let to = targetNode, from.id != to.id, let partner = routes[to.id + ">" + from.id],
            !dataLinks.contains(edge.id), !isInside(to, from), !isInside(from, to) {
             let across = to.position.x - from.position.x, down = to.position.y - from.position.y
             let length = (across * across + down * down).squareRoot()
             if length > 0 {
-                let shift = Point(x: -down / length * pairGap, y: across / length * pairGap)
+                // A nyílhegy hossza (geometry.js arrowLength); a fél szélessége a fél hossza.
+                func arrow(_ width: Double) -> Double { min(width * 6.75, 13.5 + (width - 2) * 2) }
+                func reach(_ own: Double, _ other: Double) -> Double { arrow(own) / 2 + other / 2 + 4 }
+                let gap = max(12, reach(edge.lineWidth, partner), reach(partner, edge.lineWidth)) / 2
+                let shift = Point(x: -down / length * gap, y: across / length * gap)
                 sourceNode?.position = Point(x: from.position.x + shift.x, y: from.position.y + shift.y)
                 targetNode?.position = Point(x: to.position.x + shift.x, y: to.position.y + shift.y)
             }

@@ -14,9 +14,9 @@ import {justifyRows, justifyShifts} from "./justify.js?v=7";
 import {canvasMarkdown, canvasMarkdownAvailable} from "./canvas-markdown.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, hasReverse, wireRoutes, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=29";
+import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, reverseWidth, wireRoutes, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=31";
 
-import {ancestors, layerOrder, overlapFraction} from "./containers.js?v=8";
+import {ancestors, layerOrder, overlapFraction} from "./containers.js?v=10";
 import {glowFilter, glowId, glowReach, glowVNode} from "./glow.js";
 import {awaitWebPreview} from "./web-preview-refresh.js";
 import {cellName, columnName, decodeTable, encodeTable, limits as tableLimits} from "./table/table-document.js";
@@ -662,13 +662,13 @@ createApp({
       return ancestors(source, index).some(node => node.id === target.id) ? -1 : 0;
     }
 
-    // A lap útvonalai az oda-vissza kötések felismeréséhez (geometry.js hasReverse). Csak vonal felvételekor, törlésekor
-    // vagy átkötésekor számolódik újra; a tartalma szerint azonos halmaz ugyanaz az objektum marad, így a vonalak nem
+    // A lap útvonalai (vastagsággal) az oda-vissza kötések felismeréséhez (geometry.js reverseWidth). Csak vonal
+    // felvételekor, törlésekor, átkötésekor vagy a vastagság változásakor számolódik újra; a tartalma szerint azonos halmaz ugyanaz az objektum marad, így a vonalak nem
     // rajzolódnak újra fölöslegesen.
-    let knownRoutes = new Set();
+    let knownRoutes = new Map();
     const routes = computed(() => {
       const next = wireRoutes(sceneEdges.value);
-      if (next.size === knownRoutes.size && [...next].every(route => knownRoutes.has(route))) return knownRoutes;
+      if (next.size === knownRoutes.size && [...next].every(([route, width]) => knownRoutes.get(route) === width)) return knownRoutes;
       knownRoutes = next;
       return next;
     });
@@ -676,8 +676,8 @@ createApp({
       const source = drawnNode(edge.source), target = drawnNode(edge.target.node);
       const start = source?.position ?? edge.sourcePoint, end = target?.position ?? edge.target.point;
       const nested = nestingDirection(source, target);
-      const paired = hasReverse(edge, routes.value);
-      const inputs = [graphics.value, edge.type, nested, paired,
+      const paired = reverseWidth(edge, routes.value);
+      const inputs = [graphics.value, edge.type, nested, paired, paired && edgePaint(edge).lineWidth,
         start.x, start.y, source?.width, source?.height, source?.shape, source?.type,
         end.x, end.y, target?.width, target?.height, target?.shape, target?.type];
       const cached = edgeGeometries.get(edge);
