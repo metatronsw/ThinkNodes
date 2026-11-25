@@ -141,7 +141,8 @@ import VaporTesting
     let groupStart = try #require(svg.range(of: "aria-label=\"Konténer\" transform="))
     let edgeStart = try #require(svg.range(of: "marker-end=\"url(#arrow-line)"))
     let childStart = try #require(svg.range(of: "aria-label=\"Ötlet\" transform="))
-    #expect(groupStart.lowerBound < edgeStart.lowerBound && edgeStart.lowerBound < childStart.lowerBound)
+    // Minden vonal minden doboz fölött van (a konténer és a tartalma fölött is).
+    #expect(groupStart.lowerBound < edgeStart.lowerBound && childStart.lowerBound < edgeStart.lowerBound)
     let plain = boardSVG(board)
     #expect(!plain.contains("worksheet-grid"))
     #expect(!plain.contains("stroke=\"none\"/>"))
@@ -318,18 +319,22 @@ import VaporTesting
     #expect(!boardSVG(Worksheet(title: "Animáció", nodes: [box])).contains("data-box-animation"))
 }
 
-@Test func connectedWiresRenderBelowTheirEndpointsInsideContainers() throws {
+@Test func wiresRenderAboveEveryBoxExceptElevatedOnes() throws {
     let container = Idea(id: "container", text: "Konténer", position: Point(x: 0, y: 0),
                          width: 600, height: 320, container: true)
     let source = Idea(id: "source", text: "Kezdőpont", position: Point(x: -120, y: 0), parent: container.id)
     let target = Idea(id: "target", text: "Végpont", position: Point(x: 120, y: 0), animation: .pulse, parent: container.id)
     let edge = Connection(id: "wire", source: source.id, target: ConnectionTarget(node: target.id))
-    let svg = boardSVG(Worksheet(title: "Rétegek", nodes: [source, target, container], edges: [edge]), noteBase: "/retegek")
+    let raised = Idea(id: "raised", text: "Kiemelt", position: Point(x: 0, y: 200), elevated: true)
+    let svg = boardSVG(Worksheet(title: "Rétegek", nodes: [raised, source, target, container], edges: [edge]), noteBase: "/retegek")
     let containerOffset = try #require(svg.range(of: "id=\"object-container\"")).lowerBound
     let wireOffset = try #require(svg.range(of: "class=\"wire\"")).lowerBound
     let sourceOffset = try #require(svg.range(of: "id=\"object-source\"")).lowerBound
     let targetOffset = try #require(svg.range(of: "id=\"object-target\"")).lowerBound
-    #expect(containerOffset < wireOffset && wireOffset < sourceOffset && wireOffset < targetOffset)
+    let raisedOffset = try #require(svg.range(of: "id=\"object-raised\"")).lowerBound
+    // A vonal minden doboz fölött van, a Kiemelt objektum alatt.
+    #expect(containerOffset < wireOffset && sourceOffset < wireOffset && targetOffset < wireOffset)
+    #expect(wireOffset < raisedOffset)
 }
 
 @Test func wiresBetweenBoxesInDifferentContainersRenderAboveBothContainers() throws {

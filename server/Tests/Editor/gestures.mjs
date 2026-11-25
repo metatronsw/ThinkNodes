@@ -209,7 +209,8 @@ await tick();
 checkpoint = structuredClone(sheet);
 
 const oneWire = () => find(n => n.tag === "g" && n.props["data-edge"] === "one");
-assert.ok(oneWire().parent.children.indexOf(oneWire()) < oneWire().parent.children.indexOf(graphic("outside")));
+// Minden vonal minden (nem kiemelt) doboz fölött van.
+assert.ok(oneWire().parent.children.indexOf(oneWire()) > oneWire().parent.children.indexOf(graphic("outside")));
 const panel = () => find(n => n.tag === "aside" && n.props["aria-label"] !== "Munkalap");
 const titleActions = [];
 const labelInput = () => prop("data-object-label", "", panel());
@@ -489,7 +490,7 @@ assert.ok(innerWire, "an inward drag connects to the innermost box");
 const orderedScene = graphic("outer").parent.children;
 const wireGraphic = prop("data-edge", innerWire.id);
 assert.ok(orderedScene.indexOf(wireGraphic) > orderedScene.indexOf(graphic("inner")), "the wire paints over both containers");
-assert.ok(orderedScene.indexOf(wireGraphic) < orderedScene.indexOf(graphic("child")), "the wire paints beneath the inner box");
+assert.ok(orderedScene.indexOf(wireGraphic) > orderedScene.indexOf(graphic("child")), "the wire paints over the inner box too");
 await press("Visszavonás"); await save();
 await properties("outer");
 const outerText = prop("aria-label", "Text", panel());

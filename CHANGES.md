@@ -1,5 +1,15 @@
 # Változások
 
+## 2026-11-25 – Vonalak rétege: minden vonal minden doboz fölött
+
+- **Egyetlen szabály:** minden vonal minden doboz fölött fut – konténer, a konténer tartalma és a sima dobozok fölött is. Kivétel a **Kiemelt** objektum: az a vonalak fölött van.
+- **data-connection:** a táblázatot (vagy CSV-t) és grafikont összekötő különleges vonal (eddigi nevén adatvonal) neve mostantól data-connection; ez mindig minden objektum mögött van (változatlan).
+- Megszűnt a korábbi, végpontoktól és konténerektől függő rétegszámítás („a vonal a végpontjai alatt, az őket tartalmazó konténerek fölött”; konténer és belső doboza közti vonal külön esete; szabad végű vonal konténerből). Következmény: a vonal láthatóan átmegy az útjába eső dobozokon, és a vonal eleje / vége a doboz szélén a doboz fölé rajzolódik.
+- Szerkesztő és szerver párban (`editor.js wireLayers`, `Rendering.swift`). Tesztek az új szabályhoz igazítva: `wiresRenderAboveEveryBoxExceptElevatedOnes` (Kiemelt dobozzal bővítve), `containerStylesAndJunctionsSurviveRoundTrip`, `gestures.mjs` két elvárása. `test.sh render editor worksheet` rendben.
+- Ellenőrzés: Safari, próbalap beágyazott konténerekkel és egy Kiemelt dobozzal: a szerkesztőben és a megtekintőben minden vonal az összes doboz után, a Kiemelt előtt rajzolódik.
+- Visszalépési pont, ha nem válik be: az ezt megelőző commit (`ecc4d94`).
+- Szerverkód változott: release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – Csomópont konténerben; sok kijelölt vonal gyorsabb
 
 - **Csomópont ejtése:** dobozra ejtve változatlanul feloldódik a dobozban (a vonalai a dobozhoz kötődnek). Konténerre ejtve nem oldódik fel: a konténer tartalma lesz, megmarad a vonalaival, és a konténeren belül szabadon mozgatható (a konténer szövege nem kerüli ki). Konténeren belüli dobozra ejtve abban a dobozban oldódik fel. Eddig a konténer is „doboznak” számított, ezért a konténeren belüli csomópont az első mozdításra feloldódott a konténerben, és csomópontot nem lehetett a konténerbe húzni. (`editor.js junctionDropTarget`; csoportos mozgatásra és vonal kettévágására ugyanez a szabály.)

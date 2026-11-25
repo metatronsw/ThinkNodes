@@ -472,25 +472,15 @@ createApp({
     });
     const containerIDs = computed(() => new Set(sceneNodes.value.filter(node => isBox(node) && node.container).map(node => node.id)));
     const orderedNodes = computed(() => layerOrder(sceneNodes.value, elevatedNodes.value, containerIDs.value));
+    // Vonalak rétege – egyetlen szabály: minden vonal minden doboz fölött fut (konténer, a tartalma és a sima dobozok
+    // fölött is), kivéve a Kiemelt objektumokat: azok a vonalak fölött vannak. Egyetlen kivétel a data-connection
+    // (táblázatot és grafikont összekötő adatvonal): az mindig minden objektum mögött van.
     const wireLayers = computed(() => {
       const nodes = orderedNodes.value;
-      const order = new Map(nodes.map((node, index) => [node.id, index]));
       const firstElevated = nodes.findIndex(node => elevatedNodes.value.has(node.id));
+      const top = firstElevated >= 0 ? firstElevated : nodes.length;
       const layers = Array.from({length: nodes.length + 1}, () => []);
-      for (const edge of sceneEdges.value) {
-        const source = order.get(edge.source) ?? nodes.length;
-        const target = order.get(edge.target.node) ?? nodes.length;
-        const from = nodeMap.value.get(edge.source), to = nodeMap.value.get(edge.target.node);
-        const nested = nestingDirection(from, to);
-        // A vonal a végpontjai alatt, de minden őket tartalmazó konténer fölött fut: két külön konténerben lévő doboz
-        // vonalát egyik konténer sem takarhatja (a konténer és a tartalma egy tömb a sorrendben). Szabad végű vonal
-        // konténerből: a konténer fölött, hogy a belsejébe húzva is látsszon.
-        const above = node => node?.parent ? Math.max(-1, ...ancestors(node, nodeMap.value).map(parent => order.get(parent.id) ?? -1)) + 1 : 0;
-        const loose = !from !== !to && containerIDs.value.has((from ?? to).id) ? order.get((from ?? to).id) + 1 : 0;
-        const index = nested ? Math.max(source, target) : Math.max(Math.min(source, target), above(from), above(to), loose);
-        // Adatvonal (táblázat ↔ grafikon): mindig minden objektum mögött van.
-        layers[dataLink(edge) ? 0 : index === nodes.length && firstElevated >= 0 ? firstElevated : index].push(edge);
-      }
+      for (const edge of sceneEdges.value) layers[dataLink(edge) ? 0 : top].push(edge);
       return layers;
     });
     const nodeMap = computed(() => new Map(sceneNodes.value.map(node => [node.id, node])));

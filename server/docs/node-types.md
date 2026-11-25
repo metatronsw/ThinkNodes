@@ -200,7 +200,7 @@ Importált szöveges fájl: minden nem bináris fájl (UTF-8, NUL bájt nélkül
   számoszlop (legfeljebb 8, pont: 3, kör: 1); `header: false` = az első sor is adat. A mező csak `chart` típuson érvényes.
 - **Képességek:** `chart`, `comment`, `surface`, `elevation`, `size`. Táblázat-beállítása, fájlneve nincs.
 - **Létrehozás:** a táblázat / CSV paneljén vagy helyi menüjében „Grafikon létrehozása”: új grafikon a táblázat mellett, bekötve.
-- **Adatvonal:** táblázatot (vagy CSV-t) és grafikont összekötő vonal. Nem tárolt tulajdonság és nem választható: a két
+- **data-connection (adatvonal):** táblázatot (vagy CSV-t) és grafikont összekötő vonal; mindig minden objektum mögött van (a többi vonal minden doboz fölött, a Kiemelt objektumok alatt fut). Nem tárolt tulajdonság és nem választható: a két
   végpont típusa adja (`isDataLink`: geometry.js, Rendering.swift). Nyíl helyett mindkét végén félkorong áll, a lapos oldala a
   doboz oldalára simul (`plugTransform`); a nyílkapcsolók a panelen nem látszanak. A vonal egyébként közönséges: törölhető,
   átköthető, a színe, vastagsága, típusa állítható.
