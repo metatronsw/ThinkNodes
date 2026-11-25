@@ -11,10 +11,9 @@
 export const glowKinds = {
   // Más felhasználó kijelölése (doboz kerete, vonal): a munkalap glow-beállításából (graphics.glow, px).
   peer: glow => ({radii: [glow, glow * 2.5]}),
-  // Saját kijelölés: doboz felülete (világosítva), keret, csomópont karikája, vonal (világosítva).
-  ownSurface: () => ({radii: [2, 6], brightness: 1.18}),
+  // Saját kijelölés körvonala felület nélküli objektumon (Free doboz, átlátszó kép, csomópont). A doboz felülete és a
+  // vonal saját kijelölése már nem használ szűrőt (editor.js: selection-own-tint, wire-own-halo).
   ownFrame: () => ({radii: [2, 6]}),
-  ownWire: () => ({radii: [2, 5], brightness: 1.3}),
   search: () => ({radii: [6]}),
 };
 

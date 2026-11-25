@@ -1,5 +1,9 @@
 # Változások
 
+## 2026-11-25 – Takarítás a konténer- és vonalátalakítás után (a működés nem változik)
+
+- **Nem használt szűrők és CSS:** törölve az `ownSurface` és `ownWire` fényudvar-fajta (`glow.js`), a `--glow-own-surface` és `--glow-own-frame` CSS-változó (`editor.js`), és a mozgás közbeni szűrőkikapcsoló szabályból a három elavult elem (`app.css`). A doboz felülete és a vonal saját kijelölése már korábban szűrő nélküli lett.
+
 ## 2026-11-25 – Másik konténerbe áthúzott doboz húzás közben is látszik
 
 - **Hiba:** ha egy dobozt az egyik konténerből a másikba húztál, a doboz az egér elengedéséig eltűnt. Ok: húzás közben a doboz még a régi konténeréhez tartozik, és a konténer a tartalmával egy tömb a rajzolási sorrendben – a később rajzolt másik konténer ezért eltakarta.

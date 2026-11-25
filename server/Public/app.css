@@ -900,8 +900,7 @@ svg text { text-rendering: geometricPrecision; }
 /* Mozgás közben (pásztázás, nagyítás, húzás) a drága szűrők ki vannak kapcsolva; a mozgás végén visszaállnak. docs/PLAN.md C4. */
 /* Mozgás közben a saját kijelölés glow-ja is kikapcsol (a vastagabb keret jelzi a kijelölést): csoport húzásakor
    elemenként egy SVG-szűrőt kellett minden képkockában újraszámolni (17 doboz + 30 vonal: ~100 ms képkockánként). */
-.editor-workspace[data-moving] .editor-canvas :is(.node-surface[filter], .selection-glow, .selection-own, .search-candidate, .wire-glow, .wire-selected,
-    .wire-own, .own-selected .node-surface, .own-selected .node-frame) {
+.editor-workspace[data-moving] .editor-canvas :is(.node-surface[filter], .selection-glow, .selection-own, .search-candidate, .wire-glow, .wire-selected) {
   filter: none;
   animation: none;
 }

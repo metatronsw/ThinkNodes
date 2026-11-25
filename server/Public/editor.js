@@ -5195,9 +5195,7 @@ createApp({
       return [
         h("div", {class: "editor-workspace", "data-glass": graphics.value.glass ? mode.value : undefined, style: {
           "--sheet-glow": (graphics.value.glow ?? 3) + "px",
-          // A saját kijelölés és a keresési találat glow-ja CSS-ből hivatkozik a szűrőre (app.css).
-          "--glow-own-surface": glow("ownSurface", selectionTint()),
-          "--glow-own-frame": glow("ownFrame", selectionTint()),
+          // A keresési találat glow-ja CSS-ből hivatkozik a szűrőre (app.css).
           "--glow-search": glow("search", "#cf8200"),
         }}, [
           renderCanvas(),
