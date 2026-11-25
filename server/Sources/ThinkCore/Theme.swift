@@ -84,6 +84,20 @@ package struct VisualTheme: Content, Equatable {
         var lineScale: [String: LineScale]?
         /// A lekerekített doboz sarkának sugara vászonegységben (alap: 12).
         var boxRadius: Double?
+        /// A doboz kerete a témából (nélküle: 1,6 vastag, a kitöltésből számolt színnel). `width`: vastagság; `color`:
+        /// "fill" = a doboz saját színe, kitöltött dobozon is; `fillOpacity`: a kitöltött felület átlátszatlansága
+        /// (áttetsző módban a fele); `halo`: a keret körüli fényudvar átlátszatlansága (háromszoros vastagságú körvonal).
+        package struct Frame: Codable, Equatable, Sendable {
+            var width: Double?
+            var color: String?
+            var fillOpacity: Double?
+            var halo: Double?
+            var valid: Bool {
+                (0.5...16.0).contains(width ?? 1.6) && ["auto", "fill"].contains(color ?? "auto")
+                    && (0.0...1.0).contains(fillOpacity ?? 1) && (0.0...1.0).contains(halo ?? 0)
+            }
+        }
+        var frame: Frame?
         /// Látványcsomag (jelenleg: "liquid"): gazdagabb dobozfelület, háttérfények, rámutatás-, kattintás- és
         /// kijelöléseffektek. A csomag stílusai az app.css `[data-effects]` szabályaiban vannak; téma nélküle nem fizet értük.
         var effects: String?
@@ -137,6 +151,7 @@ package struct VisualTheme: Content, Equatable {
         for (name, scale) in graphics.lineScale ?? [:] {
             guard ConnectionType(rawValue: name) != nil, scale.valid else { return false }
         }
+        guard graphics.frame?.valid ?? true else { return false }
         guard (0.0...40.0).contains(graphics.boxRadius ?? 12), ["liquid"].contains(graphics.effects ?? "liquid") else { return false }
         let grids: [String] = ["dots", "lines", "drafting"]
         guard grids.contains(graphics.grid ?? "dots") else { return false }

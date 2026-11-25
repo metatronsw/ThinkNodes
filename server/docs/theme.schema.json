@@ -281,6 +281,34 @@
           "enum": [
             "liquid"
           ]
+        },
+        "frame": {
+          "type": "object",
+          "description": "A doboz kerete: vastagság, szín (fill = a doboz saját színe), a kitöltött felület átlátszatlansága, fényudvar.",
+          "properties": {
+            "width": {
+              "type": "number",
+              "minimum": 0.5,
+              "maximum": 16
+            },
+            "color": {
+              "enum": [
+                "auto",
+                "fill"
+              ]
+            },
+            "fillOpacity": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "halo": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

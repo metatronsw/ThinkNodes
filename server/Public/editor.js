@@ -437,22 +437,31 @@ function shape(node, linked, dropTarget = false) {
   const glazed = liquid() && (mode === "solid" || mode === "translucent");
   const glass = !glazed && graphics.value.glass && mode === "solid" && !image;
   const fill = surfaceColor(node);
+  // A téma kerete (graphics.frame; Rendering.swift boxSurface): vastagság, a doboz saját színe, felület-átlátszatlanság, fényudvar.
+  const themed = graphics.value.frame ?? {};
   // Üres doboz: csak a keret látszik, a keret színe a doboz színe.
-  const frame = node.type === "preview" || frameless(node) ? "none" : empty ? paint(node.fill, 2) : image && !empty ? "none" : glass ? "url(#glass-rim)" : glazed ? "url(#fx-rim)" : automaticBorder(fill);
+  const frame = node.type === "preview" || frameless(node) ? "none" : empty ? paint(node.fill, 2) : image && !empty ? "none" : themed.color === "fill" ? fill : glass ? "url(#glass-rim)" : glazed ? "url(#fx-rim)" : automaticBorder(fill);
   const translucent = mode === "translucent";
-  const style = {fill: empty ? "none" : fill, stroke: frame, "fill-opacity": translucent ? .75 : undefined,
+  const frameWidth = themed.width ?? boxFrameWidth;
+  const opacity = themed.fillOpacity == null ? undefined : mode === "solid" ? themed.fillOpacity : translucent ? themed.fillOpacity / 2 : undefined;
+  // Fényudvar: a keret alatt háromszoros vastagságú, áttetsző körvonal (szűrő nélkül).
+  const halo = themed.halo > 0 && frame !== "none" ? h(tag, {...geometry, class: "node-halo", fill: "none", stroke: frame,
+    "stroke-width": frameWidth * 3, "stroke-opacity": themed.halo, "stroke-linejoin": "round", "pointer-events": "none", "aria-hidden": "true"}) : null;
+  const style = {fill: empty ? "none" : fill, stroke: frame, "fill-opacity": opacity ?? (translucent ? .75 : undefined),
     "pointer-events": empty ? "fill" : undefined, class: "node-surface",
-    "stroke-width": locked ? 6.4 : boxFrameWidth,
+    "stroke-width": locked ? Math.max(6.4, frameWidth + 3) : frameWidth,
     "data-locked-outline": locked ? "" : undefined};
   if (glazed) return [
-    h(tag, {...style, ...geometry, "fill-opacity": translucent ? .4 : .64}),
+    halo,
+    h(tag, {...style, ...geometry, "fill-opacity": opacity ?? (translucent ? .4 : .64)}),
     h(tag, {...geometry, class: "fx-sheen", fill: "url(#fx-sheen)", "pointer-events": "none", "aria-hidden": "true"}),
   ];
   if (glass) return [
-    h(tag, {...style, ...geometry, "fill-opacity": .66}),
+    halo,
+    h(tag, {...style, ...geometry, "fill-opacity": opacity ?? .66}),
     h(tag, {...geometry, fill: "url(#glass-sheen)", "pointer-events": "none", "aria-hidden": "true"}),
   ];
-  return h(tag, {...style, ...geometry});
+  return halo ? [halo, h(tag, {...style, ...geometry})] : h(tag, {...style, ...geometry});
 }
 
 // The stored endpoints are the tips. Stop the shaft at each triangle's base.
@@ -6004,6 +6013,8 @@ createApp({
           "data-effects": graphics.value.effects, style: {
           // A látványcsomag kijelölés- és kiemelésszíne (saját szín, illetve a paletta jelzőszíne).
           ...(liquid() ? {"--fx-select": selectionTint(), "--fx-accent": paint(4, 4)} : {}),
+          // Témából vastagított keretnél a saját kijelölés kerete ahhoz mérten vastagabb (app.css .own-selected).
+          ...(graphics.value.frame?.width ? {"--frame-selected": graphics.value.frame.width + 2.4 + "px"} : {}),
           "--sheet-glow": (graphics.value.glow ?? 3) + "px",
           // A keresési találat glow-ja CSS-ből hivatkozik a szűrőre (app.css).
           "--glow-search": glow("search", "#cf8200"),

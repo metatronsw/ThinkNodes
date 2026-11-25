@@ -835,7 +835,7 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 svg text { text-rendering: geometricPrecision; }
 /* Saját kijelölés (szerkesztő saját nézete): világosabb szín, vastagabb keret/vonal, glow és pulzálás nélkül.
    A többi felhasználó kijelölése továbbra is .selection-glow / .wire-glow. */
-.own-selected :is(.node-surface, .node-frame):not([data-locked-outline]) { stroke-width: 4px; }
+.own-selected :is(.node-surface, .node-frame):not([data-locked-outline]) { stroke-width: var(--frame-selected, 4px); }
 /* Szövegfájl-, CSV- és táblázatdobozon a saját kijelölés csak vastag keret, glow nélkül: a nagy felületen az SVG-szűrő
    bekapcsolása (kijelöléskor és a húzás végén) Safariban 200–300 ms-os megakadás volt. */
 /* A doboz felületén és keretén nincs szűrő: nagy (vagy a képernyőről kilógó) dobozon a Safari a szűrős felületet nem

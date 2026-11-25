@@ -28,6 +28,14 @@ A vonal vastagságát a téma adja: a vonal mérete (vékony 2, közepes 5, vast
 }
 ```
 
+## Dobozkeret
+
+A `frame` a dobozok keretét állítja. A `width` a vastagság (0,5–16, alap: 1,6). A `color: "fill"` esetén a keret a doboz saját színét kapja, kitöltött dobozon is (alap: `auto`, a kitöltésből számolt sötétebb szín). A `fillOpacity` a kitöltött felület átlátszatlansága (áttetsző módban a fele) – alacsony értékkel a doboz színes keretű, halványan színezett belsejű lesz. A `halo` a keret körüli fényudvar átlátszatlansága: háromszoros vastagságú, áttetsző körvonal, szűrő nélkül. A kép és az előnézet saját keretét nem érinti.
+
+```json
+"frame": {"width": 4, "color": "fill", "fillOpacity": 0.14, "halo": 0.28}
+```
+
 ## Látványcsomag
 
 Az `effects: "liquid"` gazdagabb megjelenést kapcsol be: áttetsző dobozfelület fénylő peremmel és csillogással, puha árnyék, lassan úszó háttérfények a paletta 4., 5. és 7. színéből, valamint rámutatás-, kattintás-, kijelölés- és pingeffektek. A statikus rész (felület, perem, árnyék, háttérfények) az SVG-exportban is megjelenik, a mozgás csak a böngészőben. A `boxRadius` a lekerekített doboz sarkának sugara (0–40, alap: 12). A csomag stílusai az `app.css` `[data-effects="liquid"]` szabályai, a doboz rétegeit az `editor.js` `liquid…` függvényei és a `Rendering.swift` adják. Csomag nélküli témában egyetlen plusz elem vagy szabály sem hat. A panelek és menük háttérelmosásához a `glass: true` is kell.

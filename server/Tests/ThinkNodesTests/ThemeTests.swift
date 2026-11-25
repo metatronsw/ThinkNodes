@@ -150,3 +150,22 @@ import VaporTesting
     sheet.appearance = Appearance(theme: 1, palette: 1)
     #expect(!boardSVG(sheet, mode: "dark").contains("fx-"))
 }
+
+@Test func themedBoxFrame() throws {
+    let theme = try #require(Themes.catalog.first { $0.name == "NeonGlow" })
+    #expect(theme.valid && theme.graphics?.frame?.width == 4)
+    var sheet = Worksheet(title: "Neon")
+    sheet.background = "@0"
+    sheet.appearance = Appearance(theme: theme.id, palette: 1)
+    sheet.nodes = [Idea(id: "box", text: "Neon", position: Point(x: 0, y: 0), fill: "@4", textColor: "@1")]
+    let svg = boardSVG(sheet, mode: "dark")
+    // A keret a doboz saját színe, a téma vastagságával; alatta háromszoros vastagságú fényudvar.
+    #expect(svg.contains(##"fill="#fe0ca9" stroke="#fe0ca9" stroke-width="4.000" fill-opacity="0.140""##))
+    #expect(svg.contains(##"class="node-halo" fill="none" stroke="#fe0ca9" stroke-width="12.000" stroke-opacity="0.280""##))
+    let bad = VisualTheme.Graphics.Frame(width: 40, color: "fill", fillOpacity: nil, halo: nil)
+    #expect(!bad.valid)
+    // Keret nélküli témában a doboz változatlan.
+    sheet.appearance = Appearance(theme: 1, palette: 1)
+    let plain = boardSVG(sheet, mode: "dark")
+    #expect(plain.contains(#"stroke-width="1.6""#) && !plain.contains("node-halo"))
+}

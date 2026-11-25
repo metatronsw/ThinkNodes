@@ -1,5 +1,14 @@
 # Változások
 
+## 2026-11-25 – Dobozkeret a témából (vastagság, szín, fényudvar); a NeonGlow vastag neon kereteket kap
+
+- **Új témamező: `graphics.frame`** (`Theme.swift Frame`, `editor.js shape`, `Rendering.swift boxSurface`): `width` – a keret vastagsága (0,5–16, alap 1,6); `color: "fill"` – a keret a doboz saját színe, kitöltött dobozon is; `fillOpacity` – a kitöltött felület átlátszatlansága (áttetsző módban a fele); `halo` – fényudvar a keret körül (háromszoros vastagságú, áttetsző körvonal, szűrő nélkül). Leírás: `server/docs/themes.md`, séma: `theme.schema.json`.
+- A zárolt konténer kerete a témakeretnél 3 egységgel vastagabb (legalább 6,4); a saját kijelölés kerete 2,4-gyel vastagabb a témakeretnél (`--frame-selected`). A kép és az előnézet saját keretét nem érinti. Keret nélküli témában semmi nem változik (teszt ellenőrzi).
+- **NeonGlow:** `frame: {width: 4, color: "fill", fillOpacity: 0.14, halo: 0.28}` – minden doboz vastag, a saját színével világító keretet és halványan színezett belsőt kap. A paletta 2-es színe (az új dobozok alapszíne) sötét panel helyett neon ibolya („Neoncső”), hogy az alapdoboz kerete is világítson. A bemutató dobozai már nem „Üres” módban, hanem alapmódban állnak.
+- Safariban (NeonGlow bemutató, esti mód, 1600 × 948): nyugalom, rámutatás, pásztázás, nagyítás, kijelölés egyaránt 60 fps. Képernyőképpel ellenőrizve nappali és esti módban.
+- Tesztek: új `themedBoxFrame` átmegy; a négy régi bukó renderteszt változatlan (BUGS.md).
+- Szerverkód változott (`Theme.swift`, `Rendering.swift`, verziószámok): release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – NeonGlow téma (retrowave, három paletta) és bemutató projekt – kódmódosítás nélkül
 
 - **Új téma: NeonGlow** (`server/Public/themes/NeonGlow.json`, téma-ID 5), csak témafájl, a kód nem változott. Három paletta 16–16 színnel: Miami (neon rózsa, cián, ultraibolya), Tokió (jégkék, magenta, savzöld), Outrun (naplemente narancs, forró rózsa, aranysárga).

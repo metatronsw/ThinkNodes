@@ -25,9 +25,9 @@
         },
         {
           "id": 2,
-          "name": "Panel",
-          "light": "#452d5e",
-          "dark": "#1a0b29"
+          "name": "Neoncső",
+          "light": "#b179eb",
+          "dark": "#bf82ff"
         },
         {
           "id": 3,
@@ -127,9 +127,9 @@
         },
         {
           "id": 2,
-          "name": "Panel",
-          "light": "#273767",
-          "dark": "#08112e"
+          "name": "Neoncső",
+          "light": "#6c91fe",
+          "dark": "#7ea0fd"
         },
         {
           "id": 3,
@@ -229,9 +229,9 @@
         },
         {
           "id": 2,
-          "name": "Panel",
-          "light": "#582645",
-          "dark": "#25061a"
+          "name": "Neoncső",
+          "light": "#df67b0",
+          "dark": "#f46cbf"
         },
         {
           "id": 3,
@@ -363,6 +363,12 @@
     "motionSpeed": 1.2,
     "grid": "lines",
     "glass": true,
+    "frame": {
+      "width": 4,
+      "color": "fill",
+      "fillOpacity": 0.14,
+      "halo": 0.28
+    },
     "fonts": [
       "'Avenir Next', 'Helvetica Neue', system-ui, sans-serif",
       "Futura, 'Avenir Next Condensed', 'Trebuchet MS', sans-serif",

@@ -48,7 +48,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/lib/d3-zoom.js?v=1"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=82"></script>
+        <script type="module" src="/editor.js?v=83"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -59,7 +59,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=52">
+          <link rel="stylesheet" href="/app.css?v=53">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -780,17 +780,23 @@ private func boxSurface(_ node: Idea, geometry: String, graphics: VisualTheme.Gr
     let liquid = graphics?.effects == "liquid" && [.solid, .translucent].contains(mode)
     let glass = !liquid && graphics?.glass == true && mode == .solid && !image
     let fill = node.fill
+    // A téma kerete (editor.js shape): vastagság, a doboz saját színe, a felület átlátszatlansága, fényudvar.
+    let frame = graphics?.frame
+    let themed = frame?.color == "fill"
+    let frameWidth = frame?.width ?? 1.6
     // Üres doboz keretének színe a doboz színe.
     // Szövegfájl- és táblázatdoboz kerete kikapcsolható (frame: false), bármelyik háttérmód mellett.
     let frameless = node.type == "preview" || (node.isTextFile && node.frame == false)
-    let stroke = frameless ? "none" : empty ? escaped(node.fill) : image ? "none" : glass ? "url(#glass-rim)" : liquid ? "url(#fx-rim)" : escaped(node.border)
+    let stroke = frameless ? "none" : empty ? escaped(node.fill) : image ? "none" : themed ? escaped(node.fill) : glass ? "url(#glass-rim)" : liquid ? "url(#fx-rim)" : escaped(node.border)
     // Minden doboz kerete sima és egyforma vastag (a zárolt konténer jelzése kivétel).
-    let width = locked ? "6.4" : "1.6"
+    let width = locked ? frame?.width.map { number(max(6.4, $0 + 3)) } ?? "6.4" : frame?.width.map(number) ?? "1.6"
     let dash = ""
     let closed = locked ? " data-locked-outline=\"\"" : ""
-    let effect = glass ? " fill-opacity=\".66\"" : liquid ? " fill-opacity=\"\(mode == .translucent ? ".4" : ".64")\"" : mode == .translucent ? " fill-opacity=\".75\"" : ""
+    let opacity = frame?.fillOpacity.flatMap { mode == .solid ? $0 : mode == .translucent ? $0 / 2 : nil }
+    let effect = opacity.map { " fill-opacity=\"\(number($0))\"" } ?? (glass ? " fill-opacity=\".66\"" : liquid ? " fill-opacity=\"\(mode == .translucent ? ".4" : ".64")\"" : mode == .translucent ? " fill-opacity=\".75\"" : "")
+    let halo = (frame?.halo).flatMap { $0 > 0 && stroke != "none" ? "<\(geometry) class=\"node-halo\" fill=\"none\" stroke=\"\(stroke)\" stroke-width=\"\(number(frameWidth * 3))\" stroke-opacity=\"\(number($0))\" stroke-linejoin=\"round\" pointer-events=\"none\" aria-hidden=\"true\"/>" : nil } ?? ""
     let pointer = empty && interactive ? " pointer-events=\"fill\"" : ""
-    let surface = "<\(geometry) class=\"node-surface\" fill=\"\(empty ? "none" : escaped(fill))\" stroke=\"\(stroke)\" stroke-width=\"\(width)\"\(closed)\(dash)\(effect)\(pointer)/>"
+    let surface = halo + "<\(geometry) class=\"node-surface\" fill=\"\(empty ? "none" : escaped(fill))\" stroke=\"\(stroke)\" stroke-width=\"\(width)\"\(closed)\(dash)\(effect)\(pointer)/>"
     if liquid { return surface + "<\(geometry) class=\"fx-sheen\" fill=\"url(#fx-sheen)\" pointer-events=\"none\" aria-hidden=\"true\"/>" }
     return surface + (glass ? "<\(geometry) fill=\"url(#glass-sheen)\" pointer-events=\"none\" aria-hidden=\"true\"/>" : "")
 }

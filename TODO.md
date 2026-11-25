@@ -95,5 +95,5 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 
 # TÉMÁK
 
-+ Dobozkeret a témából (2026-11-25, a NeonGlow témához félretéve): a keret vastagsága (most rögzített 1,6) és színe (pl. a doboz színe, kitöltött doboznál is) legyen témamező – ezzel lesz a NeonGlow kerete valóban vastag. Kódmódosítás kell hozzá (`editor.js shape`, `Rendering.swift boxSurface`, `Theme.swift`).
++ Kész (2026-11-25): dobozkeret a témából (`graphics.frame`: vastagság, szín, felület-átlátszatlanság, fényudvar). Hátra: élénk kitöltésű doboz szövegszíne nem igazodik magától; a keretszín csak „auto” vagy a doboz színe lehet.
 + NeonGlow: a Tokió és az Outrun paletta, a megtekintő és az SVG-export szemmel még nincs megnézve.
