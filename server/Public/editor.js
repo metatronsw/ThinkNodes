@@ -1847,7 +1847,8 @@ createApp({
       const targets = new Set();
       if (!drag?.moved || drag.waiting || drag.locked) return targets;
       function mark(node, excluded, capture = true) {
-        const target = node && !isJunction(node) && dropReceiver(node, excluded);
+        // Csomópont: a konténer akkor cél, ha a csomópont nem egy (belső) dobozban oldódna fel.
+        const target = node && !(isJunction(node) && junctionDropTarget(node, excluded)) && dropReceiver(node, excluded);
         if (target && target.id !== node.parent) targets.add(target.id);
         if (capture && node && capturableChildren(node, excluded).length) targets.add(node.id);
       }
@@ -1869,11 +1870,15 @@ createApp({
       return targets;
     });
 
+    // A dobozra ejtett csomópont feloldódik a dobozban (a vonalai a dobozhoz kötődnek). Konténerre ejtve nem: ott a
+    // konténer tartalma lesz (dropParent), és a konténeren belül szabadon mozgatható. Konténeren belüli dobozra ejtve
+    // abban a dobozban oldódik fel (a legfelső doboz számít).
     function junctionDropTarget(node, excluded) {
       if (!isJunction(node)) return;
       const point = drawnNode(node.id).position;
-      return orderedNodes.value.findLast(box => !isJunction(box) && !excluded?.has(box.id) &&
+      const box = orderedNodes.value.findLast(box => !isJunction(box) && !excluded?.has(box.id) &&
         shapeDistance(drawnNode(box.id), point) <= 1);
+      return box && containerIDs.value.has(box.id) ? undefined : box;
     }
 
     const junctionTarget = computed(() => {
@@ -4035,16 +4040,22 @@ createApp({
         // újrarajzolni vagy újrastílusozni. Erős nagyításnál a vonal maga szélesebb ennél: ott a látható vonal fogja a kattintást.
         h("path", {"data-editor-only": "", d, stroke: "transparent", "stroke-width": 14, "vector-effect": "non-scaling-stroke",
           "pointer-events": "stroke", class: "wire-hit"}),
-        // Kijelölés: a meglévő vonal, nyilak és animáció kap árnyék alapú glow-t, így a jelzés pontosan az eredeti geometriát követi.
+        // Más felhasználó kijelölése: a meglévő vonal, nyilak és animáció kap árnyék alapú glow-t (SVG-szűrő).
+        // Saját kijelölés: szűrő nélkül, a vonal alá rajzolt szélesebb, áttetsző sávval (wire-own-halo). A vonalankénti
+        // szűrő a vonal teljes befoglaló téglalapjára számol: sok kijelölt (hosszú, átlós) vonalnál a kijelölés és a
+        // csoport húzása másodperces megakadás volt, és a Safari a túl nagy szűrős vonalakat időnként nem rajzolta ki.
         h("g", {class: {"wire-own": local, "wire-glow": !!selectionColor},
-          filter: selectionColor ? glow("peer", selectionColor) : local ? glow("ownWire", paint.color) : undefined}, [
+          filter: selectionColor ? glow("peer", selectionColor) : undefined}, [
           // A szűrőterület a csoport befoglaló téglalapjához mér; vízszintes/függőleges vonalnál ez nulla vastag lenne,
           // ezért a két végpontra láthatatlan helytartó kerül, a glow kiterjedésével.
-          ...(selectionColor || local ? [from, to].map(point => {
-            const reach = glowReach(selectionColor ? "peer" : "ownWire", graphics.value.glow ?? 3) + paint.lineWidth;
+          ...(selectionColor ? [from, to].map(point => {
+            const reach = glowReach("peer", graphics.value.glow ?? 3) + paint.lineWidth;
             return h("rect", {x: point.x - reach, y: point.y - reach, width: 2 * reach, height: 2 * reach,
               fill: "none", stroke: "none", "pointer-events": "none", "aria-hidden": "true"});
           }) : []),
+          local && !selectionColor ? h("path", {"data-editor-only": "", class: "wire-own-halo", d, fill: "none", stroke: paint.color,
+            "stroke-opacity": .4, "stroke-width": paint.lineWidth + 8, "stroke-linecap": "round", "stroke-linejoin": "round",
+            "pointer-events": "none", "clip-path": clipPath}) : null,
           h("path", {class: "wire-line", ...stroke, ...(taper ? {fill: shaftColor} : {stroke: shaftColor}), "pointer-events": "visiblePainted", "clip-path": clipPath}, animation.shaft ? [animation.shaft] : undefined),
           renderArrow(ends.source, color, animatedArrows),
           renderArrow(ends.target, color, animatedArrows),

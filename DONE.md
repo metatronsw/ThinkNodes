@@ -196,3 +196,9 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 - **Vastag vonal túllóg a nyílhegyen a megtekintőben / exportban** (2026-11-25)
   - Javítva: a szerveroldali rajz is a nyílhegy talpáig húzza a vonalat (CHANGES.md). Safari képernyőképen ellenőrizve.
 
+- **Alt + téglalappal kijelölt sok vonal: lassulás, időnként eltűnő vonalak** (2026-11-25)
+  - Javítva: a saját kijelölésű vonal nem kap SVG-szűrőt, hanem a vonal alá rajzolt sávot (CHANGES.md).
+
+- **Konténerben lévő csomópont az első mozdításra feloldódik a konténerben; csomópont nem húzható konténerbe** (2026-11-25)
+  - Javítva: konténerre ejtve a csomópont a konténer tartalma lesz; dobozra ejtve változatlanul feloldódik.
+

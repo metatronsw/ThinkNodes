@@ -61,4 +61,6 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
   - a `dx` lista rövidítése (az utolsó szóköz utáni nullák elhagyása).
 - Keskeny konténerben a doboz melletti szűk helyre (40 képponttól) is kerül szöveg, szavanként egy sorban; lehetőség: nagyobb legkisebb szélesség, alatta a szöveg a doboz alatt folytatódjon.
 - Nyilak konténerben: a konténerből a saját belső dobozára húzott (beágyazott) vonal a konténer szélétől a dobozig tart; ha a doboz a szél közelében van, a vonal nagyon rövid. Lehetőség: más kiindulópont (pl. a konténer címsora vagy közepe felől).
+- Nagy csoport (150+ doboz és 200+ vonal) húzása lassú (Safari: 14 képkocka/mp): minden kijelölt doboz és vonal képkockánként újrarajzolódik, a végpontfogantyúkkal együtt. Lehetőség: a csoport együtt mozgatása egy közös transzformációval.
+- Konténer ráhúzása kint lévő csomópontra: a konténer a dobozokat befogja, a csomópontokat nem.
 

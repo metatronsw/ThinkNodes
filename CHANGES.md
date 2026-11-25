@@ -1,5 +1,12 @@
 # Változások
 
+## 2026-11-25 – Csomópont konténerben; sok kijelölt vonal gyorsabb
+
+- **Csomópont ejtése:** dobozra ejtve változatlanul feloldódik a dobozban (a vonalai a dobozhoz kötődnek). Konténerre ejtve nem oldódik fel: a konténer tartalma lesz, megmarad a vonalaival, és a konténeren belül szabadon mozgatható (a konténer szövege nem kerüli ki). Konténeren belüli dobozra ejtve abban a dobozban oldódik fel. Eddig a konténer is „doboznak” számított, ezért a konténeren belüli csomópont az első mozdításra feloldódott a konténerben, és csomópontot nem lehetett a konténerbe húzni. (`editor.js junctionDropTarget`; csoportos mozgatásra és vonal kettévágására ugyanez a szabály.)
+- **Sok kijelölt vonal (Alt + téglalap):** a saját kijelölésű vonal eddig vonalanként SVG-szűrőt (fényudvar) kapott a teljes befoglaló téglalapjára; sok vonalnál ez lassú volt, és a Safari a túl nagy szűrős vonalakat időnként nem rajzolta ki. Most szűrő helyett a vonal alá rajzolt szélesebb, áttetsző sáv jelzi a kijelölést (`wire-own-halo`); más felhasználó kijelölése változatlan. Safari, 300 dobozos mérőlap, 162 doboz + 209 vonal kijelölve: kijelölés húzása közben a leghosszabb akadás 247 → 83 ms, nagyításnál 295 → 143 ms, csoport húzása 9 → 14 képkocka/mp (leghosszabb akadás 1,1 → 0,19 mp).
+- Tesztek: a `gestures.mjs` két elvárása az új csomópont-szabályhoz igazítva (konténerre ejtve gyermek lesz, egyenként és csoportban húzva). `test.sh editor` rendben. Safariban kipróbálva: csomópont mozgatása konténeren belül, behúzás konténerbe, ejtés belső dobozra, kihúzás.
+- Csak kliensoldali változás.
+
 ## 2026-11-25 – Vastag vonal nem lóg túl a nyílhegyen (megtekintő, export)
 
 - **Ok:** a szerveroldali rajzban (megtekintő, SVG-export, előnézeti kép) a vonal a nyílhegy csúcsáig futott, a nyílhegy csak rá volt téve; vastag vonalnál a vonal vége (lekerekített véggel) kilógott a nyílhegy mellett és a csúcsán túl. A szerkesztő eddig is a nyílhegy talpánál fejezte be a vonalat.
