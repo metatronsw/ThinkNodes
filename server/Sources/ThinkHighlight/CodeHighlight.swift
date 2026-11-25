@@ -134,6 +134,19 @@ package enum CodeHighlight {
         return result
     }()
 
+    /// A színek szabályai, soronként egy; szó szerint megegyeznek a `Public/app.css` szabályaival (teszt őrzi).
+    /// Az önálló SVG-be (letöltés, előnézeti kép) ezek ágyazódnak be, mert ott nincs stíluslap.
+    package static let colourRules = [
+        ".hl-c { color: color-mix(in srgb, currentColor 55%, transparent); font-style: italic; }",
+        ".hl-o { color: color-mix(in srgb, currentColor 65%, transparent); }",
+        ".hl-s { color: color-mix(in oklab, currentColor 35%, #2f9e44); }",
+        ".hl-n { color: color-mix(in oklab, currentColor 35%, #e8750a); }",
+        ".hl-k { color: color-mix(in oklab, currentColor 35%, #d6336c); }",
+        ".hl-p { color: color-mix(in oklab, currentColor 35%, #1c7ed6); }",
+        ".hl-t { color: color-mix(in oklab, currentColor 35%, #0c9aa6); }",
+        ".hl-f { color: color-mix(in oklab, currentColor 35%, #7950f2); }",
+    ]
+
     /// E fölött (bájt) a szakaszok már nem kapnak színt: a vásznon a sok ezer `<span>` lassítja a nagyítást.
     package static let colouredLimit = 100_000
 

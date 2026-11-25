@@ -70,3 +70,12 @@ private func marks(_ source: String, _ ext: String) -> [String] {
     #expect(html.hasSuffix(String(repeating: row, count: 40)))
     #expect(html.hasPrefix("<span class=\"hl-o\">{</span>"))
 }
+
+/// Az önálló SVG-be ágyazott színszabályok ugyanazok, mint amiket a szerkesztő és a megtekintő használ (app.css).
+@Test func highlightColourRulesMatchTheStylesheet() throws {
+    let css = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("Public/app.css")
+    let lines = Set(try String(contentsOf: css, encoding: .utf8).split(separator: "\n").map(String.init))
+    #expect(CodeHighlight.colourRules.count == lines.filter { $0.hasPrefix(".hl-") }.count)
+    for rule in CodeHighlight.colourRules { #expect(lines.contains(rule), "Hiányzik az app.css-ből: \(rule)") }
+}

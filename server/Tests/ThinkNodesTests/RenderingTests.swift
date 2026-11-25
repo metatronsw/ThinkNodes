@@ -530,3 +530,21 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     bad.nodes[1].file = CanvasFile(asset: "adat.csv", filename: "adat.csv")
     #expect(throws: (any Error).self) { try bad.validate() }
 }
+
+/// Színezett kódfájl: az önálló SVG-be (letöltés, előnézeti kép) a színszabályok beágyazódnak; a megtekintő oldalon
+/// (ott az app.css adja) és színezhető kódfájl nélkül nincs beágyazott stílus.
+@Test func standaloneSVGEmbedsCodeColours() throws {
+    let position = Point(x: 0, y: 0)
+    let code = Idea(id: "code", type: "code", file: CanvasFile(asset: "file-code", filename: "adat.json"), position: position)
+    let sheet = Worksheet(title: "Kód", nodes: [code])
+    try sheet.validate()
+    let text: (Idea) -> String? = { _ in "{\"a\": true}" }
+    let exported = boardSVG(sheet, fileText: text)
+    #expect(exported.contains("<span class=\"hl-k\">true</span>"))
+    #expect(exported.contains("<style>.node-code {") && exported.contains(".hl-k { color: color-mix(in oklab, currentColor 35%, #d6336c); }"))
+    let viewed = boardSVG(sheet, noteBase: "/sheet", fileText: text)
+    #expect(viewed.contains("<span class=\"hl-k\">true</span>") && !viewed.contains("<style>"))
+    var plain = sheet
+    plain.nodes[0].file?.filename = "adat.py"
+    #expect(!boardSVG(plain, fileText: text).contains("<style>"))
+}

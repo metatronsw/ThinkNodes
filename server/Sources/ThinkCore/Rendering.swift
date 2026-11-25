@@ -1628,10 +1628,16 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
     func backdrop(_ fill: String) -> String {
         "<rect x=\"\(number(originX))\" y=\"\(number(originY))\" width=\"\(width)\" height=\"\(height)\" fill=\"\(fill)\"/>"
     }
+    // Önálló SVG (letöltés, előnézeti kép): nincs mellette stíluslap, ezért a színezett kódfájlok színszabályai és a
+    // kód alapformája (egyenközű betű, tördelés) beágyazva kerülnek a fájlba. A megtekintő oldalon az app.css adja.
+    let codeStyle = noteBase == nil && board.nodes.contains(where: { node in
+        node.type == "code" && CodeHighlight.supports((node.file?.filename as NSString?)?.pathExtension ?? "")
+    }) ? "<style>.node-code { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; } "
+        + CodeHighlight.colourRules.joined(separator: " ") + "</style>" : ""
     let svg = """
         <svg xmlns="http://www.w3.org/2000/svg" class="canvas passive-canvas" role="\(noteBase == nil ? "img" : "group")" aria-label="\(escaped(board.title))" width="\(width)" height="\(height)" viewBox="\(number(originX)) \(number(originY)) \(width) \(height)">
           \(noteBase == nil ? "<title>\(escaped(board.title))</title>" : "")
-          <defs>\(definitions.joined())\(grid)\(glassDefinitions)\(board.nodes.contains { $0.resolvedBackgroundMode == .blurred } ? "<filter id=\"box-background-blur\" x=\"-30%\" y=\"-30%\" width=\"160%\" height=\"160%\"><feGaussianBlur stdDeviation=\"2\"/></filter>" : "")</defs>
+          <defs>\(codeStyle)\(definitions.joined())\(grid)\(glassDefinitions)\(board.nodes.contains { $0.resolvedBackgroundMode == .blurred } ? "<filter id=\"box-background-blur\" x=\"-30%\" y=\"-30%\" width=\"160%\" height=\"160%\"><feGaussianBlur stdDeviation=\"2\"/></filter>" : "")</defs>
           \(backdrop(escaped(board.backgroundColor)))
           \(grid.isEmpty ? "" : backdrop("url(#draft-grid)"))
           \(scene.joined(separator: "\n"))

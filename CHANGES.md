@@ -1,5 +1,12 @@
 # Változások
 
+## 2026-11-25 – Kódszínezés a letölthető SVG-ben
+
+- Az önálló SVG-be (letöltés: `/export/svg/…`, és a lap előnézeti rajza) beágyazódnak a kódszínezés színszabályai és a kód alapformája (egyenközű betű, tördelés), ha a lapon van színezhető kódfájl (`codeStyle`, `Rendering.swift`). A megtekintő oldalon nincs beágyazás, ott az `app.css` adja.
+- A szabályok egy helyen: `CodeHighlight.colourRules` (ThinkHighlight); teszt őrzi, hogy szó szerint egyeznek az `app.css` `.hl-*` szabályaival (`highlightColourRulesMatchTheStylesheet`), és hogy az export tartalmazza őket (`standaloneSVGEmbedsCodeColours`).
+- Safariban kipróbálva: a `projects/test-container` letöltött SVG-je önállóan megnyitva színes (`demo.json`, `demo.css`).
+- Szerverkód változott: release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – Kódszínezés (JSON, CSS) és dobozon szerkesztés
 
 - **Kódszínezés:** a `.json` és a `.css` kódfájl doboza színezve jelenik meg a szerkesztőben és a megtekintőben. Saját, könnyű elemző (nem nyelvtani elemzés): megjegyzés, szöveg, szám, kulcsszó, kulcs / tulajdonságnév, szelektor, függvény, írásjel. A tévedés legfeljebb rossz szín, a fájl tartalmához a színező nem nyúl.
