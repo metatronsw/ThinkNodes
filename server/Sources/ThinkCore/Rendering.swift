@@ -468,11 +468,11 @@ private func ideaDrawing(_ idea: Idea, graphics: VisualTheme.Graphics? = nil, ob
     func measure(for line: IdeaLabelLine) -> (Character, MarkdownFormat?) -> Double {
         letterMeasure(size: line.size, bold: line.weight >= 700, monospace: monospace || line.code)
     }
-    // Körbefuttatás: az akadályok a címketerület bal felső sarkához mérve, 8 képpont térközzel (geometry.js labelLayout).
+    // Körbefuttatás: az akadályok a címketerület bal felső sarkához mérve, térközzel: fent és lent 8, két oldalt 18 képpont (geometry.js labelLayout).
     let flow = !obstacles.isEmpty
-    let margin = 8.0
+    let margin = 8.0, sideMargin = 18.0
     let blocked = obstacles.map { o in
-        (left: o.x - o.width / 2 - margin + labelWidth / 2, right: o.x + o.width / 2 + margin + labelWidth / 2,
+        (left: o.x - o.width / 2 - sideMargin + labelWidth / 2, right: o.x + o.width / 2 + sideMargin + labelWidth / 2,
          top: o.y - o.height / 2 - margin + max(0, labelHeight) / 2, bottom: o.y + o.height / 2 + margin + max(0, labelHeight) / 2)
     }
     func room(_ line: IdeaLabelLine) -> Double { line.slotWidth ?? labelWidth - line.indent }

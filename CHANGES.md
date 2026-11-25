@@ -1,5 +1,13 @@
 # Változások
 
+## 2026-11-25 – Körbefuttatás: ritkább újratördelés húzás közben, nagyobb térköz a doboz két oldalán
+
+- **Ritkább újratördelés:** húzás közben a konténer szövege csak akkor tördelődik újra, ha a belső doboz legalább 12 képpontot mozdult (a doboz helye ilyenkor 12-es lépésekre kerekítve számít); elengedéskor a pontos hellyel. A legfeljebb 6 képpontos eltérés a doboz körüli térközön belül marad. A konténer húzásakor a szöveg egyáltalán nem számolódik újra.
+- **Térköz:** a szöveg a belső doboz bal és jobb oldalától 18 képpontra áll (eddig 8); fent és lent marad 8. Szerkesztő, megtekintő és export egyformán (`geometry.js labelLayout`, `Rendering.swift ideaDrawing`).
+- Mérés (Safari, a `projects/b` másolata, a belső doboz gyors húzása): sorkizárással 42 → 45 képkocka/mp, anélkül 55 → 57; lassabb húzásnál a nyereség nagyobb, mert több képkocka marad újratördelés nélkül. A sorkizárás pontossága változatlan (0,05 képponton belül).
+- Megjegyzés: mióta a sorkizárás Safariban ténylegesen működik, a sorkizárt doboz több soros címsora is kitöltődik (a szavak közé kerül a hely).
+- `test.sh render editor markdown` rendben. Szerverkód változott (`Rendering.swift`): release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – Körbefuttatott konténerszöveg: a belső doboz húzása gyorsabb
 
 - **Mérés (Safari, a `projects/b` lap másolata, 777 × 790-es konténer 1400 betűs szöveggel, benne egy doboz húzása):** előtte 14 képkocka/mp, egyes képkockák 230–320 ms; körbefuttatás nélkül 60 képkocka/mp. A saját számítás közben elhanyagolható (a körbefuttatás 0,4–1,5 ms, a rajzoló függvények összesen ~20 ms a teljes húzásra).

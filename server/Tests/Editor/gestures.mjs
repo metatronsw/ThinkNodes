@@ -1469,7 +1469,7 @@ const chooseAppearance = async (label, value) => {
   control.props.onChange({target: {value}});
   await tick();
 };
-const {edgeGeometry: themedGeometry, shapeGeometry: themedShape, taperedArc, arrowLength} = await import("../../Public/geometry.js?v=26");
+const {edgeGeometry: themedGeometry, shapeGeometry: themedShape, taperedArc, arrowLength} = await import("../../Public/geometry.js?v=27");
 await chooseAppearance("Téma", "3");
 assert.deepEqual(themedShape("rounded", 100, 80),
   ["polygon", {points: "-45,-40 45,-40 50,-35 50,35 45,40 -45,40 -50,35 -50,-35"}]);

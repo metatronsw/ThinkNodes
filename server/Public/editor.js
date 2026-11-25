@@ -14,9 +14,9 @@ import {justifyRows, justifyShifts} from "./justify.js?v=7";
 import {canvasMarkdown, canvasMarkdownAvailable} from "./canvas-markdown.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=26";
+import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=27";
 
-import {ancestors, layerOrder, overlapFraction} from "./containers.js?v=5";
+import {ancestors, layerOrder, overlapFraction} from "./containers.js?v=6";
 import {glowFilter, glowId, glowReach, glowVNode} from "./glow.js";
 import {awaitWebPreview} from "./web-preview-refresh.js";
 import {cellName, columnName, decodeTable, encodeTable, limits as tableLimits} from "./table/table-document.js";
@@ -566,8 +566,16 @@ createApp({
     // Szövegkörbefuttatás: a konténer szövege kikerüli a közvetlen gyermekdobozait; alapból be van kapcsolva, a
     // konténeren kikapcsolható (`autoLayout: false`). Konténerenként a
     // gyermekek helye a konténer közepéhez mérve; csak akkor számol, ha van ilyen konténer a lapon.
+    // Húzás közben ritkább újratördelés: a gyermekek helye ilyenkor 12 képpontos lépésekre kerekítve számít, így a szöveg
+    // csak akkor tördelődik újra, ha a doboz egy lépésnyit elmozdult (a legfeljebb 6 képpontos eltérés a doboz körüli
+    // térközön belül marad); a mozdulat végén a pontos hellyel. A változatlan akadálylista ugyanaz az objektum marad,
+    // így a konténer szövege nem számolódik és nem rajzolódik újra (a konténer húzásakor sem, amikor a gyermekek vele mozognak).
     const noObstacles = new Map();
+    const flowStep = 12;
+    let knownObstacles = new Map();
     const flowObstacles = computed(() => {
+      const step = gesture.value?.moved ? flowStep : 0;
+      const place = value => step ? Math.round(value / step) * step : value;
       const nodes = board.value?.nodes ?? [];
       const flowing = new Map(nodes.filter(node => node.container && node.autoLayout !== false).map(node => [node.id, node]));
       if (!flowing.size) return noObstacles;
@@ -576,9 +584,14 @@ createApp({
         const parent = flowing.get(child.parent);
         if (!parent || isJunction(child)) continue;
         if (!found.has(parent.id)) found.set(parent.id, []);
-        found.get(parent.id).push({x: child.position.x - parent.position.x, y: child.position.y - parent.position.y,
+        found.get(parent.id).push({x: place(child.position.x - parent.position.x), y: place(child.position.y - parent.position.y),
           width: child.width, height: child.height});
       }
+      for (const [id, list] of found) {
+        const known = knownObstacles.get(id);
+        if (known?.length === list.length && known.every((o, i) => o.x === list[i].x && o.y === list[i].y && o.width === list[i].width && o.height === list[i].height)) found.set(id, known);
+      }
+      knownObstacles = found;
       return found;
     });
     const nodeLayouts = new WeakMap();
@@ -595,7 +608,8 @@ createApp({
           lastBlocksById.set(node.id, blocks);
           return blocks;
         });
-        layout = computed(() => labelLayout(node, text.value, node.container && node.autoLayout !== false ? flowObstacles.value.get(node.id) : undefined));
+        const obstacles = computed(() => node.container && node.autoLayout !== false ? flowObstacles.value.get(node.id) : undefined);
+        layout = computed(() => labelLayout(node, text.value, obstacles.value));
         nodeLayouts.set(node, layout);
       }
       return layout.value;

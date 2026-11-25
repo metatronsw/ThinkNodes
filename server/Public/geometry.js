@@ -685,11 +685,11 @@ export function labelLayout(node, blocks = [], obstacles = []) {
   const fonts = currentGraphics().fonts ?? defaultFonts;
   const monospace = isMonospaceFont(fonts[Math.min(Math.max((node.font ?? 1) - 1, 0), fonts.length - 1)]);
   const measureFor = line => letterMeasure(line.size, line.weight >= 700, monospace || line.code);
-  // Körbefuttatás: az akadályok a címketerület bal felső sarkához mérve, 8 képpont térközzel; a szöveg felülről folyik.
+  // Körbefuttatás: az akadályok a címketerület bal felső sarkához mérve, térközzel (fent és lent 8, két oldalt 18 képpont).
   const flow = obstacles.length > 0;
-  const margin = 8;
+  const margin = 8, sideMargin = 18;
   const blocked = obstacles.map(o => ({
-    left: o.x - o.width / 2 - margin + labelWidth / 2, right: o.x + o.width / 2 + margin + labelWidth / 2,
+    left: o.x - o.width / 2 - sideMargin + labelWidth / 2, right: o.x + o.width / 2 + sideMargin + labelWidth / 2,
     top: o.y - o.height / 2 - margin + Math.max(0, labelHeight) / 2, bottom: o.y + o.height / 2 + margin + Math.max(0, labelHeight) / 2,
   }));
   const room = line => line.slotWidth ?? labelWidth - line.indent;
