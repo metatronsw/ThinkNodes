@@ -718,7 +718,10 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 .node-code { white-space: pre; overflow: auto; }
 .node-plain { white-space: pre-wrap; overflow-wrap: anywhere; }
 .node-note .node-code { overflow: visible; }
-/* Grafikon a táblázat- és CSV-dobozban (chart.js): a doboz teljes tartalomterületét kitölti, nem görög. */
+/* Táblázat és CSV: a jobb oldalon nincs a görgetősávnak fenntartott sáv (a tartalomhoz igazított dobozban fölösleges
+   üres hely volt); a görgetősáv, ha kell, a tartalom fölött jelenik meg. */
+.node-note:has(> :is(.node-csv, .tn-table-wrap)) { padding-right: 10px; }
+/* Grafikon (chart.js): a doboz teljes tartalomterületét kitölti, nem görög. */
 .node-chart { flex: 1; min-height: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; }
 .node-chart .tn-chart { display: block; flex: none; }
 .node-chart > p { margin: 0; }

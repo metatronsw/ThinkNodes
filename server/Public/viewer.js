@@ -13,7 +13,7 @@ import {justifyRows} from "./justify.js";
 import {attachScrollbars} from "./scrollbar-drag.js";
 import {liveConnection} from "./collaboration.js";
 
-import {useWorksheetGeometry, arrowLength, arrowTransform, edgeGeometry, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireGradientValues, wireLabelLayout} from "./geometry.js?v=23";
+import {useWorksheetGeometry, arrowLength, arrowTransform, plugTransform, edgeGeometry, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireGradientValues, wireLabelLayout} from "./geometry.js?v=24";
 import {ancestors} from "./containers.js?v=3";
 import {ensureGlow, glowReach} from "./glow.js";
 
@@ -178,7 +178,9 @@ function previewScene() {
       for (const arrow of arrows) {
         const end = arrow.dataset.arrowEnd;
         const start = end === "source";
-        arrow.setAttribute("transform", profile?.ends[end].transform ??
+        // Adatvonal félkorongja (data-plug): a doboz oldalához igazodik, nem a vonal irányához.
+        const plugged = arrow.dataset.plug !== undefined && (start ? source : target);
+        arrow.setAttribute("transform", plugged ? plugTransform(plugged, start ? from : to, paint.width) : profile?.ends[end].transform ??
           arrowTransform(start ? from : to, start ? sourceToward : targetToward, arrowLength(paint.width)));
       }
       if (label) {

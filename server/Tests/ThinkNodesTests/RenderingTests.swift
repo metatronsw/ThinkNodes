@@ -376,35 +376,51 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     #expect(svg.contains("Egyszer látszik"))
 }
 
-@Test func chartBoxKeepsItsSettingsAndRendersAPlaceholderForTheViewer() throws {
+@Test func chartIsAStandaloneObjectFedByTheConnectedTable() throws {
     var table = Idea(id: "adat", type: "csv", file: CanvasFile(asset: "adat.csv", filename: "adat.csv"), position: Point(x: 0, y: 0))
-    table.width = 380; table.height = 260
-    table.chart = ChartSettings(kind: "bar", labels: 0, values: [1, 2], header: nil)
-    var sheet = Worksheet(title: "Grafikon", nodes: [table])
+    table.width = 300; table.height = 200
+    var chart = Idea(id: "rajz", type: "chart", position: Point(x: 500, y: 0))
+    chart.width = 380; chart.height = 260
+    chart.chart = ChartSettings(kind: "line", labels: 0, values: [1, 2], header: nil)
+    let note = Idea(id: "doboz", text: "Megjegyzés", position: Point(x: 500, y: 400))
+    let link = Connection(id: "adatvonal", source: "adat", target: ConnectionTarget(node: "rajz", point: nil))
+    let arrow = Connection(id: "nyil", source: "doboz", target: ConnectionTarget(node: "rajz", point: nil))
+    var sheet = Worksheet(title: "Grafikon", nodes: [table, chart, note], edges: [link, arrow])
     try sheet.validate()
-    // A beállítás a mentett lapon megmarad.
     sheet = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(sheet))
-    #expect(sheet.nodes[0].chart == table.chart)
+    #expect(sheet.nodes[1].chart == chart.chart && sheet.nodes[1].file == nil)
 
-    // Megtekintő: a doboz helyén a grafikon helyőrzője áll a beállítással és a fájl címével; a táblázat HTML-je nem megy ki.
+    // Megtekintő: a grafikon helyőrzője a bekötött táblázat fájljára mutat; a táblázat táblázat marad.
     let text: (Idea) -> String? = { _ in "Hónap;Bevétel\nJan;1\n" }
     let viewer = boardSVG(sheet, noteBase: "/projekt/lap", fileText: text)
-    #expect(viewer.contains(#"class="node-chart""#) && viewer.contains("data-chart-type=\"csv\""))
-    #expect(viewer.contains("&quot;kind&quot;:&quot;bar&quot;") && viewer.contains("data-chart-source=\"/api/attachment"))
-    #expect(!viewer.contains("node-csv"))
-    // Szkript nélküli kimenet (SVG-export, előnézeti kép): a táblázat látszik.
-    let exported = boardSVG(sheet, fileText: text)
-    #expect(exported.contains("node-csv") && !exported.contains("node-chart"))
+    #expect(viewer.contains("&quot;kind&quot;:&quot;line&quot;") && viewer.contains("data-chart-type=\"csv\""))
+    #expect(viewer.contains("data-chart-source=\"/api/attachment/projekt/lap?inline=1&amp;name=adat") && viewer.contains("node-csv"))
+    // Adatvonal: nyíl nélkül, mindkét végén félkorong; a másik dobozból jövő vonal közönséges nyíl marad.
+    #expect(viewer.components(separatedBy: "data-plug").count == 3)
+    #expect(!viewer.contains("id=\"arrow-adatvonal\"") && viewer.contains("id=\"arrow-nyil\""))
+    // A táblázat sarka 5 px-es, a grafikoné a szokásos.
+    #expect(viewer.contains(#"width="300.000" height="200.000" rx="5""#) && viewer.contains(#"width="380.000" height="260.000" rx="12""#))
 
-    // Érvénytelen beállítás és nem táblázatos doboz: a lap nem menthető.
-    var wrong = sheet
-    wrong.nodes[0].chart = ChartSettings(kind: "radar", labels: nil, values: nil, header: nil)
-    #expect(throws: (any Error).self) { try wrong.validate() }
-    wrong.nodes[0].chart = ChartSettings(kind: "pie", labels: -2, values: nil, header: nil)
-    #expect(throws: (any Error).self) { try wrong.validate() }
-    wrong.nodes[0].chart = ChartSettings(kind: "line", labels: nil, values: Array(0..<9), header: nil)
-    #expect(throws: (any Error).self) { try wrong.validate() }
-    var note = Idea(id: "note", type: "text", file: CanvasFile(asset: "jegyzet.txt", filename: "jegyzet.txt"), position: Point(x: 0, y: 0))
-    note.chart = table.chart
-    #expect(throws: (any Error).self) { try Worksheet(title: "Szöveg", nodes: [note]).validate() }
+    // Bekötött táblázat nélkül (a táblázat törlése után) a grafikon megmarad, üresen.
+    var alone = sheet
+    alone.nodes.removeFirst()
+    alone.edges.removeFirst()
+    try alone.validate()
+    let empty = boardSVG(alone, noteBase: "/projekt/lap", fileText: text)
+    #expect(empty.contains("Nincs bekötött táblázat") && !empty.contains("data-chart-source") && !empty.contains("data-plug"))
+    // Szkript nélküli kimenet (SVG-export, előnézeti kép): a grafikon doboza üres.
+    #expect(!boardSVG(sheet, fileText: text).contains("node-chart\""))
+
+    // Érvénytelen beállítás; grafikon-beállítás más típuson; fájl a grafikonon: a lap nem menthető.
+    for wrong in [ChartSettings(kind: "radar"), ChartSettings(kind: "pie", labels: -2), ChartSettings(kind: "line", values: Array(0..<9))] {
+        var bad = sheet
+        bad.nodes[1].chart = wrong
+        #expect(throws: (any Error).self) { try bad.validate() }
+    }
+    var bad = sheet
+    bad.nodes[0].chart = chart.chart
+    #expect(throws: (any Error).self) { try bad.validate() }
+    bad = sheet
+    bad.nodes[1].file = CanvasFile(asset: "adat.csv", filename: "adat.csv")
+    #expect(throws: (any Error).self) { try bad.validate() }
 }

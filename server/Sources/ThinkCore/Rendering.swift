@@ -521,7 +521,9 @@ func needsTextTooltip(_ node: Idea, overflow: @autoclosure () -> Bool) -> Bool {
 
 extension Idea {
     /// Megjegyzés a doboz alatt: fájldoboz és előnézetes link-doboz (a `text` mező).
-    var hasComment: Bool { file != nil || type == "preview" }
+    var hasComment: Bool { file != nil || type == "preview" || type == "chart" }
+    /// Táblázat és CSV: 5 px-es lekerekítésű téglalap; a grafikon adatforrása lehet.
+    var isGrid: Bool { type == "table" || type == "csv" }
 }
 
 /// Összecsukott (elrejtett) megjegyzés, amelynek több sora van: a teljes szöveg buboréksúgóban.
@@ -579,7 +581,7 @@ private func boxGeometry(_ node: Idea, graphics: VisualTheme.Graphics?) -> Strin
     }
     switch node.shape {
     case .rectangle, .rounded:
-        return "rect x=\"\(number(-x))\" y=\"\(number(-y))\" width=\"\(number(node.width))\" height=\"\(number(node.height))\" rx=\"\(node.type == "preview" || node.isImage ? "5" : node.shape == .rounded ? "12" : "0")\""
+        return "rect x=\"\(number(-x))\" y=\"\(number(-y))\" width=\"\(number(node.width))\" height=\"\(number(node.height))\" rx=\"\(node.type == "preview" || node.isImage || node.isGrid ? "5" : node.shape == .rounded ? "12" : "0")\""
     case .ellipse:
         return "ellipse rx=\"\(number(x))\" ry=\"\(number(y))\""
     case .diamond, .triangle, .pentagon, .hexagon, .parallelogram:
@@ -595,7 +597,7 @@ private func boxOutline(_ node: Idea, graphics: VisualTheme.Graphics?) -> String
     }
     switch node.shape {
     case .rectangle, .rounded:
-        let r: Double = node.type == "preview" ? 5 : node.shape == .rounded ? 12 : 0
+        let r: Double = node.type == "preview" || node.isGrid ? 5 : node.shape == .rounded ? 12 : 0
         return "M\(number(-x+r)) \(number(-y))H\(number(x-r))Q\(number(x)) \(number(-y)) \(number(x)) \(number(-y+r))"
             + "V\(number(y-r))Q\(number(x)) \(number(y)) \(number(x-r)) \(number(y))"
             + "H\(number(-x+r))Q\(number(-x)) \(number(y)) \(number(-x)) \(number(y-r))"
@@ -957,17 +959,58 @@ func fileTextHTML(_ node: Idea, text: String?) -> String {
     }
 }
 
-/// Fájlt tároló objektum (szöveg, kép, hang, dokumentum) a vásznon: felül fájlnév, középen tartalom, alul megjegyzés.
-private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: Bool, exported: Bool, text: String?,
-                     graphics: VisualTheme.Graphics?, siteHost: String?) -> String {
-    // Közös fájl a projekt másik lapjáról: a tulajdonos lap címén töltődik be.
+/// A fájl tartalmának címe. Közös fájl a projekt másik lapjáról: a tulajdonos lap címén töltődik be.
+private func attachmentAddress(_ file: CanvasFile, base: String) -> String {
     var fileBase = base
     if let source = file.source {
         let project: String = base.split(separator: "/").first.map(String.init) ?? ""
         let folders: [String] = source.split(separator: "/").map { WorksheetPath.encodeSegment(String($0)) }
         fileBase = "/" + ([project] + folders).joined(separator: "/")
     }
-    let url = escaped(file.commonURL ?? "/api/attachment" + fileBase + "?inline=1&name=" + encodeQuery(file.asset))
+    return file.commonURL ?? "/api/attachment" + fileBase + "?inline=1&name=" + encodeQuery(file.asset)
+}
+
+/// Grafikon (docs/node-types.md): önálló objektum, az adatát a vonallal bekötött táblázat vagy CSV fájlja adja.
+/// A megtekintő szkriptje rajzolja ki (viewer.js, chart.js); szkript nélkül (SVG-export, előnézeti kép) és bekötött
+/// táblázat nélkül a doboz üres.
+private func chartBox(_ node: Idea, source: Idea?, base: String, interactive: Bool, graphics: VisualTheme.Graphics?) -> String {
+    var content = ""
+    if interactive, let source, let file = source.file, let settings = try? JSONEncoder().encode(node.chart ?? ChartSettings(kind: "bar")) {
+        let surface = [.free, .empty].contains(node.resolvedBackgroundMode) ? "" : node.fill
+        content = "<div class=\"node-chart\" data-chart=\"\(escaped(String(decoding: settings, as: UTF8.self)))\" data-chart-type=\"\(escaped(source.type))\" data-chart-source=\"\(escaped(attachmentAddress(file, base: base)))\" data-chart-name=\"\(escaped(file.filename ?? file.asset))\" data-chart-surface=\"\(escaped(surface))\"><p class=\"muted\">…</p></div>"
+    } else if interactive {
+        content = "<div class=\"node-chart\"><p class=\"muted\">Nincs bekötött táblázat.</p></div>"
+    }
+    let comment = node.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" :
+        "<div class=\"node-below\"><footer class=\"node-comment formatted-text align-\(node.alignment.rawValue)\">\(markdownHTML(visibleComment(node)))</footer></div>"
+    let geometry = boxGeometry(node, graphics: graphics)
+    let chrome = elevationShadow(node, geometry: geometry, graphics: graphics) + boxSurface(node, geometry: geometry, graphics: graphics, interactive: interactive)
+    let height = node.height + (comment.isEmpty ? 0 : 4000)
+    return """
+        <g transform="translate(\(number(node.position.x)) \(number(node.position.y)))">\(chrome)</g><foreignObject class="node-file-frame" x="\(number(node.position.x - node.width / 2))" y="\(number(node.position.y - node.height / 2))" width="\(number(node.width))" height="\(number(height))"><div xmlns="http://www.w3.org/1999/xhtml" class="node-file-stack" style="color:\(escaped(node.textColor))"><div data-file-ink="\(escaped(node.textColor))" style="height:\(number(node.height))px" class="node-file node-chart-box mode-\(node.resolvedBackgroundMode.rawValue)"><div class="node-body">\(content)</div></div>\(comment)</div></foreignObject>
+        """
+}
+
+/// Adatvonal: táblázatot (vagy CSV-t) és grafikont összekötő vonal. Nem tárolt tulajdonság, a két végpont típusa adja;
+/// nyíl helyett a két végén félkorong áll (geometry.js isDataLink, plugTransform).
+func isDataLink(_ edge: Connection, nodes: [String: Idea]) -> Bool {
+    guard let a = edge.source.flatMap({ nodes[$0] }), let b = edge.target.node.flatMap({ nodes[$0] }) else { return false }
+    return (a.type == "chart" && b.isGrid) || (b.type == "chart" && a.isGrid)
+}
+
+/// A félkorong helye: a lapos oldala a doboz oldalára simul, a domború a vonal felé néz (geometry.js plugTransform).
+private func plugMarkup(_ end: String, node: Idea, tip: Point, width: Double, color: String) -> String {
+    let dx = (tip.x - node.position.x) / (node.width / 2), dy = (tip.y - node.position.y) / (node.height / 2)
+    let normal = abs(dx) >= abs(dy) ? Point(x: dx < 0 ? -1 : 1, y: 0) : Point(x: 0, y: dy < 0 ? -1 : 1)
+    let angle = atan2(-normal.y, -normal.x) * 180 / Double.pi
+    let size = max(16, width * 6)
+    return "<path class=\"wire-arrow wire-plug\" data-arrow-end=\"\(end)\" data-plug=\"\" d=\"M0 -.5A.5 .5 0 0 0 0 .5Z\" transform=\"translate(\(number(tip.x)) \(number(tip.y))) rotate(\(number(angle))) scale(\(number(size)))\" fill=\"\(color)\" stroke=\"none\" pointer-events=\"none\"/>"
+}
+
+/// Fájlt tároló objektum (szöveg, kép, hang, dokumentum) a vásznon: felül fájlnév, középen tartalom, alul megjegyzés.
+private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: Bool, exported: Bool, text: String?,
+                     graphics: VisualTheme.Graphics?, siteHost: String?) -> String {
+    let url = escaped(attachmentAddress(file, base: base))
     let filename = escaped(file.displayName(image: node.isImage))
     let download = escaped(file.commonURL ?? "/api/box-file" + base + "?id=" + encodeQuery(node.id))
     let packageIcon = uiIcon("package")
@@ -997,13 +1040,7 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
         let fold = node.resolvedBackgroundMode == .solid ? " with-fold" : ""
         // A mentett görgetési helyzetet a megtekintő szkriptje állítja be (viewer.js).
         let scroll = node.scroll.map { " data-scroll-x=\"\(number($0.x))\" data-scroll-y=\"\(number($0.y))\"" } ?? ""
-        if interactive, let chart = node.chart, let settings = try? JSONEncoder().encode(chart) {
-            // Grafikon: a megtekintő szkriptje rajzolja ki a fájl tartalmából (viewer.js, chart.js). Szkript nélkül
-            // (SVG-export, előnézeti kép) a doboz a táblázatot mutatja.
-            content = "<div class=\"node-chart\" data-chart=\"\(escaped(String(decoding: settings, as: UTF8.self)))\" data-chart-type=\"\(escaped(node.type))\" data-chart-source=\"\(url)\" data-chart-name=\"\(escaped(file.filename ?? file.asset))\" data-chart-surface=\"\(escaped([.free, .empty].contains(node.resolvedBackgroundMode) ? "" : node.fill))\"><p class=\"muted\">…</p></div>"
-        } else {
-            content = "<div class=\"node-note\(fold)\" data-font-size=\"\(number(node.fontSize))\"\(scroll)>\(fileTextHTML(node, text: text))</div>"
-        }
+        content = "<div class=\"node-note\(fold)\" data-font-size=\"\(number(node.fontSize))\"\(scroll)>\(fileTextHTML(node, text: text))</div>"
     default:
         content = "<div class=\"node-document\"><span class=\"node-document-icon\">\(packageIcon)<b>\(ext)</b></span>\(downloadControl("Letöltés", classes: "node-download button small"))</div>"
     }
@@ -1047,6 +1084,17 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
     let drawings = board.nodes.map { ideaDrawing($0, graphics: graphics) }
     let renderedIdeas = drawings.map(\.node)
     let nodes = Dictionary(uniqueKeysWithValues: renderedIdeas.map { ($0.id, $0) })
+    // Adatvonalak: nyíl nélkül, félkoronggal; a grafikon forrása a bekötött táblázat (több közül az utolsó vonalé).
+    var dataLinks = Set<String>(), chartSources: [String: Idea] = [:]
+    for index in board.edges.indices where isDataLink(board.edges[index], nodes: nodes) {
+        let edge = board.edges[index]
+        dataLinks.insert(edge.id)
+        board.edges[index].startArrow = false
+        board.edges[index].endArrow = false
+        if let a = edge.source.flatMap({ nodes[$0] }), let b = edge.target.node.flatMap({ nodes[$0] }) {
+            if a.type == "chart" { chartSources[a.id] = b } else { chartSources[b.id] = a }
+        }
+    }
     // A kép kerete a tartalom tényleges széleihez igazodik (nem az origó köré szimmetrikus).
     var bounds = (minX: Double.infinity, minY: Double.infinity, maxX: -Double.infinity, maxY: -Double.infinity)
     func include(_ x: Double, _ y: Double, _ rx: Double, _ ry: Double) {
@@ -1210,6 +1258,10 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
         if edge.hasEndArrow && (targetNode == nil || !usesMarkers) {
             heads += arrow("target", tip: ending, toward: points.last ?? beginning, length: taper?.endLength ?? arrowLength)
         }
+        if dataLinks.contains(edge.id), let sourceNode, let targetNode {
+            heads += plugMarkup("source", node: sourceNode, tip: beginning, width: edge.strokeWidth, color: color)
+            heads += plugMarkup("target", node: targetNode, tip: ending, width: edge.strokeWidth, color: color)
+        }
         let lineWidth = edge.lineWidth
         let shaft = motion.shaft.isEmpty ? "/>" : ">\(motion.shaft)</path>"
         func wirePath(gap: Bool = false) -> String {
@@ -1328,6 +1380,8 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
         if let file = node.file {
             graphic = fileBox(node, file: file, base: assetBase ?? noteBase ?? "", interactive: noteBase != nil, exported: assetBase != nil,
                               text: node.isTextFile ? fileText(node) : nil, graphics: graphics, siteHost: siteHost)
+        } else if node.type == "chart" {
+            graphic = chartBox(node, source: chartSources[node.id], base: assetBase ?? noteBase ?? "", interactive: noteBase != nil, graphics: graphics)
         } else {
             graphic = nodeSVG(drawing, siteHost: siteHost, graphics: graphics, interactive: noteBase != nil, preview: node.fillsWithPreview ? destination?.preview : nil)
         }

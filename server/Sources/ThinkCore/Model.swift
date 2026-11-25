@@ -209,7 +209,7 @@ package enum BoxBackgroundMode: String, Codable, Sendable {
     case solid, free, empty, blurred, translucent, canvas
 }
 
-/// Grafikon a táblázat- és CSV-dobozon (Public/chart.js): a doboz a fájl tartalmát táblázat helyett grafikonként mutatja.
+/// A grafikon (`chart` típusú objektum) beállítása (Public/chart.js). Az adat a vonallal bekötött táblázatból jön.
 package struct ChartSettings: Codable, Equatable, Sendable {
     static let kinds: Set<String> = ["bar", "line", "pie", "scatter"]
     static let maximumSeries = 8
@@ -279,7 +279,7 @@ package struct Idea: Codable, Equatable, Sendable {
     /// Görgethető tartalom (szövegfájl, CSV, táblázat) mentett görgetési helyzete képpontban: minden résztvevő és a
     /// megtekintő is ezt látja. Az állítja, aki a dobozt kijelölve görget.
     package var scroll: Point?
-    /// Táblázat / CSV: a tartalom grafikonként jelenik meg (nil = táblázatként).
+    /// Grafikon (`chart` típus) beállítása: fajta, kategória- és értékoszlopok.
     package var chart: ChartSettings?
     var hasFrame: Bool { isImage ? frame == true : type == "preview" && frame != false }
 
@@ -317,7 +317,7 @@ package struct Idea: Codable, Equatable, Sendable {
               elevated != true || (parent == nil && !isJunction),
               frameWidth.map({ (0.5...32).contains($0) }) ?? true,
               scroll.map({ $0.isValid && $0.x >= 0 && $0.y >= 0 }) ?? true,
-              chart.map({ $0.isValid && (type == "csv" || type == "table") }) ?? true,
+              chart.map({ $0.isValid && type == "chart" }) ?? true,
               (1...10000).contains(fontSize), fontSize.rounded() == fontSize, (1...3).contains(font ?? 1),
               [fill, textColor, border].allSatisfy(validColor),
               link.map({ $0.isValid && has("link") }) ?? true,

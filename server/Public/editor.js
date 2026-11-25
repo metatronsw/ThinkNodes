@@ -14,7 +14,7 @@ import {justifyRows} from "./justify.js";
 import {canvasMarkdown, canvasMarkdownAvailable} from "./canvas-markdown.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=23";
+import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=24";
 
 import {ancestors, overlapFraction} from "./containers.js?v=3";
 import {glowFilter, glowId, glowReach, glowVNode} from "./glow.js";
@@ -278,10 +278,10 @@ function normalizePreview(node) {
   if (node.type === "preview") { node.shape = "rectangle"; delete node.animation; }
   return node;
 }
-// A doboz alakja: a külső vizuális tartalmat mutató doboz (előnézet: weboldal, munkalap; kép) mindig 5 px-es
-// lekerekítésű téglalap.
+// A doboz alakja: a külső vizuális tartalmat mutató doboz (előnézet: weboldal, munkalap; kép) és a táblázat / CSV
+// mindig 5 px-es lekerekítésű téglalap.
 function boxShapeGeometry(node, width = node.width, height = node.height) {
-  return node.type === "preview" || isImage(node) ? ["rect", {x: -width/2, y: -height/2, width, height, rx: 5}] : shapeGeometry(node.shape, width, height);
+  return node.type === "preview" || isImage(node) || isGridType(node.type) ? ["rect", {x: -width/2, y: -height/2, width, height, rx: 5}] : shapeGeometry(node.shape, width, height);
 }
 const isImage = node => rootType(node?.type) === "image";
 const isTextFile = node => rootType(node?.type) === "text";
@@ -375,9 +375,10 @@ function shape(node, linked, dropTarget = false) {
 // The stored endpoints are the tips. Stop the shaft at each triangle's base.
 function resolveWireColor(edge) { return paint(edge.color, 3); }
 
-function wireDrawing(edge, geometry) {
+// `plug`: adatvonal (táblázat ↔ grafikon) – nyíl nélkül rajzolódik, a végjeleit a renderEdge teszi rá.
+function wireDrawing(edge, geometry, plug = false) {
   const {from, to, sourceToward, targetToward, bent, path} = geometry;
-  const paint = edgePaint({...edge, color: resolveWireColor(edge)});
+  const paint = edgePaint({...edge, color: resolveWireColor(edge), ...(plug ? {startArrow: false, endArrow: false} : {})});
   const taper = taperedArc(geometry, paint);
   if (taper) {
     return {ends: taper.ends, stroke: {d: taper.outline(), fill: paint.color, stroke: "none"}, paint, taper};
@@ -639,11 +640,13 @@ createApp({
       return geometry;
     }
 
+    const dataLink = edge => isDataLink(edge, id => nodeMap.value.get(id));
     function cachedWireDrawing(edge, geometry) {
-      const inputs = [edge.appearance, resolveWireColor(edge), edge.width, edge.startArrow, edge.endArrow];
+      const plug = dataLink(edge);
+      const inputs = [edge.appearance, resolveWireColor(edge), edge.width, edge.startArrow, edge.endArrow, plug];
       const cached = wireDrawings.get(edge);
       if (cached?.geometry === geometry && inputs.every((value, i) => value === cached.inputs[i])) return cached.drawing;
-      const drawing = wireDrawing(edge, geometry);
+      const drawing = wireDrawing(edge, geometry, plug);
       wireDrawings.set(edge, {geometry, inputs, drawing});
       return drawing;
     }
@@ -975,7 +978,38 @@ createApp({
       if (item && !(item.kind === "node" ? nodeMap : edgeMap).value.has(item.id)) clearSelection();
     }
 
+    // Egy grafikonba egy táblázat köthető: ha újabb táblázatot kötnek be, a korábbi adatvonal megszűnik, és az
+    // oszlopkiosztás visszaáll automatikusra (az új táblázat oszlopai mások). `chartLinks`: grafikon → {vonal, táblázat}.
+    const chartLinks = new Map();
+    function tidyChartLinks() {
+      const sheet = board.value;
+      if (!sheet) return;
+      const nodes = new Map(sheet.nodes.map(node => [node.id, node])), found = new Map();
+      for (const edge of sheet.edges) {
+        const a = nodes.get(edge.source), b = nodes.get(edge.target?.node);
+        const chart = a?.type === "chart" && isGridType(b?.type) ? a : b?.type === "chart" && isGridType(a?.type) ? b : null;
+        if (!chart) continue;
+        if (!found.has(chart.id)) found.set(chart.id, []);
+        found.get(chart.id).push({edge: edge.id, table: (chart === a ? b : a).id});
+      }
+      const dropped = new Set();
+      for (const [id, links] of found) {
+        const before = chartLinks.get(id);
+        const fresh = links.filter(link => link.edge !== before?.edge);
+        const keep = links.length > 1 && fresh.length ? fresh.at(-1) : links.at(-1);
+        for (const link of links) if (link !== keep) dropped.add(link.edge);
+        if (before && before.table !== keep.table) {
+          const chart = nodes.get(id);
+          if (chart.chart) { delete chart.chart.labels; delete chart.chart.values; }
+        }
+        chartLinks.set(id, keep);
+      }
+      for (const id of [...chartLinks.keys()]) if (!found.has(id)) chartLinks.delete(id);
+      if (dropped.size) sheet.edges = sheet.edges.filter(edge => !dropped.has(edge.id));
+    }
+
     function modified() {
+      tidyChartLinks();
       if (editingField) fieldChanged = true;
       else recordChanges();
       markDirty();
@@ -3318,22 +3352,17 @@ createApp({
         disabled: !online.value || !!occupied(node.id), onClick: () => transfer(() => fitBoxToContent(node))}, [icon("fit-content")]);
     }
 
-    // CSV-dobozból új, független táblázat doboz mellé (a CSV-doboz és a fájl változatlan marad).
-    async function tableFromCSVBox(node) {
-      const result = node.file?.source == null ? await tableFromSource(path, csrf, node.file.asset)
-        : await tableFromUpload(path, csrf, await (await checked(await fetch(fileURL(path, node.file)))).blob(), node.file.filename ?? "tabla.csv");
-      const properties = tableBoxProperties(result);
-      addNode({x: node.position.x + node.width / 2 + properties.width / 2 + 40, y: node.position.y}, properties);
-    }
-
-
-    // Grafikon a táblázat mellé: új doboz ugyanarra a fájlra (nem másolat), így a táblázat szerkesztését követi.
-    function addChartBox(node, kind = "bar") {
-      const {fill, textColor, backgroundMode: mode, frame} = node;
+    // Grafikon létrehozása táblázatból: új grafikon a táblázat mellett, adatvonallal bekötve.
+    function addChartBox(table, kind = "bar") {
+      if (!board.value || !online.value) return;
+      finishField();
       const width = 380, height = 260;
-      addNode({x: node.position.x + node.width / 2 + width / 2 + 40, y: node.position.y},
-        {type: node.type, file: {...copy(node.file), showFilename: false}, fontSize: node.fontSize ?? 13, fill, textColor,
-          ...(mode ? {backgroundMode: mode} : {}), ...(frame === false ? {frame} : {}), width, height, chart: {kind}});
+      const node = {...makeNode({x: table.position.x + table.width / 2 + width / 2 + 80, y: table.position.y}, "chart"),
+        width, height, fontSize: 13, chart: {kind}};
+      board.value.nodes.push(node);
+      board.value.edges.push({id: id(), source: table.id, target: {node: node.id}, type: "straight", appearance: "plain"});
+      modified();
+      openProperties("node", node.id, true);
     }
 
     function editOverlay(item, x, y, width, height) {
@@ -3421,38 +3450,50 @@ createApp({
       gridViews.set(id, {content, marks, view});
       return view;
     }
-    // Grafikon (chart.js): a táblázat- vagy CSV-doboz a fájl tartalmát grafikonként mutatja (`node.chart`). A rajzoló modul
-    // és a d3 rajzoló része csak akkor töltődik le, ha a lapon van grafikon. A megtekintő ugyanezzel a modullal rajzol.
+    // Grafikon (chart.js, docs/node-types.md): önálló objektum (`chart` típus), az adatát a vonallal bekötött táblázat adja.
+    // A rajzoló modul és a d3 rajzoló része csak akkor töltődik le, ha a lapon van grafikon. A megtekintő ugyanezzel rajzol.
     const chartModule = shallowRef(null);
     let chartLoading = null;
     function loadChartModule() {
       chartLoading ??= import("./chart.js").then(module => { chartModule.value = markRaw(module); })
         .catch(() => { chartLoading = null; problem.value = "A grafikon modulja nem tölthető be."; });
     }
-    const showsChart = node => Boolean(node?.chart) && isGrid(node) && tableEdit.value?.id !== node.id;
-    // A fájl legfrissebb ismert tartalma (lásd latestRev): a grafikon doboza maga nem ment, a számlálója lemaradhat.
-    function chartText(node) {
-      const key = fileTextKey(node, latestRev(node.file));
+    // A grafikon forrása: a vonallal bekötött táblázat vagy CSV (több közül az utolsó vonalé; a szerkesztő egyet tart meg).
+    function chartSource(node) {
+      let source = null;
+      for (const edge of board.value?.edges ?? []) {
+        const other = edge.source === node.id ? edge.target?.node : edge.target?.node === node.id ? edge.source : null;
+        const candidate = other && nodeMap.value.get(other);
+        if (candidate?.file && isGrid(candidate)) source = candidate;
+      }
+      return source;
+    }
+    // A fájl legfrissebb ismert tartalma (lásd latestRev); szerkesztés közben a táblázat még el nem mentett állapota.
+    function chartText(source) {
+      const key = fileTextKey(source, latestRev(source.file));
       const text = fileTexts.value.get(key);
-      if (text != null) { lastFileTexts.set(node.id, text); return text; }
+      if (text != null) { lastFileTexts.set(source.id, text); return text; }
       if (!fileTexts.value.has(key)) queueMicrotask(() => loadFileText(key));
-      return lastFileTexts.get(node.id) ?? null;
+      return lastFileTexts.get(source.id) ?? null;
     }
     const chartRowCache = new Map();
-    function chartRows(node) {
-      const text = chartText(node), module = chartModule.value;
+    // undefined: még töltődik; null: a fájl nem olvasható.
+    function chartRows(source) {
+      const text = chartText(source), module = chartModule.value;
       if (text == null || !module) return undefined;
-      const cached = chartRowCache.get(node.id);
+      const cached = chartRowCache.get(source.id);
       if (cached?.text === text) return cached.rows;
-      const rows = module.fileRows(node.type, text, node.file.filename ?? node.file.asset);
-      chartRowCache.set(node.id, {text, rows});
+      const rows = module.fileRows(source.type, text, source.file.filename ?? source.file.asset);
+      chartRowCache.set(source.id, {text, rows});
       return rows;
     }
     const chartViews = new Map();
     function renderChart(node) {
+      const source = chartSource(node);
+      if (!source) return h("div", {class: "node-chart"}, [h("p", {class: "muted"}, "Köss be egy táblázatot.")]);
       const module = chartModule.value;
       if (!module) loadChartModule();
-      const rows = chartRows(node);
+      const rows = chartRows(source);
       let html = '<p class="muted">…</p>';
       if (rows !== undefined) {
         // A rajz mérete a doboz tartalomterülete (.node-file: 8 px belső margó); a megtekintő a kirajzolt elemet méri.
@@ -3462,11 +3503,24 @@ createApp({
         const cached = chartViews.get(node.id);
         if (cached?.rows === rows && cached.key === key) html = cached.html;
         else {
-          html = module.chartSVG(rows, node.chart, options);
+          html = module.chartSVG(rows, node.chart ?? {kind: "bar"}, options);
           chartViews.set(node.id, {rows, key, html});
         }
       }
       return h("div", {class: "node-chart", innerHTML: html});
+    }
+    // A grafikon doboza: középen a rajz, alatta a megjegyzés (Rendering.swift chartBox).
+    function renderChartBox(node) {
+      const comment = node.text?.trim()
+        ? h("footer", {class: "node-comment align-" + (node.alignment ?? "center")}, [h(FormattedText, {source: visibleComment(node)})]) : null;
+      return h("foreignObject", {class: "node-file-frame", x: -node.width / 2, y: -node.height / 2, width: node.width,
+        height: node.height + (comment ? belowSpace : 0)}, [
+        h("div", {class: "node-file-stack", style: {color: paint(node.textColor, 1)}}, [
+          h("div", {class: "node-file node-chart-box", style: {height: node.height + "px", color: paint(node.textColor, 1)}},
+            [h("div", {class: "node-body"}, [renderChart(node)])]),
+          comment ? h("div", {class: "node-below"}, [comment]) : null,
+        ]),
+      ]);
     }
 
     function renderFileText(node) {
@@ -3520,8 +3574,6 @@ createApp({
           h("small", {"data-audio-time": ""}, "0:00"),
           h("small", {"data-audio-status": "", role: "status"}),
         ]);
-      } else if (showsChart(node)) {
-        content = renderChart(node);
       } else if (root === "text") {
         content = h("div", {class: ["node-note", {"with-fold": backgroundMode(node) === "solid"}], style: {fontSize: (node.fontSize ?? 13) + "px"},
           onPointerdown: e => scrollbarPress(e, node), onMousedown: e => scrollbarPress(e, node), onTouchstart: e => scrollbarPress(e, node), onWheel: e => stopScroll(e, node),
@@ -3703,7 +3755,7 @@ createApp({
         transform: "translate(" + position.x + " " + position.y + ")",
         onPointerenter: event => {
           // Buboréksúgó: túl hosszú doboz-szöveg, illetve összecsukott többsoros megjegyzés (fájl- és előnézetes doboz).
-          const tooltip = node.file || node.type === "preview" ? commentCollapsed(node) : isBox(node) && layout.overflow;
+          const tooltip = node.file || node.type === "preview" || node.type === "chart" ? commentCollapsed(node) : isBox(node) && layout.overflow;
           if (!gesture.value && tooltip && node.text && tableEdit.value?.id !== node.id) showTooltip(event, async signal => {
             const result = await checked(await fetch("/api/text", {method: "POST", signal,
               headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify({text: node.text})}));
@@ -3718,8 +3770,8 @@ createApp({
           // Előnézetes (linkes) doboz: dupla kattintás megnyitja a linket; Alt-tal a szerkesztés marad.
           if (node.type === "preview" && destination && !event.altKey) { followBoxLink(destination); return; }
           // Táblázat és CSV: dupla kattintás a cellák szerkesztése (docs/EXCEL.md 6. fejezet); Alt-tal a tulajdonságpanel.
-          if (isGrid(node) && !event.altKey && !node.chart) { startTableEdit(node, clickedCell(event, node)); return; }
-          if (isGrid(node)) { editObject("node", node.id, true); return; }
+          if (isGrid(node) && !event.altKey) { startTableEdit(node, clickedCell(event, node)); return; }
+          if (isGrid(node) || node.type === "chart") { editObject("node", node.id, true); return; }
           editObject("node", node.id, event.altKey ? "text" : true);
         },
         onContextmenu: event => context(event, "node", node.id),
@@ -3736,7 +3788,7 @@ createApp({
         ...animateBox(isBox(node) ? node.animation : undefined, [
           elevationShadow(drawn),
           shape(drawn, !!destination, ui.drop),
-          node.file ? renderFileBox(node, destination) : null,
+          node.file ? renderFileBox(node, destination) : node.type === "chart" ? renderChartBox(node) : null,
           junctionLabel,
           linkPreview,
           frameOutline(drawn),
@@ -3903,6 +3955,11 @@ createApp({
           h("path", {class: "wire-line", ...stroke, ...(taper ? {fill: shaftColor} : {stroke: shaftColor}), "pointer-events": "visiblePainted", "clip-path": clipPath}, animation.shaft ? [animation.shaft] : undefined),
           renderArrow(ends.source, color, animatedArrows),
           renderArrow(ends.target, color, animatedArrows),
+          ...(dataLink(edge) ? [[edge.source, from], [edge.target.node, to]].map(([nodeID, tip]) => {
+            const box = drawnNode(nodeID);
+            return box ? h("path", {class: "wire-arrow wire-plug", transform: plugTransform(box, tip, paint.width), stroke: "none", fill: color,
+              "pointer-events": "none", d: plugPath}) : null;
+          }) : []),
         ]),
         label ? h("text", {transform: label.transform, y: label.y, textLength: label.textLength,
           "dominant-baseline": label.clip ? "central" : undefined,
@@ -4224,8 +4281,7 @@ createApp({
           chooseLink(node);
         }, {symbol: "link", disabled: !!occupied(node.id)}) : null,
         isGrid(node) ? button("Cellák szerkesztése", () => { menu.value = null; startTableEdit(node); }, {symbol: "table-grid", disabled: !!occupied(node.id)}) : null,
-        node.type === "csv" ? button("Önálló táblázat (másolat)", () => { menu.value = null; transfer(() => tableFromCSVBox(node)); }, {symbol: "copy", disabled: !online.value}) : null,
-        isGrid(node) && !node.chart ? button("Grafikon készítése", () => { menu.value = null; addChartBox(node); }, {symbol: "chart", disabled: !online.value}) : null,
+        isGrid(node) ? button("Grafikon létrehozása", () => { menu.value = null; addChartBox(node); }, {symbol: "chart", disabled: !online.value}) : null,
         button("Szerkesztés", () => openProperties("node", node.id), {symbol: "edit", disabled: !!occupied(node.id)}),
         // Egyetlen törlés: fájl- és linkes doboznál a közös kérdőablak jön fel (deleteObjects).
         button("Törlés", () => { menu.value = null; deleteNode(node); }, {class: "button danger", symbol: "trash", disabled: !!occupied(node.id)}),
@@ -4663,10 +4719,8 @@ createApp({
             button(editing ? "Szerkesztés vége" : "Cellák szerkesztése", () => editing ? stopTableEdit() : startTableEdit(single), {symbol: "table-grid", disabled: !online.value}),
             fitContentButton(single),
           ),
-          h("p", {class: "muted"}, "Cellák szerkesztése: dupla kattintás a táblázaton. A CSV formázás nélküli szöveges dokumentum; készíthető belőle független, formázható táblázat."),
-          propertyTools(
-            button("Önálló táblázat (másolat)", () => transfer(() => tableFromCSVBox(single)), {symbol: "copy", disabled: !online.value}),
-          ),
+          h("p", {class: "muted"}, "Cellák szerkesztése: dupla kattintás a táblázaton. A CSV formázás nélküli szöveges dokumentum."),
+          propertyTools(button("Grafikon létrehozása", () => addChartBox(single), {symbol: "chart", disabled: !online.value})),
         ]));
       }
 
@@ -4685,6 +4739,7 @@ createApp({
             fitContentButton(single),
           ),
           editing ? tableToolbar(h, tableEdit.value.editor, {icon}) : h("p", {class: "muted"}, "Cellák szerkesztése: dupla kattintás a táblázaton."),
+          propertyTools(button("Grafikon létrehozása", () => addChartBox(single), {symbol: "chart", disabled: !online.value})),
           propertyTools(
             button("Tartalom cseréje fájlból…", () => transfer(() => reimportTable(single)), {symbol: "restore", disabled: !online.value || !!occupied(single.id)}),
             h("a", {class: "button", href: exportURL(fileSheet(path, single.file), single.file.asset, "csv"), download: ""}, [icon("download"), "CSV"]),
@@ -4693,41 +4748,43 @@ createApp({
         ]));
       }
 
-      if (single && isGrid(single)) {
-        const chart = single.chart, module = chartModule.value;
-        if (chart && !module) loadChartModule();
-        const rows = chart ? chartRows(single) : undefined;
+      if (single?.type === "chart") {
+        const chart = single.chart ?? {kind: "bar"}, module = chartModule.value;
+        if (!module) loadChartModule();
+        const source = chartSource(single);
+        const rows = source ? chartRows(source) : undefined;
         const data = rows && module ? module.chartData(rows, chart) : null;
-        const setChart = next => change("chart", next);
         const update = patch => {
           const next = {...chart, ...patch};
           for (const key of Object.keys(next)) if (next[key] === undefined) delete next[key];
-          setChart(next);
+          change("chart", next);
         };
         const kinds = module?.chartKinds ?? {bar: "Oszlop", line: "Vonal", pie: "Kör", scatter: "Pont"};
         const picker = (label, value, entries, pick) => field(label, h("select", {value, "aria-label": label, disabled: !online.value,
           onChange: event => pick(event.target.value)}, entries.map(([id, name]) => h("option", {value: id}, name))));
-        const scatter = chart?.kind === "scatter";
+        const scatter = chart.kind === "scatter", pie = chart.kind === "pie";
         const numericColumns = data?.columns.filter(column => column.numeric && column.index !== data.labelColumn) ?? [];
-        const limitReached = data && data.valueColumns.length >= (chart.kind === "pie" ? 1 : scatter ? 3 : module.maximumSeries);
+        const limitReached = data && data.valueColumns.length >= (pie ? 1 : scatter ? 3 : module.maximumSeries);
         panels.push(group("Grafikon", [
-          picker("Megjelenítés", chart?.kind ?? "", [["", "Táblázat"], ...Object.entries(kinds).map(([id, name]) => [id, name + "diagram"])],
-            // A sorozatok kiosztása típusonként más (kör: egy, pont: szám az x tengelyen), ezért váltáskor újra automatikus.
-            kind => setChart(kind ? {kind, ...(chart?.header === false ? {header: false} : {})} : undefined)),
-          chart && !data ? h("p", {class: "muted"}, rows === null ? "A táblázat nem olvasható." : "Betöltés…") : null,
-          data ? picker(scatter ? "X tengely" : chart.kind === "pie" ? "Szeletek neve" : "Kategóriák", chart.labels == null ? "auto" : String(chart.labels), [
+          // A sorozatok kiosztása típusonként más (kör: egy, pont: szám az x tengelyen), ezért váltáskor újra automatikus.
+          picker("Típus", chart.kind, Object.entries(kinds).map(([id, name]) => [id, name + "diagram"]),
+            kind => change("chart", {kind, ...(chart.header === false ? {header: false} : {})})),
+          source ? h("p", {class: "muted"}, "Forrás: " + nodeName(source))
+            : h("p", {class: "muted"}, "Nincs bekötött táblázat. Húzz vonalat egy táblázatból vagy CSV-ből a grafikonra (Ctrl+húzás)."),
+          source && !data ? h("p", {class: "muted"}, rows === null ? "A táblázat nem olvasható." : "Betöltés…") : null,
+          data ? picker(scatter ? "X tengely" : pie ? "Szeletek neve" : "Kategóriák", chart.labels == null ? "auto" : String(chart.labels), [
             ["auto", "Automatikus" + (data.labelColumn != null && chart.labels == null ? " (" + data.columns[data.labelColumn].name + ")" : "")],
             ...(scatter ? [] : [["-1", "Sorszám"]]),
             ...data.columns.filter(column => column.used && (!scatter || column.numeric)).map(column => [String(column.index), column.name]),
           ], value => update({labels: value === "auto" ? undefined : Number(value), values: undefined})) : null,
           data ? h("div", {class: "chart-columns", role: "group", "aria-label": "Értékoszlopok"}, [
-            h("span", chart.kind === "pie" ? "Értékek" : "Értékoszlopok"),
+            h("span", pie ? "Értékek" : "Értékoszlopok"),
             numericColumns.length ? numericColumns.map(column => {
               const on = data.valueColumns.includes(column.index);
               return h("label", {class: "check"}, [
-                h("input", {type: chart.kind === "pie" ? "radio" : "checkbox", checked: on, disabled: !online.value || (!on && limitReached && chart.kind !== "pie"),
+                h("input", {type: pie ? "radio" : "checkbox", checked: on, disabled: !online.value || (!on && limitReached && !pie),
                   onChange: () => {
-                    const next = chart.kind === "pie" ? [column.index]
+                    const next = pie ? [column.index]
                       : on ? data.valueColumns.filter(index => index !== column.index) : [...data.valueColumns, column.index].sort((a, b) => a - b);
                     update({values: next.length ? next : undefined});
                   }}),
@@ -4735,14 +4792,12 @@ createApp({
               ]);
             }) : h("small", {class: "muted"}, "Nincs számoszlop."),
           ]) : null,
-          chart ? h("label", {class: "check"}, [
+          source ? h("label", {class: "check"}, [
             h("input", {type: "checkbox", checked: chart.header !== false, disabled: !online.value,
               onChange: event => update({header: event.target.checked ? undefined : false})}),
             h("span", "Az első sor fejléc"),
           ]) : null,
           data?.truncated ? h("p", {class: "muted"}, "A grafikon a táblázat elejét mutatja (" + data.labels.length + " sor).") : null,
-          chart ? h("p", {class: "muted"}, "A doboz a fájlt grafikonként mutatja. A táblázat mellé külön grafikon: jobb kattintás a táblázaton → Grafikon készítése.")
-            : propertyTools(button("Grafikon a táblázat mellé", () => addChartBox(single), {symbol: "chart", disabled: !online.value})),
         ]));
       }
 
@@ -4907,8 +4962,11 @@ createApp({
           iconToggle("Animáció bekapcsolása", all("animated", false), () => change("animated", !all("animated", false)), icon("play")),
         ])]),
         group("Végpontok", [h("div", {class: "property-options property-tools endpoint-tools"}, [
-          iconToggle("Nyíl a vonal elején", all("startArrow", false), () => change("startArrow", !all("startArrow", false)), icon("left")),
-          iconToggle("Nyíl a vonal végén", all("endArrow", true), () => change("endArrow", !all("endArrow", true)), icon("right")),
+          // Adatvonal (táblázat ↔ grafikon): a végein félkorong áll, nyíl nem választható.
+          ...(edges.every(dataLink) ? [h("small", {class: "muted"}, "Adatvonal")] : [
+            iconToggle("Nyíl a vonal elején", all("startArrow", false), () => change("startArrow", !all("startArrow", false)), icon("left")),
+            iconToggle("Nyíl a vonal végén", all("endArrow", true), () => change("endArrow", !all("endArrow", true)), icon("right")),
+          ]),
           single ? h("span", {class: "endpoint-actions"}, endpointActions(single, true)) : null,
         ])]),
       ];

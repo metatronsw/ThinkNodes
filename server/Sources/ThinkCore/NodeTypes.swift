@@ -38,6 +38,7 @@ package enum NodeTypes {
         "audio": .init(file: "media", extensions: ["mp3", "wav", "ogg", "flac", "m4a", "aac"],
                        traits: ["file", "comment", "player", "surface", "elevation", "size"]),
         "document": .init(file: "binary", extensions: ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "zip"], traits: ["file", "comment", "surface", "elevation", "size"]),
+        "chart": .init(label: "Grafikon", traits: ["chart", "comment", "surface", "elevation", "size"]),
         "junction": .init(traits: ["label", "diameter", "color"]),
     ]
 

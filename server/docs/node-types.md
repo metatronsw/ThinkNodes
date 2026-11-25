@@ -190,21 +190,31 @@ Importált szöveges fájl: minden nem bináris fájl (UTF-8, NUL bájt nélkül
    A táblázat (`table`) szövegszíne is itt állítható; a táblázat szerkesztési módja (képletsor, fejlécek, kijelölés) a doboz
    hátteréből és szövegszínéből kevert színeket használ (`--tn-paper`, `Public/app.css`).
 
-### Grafikon (a `csv` és a `table` megjelenítési módja)
+### chart (grafikon)
 
-Nem külön típus: a táblázat- vagy CSV-doboz `chart` mezője. Ha be van állítva, a doboz a fájl tartalmát táblázat helyett
-grafikonként mutatja (`Public/chart.js`, D3: `Public/lib/d3-chart.js`).
+Önálló objektum, saját fájl nélkül: az adatát a vonallal bekötött táblázat (`table`) vagy CSV (`csv`) fájlja adja
+(`Public/chart.js`, D3: `Public/lib/d3-chart.js`). Bekötött táblázat nélkül üres.
 
 - **Mező:** `chart: {kind, labels, values, header}` – `kind`: `bar` / `line` / `pie` / `scatter`; `labels`: a kategóriák
   (pontdiagramnál az x értékek) oszlopa, hiányzik = automatikus, `-1` = sorszám; `values`: értékoszlopok, hiányzik = minden
-  számoszlop (legfeljebb 8, pont: 3, kör: 1); `header: false` = az első sor is adat.
-- **Táblázat és grafikon együtt:** helyi menü → „Grafikon készítése”: új doboz ugyanarra a fájlra (nem másolat).
-  A fájl dobozai közül a mentés a legnagyobb `file.rev` fölé lép, a grafikon a legfrissebb változatot olvassa (`latestRev`).
-- **Szerkesztő:** a grafikon dobozán a dupla kattintás a panelt nyitja (nem a cellaszerkesztőt); a „Cellák szerkesztése”
-  idejére a doboz táblázatot mutat. Panel: Grafikon csoport (megjelenítés, kategóriák, értékoszlopok, fejlécsor).
+  számoszlop (legfeljebb 8, pont: 3, kör: 1); `header: false` = az első sor is adat. A mező csak `chart` típuson érvényes.
+- **Képességek:** `chart`, `comment`, `surface`, `elevation`, `size`. Táblázat-beállítása, fájlneve nincs.
+- **Létrehozás:** a táblázat / CSV paneljén vagy helyi menüjében „Grafikon létrehozása”: új grafikon a táblázat mellett, bekötve.
+- **Adatvonal:** táblázatot (vagy CSV-t) és grafikont összekötő vonal. Nem tárolt tulajdonság és nem választható: a két
+  végpont típusa adja (`isDataLink`: geometry.js, Rendering.swift). Nyíl helyett mindkét végén félkorong áll, a lapos oldala a
+  doboz oldalára simul (`plugTransform`); a nyílkapcsolók a panelen nem látszanak. A vonal egyébként közönséges: törölhető,
+  átköthető, a színe, vastagsága, típusa állítható.
+- **Egy táblázat:** egy grafikonba egy táblázat köthető; újabb bekötésekor a szerkesztő a korábbi adatvonalat törli, és az
+  oszlopkiosztás automatikusra áll (`tidyChartLinks`). Más dobozból akárhány közönséges vonal mutathat a grafikonra; egy
+  táblázatból több grafikon is táplálkozhat.
+- **Törlés:** a grafikon törlése a táblázatot nem érinti; a táblázat törlése után a grafikon megmarad, üresen.
+- **Frissülés:** a grafikon a forrás fájljának legfrissebb változatát olvassa (`latestRev`), szerkesztés közben a még el nem
+  mentett állapotot is.
 - **Megtekintő:** a szerver helyőrzőt ír (`.node-chart`, `data-chart`, `data-chart-source`), a `viewer.js` tölti be a modult
-  és a fájlt, és rajzol. Szkript nélkül (SVG-export, előnézeti kép) a doboz a táblázatot mutatja.
+  és a fájlt, és rajzol. Szkript nélkül (SVG-export, előnézeti kép) a doboz üres.
 - **Színek:** rögzített sorrendű kategóriaszínek, világos és sötét felületre külön lépcsővel; a szöveg a doboz szövegszíne.
+
+**Táblázat és CSV doboza:** 5 px-es lekerekítésű téglalap (mint a kép és az előnézet); a grafikoné a szokásos.
 
 ### image
 

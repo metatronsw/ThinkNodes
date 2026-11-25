@@ -72,4 +72,15 @@ assert.ok(chartSVG([], {kind: "nincs ilyen"}, {width: 300, height: 200}).include
 // Felület: a háttérszínből, annak híján a szövegszínből.
 assert.deepEqual([darkSurface("#101010", "#000"), darkSurface("#ffffff", "#fff"), darkSurface(undefined, "#f0f0f0"), darkSurface(undefined, "#182335"), darkSurface("", 3)],
   [true, false, true, false, false]);
+// Adatvonal: csak táblázat (vagy CSV) és grafikon között; a félkorong a doboz oldalához igazodik.
+const {isDataLink, plugTransform} = await import("../../Public/geometry.js");
+const boxes = new Map([["t", {type: "table"}], ["c", {type: "csv"}], ["g", {type: "chart"}], ["b", {type: "box"}]]);
+const link = (source, target) => isDataLink({source, target: {node: target}}, id => boxes.get(id));
+assert.deepEqual([link("t", "g"), link("g", "c"), link("b", "g"), link("t", "c"), link("g", "g"), link("t", undefined)], [true, true, false, false, false, false]);
+const box = {position: {x: 100, y: 50}, width: 200, height: 100};
+// Jobb oldal: a domború rész jobbra (kifelé) néz; alsó oldal: lefelé. Legalább 16 egység átmérő.
+assert.equal(plugTransform(box, {x: 200, y: 70}, 2), "translate(200 70) rotate(180) scale(16)");
+assert.equal(plugTransform(box, {x: 0, y: 40}, 2), "translate(0 40) rotate(0) scale(16)");
+assert.equal(plugTransform(box, {x: 120, y: 100}, 4), "translate(120 100) rotate(-90) scale(24)");
+assert.equal(plugTransform(box, {x: 120, y: 0}, 2), "translate(120 0) rotate(90) scale(16)");
 console.log("chart: rendben");

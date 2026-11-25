@@ -395,6 +395,23 @@ export function arrowTransform(tip, toward, length) {
   return `translate(${tip.x} ${tip.y}) rotate(${angle}) scale(${length})`;
 }
 
+// Adatvonal: táblázatot (vagy CSV-t) és grafikont összekötő vonal. Nem tárolt tulajdonság, a két végpont típusa adja
+// (Rendering.swift isDataLink). Nyíl helyett mindkét végén félkorong áll.
+export const isGridType = type => type === "table" || type === "csv";
+export function isDataLink(edge, node) {
+  const a = node(edge.source), b = node(edge.target?.node);
+  return Boolean(a && b) && ((a.type === "chart" && isGridType(b.type)) || (b.type === "chart" && isGridType(a.type)));
+}
+// A félkorong az egységnyi nyíl koordinátáiban (a csúcs az origó): a lapos oldala a doboz oldalára simul, a domború
+// a vonal felé néz. A doboznak azt az oldalát követi, amelyiken a végpont van, nem a vonal irányát.
+export const plugPath = "M0 -.5A.5 .5 0 0 0 0 .5Z";
+export const plugSize = width => Math.max(16, width * 6);
+export function plugTransform(node, tip, width) {
+  const dx = (tip.x - node.position.x) / (node.width / 2), dy = (tip.y - node.position.y) / (node.height / 2);
+  const normal = Math.abs(dx) >= Math.abs(dy) ? {x: dx < 0 ? -1 : 1, y: 0} : {x: 0, y: dy < 0 ? -1 : 1};
+  return arrowTransform(tip, {x: tip.x + normal.x, y: tip.y + normal.y}, plugSize(width));
+}
+
 export function wireArrow(tip, toward, width, visible, limit = Infinity) {
   const dx = toward.x - tip.x, dy = toward.y - tip.y;
   const distance = Math.hypot(dx, dy);

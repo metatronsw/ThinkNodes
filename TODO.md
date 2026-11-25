@@ -42,8 +42,8 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 + Mérés: a táblázatszerkesztő görgetése az új fejlécsávokkal (Safari, `perf.py --only table`); a `perf.py` `tabla` lapos futása javítandó (a keresett `n00005` doboz nincs meg).
 
 # Grafikon (Public/chart.js)
-- Safari-ellenőrzés: a grafikon követi-e a táblázat szerkesztését gépelés közben és a másik résztvevőnél; helyi menü „Grafikon készítése”; `.tntable` forrás; világos téma.
-- SVG-exportban és az előnézeti képen a grafikon doboza táblázatként jelenik meg (a rajz a böngészőben készül). Megoldás lehet: a szerkesztő mentéskor a kész SVG-t is eltárolja.
+- SVG-exportban és az előnézeti képen a grafikon doboza üres (a rajz a böngészőben készül). Megoldás lehet: a szerkesztő mentéskor a kész SVG-t is eltárolja.
+- Az „egy grafikon – egy táblázat” szabályt csak a szerkesztő tartja be; a szerver több adatvonalnál az utolsót veszi forrásnak (kézzel írt vagy importált lapnál fordulhat elő).
 - További lehetőségek: halmozott oszlop, vízszintes sáv, területdiagram, tengelycím, saját színek, sorok helyett oszlopok mint sorozatok, dátumtengely.
 - A grafikon buboréksúgója a böngésző saját `<title>` súgója; a szerkesztő közös buboréksúgójára (tooltip.js) érdemes átállni.
 - A helyi próbalap (`projects/a/grafikon`) törölhető, ha már nem kell.
