@@ -193,3 +193,6 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 - **Sorkizárt dobozban a címsor is sorkizárt** (2026-11-25)
   - Javítva: a címsor sosem sorkizárt, a vízszintes igazítást követi.
 
+- **Vastag vonal túllóg a nyílhegyen a megtekintőben / exportban** (2026-11-25)
+  - Javítva: a szerveroldali rajz is a nyílhegy talpáig húzza a vonalat (CHANGES.md). Safari képernyőképen ellenőrizve.
+

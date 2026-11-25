@@ -384,7 +384,8 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     let edge = try JSONDecoder().decode(Connection.self, from: data)
     let sheet = Worksheet(title: "Pontok", nodes: [box, second], edges: [edge])
     try sheet.validate()
-    #expect(boardSVG(sheet).contains("M 60.000 18.000 L 140.000 42.000"))
+    // A vonal a nyílhegy talpáig tart (13,5 képponttal a végpont előtt).
+    #expect(boardSVG(sheet).contains("M 60.000 18.000 L 127.069 38.121"))
     let encoded = String(decoding: try JSONEncoder().encode(edge), as: UTF8.self)
     #expect(!encoded.lowercased().contains("anchor"))
 }

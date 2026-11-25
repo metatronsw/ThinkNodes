@@ -1,5 +1,13 @@
 # Változások
 
+## 2026-11-25 – Vastag vonal nem lóg túl a nyílhegyen (megtekintő, export)
+
+- **Ok:** a szerveroldali rajzban (megtekintő, SVG-export, előnézeti kép) a vonal a nyílhegy csúcsáig futott, a nyílhegy csak rá volt téve; vastag vonalnál a vonal vége (lekerekített véggel) kilógott a nyílhegy mellett és a csúcsán túl. A szerkesztő eddig is a nyílhegy talpánál fejezte be a vonalat.
+- **Javítás:** a szerver is a nyílhegy talpáig rajzolja a vonalat, a nyíljelölő a vonal végéről indul (`Rendering.swift`; a szerkesztő `wireDrawing` / `wireArrow` párja). Két nyílhegy rövid, egyenes vonalon – mint a szerkesztőben – legfeljebb a fél hosszig ér. A megtekintő a dobozok élő mozgatásakor ugyanígy frissíti a vonalat (`viewer.js`).
+- Tesztek: két meglévő teszt elvárt útvonala a rövidebb vonalhoz igazítva (`experimentalAnchorsLoadAsAutomaticConnections`, `themeProjectRoundTrip`). `test.sh render worksheet editor` rendben.
+- Ellenőrzés: Safari képernyőkép a megtekintőről 12 / 24 / 32-es vonalakkal minden vonaltípusból (egyenes, S-görbe, ív, kötél, villám), egy- és kétnyilas, hosszú és rövid változatban; a szerkesztővel egyezik. A villám típus vastag vonallal és sűrű töréssel továbbra is zsúfolt (a szerkesztőben is).
+- Szerverkód változott: release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – Oda-vissza kötés: a távolság a vonalvastagsághoz igazodik
 
 - Az oda-vissza kötés két vonala közti távolság eddig fix 12 képpont volt, így két vastag (pl. 12-es) vonal összeért. Most a két középvonal távolsága: az egyik nyílhegy fél szélessége + a másik vonal fél vastagsága + 4 képpont (a két irány közül a nagyobb), de legalább 12. Két 2-es vonalnál 12 (változatlan), két 12-esnél 27, két 24-esnél 45, 2-es és 12-es párnál 22 képpont. Így sem a vonalak, sem a nyílhegyek nem érnek a másik vonalhoz.

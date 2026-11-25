@@ -48,7 +48,7 @@ import VaporTesting
     withoutArrows.edges[0].startArrow = false
     withoutArrows.edges[0].endArrow = false
     #expect(boardSVG(withoutArrows, mode: "dark").contains("M 0.000 80.000 Q 60.000 56.000 120.000 80.000"))
-    #expect(glass.contains("M 0.000 100.000 C 60.000 100.000 60.000 140.000 120.000 140.000"))
+    #expect(glass.contains("M 0.000 100.000 C 60.000 100.000 60.000 140.000 106.500 140.000"))
     #expect(!glass.contains("glass-ambient"))
     vectorStudio.edges = [
         Connection(id: "bolt", sourcePoint: Point(x: 0, y: 80),

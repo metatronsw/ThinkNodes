@@ -1344,10 +1344,25 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
         let corners = graphics?.roundedWires == true && command == "L" && (edge.type == .lightning || edge.type == .zigzag)
             ? roundedWireCorners(vertices, wide: edge.type == .lightning) : []
         func pair(_ point: Point) -> String { "\(number(point.x)) \(number(point.y))" }
-        let segments = corners.isEmpty
-            ? command + " " + (points + [ending]).map(pair).joined(separator: " ")
-            : corners.map { "L \(pair($0.entry)) Q \(pair($0.corner)) \(pair($0.exit))" }.joined(separator: " ") + " L " + pair(ending)
-        let drawing = "M \(pair(beginning)) \(segments)"
+        // A vonal a nyílhegy talpáig tart, nem a csúcsáig (editor.js wireDrawing, geometry.js wireArrow): vastag vonal
+        // különben kilógna a nyílhegy mellett. Két nyílhegy rövid, egyenes vonalon legfeljebb a fél hosszig ér.
+        let arrowLength = wireArrowLength(edge.strokeWidth)
+        let headLimit = !points.isEmpty || !(edge.hasStartArrow && edge.hasEndArrow)
+            ? Double.infinity : hypot(ending.x - beginning.x, ending.y - beginning.y) / 2
+        func head(_ tip: Point, _ toward: Point, _ shown: Bool) -> (length: Double, base: Point) {
+            let distance = hypot(toward.x - tip.x, toward.y - tip.y)
+            let length = min(arrowLength, distance, headLimit)
+            guard shown, distance > 0 else { return (length, tip) }
+            return (length, Point(x: tip.x + (toward.x - tip.x) * length / distance, y: tip.y + (toward.y - tip.y) * length / distance))
+        }
+        let startHead = head(beginning, points.first ?? ending, edge.hasStartArrow)
+        let endHead = head(ending, points.last ?? beginning, edge.hasEndArrow)
+        let lineCorners = corners.isEmpty ? corners
+            : roundedWireCorners([startHead.base] + points + [endHead.base], wide: edge.type == .lightning)
+        let segments = lineCorners.isEmpty
+            ? command + " " + (points + [endHead.base]).map(pair).joined(separator: " ")
+            : lineCorners.map { "L \(pair($0.entry)) Q \(pair($0.corner)) \(pair($0.exit))" }.joined(separator: " ") + " L " + pair(endHead.base)
+        let drawing = "M \(pair(startHead.base)) \(segments)"
         let taper = custom == nil && (edge.type == .arc || rise > 0)
             && (edge.appearance == .plain || edge.appearance == .thick) && (edge.hasStartArrow || edge.hasEndArrow)
             ? taperedWireArc(edge, from: beginning, control: points.first ?? arcControl(beginning, ending), to: ending) : nil
@@ -1359,14 +1374,14 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
         let inlineLabel = edge.labelInLine == true && label != nil
         let gapID = "wire-gap-" + edge.id
         let marker = "arrow-" + edge.id
-        let arrowLength = wireArrowLength(edge.strokeWidth)
-        let usesMarkers = taper == nil && !inlineLabel
+        // Rövid, kétnyilas vonalon a nyílhegyek kisebbek a szokottnál: ilyenkor külön rajzolt nyílhegy kell (a jelölő mérete fix).
+        let usesMarkers = taper == nil && !inlineLabel && headLimit >= arrowLength
         var markers = ""
         if usesMarkers && ((edge.hasStartArrow && sourceNode != nil) || (edge.hasEndArrow && targetNode != nil)) {
             let pulse = edge.animated == true && edge.appearance == .thick
                 ? "<animateTransform attributeName=\"transform\" type=\"scale\" additive=\"sum\" values=\"1;1.12;1\" dur=\"3s\" repeatCount=\"indefinite\"/>" : ""
             definitions.append("""
-                <marker id="\(marker)" color="\(color)" markerUnits="userSpaceOnUse" markerWidth="\(number(arrowLength))" markerHeight="\(number(arrowLength))" viewBox="0 0 10 10" refX="9" refY="5" orient="auto-start-reverse" overflow="visible"><path d="M 1 0 L -9 -5 L -9 5 Z" transform="translate(9 5)" fill="currentColor">\(pulse)</path></marker>
+                <marker id="\(marker)" color="\(color)" markerUnits="userSpaceOnUse" markerWidth="\(number(arrowLength))" markerHeight="\(number(arrowLength))" viewBox="0 0 10 10" refX="0" refY="5" orient="auto-start-reverse" overflow="visible"><path d="M 1 0 L -9 -5 L -9 5 Z" transform="translate(9 5)" fill="currentColor">\(pulse)</path></marker>
                 """)
         }
         if usesMarkers && edge.hasStartArrow && sourceNode != nil { markers += " marker-start=\"url(#\(marker))\"" }
@@ -1395,10 +1410,10 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
                 """
         }
         if edge.hasStartArrow && (sourceNode == nil || !usesMarkers) {
-            heads += arrow("source", tip: beginning, toward: points.first ?? ending, length: taper?.startLength ?? arrowLength)
+            heads += arrow("source", tip: beginning, toward: points.first ?? ending, length: taper?.startLength ?? startHead.length)
         }
         if edge.hasEndArrow && (targetNode == nil || !usesMarkers) {
-            heads += arrow("target", tip: ending, toward: points.last ?? beginning, length: taper?.endLength ?? arrowLength)
+            heads += arrow("target", tip: ending, toward: points.last ?? beginning, length: taper?.endLength ?? endHead.length)
         }
         if dataLinks.contains(edge.id), let sourceNode, let targetNode {
             heads += plugMarkup("source", node: sourceNode, tip: beginning, width: edge.strokeWidth, color: color)
