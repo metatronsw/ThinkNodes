@@ -13,8 +13,8 @@ import {justifyRows} from "./justify.js";
 import {attachScrollbars} from "./scrollbar-drag.js";
 import {liveConnection} from "./collaboration.js";
 
-import {useWorksheetGeometry, arrowLength, arrowTransform, plugTransform, edgeGeometry, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireGradientValues, wireLabelLayout} from "./geometry.js?v=25";
-import {ancestors} from "./containers.js?v=4";
+import {useWorksheetGeometry, arrowLength, arrowTransform, plugTransform, edgeGeometry, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireGradientValues, wireLabelLayout} from "./geometry.js?v=26";
+import {ancestors} from "./containers.js?v=5";
 import {ensureGlow, glowReach} from "./glow.js";
 
 let selection;

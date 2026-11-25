@@ -264,10 +264,11 @@ package struct Idea: Codable, Equatable, Sendable {
     /// box: konténer (egyszer belehúztak valamit); kiürülve is konténer marad.
     var container: Bool?
     package var locked: Bool?
-    /// konténer: automatikus (rács) elrendezés. A közvetlen gyermekdobozokat a szerkesztő sorokba rendezi a konténer
-    /// szövege alatt; a kiszámított hely a gyermek `position` mezőjébe kerül (a megtekintő és az export ezt rajzolja).
+    /// konténer: szövegkörbefuttatás. A konténer saját szövege felülről folyik, és soronként kikerüli a közvetlen
+    /// gyermekdobozokat (geometry.js labelLayout, Rendering.swift ideaDrawing); a gyermekek helye kézi marad.
     var autoLayout: Bool?
-    /// Automatikus elrendezésű konténer gyermeke: a kézi helye a konténer közepéhez mérve; kikapcsoláskor ide áll vissza.
+    /// Megszűnt (az első, rácsba rendező változat tárolta ide a gyermek kézi helyét); a szerkesztő a következő
+    /// módosításkor visszaállítja belőle a helyet, és törli.
     var home: Point?
     var elevated: Bool?
     /// .web doboz: true = nincs új előnézet-generálás, a meglévő kép vágódik a doboz arányára.

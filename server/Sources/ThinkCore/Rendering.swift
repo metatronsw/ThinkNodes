@@ -299,6 +299,9 @@ private struct IdeaLabelLine {
     var code = false
     /// Becsült sorszélesség (a tördelés mérte).
     var width: Double = 0
+    /// Körbefuttatott sor helye a címketerület bal széléhez mérve (nil = a teljes szélesség).
+    var slotX: Double?
+    var slotWidth: Double?
 
     var step: Double { size * 1.25 + gap }
 }
@@ -310,6 +313,8 @@ private struct IdeaDrawing {
     var previewSpace: Double = 0
     var available: Double = 0
     var overflow = false
+    /// A szöveg kikerüli a konténer gyermekdobozait: felülről folyik, a függőleges igazítás nem hat.
+    var flow = false
     let lines: [IdeaLabelLine]
     var extentX: Double = 0
     var extentY: Double = 0
@@ -399,7 +404,38 @@ func linkCaption(_ link: NodeLink) -> String {
     }
 }
 
-private func ideaDrawing(_ idea: Idea, graphics: VisualTheme.Graphics? = nil) -> IdeaDrawing {
+/// A konténer szövegét kikerülendő gyermekdoboz: közepe a konténer közepéhez mérve, és a mérete.
+struct TextObstacle {
+    var x: Double
+    var y: Double
+    var width: Double
+    var height: Double
+}
+
+/// Körbefuttatott szöveg egy sorának helye (geometry.js textSlot párja; pontosan egyezniük kell).
+private func textSlot(_ obstacles: [(left: Double, right: Double, top: Double, bottom: Double)], width: Double,
+                      top start: Double, height: Double, indent: Double) -> TextSlot {
+    var top = start
+    let least = min(width - indent, max(40, height * 2))
+    for _ in 0...obstacles.count {
+        let blocking = obstacles.filter { $0.top < top + height && $0.bottom > top }
+        var free: [(Double, Double)] = [(indent, width)]
+        for o in blocking {
+            free = free.flatMap { part -> [(Double, Double)] in
+                if o.right <= part.0 || o.left >= part.1 { return [part] }
+                return [(part.0, min(part.1, o.left)), (max(part.0, o.right), part.1)].filter { $0.1 > $0.0 }
+            }
+        }
+        var best: (Double, Double)?
+        for part in free where best == nil || part.1 - part.0 > best!.1 - best!.0 { best = part }
+        if let best, best.1 - best.0 >= least { return TextSlot(x: best.0, width: best.1 - best.0, skip: top - start) }
+        if blocking.isEmpty { break }
+        top = max(top + 1, blocking.map(\.bottom).min()!)
+    }
+    return TextSlot(x: indent, width: width - indent, skip: top - start)
+}
+
+private func ideaDrawing(_ idea: Idea, graphics: VisualTheme.Graphics? = nil, obstacles: [TextObstacle] = []) -> IdeaDrawing {
     var node = idea
     if node.isJunction {
         if ![.ellipse,.rectangle,.diamond].contains(node.shape) { node.shape = .ellipse }
@@ -430,10 +466,19 @@ private func ideaDrawing(_ idea: Idea, graphics: VisualTheme.Graphics? = nil) ->
     func measure(for line: IdeaLabelLine) -> (Character, MarkdownFormat?) -> Double {
         letterMeasure(size: line.size, bold: line.weight >= 700, monospace: monospace || line.code)
     }
+    // Körbefuttatás: az akadályok a címketerület bal felső sarkához mérve, 8 képpont térközzel (geometry.js labelLayout).
+    let flow = !obstacles.isEmpty
+    let margin = 8.0
+    let blocked = obstacles.map { o in
+        (left: o.x - o.width / 2 - margin + labelWidth / 2, right: o.x + o.width / 2 + margin + labelWidth / 2,
+         top: o.y - o.height / 2 - margin + max(0, labelHeight) / 2, bottom: o.y + o.height / 2 + margin + max(0, labelHeight) / 2)
+    }
+    func room(_ line: IdeaLabelLine) -> Double { line.slotWidth ?? labelWidth - line.indent }
 
     func makeLines(base: Double) -> [IdeaLabelLine] {
         var lines: [IdeaLabelLine] = []
-        for (index, block) in blocks.enumerated() {
+        var cursor = 0.0
+        for (_, block) in blocks.enumerated() {
             let heading = block.kind == .heading
             var size = heading ? base * headingScale(block.level) * (strong ? 1.1 : 1) : base
             if !fitText { size = size.rounded() }
@@ -443,14 +488,24 @@ private func ideaDrawing(_ idea: Idea, graphics: VisualTheme.Graphics? = nil) ->
             var runs = block.runs
             if block.kind == .quote { runs.insert(MarkdownRun(text: "› "), at: 0) }
             let measure = letterMeasure(size: size, bold: weight >= 700, monospace: monospace || code)
-            for (row, wrappedLine) in wrapMarkdown(runs, limit: labelWidth - indent, preformatted: code, width: measure).enumerated() {
+            let blank = Double(block.blankLines ?? 0) * base * 1.25
+            var first = true
+            let slots: (() -> TextSlot)? = !flow ? nil : {
+                let lead = first ? blank : 0
+                first = false
+                let slot = textSlot(blocked, width: labelWidth, top: cursor + lead, height: size * 1.25, indent: indent)
+                cursor += lead + slot.skip + size * 1.25
+                return slot
+            }
+            for (row, wrappedLine) in wrapMarkdown(runs, limit: labelWidth - indent, slots: slots, preformatted: code, width: measure).enumerated() {
                 let pieces = wrappedLine.pieces
                 // Ahány üres sor van a forrásban, annyi üres sor marad a dobozon is.
-                let gap = row == 0 ? Double(block.blankLines ?? 0) * base * 1.25 : 0
+                let gap = (row == 0 ? blank : 0) + (wrappedLine.slot?.skip ?? 0)
                 lines.append(IdeaLabelLine(text: pieces.map(\.text).joined(), size: size, weight: weight,
                                            color: node.textColor, runs: pieces, gap: gap,
                                            justify: node.justified == true && !code,
-                                           wrapped: wrappedLine.wrapped, indent: indent, code: code, width: wrappedLine.width))
+                                           wrapped: wrappedLine.wrapped, indent: indent, code: code, width: wrappedLine.width,
+                                           slotX: wrappedLine.slot?.x, slotWidth: wrappedLine.slot?.width))
             }
         }
         if node.hideText == true, lines.count > 1 {
@@ -472,7 +527,7 @@ private func ideaDrawing(_ idea: Idea, graphics: VisualTheme.Graphics? = nil) ->
             let size = (low + high) / 2
             let candidate = makeLines(base: Double(size))
             if candidate.reduce(0, { $0 + $1.step }) <= labelHeight &&
-                candidate.allSatisfy({ $0.width + $0.indent <= labelWidth }) {
+                candidate.allSatisfy({ $0.width <= room($0) }) {
                 lines = candidate
                 low = size + 1
             } else {
@@ -494,13 +549,13 @@ private func ideaDrawing(_ idea: Idea, graphics: VisualTheme.Graphics? = nil) ->
     var overflow = omitted || (node.hideText == true && canvasMarkdown(node.text).count > 1)
     for index in visible.indices {
         let line = visible[index]
-        if line.width + line.indent > labelWidth || (omitted && index == visible.count - 1) {
-            visible[index] = shortenLine(line, width: labelWidth - line.indent, measure: measure(for: line))
+        if line.width > room(line) || (omitted && index == visible.count - 1) {
+            visible[index] = shortenLine(line, width: room(line), measure: measure(for: line))
             overflow = true
         }
     }
     return IdeaDrawing(node: node, labelWidth: labelWidth, iconSpace: iconSpace, previewSpace: previewSpace,
-                       available: available, overflow: overflow, lines: visible,
+                       available: available, overflow: overflow, flow: flow, lines: visible,
                        extentX: node.width / 2, extentY: node.height / 2)
 }
 
@@ -704,11 +759,12 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
     let y = height / 2
     let geometry = boxGeometry(node, graphics: graphics)
     let labelWidth = drawing.labelWidth
-    let rank: Double = switch node.verticalAlignment {
+    let aligned: Double = switch node.verticalAlignment {
     case .top: 0
     case .bottom: 1
     default: 0.5
     }
+    let rank = drawing.flow ? 0 : aligned
     let strong = false  // a Félkövér/Dőlt/Aláhúzott gombok megszűntek; a markdown formázás marad
     let extra = drawing.available - drawing.lines.reduce(0) { $0 + $1.step }
     var offset = -(drawing.available + drawing.iconSpace + drawing.previewSpace) / 2 + drawing.previewSpace
@@ -716,16 +772,18 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
         let top = offset + extra * rank
         let textX: Double
         let anchor: String
+        let left = -labelWidth / 2 + (line.slotX ?? line.indent)
+        let span = line.slotWidth ?? labelWidth - line.indent
         switch line.justify || line.indent > 0 ? .left : node.alignment {
-        case .left: (textX, anchor) = (-labelWidth / 2 + line.indent, "start")
-        case .right: (textX, anchor) = (labelWidth / 2, "end")
-        case .center: (textX, anchor) = (0, "middle")
+        case .left: (textX, anchor) = (left, "start")
+        case .right: (textX, anchor) = (line.slotWidth == nil ? labelWidth / 2 : left + span, "end")
+        case .center: (textX, anchor) = (line.slotWidth == nil ? 0 : left + span / 2, "middle")
         }
         var style = ""
         // Sorkizárás: csak a tördelt (nem bekezdés-záró) sorok érnek a doboz mindkét széléig; a rövid sor balra zárt marad.
-        if line.justify && line.wrapped && line.text.contains(" ") && line.width < labelWidth - line.indent {
+        if line.justify && line.wrapped && line.text.contains(" ") && line.width < span {
             // A szóközöket a böngésző tágítja (Public/justify.js); JavaScript nélkül a sor balra zárt marad.
-            style += " data-justify=\"\(number(labelWidth - line.indent))\""
+            style += " data-justify=\"\(number(span))\""
         }
         let baseline = top + line.gap + line.size * (1.25 / 2 + 0.33)
         offset += line.step
@@ -1088,7 +1146,18 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
     // Vászonszín háttérmód: a doboz felülete a munkalap háttérszínét kapja (editor.js surfaceColor).
     var board = board
     for index in board.nodes.indices where board.nodes[index].backgroundMode == .canvas { board.nodes[index].fill = board.backgroundColor }
-    let drawings = board.nodes.map { ideaDrawing($0, graphics: graphics) }
+    // Szövegkörbefuttatás (`autoLayout`): a konténer szövege kikerüli a közvetlen gyermekdobozait.
+    let flowing = Set(board.nodes.filter { $0.autoLayout == true && $0.isContainer }.map(\.id))
+    var obstacles: [String: [TextObstacle]] = [:]
+    if !flowing.isEmpty {
+        let places = Dictionary(board.nodes.map { ($0.id, $0.position) }, uniquingKeysWith: { first, _ in first })
+        for child in board.nodes where !child.isJunction {
+            guard let parent = child.parent, flowing.contains(parent), let center = places[parent] else { continue }
+            obstacles[parent, default: []].append(TextObstacle(x: child.position.x - center.x, y: child.position.y - center.y,
+                                                               width: child.width, height: child.height))
+        }
+    }
+    let drawings = board.nodes.map { ideaDrawing($0, graphics: graphics, obstacles: obstacles[$0.id] ?? []) }
     let renderedIdeas = drawings.map(\.node)
     let nodes = Dictionary(uniqueKeysWithValues: renderedIdeas.map { ($0.id, $0) })
     // Adatvonalak: nyíl nélkül, félkoronggal; a grafikon forrása a bekötött táblázat (több közül az utolsó vonalé).

@@ -48,12 +48,11 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 - A grafikon buboréksúgója a böngésző saját `<title>` súgója; a szerkesztő közös buboréksúgójára (tooltip.js) érdemes átállni.
 - A helyi próbalap (`projects/a/grafikon`) törölhető, ha már nem kell.
 
-# Konténer – automatikus elrendezés
+# Konténer – szöveg körbefuttatása
 
-+ Kész (2026-11-25): kapcsoló a konténeren, sorokba rendezés a szöveg alatt, sorrendcsere húzással, kézi hely megőrzése (CHANGES.md).
-- Húzás és a konténer átméretezése közben nincs élő átrendezés: a dobozok elengedéskor ugranak a helyükre.
-- A ki nem férő tartalom alul kilóg a konténerből (döntés: a konténer nem nő, görgetés nincs). Lehetőség: jelzés a konténeren, ha a tartalom nem fér el.
-- Ha a tartalom egy részét más szerkesztő jelölte ki, a rendezés a következő módosításig elmarad.
-- Hiányzik az automatikus teszt (`gestures.mjs`); eddig Safariban, kézi szkripttel lett kipróbálva.
-- Nem téglalap alakú konténernél a rács a befoglaló téglalapot használja (a sarkoknál kilóghat).
-- Lehetőség: egyforma cellaméret (a gyermek a cellához igazodik), állítható térköz és belső margó.
++ Kész (2026-11-25): a konténer saját szövege kikerüli a benne lévő dobozokat (CHANGES.md).
+- Automatikus teszt a körbefuttatásra (JS–Swift egyezés: `textSlot`, körbefuttatott `labelLayout`).
+- A sor a doboz mellett a legszélesebb szabad szakaszt használja; egy rövid sorvég így a doboz túloldalára kerülhet. Lehetőség: a megkezdett bekezdés maradjon ugyanazon az oldalon.
+- Csak a közvetlen gyermekeket kerüli ki, a befoglaló téglalapjuk szerint (nem téglalap alakú gyermeknél is).
+- A szövegszerkesztő mező a vásznon (gépelés közben) nem követi a körbefuttatást.
+- A mező neve (`autoLayout`) és a megszűnt `home` mező átnevezhető / törölhető, ha már nincs régi lap.

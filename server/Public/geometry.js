@@ -540,15 +540,24 @@ function textWidth(value, size, {bold = false, monospace = false} = {}) {
 
 // Tördelés becsült szélesség szerint: `width(betű, formátum)` adja egy betű szélességét, `limit` a sor szélessége.
 // Alapértelmezésben minden betű 1 széles, így `limit` oszlopszám (CanvasMarkdown.swift wrapMarkdown párja).
+// `limit`: a sor szélessége, vagy függvény, amely soronként ad helyet ({x, width, skip}; lásd textSlot) – ekkor a sor
+// a kapott helyet a `slot` mezőben viszi tovább.
 function wrapRuns(runs, limit, preformatted, width = () => 1) {
   const rows = [];
   let line = [];
   let word = [];
   let used = 0;
   let lastFormat;
+  const flowing = typeof limit === "function";
+  let slot = null;
+  // A sor helyét az első tartalma előtt (legkésőbb a lezárásakor) kérjük el, soronként egyszer.
+  const cap = () => flowing ? (slot ??= limit()).width : limit;
 
   function endLine(wrapped = false) {
-    if (line.length) rows.push({pieces: line, wrapped, width: used});
+    if (line.length) {
+      if (flowing) { cap(); rows.push({pieces: line, wrapped, width: used, slot}); slot = null; }
+      else rows.push({pieces: line, wrapped, width: used});
+    }
     line = [];
     used = 0;
     lastFormat = undefined;
@@ -567,11 +576,11 @@ function wrapRuns(runs, limit, preformatted, width = () => 1) {
     for (const [, , size] of word) wordWidth += size;
     if (used > 0) {
       const space = width(" ", undefined);
-      if (used + space + wordWidth > limit) endLine(true);
+      if (used + space + wordWidth > cap()) endLine(true);
       else append(" ", undefined, space);
     }
     for (const [letter, format, size] of word) {
-      if (used > 0 && used + size > limit) endLine(true);
+      if (used > 0 && used + size > cap()) endLine(true);
       append(letter, format, size);
     }
     word = [];
@@ -585,7 +594,7 @@ function wrapRuns(runs, limit, preformatted, width = () => 1) {
           endLine();
         } else {
           const size = width(letter, run.format);
-          if (used > 0 && used + size > limit) endLine(true);
+          if (used > 0 && used + size > cap()) endLine(true);
           append(letter, run.format, size);
         }
       } else if (letter === "\n") {
@@ -601,6 +610,28 @@ function wrapRuns(runs, limit, preformatted, width = () => 1) {
   endWord();
   endLine();
   return rows;
+}
+
+// Körbefuttatott szöveg egy sorának helye (Rendering.swift textSlot párja; pontosan egyezniük kell). A címketerület
+// `width` széles, a sor `top`-tól `height` magas; az akadályok a címketerület bal felső sarkához mért téglalapok. A sor a
+// legszélesebb szabad szakaszt kapja; ha az túl keskeny, lejjebb csúszik az útban lévő akadály alá (`skip`).
+export function textSlot(obstacles, width, top, height, indent) {
+  const start = top;
+  const least = Math.min(width - indent, Math.max(40, height * 2));
+  for (let attempt = 0; attempt <= obstacles.length; attempt++) {
+    const blocking = obstacles.filter(o => o.top < top + height && o.bottom > top);
+    let free = [[indent, width]];
+    for (const o of blocking) {
+      free = free.flatMap(([a, b]) => o.right <= a || o.left >= b ? [[a, b]]
+        : [[a, Math.min(b, o.left)], [Math.max(a, o.right), b]].filter(([from, to]) => to > from));
+    }
+    let best = null;
+    for (const part of free) if (!best || part[1] - part[0] > best[1] - best[0]) best = part;
+    if (best && best[1] - best[0] >= least) return {x: best[0], width: best[1] - best[0], skip: top - start};
+    if (!blocking.length) break;
+    top = Math.max(top + 1, Math.min(...blocking.map(o => o.bottom)));
+  }
+  return {x: indent, width: width - indent, skip: top - start};
 }
 
 function shortenLine(line, width, measure) {
@@ -635,7 +666,8 @@ export function fitCaption(text, size, available) {
 export const headingScale = level => ({1: 1.6, 2: 1.3}[level] ?? 1.15);
 
 // Doboz szövegének elrendezése; a Rendering.swift ideaDrawing/nodeSVG párja (docs/node-types.md, Text képesség).
-export function labelLayout(node, blocks = []) {
+// `obstacles`: a konténer szövegét kikerülendő gyermekdobozok ({x, y, width, height}; x, y a doboz közepéhez mérve).
+export function labelLayout(node, blocks = [], obstacles = []) {
   // NAGYBETŰS: a tördelés előtt, mert a nagybetűs szöveg szélesebb (Rendering.swift ideaDrawing).
   if (node.uppercase) blocks = blocks.map(block => ({...block, runs: block.runs.map(run => ({...run, text: run.text.toLocaleUpperCase("hu")}))}));
   if (node.type !== "box" && node.type !== "preview") return {width: node.width, height: node.height, lines: []};
@@ -653,9 +685,18 @@ export function labelLayout(node, blocks = []) {
   const fonts = currentGraphics().fonts ?? defaultFonts;
   const monospace = isMonospaceFont(fonts[Math.min(Math.max((node.font ?? 1) - 1, 0), fonts.length - 1)]);
   const measureFor = line => letterMeasure(line.size, line.weight >= 700, monospace || line.code);
+  // Körbefuttatás: az akadályok a címketerület bal felső sarkához mérve, 8 képpont térközzel; a szöveg felülről folyik.
+  const flow = obstacles.length > 0;
+  const margin = 8;
+  const blocked = obstacles.map(o => ({
+    left: o.x - o.width / 2 - margin + labelWidth / 2, right: o.x + o.width / 2 + margin + labelWidth / 2,
+    top: o.y - o.height / 2 - margin + Math.max(0, labelHeight) / 2, bottom: o.y + o.height / 2 + margin + Math.max(0, labelHeight) / 2,
+  }));
+  const room = line => line.slotWidth ?? labelWidth - line.indent;
 
   function makeLines(base) {
     const lines = [];
+    let cursor = 0;
     blocks.forEach((block, index) => {
       const heading = block.kind === "heading";
       let size = heading ? base * headingScale(block.level) * (strong ? 1.1 : 1) : base;
@@ -665,11 +706,21 @@ export function labelLayout(node, blocks = []) {
       const code = block.kind === "code";
       const runs = block.kind === "quote" ? [{text: "› "}, ...block.runs] : block.runs;
       const measure = letterMeasure(size, weight >= 700, monospace || code);
-      wrapRuns(runs, labelWidth - indent, code, measure).forEach(({pieces, wrapped, width}, row) => {
+      const blank = (block.blankLines ?? 0) * base * 1.25;
+      let first = true;
+      const limit = !flow ? labelWidth - indent : () => {
+        const lead = first ? blank : 0;
+        first = false;
+        const slot = textSlot(blocked, labelWidth, cursor + lead, size * 1.25, indent);
+        cursor += lead + slot.skip + size * 1.25;
+        return slot;
+      };
+      wrapRuns(runs, limit, code, measure).forEach(({pieces, wrapped, width, slot}, row) => {
         // Ahány üres sor van a forrásban, annyi üres sor marad a dobozon is.
-        const gap = row === 0 ? (block.blankLines ?? 0) * base * 1.25 : 0;
+        const gap = (row === 0 ? blank : 0) + (slot?.skip ?? 0);
         lines.push({justify: node.justified && !code, wrapped, runs: pieces, text: pieces.map(piece => piece.text).join(""),
-          size, weight, indent, code, width, color: node.textColor, step: size * 1.25 + gap, gap});
+          size, weight, indent, code, width, color: node.textColor, step: size * 1.25 + gap, gap,
+          slotX: slot?.x, slotWidth: slot?.width});
       });
     });
     if (node.hideText && lines.length > 1) {
@@ -690,7 +741,7 @@ export function labelLayout(node, blocks = []) {
       const size = Math.floor((low + high) / 2);
       const candidate = makeLines(size);
       if (candidate.reduce((sum, line) => sum + line.step, 0) <= labelHeight &&
-          candidate.every(line => line.width + line.indent <= labelWidth)) {
+          candidate.every(line => line.width <= room(line))) {
         lines = candidate;
         low = size + 1;
       } else high = size - 1;
@@ -709,12 +760,12 @@ export function labelLayout(node, blocks = []) {
   let overflow = omitted || (node.hideText && blocks.length > 1);
   for (let i = 0; i < visible.length; i++) {
     const line = visible[i];
-    if (line.width + line.indent > labelWidth || (omitted && i === visible.length - 1)) {
-      visible[i] = shortenLine(line, labelWidth - line.indent, measureFor(line));
+    if (line.width > room(line) || (omitted && i === visible.length - 1)) {
+      visible[i] = shortenLine(line, room(line), measureFor(line));
       overflow = true;
     }
   }
-  const rank = {top: 0, bottom: 1}[node.verticalAlignment] ?? 0.5;
+  const rank = flow ? 0 : {top: 0, bottom: 1}[node.verticalAlignment] ?? 0.5;
   const extra = available - visible.reduce((sum, line) => sum + line.step, 0);
   let offset = -(available + iconSpace + previewSpace) / 2 + previewSpace;
   const positioned = visible.map(line => {
@@ -722,10 +773,12 @@ export function labelLayout(node, blocks = []) {
     const y = top + (line.gap ?? 0) + line.size * (1.25 / 2 + 0.33);
     offset += line.step;
     const align = line.justify || line.indent > 0 ? "left" : node.alignment ?? "center";
-    const x = align === "left" ? -labelWidth / 2 + line.indent : align === "right" ? labelWidth / 2 : 0;
+    const left = -labelWidth / 2 + (line.slotX ?? line.indent), span = room(line);
+    const x = line.slotWidth === undefined ? (align === "left" ? left : align === "right" ? labelWidth / 2 : 0)
+      : align === "left" ? left : align === "right" ? left + span : left + span / 2;
     // Sorkizárás: csak a tördelt (nem bekezdés-záró) sorok érnek a doboz mindkét széléig; a rövid sor balra zárt marad.
-    const justifyWidth = line.justify && line.wrapped && line.text.includes(" ") && line.width < labelWidth - line.indent
-      ? labelWidth - line.indent : undefined;
+    const justifyWidth = line.justify && line.wrapped && line.text.includes(" ") && line.width < room(line)
+      ? room(line) : undefined;
     return {...line, x, y, anchor: {left: "start", center: "middle", right: "end"}[align], justifyWidth};
   });
   return {width, height, extentX: width / 2, extentY: height / 2, overflow, lines: positioned, labelWidth, iconSpace, previewSpace};

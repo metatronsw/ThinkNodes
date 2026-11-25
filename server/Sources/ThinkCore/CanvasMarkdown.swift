@@ -140,13 +140,38 @@ func wrapMarkdown(_ runs: [MarkdownRun], columns: Int, preformatted: Bool = fals
 /// `width(betű, formátum)` egy betű szélessége, `limit` a sor szélessége; a szóköz formátuma `nil`.
 func wrapMarkdown(_ runs: [MarkdownRun], limit: Double, preformatted: Bool = false,
                   width: (Character, MarkdownFormat?) -> Double) -> [(pieces: [MarkdownRun], wrapped: Bool, width: Double)] {
-    var rows: [(pieces: [MarkdownRun], wrapped: Bool, width: Double)] = []
+    wrapMarkdown(runs, limit: limit, slots: nil, preformatted: preformatted, width: width).map { ($0.pieces, $0.wrapped, $0.width) }
+}
+
+/// Körbefuttatott szöveg egy sorának helye a címketerületen (geometry.js textSlot).
+struct TextSlot: Equatable {
+    var x: Double
+    var width: Double
+    /// Ennyivel csúszott lejjebb a sor az útban lévő akadály miatt.
+    var skip: Double
+}
+
+/// Mint fent; `slots` megadásakor a sorok szélességét soronként az adja (a sor az első tartalma előtt, legkésőbb a
+/// lezárásakor kéri el, soronként egyszer), és a sor a kapott helyet magával viszi (geometry.js wrapRuns).
+func wrapMarkdown(_ runs: [MarkdownRun], limit: Double, slots: (() -> TextSlot)?, preformatted: Bool = false,
+                  width: (Character, MarkdownFormat?) -> Double) -> [(pieces: [MarkdownRun], wrapped: Bool, width: Double, slot: TextSlot?)] {
+    var rows: [(pieces: [MarkdownRun], wrapped: Bool, width: Double, slot: TextSlot?)] = []
     var line: [MarkdownRun] = []
     var word: [(Character, MarkdownFormat, Double)] = []
     var used = 0.0
+    var slot: TextSlot?
+    func cap() -> Double {
+        guard let slots else { return limit }
+        if slot == nil { slot = slots() }
+        return slot!.width
+    }
 
     func endLine(wrapped: Bool = false) {
-        if !line.isEmpty { rows.append((line, wrapped, used)) }
+        if !line.isEmpty {
+            if slots != nil { _ = cap() }
+            rows.append((line, wrapped, used, slot))
+            slot = nil
+        }
         line = []
         used = 0
     }
@@ -167,11 +192,11 @@ func wrapMarkdown(_ runs: [MarkdownRun], limit: Double, preformatted: Bool = fal
         for (_, _, size) in word { wordWidth += size }
         if used > 0 {
             let space = width(" ", nil)
-            if used + space + wordWidth > limit { endLine(wrapped: true) }
+            if used + space + wordWidth > cap() { endLine(wrapped: true) }
             else { append(" ", format: nil, size: space) }
         }
         for (character, format, size) in word {
-            if used > 0 && used + size > limit { endLine(wrapped: true) }
+            if used > 0 && used + size > cap() { endLine(wrapped: true) }
             append(character, format: format, size: size)
         }
         word.removeAll(keepingCapacity: true)
@@ -185,7 +210,7 @@ func wrapMarkdown(_ runs: [MarkdownRun], limit: Double, preformatted: Bool = fal
                     endLine()
                 } else {
                     let size = width(character, run.format)
-                    if used > 0 && used + size > limit { endLine(wrapped: true) }
+                    if used > 0 && used + size > cap() { endLine(wrapped: true) }
                     append(character, format: run.format, size: size)
                 }
             } else if character.isNewline {

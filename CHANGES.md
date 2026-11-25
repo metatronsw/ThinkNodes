@@ -1,13 +1,13 @@
 # Változások
 
-## 2026-11-25 – Konténer: automatikus elrendezés
+## 2026-11-25 – Konténer: a saját szöveg kikerüli a benne lévő dobozokat
 
-- **Kapcsoló:** a konténer tulajdonságpaneljén (Doboz csoport, rács ikon) „Automatikus elrendezés”. Bekapcsolva a konténer szövege felülre kerül, a közvetlen gyermekdobozok alatta sorokba rendeződnek, a saját méretükben; ami nem fér ki a sorba, új sorba kerül (keskeny konténernél egy oszlop).
-- **Döntések (2026-11-25):** a konténer mérete nem nő és nincs görgetés (a ki nem férő tartalom alul kilóg, a konténert kézzel kell nagyobbra venni); a gyermekek mérete nem változik; a gyermek húzása a konténeren belül sorrendet cserél (elengedéskor a helyére ugrik); a belső konténer egy cella, a saját tartalmát a saját beállítása szerint rendezi.
-- **Adatmodell:** a konténeren `autoLayout`, a gyermeken `home` (a kézi hely a konténer közepéhez mérve). Kikapcsoláskor a gyermekek visszaállnak a kézi helyükre. A kiszámított hely a gyermek pozíciójába kerül, de csak módosításkor (nem rajzoláskor), ugyanabban a visszavonási lépésben, mint a kiváltó módosítás – így a megtekintő, az előnézeti kép és az SVG-export változtatás nélkül ugyanazt mutatja. Ez eltér az eredeti javaslattól (csak megjelenítési réteg).
-- **Mikor számol újra:** minden szerkesztői módosítás végén (gyermek be / ki, átméretezés, szöveg, sorrendcsere), és amikor a konténer szövegének tördelése elkészül. Ha a tartalom egy részét más szerkesztő jelölte ki, a rendezés a következő módosításra marad.
-- Helye: `Public/editor.js` (`relayout`, `readingOrder`, `layoutHeader`, `toggleAutoLayout`), `Sources/ThinkCore/Model.swift` (`autoLayout`, `home`).
-- Kipróbálva Safariban (WebDriver, ideiglenes próbalap): bekapcsolás, sorrendcsere húzással, beágyazott konténer együtt mozog, kikapcsolás visszaállít; a rálógó doboz takarja a konténer tartalmát. `test.sh render editor worksheet` rendben. A szerver kódja változott (`Model.swift`): futó szervert újra kell indítani.
+- **Mit csinál:** a konténer tulajdonságpaneljén (Doboz csoport, rács ikon) „Szöveg körbefuttatása a tartalom körül”. Bekapcsolva a konténer saját szövege felülről folyik, és soronként kikerüli a közvetlen gyermekdobozokat: a sor a doboz mellett, a legszélesebb szabad helyen folytatódik, vagy ha ott túl kevés a hely, a doboz alatt. A gyermekdobozok ott maradnak, ahová kézzel kerültek; a helyük és méretük nem változik.
+- **Élő:** gyermek húzásakor a konténer szövege azonnal újratördelődik. A megtekintő és az SVG-export ugyanígy tördel (a két oldal kódja párban áll).
+- **Korlátok:** a függőleges igazítás körbefuttatásnál nem hat (a szöveg felül kezdődik); a dobozok körül 8 képpont térköz van; ami nem fér ki, az a szokott módon „…”-tal rövidül (a konténer nem nő).
+- **Az első változat megszűnt:** a rácsba rendezés (a gyermekek áthelyezése) félreértés volt, kikerült. Ahol az a változat már áthelyezett dobozokat, ott a szerkesztő a lap következő módosításakor visszateszi őket a kézi helyükre (`home` mező, utána törlődik).
+- Adatmodell: a konténeren `autoLayout` (a név az első változatból maradt). Helye: `Public/geometry.js` (`textSlot`, `wrapRuns`, `labelLayout`), `Public/editor.js` (`flowObstacles`), `Sources/ThinkCore/CanvasMarkdown.swift` (`wrapMarkdown`, `TextSlot`), `Sources/ThinkCore/Rendering.swift` (`textSlot`, `ideaDrawing`).
+- Kipróbálva Safariban (WebDriver, ideiglenes próbalap): szerkesztő, gyermek áthúzása, megtekintő. `test.sh render editor markdown worksheet` rendben. Külön automatikus teszt a körbefuttatásra nincs. A szerver kódja változott: release build készült, a helyi szerver újraindítva.
 
 ## 2026-11-25 – Konténer: a rálógó doboz a konténer tartalmát is kitakarja
 
