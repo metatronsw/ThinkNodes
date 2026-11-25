@@ -175,3 +175,12 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 - **Sok szöveget tartalmazó (sorkizárt) doboz mozgatása nagyon lassú** (2026-11-25)
   - Javítva: a sorkizárás húzás közben képkockánként újramérte a sorokat; most csak változáskor mér (`Public/justify.js`). Safari, `projects/b` másolata: 30 → 54 fps.
 
+- **Sorkizárás kapcsoló hatástalan (mindig balra zárt)** (2026-11-25)
+  - Javítva: a Safari SVG-szövegen nem alkalmazza a `word-spacing`-et; a sorok `dx` listával tolódnak (`Public/justify.js`). Safari képernyőképen ellenőrizve.
+
+- **Konténerben a 9 gombos igazítás hatástalan** (2026-11-25)
+  - Javítva: a körbefuttatott szövegre is hat a függőleges igazítás; a vízszintes a sor szabad helyén belül. Safari képernyőképen az alsó igazítás ellenőrizve.
+
+- **Kijelölt / mozgatott konténer háttere eltűnik** (2026-11-25)
+  - Ok: SVG-szűrő a kijelölt doboz felületén, amit a Safari nagy dobozon nem rajzol ki. Javítva: szűrő helyett fedőréteg. Az új megjelenés szemmel még nincs megnézve (BUGS.md).
+

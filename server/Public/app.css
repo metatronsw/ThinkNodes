@@ -782,8 +782,9 @@ svg text { text-rendering: geometricPrecision; }
 .own-selected :is(.node-surface, .node-frame):not([data-locked-outline]) { stroke-width: 4px; }
 /* Szövegfájl-, CSV- és táblázatdobozon a saját kijelölés csak vastag keret, glow nélkül: a nagy felületen az SVG-szűrő
    bekapcsolása (kijelöléskor és a húzás végén) Safariban 200–300 ms-os megakadás volt. */
-.own-selected:not(.is-text) .node-surface:not([filter]) { filter: var(--glow-own-surface); }
-.own-selected:not(.is-text) .node-frame { filter: var(--glow-own-frame); }
+/* A doboz felületén és keretén nincs szűrő: nagy (vagy a képernyőről kilógó) dobozon a Safari a szűrős felületet nem
+   rajzolta ki, a kijelölt konténer háttere eltűnt. A világosítást szűrő nélküli fedőréteg adja (.selection-own-tint). */
+.selection-own-tint { fill: #fff; fill-opacity: .1; stroke: none; pointer-events: none; }
 .own-selected .junction-surface { filter: brightness(1.3); }
 /* Útvonal gombok: munkalaponként a mappa neve; az aktuális kiemelve, nem kattintható. */
 /* Elválasztó (›) a gombok közötti résben: nulla szélességű, így nem növeli a távolságot. */

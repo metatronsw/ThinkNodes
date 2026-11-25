@@ -1,5 +1,13 @@
 # Változások
 
+## 2026-11-25 – Sorkizárás Safariban, igazítás a körbefuttatott konténerben, kijelölt doboz háttere
+
+- **Sorkizárás:** a kapcsoló Safariban hatástalan volt, mert a Safari SVG-szövegen nem alkalmazza a `word-spacing`-et. A sor most betűnkénti `dx` listát kap (a szóköz utáni betű tolódik), ez Safariban is működik. Kikapcsoláskor az eltolás lekerül a sorról (`Public/justify.js`; szerkesztő és megtekintő).
+- **Igazítás körbefuttatásnál:** a függőleges igazítás (közép / alul) a körbefuttatott konténerszövegre is hat: a szöveg kezdőpontját néhány lépésben közelítjük, mert a sorok helye a magasságtól függ. A vízszintes igazítás a sor szabad helyén belül érvényes; sorkizárt szöveg balra zárt marad. Szerkesztő és szerver párban (`geometry.js labelLayout`, `Rendering.swift ideaDrawing`).
+- **Belső doboz húzása:** a sorkizárás mérése kötegelve fut (előbb minden írás, aztán minden mérés: egy elrendezés soronkénti helyett), és az azonos tartalmú sor hosszát megjegyzi. Maga a körbefuttatás számítása 0,4–1,5 ms (Node.js, a `projects/a` és `b` konténerein mérve).
+- **Kijelölt doboz háttere:** a saját kijelölés a doboz felületére SVG-szűrőt (fényudvar + világosítás) tett; nagy vagy a képernyőről kilógó dobozon a Safari a szűrős felületet nem rajzolta ki, a konténer háttere eltűnt (képernyőképpel reprodukálva). A felületen és a kereten már nincs szűrő: a világosítást szűrő nélküli fedőréteg adja (`.selection-own-tint`), a kijelölést a vastag keret jelzi; a fényudvar a dobozon megszűnt.
+- Ellenőrzés: Safari képernyőképen a sorkizárás és az alsó igazítás látszik. **Nincs ellenőrizve böngészőben:** a kijelölt konténer új megjelenése és a belső doboz húzásának sebessége (a gép képernyője a próba alatt zárolva volt, egérműveletet nem lehetett küldeni). `test.sh render editor markdown` rendben. Szerverkód változott: release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – Konténer: a szövegkörbefuttatás alapból be van kapcsolva
 
 - Minden konténer saját szövege kikerüli a benne lévő dobozokat, külön bekapcsolás nélkül. A konténer paneljén a rács ikonnal („Szöveg körbefuttatása a tartalom körül”) kikapcsolható (`autoLayout: false`).

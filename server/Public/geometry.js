@@ -694,9 +694,10 @@ export function labelLayout(node, blocks = [], obstacles = []) {
   }));
   const room = line => line.slotWidth ?? labelWidth - line.indent;
 
-  function makeLines(base) {
+  // `start`: körbefuttatásnál a szöveg kezdete a címketerület tetejétől (függőleges igazítás).
+  function makeLines(base, start = 0) {
     const lines = [];
-    let cursor = 0;
+    let cursor = start;
     blocks.forEach((block, index) => {
       const heading = block.kind === "heading";
       let size = heading ? base * headingScale(block.level) * (strong ? 1.1 : 1) : base;
@@ -749,8 +750,23 @@ export function labelLayout(node, blocks = [], obstacles = []) {
   } else lines = makeLines(node.fontSize ?? 16);
 
   const available = Math.max(0, labelHeight);
+  const rank = {top: 0, bottom: 1}[node.verticalAlignment] ?? 0.5;
+  // Körbefuttatás függőleges igazítással: a sorok helye a kezdőponttól függ (más magasságban más dobozok vannak útban),
+  // ezért néhány lépésben közelítünk: a szöveg ott kezdődjön, ahonnan a magassága szerint középre / alulra kerül.
+  // (Rendering.swift ideaDrawing ugyanígy számol.) Szövegillesztésnél (fitText) a szöveg felül kezdődik.
+  let flowStart = 0;
+  if (flow && rank > 0 && !node.fitText) {
+    const tall = rows => rows.reduce((sum, line) => sum + line.step, 0);
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const next = Math.max(0, Math.round((available - tall(lines)) * rank));
+      if (next === flowStart) break;
+      flowStart = next;
+      lines = makeLines(node.fontSize ?? 16, flowStart);
+    }
+    if (flowStart + tall(lines) > available) { flowStart = 0; lines = makeLines(node.fontSize ?? 16); }
+  }
   const visible = [];
-  let remaining = available;
+  let remaining = available - flowStart;
   for (const line of lines) {
     if (remaining < line.step) break;
     visible.push(line);
@@ -765,11 +781,10 @@ export function labelLayout(node, blocks = [], obstacles = []) {
       overflow = true;
     }
   }
-  const rank = flow ? 0 : {top: 0, bottom: 1}[node.verticalAlignment] ?? 0.5;
   const extra = available - visible.reduce((sum, line) => sum + line.step, 0);
   let offset = -(available + iconSpace + previewSpace) / 2 + previewSpace;
   const positioned = visible.map(line => {
-    const top = offset + extra * rank;
+    const top = offset + (flow ? flowStart : extra * rank);
     const y = top + (line.gap ?? 0) + line.size * (1.25 / 2 + 0.33);
     offset += line.step;
     const align = line.justify || line.indent > 0 ? "left" : node.alignment ?? "center";

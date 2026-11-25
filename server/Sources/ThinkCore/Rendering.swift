@@ -315,6 +315,8 @@ private struct IdeaDrawing {
     var overflow = false
     /// A szöveg kikerüli a konténer gyermekdobozait: felülről folyik, a függőleges igazítás nem hat.
     var flow = false
+    /// Körbefuttatásnál a szöveg kezdete a címketerület tetejétől (a függőleges igazításból).
+    var flowStart: Double = 0
     let lines: [IdeaLabelLine]
     var extentX: Double = 0
     var extentY: Double = 0
@@ -475,9 +477,9 @@ private func ideaDrawing(_ idea: Idea, graphics: VisualTheme.Graphics? = nil, ob
     }
     func room(_ line: IdeaLabelLine) -> Double { line.slotWidth ?? labelWidth - line.indent }
 
-    func makeLines(base: Double) -> [IdeaLabelLine] {
+    func makeLines(base: Double, start: Double = 0) -> [IdeaLabelLine] {
         var lines: [IdeaLabelLine] = []
-        var cursor = 0.0
+        var cursor = start
         for (_, block) in blocks.enumerated() {
             let heading = block.kind == .heading
             var size = heading ? base * headingScale(block.level) * (strong ? 1.1 : 1) : base
@@ -538,8 +540,28 @@ private func ideaDrawing(_ idea: Idea, graphics: VisualTheme.Graphics? = nil, ob
         lines = makeLines(base: node.fontSize)
     }
     let available = max(0, labelHeight)
+    // Körbefuttatás függőleges igazítással (geometry.js labelLayout): néhány lépésben közelítjük a kezdőpontot.
+    let rank: Double = switch node.verticalAlignment {
+    case .top: 0
+    case .bottom: 1
+    default: 0.5
+    }
+    var flowStart = 0.0
+    if flow && rank > 0 && !fitText {
+        func tall(_ rows: [IdeaLabelLine]) -> Double { rows.reduce(0) { $0 + $1.step } }
+        for _ in 0..<4 {
+            let next = max(0, ((available - tall(lines)) * rank).rounded())
+            if next == flowStart { break }
+            flowStart = next
+            lines = makeLines(base: node.fontSize, start: flowStart)
+        }
+        if flowStart + tall(lines) > available {
+            flowStart = 0
+            lines = makeLines(base: node.fontSize)
+        }
+    }
     var visible: [IdeaLabelLine] = []
-    var remaining = available
+    var remaining = available - flowStart
     for line in lines {
         if remaining < line.step { break }
         visible.append(line)
@@ -555,7 +577,7 @@ private func ideaDrawing(_ idea: Idea, graphics: VisualTheme.Graphics? = nil, ob
         }
     }
     return IdeaDrawing(node: node, labelWidth: labelWidth, iconSpace: iconSpace, previewSpace: previewSpace,
-                       available: available, overflow: overflow, flow: flow, lines: visible,
+                       available: available, overflow: overflow, flow: flow, flowStart: flowStart, lines: visible,
                        extentX: node.width / 2, extentY: node.height / 2)
 }
 
@@ -764,12 +786,12 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
     case .bottom: 1
     default: 0.5
     }
-    let rank = drawing.flow ? 0 : aligned
+    let rank = aligned
     let strong = false  // a Félkövér/Dőlt/Aláhúzott gombok megszűntek; a markdown formázás marad
     let extra = drawing.available - drawing.lines.reduce(0) { $0 + $1.step }
     var offset = -(drawing.available + drawing.iconSpace + drawing.previewSpace) / 2 + drawing.previewSpace
     let spans = drawing.lines.map { line in
-        let top = offset + extra * rank
+        let top = offset + (drawing.flow ? drawing.flowStart : extra * rank)
         let textX: Double
         let anchor: String
         let left = -labelWidth / 2 + (line.slotX ?? line.indent)

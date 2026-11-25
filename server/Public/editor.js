@@ -10,7 +10,7 @@ import {sharedMouse} from "./mouse.js";
 import {worksheetChanges, replayChanges, sameValue} from "./editor-history.js?v=2";
 import {flashNode, flashPoint} from "./ping.js";
 import {showTooltip, hideTooltip} from "./tooltip.js";
-import {justifyRows} from "./justify.js?v=2";
+import {justifyRows} from "./justify.js?v=4";
 import {canvasMarkdown, canvasMarkdownAvailable} from "./canvas-markdown.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
@@ -3820,6 +3820,9 @@ createApp({
         ...animateBox(isBox(node) ? node.animation : undefined, [
           elevationShadow(drawn),
           shape(drawn, !!destination, ui.drop),
+          // Saját kijelölés: világosabb felület, szűrő nélkül (app.css .selection-own-tint).
+          ownSelected && isBox(node) && !ui.drop && !["free", "empty"].includes(backgroundMode(node))
+            ? h(boxShapeGeometry(drawn)[0], {...boxShapeGeometry(drawn)[1], "data-editor-only": "", class: "selection-own-tint", "aria-hidden": "true"}) : null,
           node.file ? renderFileBox(node, destination) : node.type === "chart" ? renderChartBox(node) : null,
           junctionLabel,
           linkPreview,
