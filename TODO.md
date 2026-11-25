@@ -56,3 +56,9 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 - Csak a közvetlen gyermekeket kerüli ki, a befoglaló téglalapjuk szerint (nem téglalap alakú gyermeknél is).
 - A szövegszerkesztő mező a vásznon (gépelés közben) nem követi a körbefuttatást.
 - A mező neve (`autoLayout`) és a megszűnt `home` mező átnevezhető / törölhető, ha már nincs régi lap.
+- Sebesség, további lehetőségek (2026-11-25; most sorkizárással 42, anélkül 55 képkocka/mp Safariban):
+  - húzás közben a sorkizárás kikapcsolása (balra zárt sorok, elengedéskor sorkizárt): a `dx` listás szöveg elrendezése a maradék költség;
+  - húzás közben ritkább újratördelés (pl. csak ha a doboz legalább egy fél sornyit / néhány képpontot mozdult);
+  - csak az érintett bekezdések újratördelése és külön `<text>` bekezdésenként (kisebb csere);
+  - a `dx` lista rövidítése (az utolsó szóköz utáni nullák elhagyása).
+

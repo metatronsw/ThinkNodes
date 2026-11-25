@@ -1,5 +1,14 @@
 # Változások
 
+## 2026-11-25 – Körbefuttatott konténerszöveg: a belső doboz húzása gyorsabb
+
+- **Mérés (Safari, a `projects/b` lap másolata, 777 × 790-es konténer 1400 betűs szöveggel, benne egy doboz húzása):** előtte 14 képkocka/mp, egyes képkockák 230–320 ms; körbefuttatás nélkül 60 képkocka/mp. A saját számítás közben elhanyagolható (a körbefuttatás 0,4–1,5 ms, a rajzoló függvények összesen ~20 ms a teljes húzásra).
+- **Ok:** amikor a doboz mozgása miatt a sorok átrendeződnek, a Vue soronként írta át a szöveget: egy képkockában 200–290 DOM-módosítás, 60–90 `tspan` törlése és beszúrása. A Safari minden beszúrt / törölt elem után újraépíti a teljes `<text>` elrendezését. (Egy sor szövegének vagy az összes sor helyének módosítása önmagában 2 ms.)
+- **1. javítás – a szöveg egy lépésben cserélődik:** a doboz `<text>` eleme a sorok tartalmából képzett kulcsot kap; ha a tördelés változik, az új szöveg a dokumentumon kívül épül fel, és egyszer kerül be. Ha csak a sorok helye változik, a kulcs marad, és csak az x / y frissül. Eredmény: sorkizárás nélkül 14 → 55 képkocka/mp.
+- **2. javítás – sorkizárás rajzolás előtt:** a sorkizárt sor eltolásai (`dx`) már a virtuális DOM-ban a sorra kerülnek, nem kirajzolás utáni méréssel és visszaírással. A sor hossza húzás közben vászon-szövegmérésből jön (0,3–4 képponttal eltérhet a Safari SVG-szövegétől); nyugalomban és a mozdulat végén a böngésző pontos mérése igazítja be, és a pontos hosszt megjegyzi (utána a jobb szél 0,05 képponton belül pontos). Eredmény sorkizárással: 14 → 42 képkocka/mp (95. percentilis 235 → 35 ms).
+- Kipróbálva, de elvetve: a `<text>` kivétele a dokumentumból a `dx`-írások idejére (nem gyorsított).
+- Helye: `Public/editor.js` (`renderNode`: a `<text>` kulcsa, `justified`), `Public/justify.js` (`justifyShifts`, `justifyRows`). `test.sh editor markdown` rendben. Csak kliensoldali változás; a helyi szerver újraindítva.
+
 ## 2026-11-25 – Sorkizárás Safariban, igazítás a körbefuttatott konténerben, kijelölt doboz háttere
 
 - **Sorkizárás:** a kapcsoló Safariban hatástalan volt, mert a Safari SVG-szövegen nem alkalmazza a `word-spacing`-et. A sor most betűnkénti `dx` listát kap (a szóköz utáni betű tolódik), ez Safariban is működik. Kikapcsoláskor az eltolás lekerül a sorról (`Public/justify.js`; szerkesztő és megtekintő).

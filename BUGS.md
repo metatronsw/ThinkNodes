@@ -40,6 +40,3 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 - **Az új doboz ugyanolyan színű, mint a konténer, amibe kerül** (2026-11-25)
   - Az új doboz mindig a 2-es színt kapja; ha a konténer is 2-es színű (alapértelmezett doboz), a belehelyezett doboz csak a keretéről látszik, amíg más színt nem kap (`projects/b`). Döntés kell: kapjon-e az új / belehúzott doboz automatikusan eltérő színt.
-
-- **Kijelölt konténer megjelenése és a belső doboz húzásának sebessége nincs böngészőben ellenőrizve** (2026-11-25)
-  - A háttér eltűnésének oka (SVG-szűrő a kijelölt doboz felületén) megszűnt, a sorkizárás mérése kötegelt lett (CHANGES.md), de a próba alatt a képernyő zárolva volt: valódi kijelölést és húzást nem lehetett küldeni. Kell: szemmel megnézni a kijelölt konténert (világosabb felület, vastag keret, fényudvar nélkül) és a belső doboz húzását hosszú, sorkizárt szövegű konténerben.

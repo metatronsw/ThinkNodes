@@ -184,3 +184,6 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 - **Kijelölt / mozgatott konténer háttere eltűnik** (2026-11-25)
   - Ok: SVG-szűrő a kijelölt doboz felületén, amit a Safari nagy dobozon nem rajzol ki. Javítva: szűrő helyett fedőréteg. Az új megjelenés szemmel még nincs megnézve (BUGS.md).
 
+- **Körbefuttatott konténerben a belső doboz mozgatása nagyon lassú** (2026-11-25)
+  - Javítva: a megváltozott szöveg egy lépésben cserélődik, a sorkizárás rajzolás előtt számolódik (CHANGES.md). Safari: 14 → 42 képkocka/mp sorkizárással, 55 anélkül. A felhasználó a kijelölt konténer háttérhibájának megszűnését is megerősítette.
+

@@ -10,7 +10,7 @@
 //   összes írás – így a böngésző egyszer rendez, nem soronként.
 let fontEpoch = 0;
 const lengths = new Map();
-globalThis.document?.fonts?.addEventListener?.("loadingdone", () => { fontEpoch += 1; lengths.clear(); });
+globalThis.document?.fonts?.addEventListener?.("loadingdone", () => { fontEpoch += 1; lengths.clear(); widths.clear(); });
 
 export function justifyRows(root) {
   const pending = [];
@@ -23,7 +23,8 @@ export function justifyRows(root) {
       continue;
     }
     const target = Number(row.getAttribute("data-justify"));
-    const content = [row.getAttribute("font-size"), row.getAttribute("font-weight"),
+    // A szerkesztő a sor kulcsát maga adja (data-justify-key), így a megjegyzett pontos hosszt rajzoláskor is megtalálja.
+    const content = row.getAttribute("data-justify-key") ?? [row.getAttribute("font-size"), row.getAttribute("font-weight"),
       row.parentNode?.getAttribute?.("font-family"), row.innerHTML].join("|");
     const key = fontEpoch + "|" + target + "|" + content;
     if (row.__justified === key) continue;
@@ -45,10 +46,47 @@ export function justifyRows(root) {
     } else item.row.__justified = undefined;
   }
   for (const {row, target, text, gaps, known} of pending) {
-    if (!(known > 0) || known >= target) { row.removeAttribute("dx"); continue; }
-    const extra = Math.round((target - known) / gaps * 100) / 100;
-    let shifts = "";
-    for (let i = 0; i < text.length; i++) shifts += (i ? " " : "") + (i && text[i - 1] === " " ? extra : 0);
-    if (row.getAttribute("dx") !== shifts) row.setAttribute("dx", shifts);
+    const shifts = known > 0 && known < target ? shiftList(text, (target - known) / gaps) : null;
+    if (row.getAttribute("dx") === shifts) continue;
+    if (shifts === null) row.removeAttribute("dx"); else row.setAttribute("dx", shifts);
   }
+}
+
+// A `dx` lista: minden szóköz utáni betű `extra` képponttal kerül jobbra.
+function shiftList(text, extra) {
+  const value = Math.round(extra * 100) / 100;
+  let shifts = "";
+  for (let i = 0; i < text.length; i++) shifts += (i ? " " : "") + (i && text[i - 1] === " " ? value : 0);
+  return shifts;
+}
+
+// Sorkizárás a szerkesztőben, rajzolás előtt: a `dx` lista már a virtuális DOM-ban a sorra kerül, így a szöveg rögtön a
+// végleges alakjában jelenik meg (a kirajzolás utáni mérés és visszaírás húzás közben, amikor a körbefuttatott sorok
+// képkockánként változnak, minden képkockában második szövegelrendezés volt). A sor természetes hossza: ha a sort
+// (`key`) a justifyRows már megmérte, a pontos érték; különben vászon-szövegmérés (futásonként megjegyezve), ami a
+// Safari SVG-szövegétől néhány képponttal eltérhet – nyugalomban a justifyRows pontosítja.
+// `runs`: [{text, weight, italic, family}], `size` képpontban.
+let pen;
+const widths = new Map();
+export function justifyShifts(runs, size, target, key) {
+  if (!(target > 0)) return undefined;
+  pen ??= globalThis.document?.createElement?.("canvas")?.getContext?.("2d") ?? null;
+  if (!pen) return undefined;
+  let text = "", natural = 0;
+  for (const run of runs) {
+    const font = (run.italic ? "italic " : "") + run.weight + " " + size + "px " + run.family;
+    const key = fontEpoch + "|" + font + "|" + run.text;
+    let width = widths.get(key);
+    if (width === undefined) {
+      pen.font = font;
+      width = pen.measureText(run.text).width;
+      if (widths.size > 20000) widths.clear();
+      widths.set(key, width);
+    }
+    natural += width;
+    text += run.text;
+  }
+  natural = lengths.get(key) ?? natural;
+  const gaps = (text.match(/ /g) ?? []).length;
+  return gaps && natural > 0 && natural < target ? shiftList(text, (target - natural) / gaps) : undefined;
 }

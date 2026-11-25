@@ -9,7 +9,7 @@ import {contextMenu, documentEntries} from "./cards.js";
 import {openExternalLink} from "./links.js";
 import {flashNode, flashPoint} from "./ping.js";
 import {hideTooltip, showTooltip} from "./tooltip.js";
-import {justifyRows} from "./justify.js?v=4";
+import {justifyRows} from "./justify.js?v=7";
 import {attachScrollbars} from "./scrollbar-drag.js";
 import {liveConnection} from "./collaboration.js";
 

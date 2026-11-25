@@ -10,7 +10,7 @@ import {sharedMouse} from "./mouse.js";
 import {worksheetChanges, replayChanges, sameValue} from "./editor-history.js?v=2";
 import {flashNode, flashPoint} from "./ping.js";
 import {showTooltip, hideTooltip} from "./tooltip.js";
-import {justifyRows} from "./justify.js?v=4";
+import {justifyRows, justifyShifts} from "./justify.js?v=7";
 import {canvasMarkdown, canvasMarkdownAvailable} from "./canvas-markdown.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
@@ -2558,6 +2558,8 @@ createApp({
       workspace.toggleAttribute("data-moving", movingSources.size > 0);
     }
     watch(() => !!gesture.value?.moved, moving => markMoving("gesture", moving));
+    // A mozdulat végén a sorkizárt sorok pontos mérése (közben a becsült hosszal álltak).
+    watch(() => !!gesture.value?.moved, moving => { if (!moving) nextTick(() => justifyRows(canvas.value)); }, {flush: "post"});
 
     function beginDrag(event, type, extra = {}) {
       event.preventDefault();
@@ -3702,6 +3704,15 @@ createApp({
         previewVersions.value = new Map(previewVersions.value).set(id, {source, version});
       });
     }
+    // Sorkizárt sor attribútumai: kulcs a pontos hossz megjegyzéséhez és az eltolások listája.
+    function justified(line, node) {
+      if (line.justifyWidth === undefined) return undefined;
+      const family = fontFamily(node.font);
+      const runs = line.runs.map(run => ({text: run.text, weight: run.format?.bold ? 700 : line.weight,
+        italic: !!run.format?.italic, family: run.format?.code ? "monospace" : family}));
+      const key = family + "|" + line.size + "|" + runs.map(run => (run.italic ? "i" : "") + run.weight + (run.family === family ? "" : "m") + ":" + run.text).join("|");
+      return {"data-justify-key": key, dx: justifyShifts(runs, line.size, line.justifyWidth, key)};
+    }
     function renderNode(node) {
       const drawn = node;
       const layout = nodeLayout(node);
@@ -3718,7 +3729,12 @@ createApp({
       const [outline, dimensions] = selectionOutline(junction ? graphics.value.junction ?? "ellipse" : drawn.shape, drawn.width, drawn.height);
       const snapTarget = ui.snap;
       const strong = false;  // a Félkövér/Dőlt/Aláhúzott gombok megszűntek; a markdown formázás marad
-      const labels = layout.lines.length ? h("text", {class: "node-text", "font-family": fontFamily(node.font), "pointer-events": "none"},
+      // A szöveg kulcsa a sorok tartalma: ha a tördelés megváltozik (gépelés, körbefuttatás a mozgó doboz körül), a teljes
+      // <text> egy lépésben cserélődik. Soronkénti átírásnál a Safari minden beszúrt / törölt tspan után újraépítette a
+      // teljes szöveg elrendezését (egy képkockában 200–290 módosítás, 200–300 ms). Ha csak a sorok helye változik, a
+      // kulcs ugyanaz marad, és csak az x / y attribútumok frissülnek.
+      const labels = layout.lines.length ? h("text", {key: layout.lines.map(line => line.text).join("\n"),
+          class: "node-text", "font-family": fontFamily(node.font), "pointer-events": "none"},
           layout.lines.map(line => h("tspan", {
             "data-body-row": "",
             "pointer-events": "visiblePainted",
@@ -3735,6 +3751,8 @@ createApp({
             x: line.x + (textDrag ? textDrag.delta.x : 0),
             y: line.y + (textDrag ? textDrag.delta.y : 0), "text-anchor": line.anchor,
             "data-justify": line.justifyWidth, fill: paint(line.color, 1), "font-size": line.size, "font-weight": line.weight,
+            // Sorkizárás: a szóközök tágítása `dx` listával, a rajzolás előtt kiszámolva (Public/justify.js justifyShifts).
+            ...justified(line, node),
           }, line.runs.map(run => {
             const format = run.format || {};
             if (!format.bold && !format.italic && !format.code && !format.link) return run.text;
@@ -4010,8 +4028,8 @@ createApp({
       props: {node: Object},
       setup(props) {
         const instance = getCurrentInstance();
-        // Sorkizárás: a szóközöket a böngészőben mért sorszélesség alapján tágítjuk (Public/justify.js).
-        const justify = () => justifyRows(instance.proxy.$el);
+        // Sorkizárás pontosítása a böngésző mérésével (Public/justify.js); mozdulat közben nem fut, a végén a teljes vászonra.
+        const justify = () => { if (!gesture.value?.moved) justifyRows(instance.proxy.$el); };
         onMounted(justify);
         onUpdated(justify);
         return () => { tally("node"); return timed("nodeRender", () => renderNode(props.node)); };
