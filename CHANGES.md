@@ -1,5 +1,13 @@
 # Változások
 
+## 2026-11-25 – Törölt téma vagy paletta: a munkalap az alaptémával nyílik meg
+
+- Eddig a szerver minden betöltéskor és mentéskor elutasította (422) a nem létező témájú vagy palettájú munkalapot, így egy témafájl törlése után az azt használó lapok nem nyíltak meg.
+- Most a lap az alaptémát kapja (ThinkDefault, ennek híján a katalógus első témája, annak első palettája); meglévő témánál a hiányzó paletta helyett a téma első palettája áll (`Worksheet.repairAppearance`, Theme.swift). Minden fájlbetöltésnél (lap, import, projektcsomag, korábbi változat: `Worksheet.decodeFile`) és mentéskor is fut (a szerkesztő még a törölt témát küldheti). Téma nélküli régi lap változatlan.
+- Téma törlése így: a JSON törlése a `server/Public/themes/` mappából, a szerver újraindítása, és a témára név szerint hivatkozó tesztek eltávolítása (`server/docs/themes.md`, „Téma törlése”).
+- Teszt: `missingThemeFallsBackToDefault` átmegy. A `worksheet` témakörben két régi teszt (`compactWorksheetKeysRoundTrip`, `worksheetRoundTrip`) a módosítás nélkül is bukik (BUGS.md).
+- Szerverkód változott (`Theme.swift`, `WorksheetFile.swift`, `Model.swift`): release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – WhiteBoard téma: szabadkézi filcrajz, cetlik és füzetlapok; bemutató projekt
 
 - **Új téma: WhiteBoard** (`server/Public/themes/WhiteBoard.json`, téma-ID 6): nappal fehér tábla filcszínekkel, este fekete tábla hozzáillő, élénk színekkel. Betűk: Chalkboard SE, Marker Felt, Bradley Hand.

@@ -6,6 +6,10 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **Törölt témájú munkalap nem nyílt meg (422)** (2026-11-25)
+  - Ok: a szerver betöltéskor és mentéskor is elutasította a katalógusban nem szereplő téma- vagy paletta-ID-t.
+  - Javítás: a lap az alaptémát (illetve a téma első palettáját) kapja (`Worksheet.repairAppearance`); teszt: `missingThemeFallsBackToDefault`.
+
 - **A .txt doboz szerkesztésekor a szöveg áttördelt (a sor utolsó szava új sorba került), kilépéskor visszaállt** (2026-11-25)
   - Ok: a `.txt` / `.md` külön szövegmezőben volt szerkeszthető, amely más szélességen tördel, mint a megjelenítés.
   - Javítás: a szövegfájlok is az egyrétegű szerkesztőt használják (a megjelenített elem szerkeszthető, `renderTextEditor`); a szövegmező megszűnt.

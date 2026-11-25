@@ -263,6 +263,19 @@ extension VisualTheme {
 }
 
 extension Worksheet {
+    /// Törölt (a katalógusban nem szereplő) téma helyett az alaptéma: a ThinkDefault (1), ennek híján a katalógus első
+    /// témája, annak első palettája; meglévő témánál a hiányzó paletta helyett a téma első palettája. A színek
+    /// paletta-ID-k, így az új palettán a megfelelő szerepszínt kapják. Téma nélküli (régi) munkalap változatlan marad.
+    package mutating func repairAppearance(catalog: [VisualTheme] = Themes.catalog) {
+        guard let current = appearance, !catalog.isEmpty else { return }
+        if let theme = catalog.first(where: { $0.id == current.theme }) {
+            if !theme.palettes.contains(where: { $0.id == current.palette }), let first = theme.palettes.first { appearance?.palette = first.id }
+            return
+        }
+        let fallback = catalog.first { $0.id == 1 } ?? catalog[0]
+        appearance = Appearance(theme: fallback.id, palette: fallback.palettes.first?.id ?? 1)
+    }
+
     package func resolvedBackground(mode: String?) -> String {
         let appearance = self.appearance ?? Appearance()
         return Themes.catalog.first(where: { $0.id == appearance.theme })?

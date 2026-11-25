@@ -57,6 +57,10 @@ A Liquid Glass téma öt palettája 21 színből áll: 0–3 lap, tinta, üveg, 
 
 A `box` a standard dobozalak, a `line` a standard vonaltípus. A támogatott értékek a sémában szerepelnek. Sokszögű dobozhoz a `contour` 3–32 konvex csúcspontot fogad, képernyőkoordináták szerint az óramutató járásával megegyező sorrendben. A középpont legyen a sokszög belsejében. Az x és y egysége a fél szélesség és a fél magasság. Az egyenes vonalhoz a `lineArc` 0 és 0,25 közötti arányt ad meg. A 0,1 érték a végpontok távolságának 10%-ával téríti ki a vonal közepét. A téma saját vonalához a `linePoints` 1–12 köztes töréspontot adhat meg. Az x a kezdőponttól a végpontig mért hányad, az y az arra merőleges eltolás a vonal hosszának arányában. A `junction` lehet ellipse, diamond vagy rectangle. A `junctionSize` az új csomópontok átmérője a vászon egységeiben.
 
+## Téma törlése
+
+A témafájl törlése után a szervert újra kell indítani (a témákat induláskor olvassa be). A törölt témát használó munkalapok az alaptémával (ThinkDefault, ennek híján a katalógus első témája) nyílnak meg; a színek paletta-ID-k, így az új palettán a megfelelő szerepszínt kapják. Ugyanígy a törölt paletta helyett a téma első palettája áll. Ez a betöltéskor, az importban és a mentéskor is érvényes (`Worksheet.repairAppearance`); a következő mentés már az új témát írja ki. A témára név szerint hivatkozó teszteket (`ThemeTests`) kézzel kell eltávolítani.
+
 ## Használat és ellenőrzés
 
 A létrehozó a vászon tulajdonságpaneljének **Megjelenés** csoportjában választ témát és palettát. A fejléc ikonja minden oldalon Automatikus → Világos → Sötét sorrendben vált. A beállítás a böngészőben marad meg. Automatikus módban az operációs rendszer beállítása dönt. Az aktuális szerkesztési jogosultsággal rendelkező felhasználók a színnégyzet megnyitása után a kiválasztott palettáról színezhetnek.

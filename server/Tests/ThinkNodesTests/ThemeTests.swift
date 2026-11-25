@@ -240,3 +240,40 @@ import VaporTesting
     let plain = boardSVG(sheet, mode: "light")
     #expect(!plain.contains("sketch-") && !plain.contains("paper-"))
 }
+
+/// Törölt téma vagy paletta: a lap megnyílik az alaptémával, és menthető (Theme.swift repairAppearance).
+@Test func missingThemeFallsBackToDefault() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let user = User(name: "creator", role: .editor, passwordHash: "")
+    let path = try WorksheetPath(["Torolt"])
+    var sheet = try WorksheetStore(root: root).open(path, user: user)
+    sheet.background = "@0"
+    sheet.nodes = [Idea(id: "box", text: "Doboz", position: Point(x: 0, y: 0), fill: "@2", textColor: "@1")]
+    sheet.appearance = Appearance(theme: 3, palette: 1)
+    _ = try WorksheetStore(root: root).update(path, worksheet: sheet, user: user)
+    let file = root.appendingPathComponent("Torolt/Torolt.thnode")
+    func rewrite(theme: Int, palette: Int) throws {
+        var json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+        json["appearance"] = ["theme": theme, "palette": palette]
+        try JSONSerialization.data(withJSONObject: json).write(to: file)
+    }
+    // Nem létező téma: az alaptéma (ThinkDefault, 1) első palettája.
+    try rewrite(theme: 999, palette: 7)
+    var loaded = try WorksheetStore(root: root).load(path, user: user)
+    #expect(loaded.appearance == Appearance(theme: 1, palette: 1))
+    #expect(!boardSVG(loaded, mode: "dark").contains("fill=\"@"))
+    // Létező téma, nem létező paletta: a téma első palettája.
+    try rewrite(theme: 3, palette: 42)
+    loaded = try WorksheetStore(root: root).load(path, user: user)
+    #expect(loaded.appearance == Appearance(theme: 3, palette: 1))
+    // A szerkesztő még a törölt témát küldi: a mentés sikerül, az alaptémát írja ki.
+    var stale = loaded
+    stale.appearance = Appearance(theme: 999, palette: 1)
+    let saved = try WorksheetStore(root: root).update(path, worksheet: stale, user: user)
+    #expect(saved.appearance == Appearance(theme: 1, palette: 1))
+    // Téma nélküli (régi) munkalap változatlan marad.
+    var plain = Worksheet(title: "Régi")
+    plain.repairAppearance()
+    #expect(plain.appearance == nil)
+}

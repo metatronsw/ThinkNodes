@@ -3,7 +3,15 @@ import Vapor
 
 extension Worksheet {
     /// Read stored and imported documents. Live editor requests use the current schema directly.
+    /// Munkalapfájl (lap, import, projektcsomag, korábbi változat). A törölt téma vagy paletta helyett az alaptémát kapja
+    /// (Theme.swift repairAppearance), így a lap megnyílik; a következő mentés már ezt írja ki.
     static func decodeFile(_ data: Data) throws -> Worksheet {
+        var sheet = try decodeStoredFile(data)
+        sheet.repairAppearance()
+        return sheet
+    }
+
+    private static func decodeStoredFile(_ data: Data) throws -> Worksheet {
         struct Version: Decodable { let schemaVersion: Int }
         let decoder = JSONDecoder()
         guard try decoder.decode(Version.self, from: data).schemaVersion == 2 else {

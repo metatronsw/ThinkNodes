@@ -1207,6 +1207,8 @@ package final class WorksheetStore: @unchecked Sendable {
             restoreArchivedShared(worksheet, previous: current, at: path, user: user, unlocks: unlocks)
             var updated = worksheet
             if current.appearance != nil && updated.appearance == nil { throw Abort(.unprocessableEntity) }
+            // A szerkesztő még a közben törölt témát küldheti: mentéskor is az alaptémára vált (Theme.swift repairAppearance).
+            updated.repairAppearance()
             updated.creator = current.creator
             updated.revision = current.revision + 1
             updated.resetRevision = restoring ? updated.revision : current.resetRevision
