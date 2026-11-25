@@ -68,7 +68,9 @@ export function overlapFraction(node, container) {
 // Rajzolási sorrend (alulról felfelé). A konténer és a teljes tartalma egy tömb: ami a konténer fölött van
 // és nem a része, az a tartalmát is kitakarja. Testvérek között: előbb a konténerek, aztán a nagyobb doboz.
 // A kiemelt rétegben csak a méret számít (a kisebb takarja a nagyobbat).
-export function layerOrder(nodes, elevated, containers) {
+// `lifted`: az éppen húzott dobozok (a tartalmukkal): húzás közben minden nem kiemelt doboz fölé kerülnek, különben a
+// másik konténerbe áthúzott dobozt a később rajzolt konténer eltakarná, amíg el nem engedik (addig a régi konténeré).
+export function layerOrder(nodes, elevated, containers, lifted) {
   const bySize = (a, b) => b.width*b.height - a.width*a.height;
   const siblings = (a, b) => Number(containers.has(b.id)) - Number(containers.has(a.id)) || bySize(a, b);
   const lower = nodes.filter(node => !elevated.has(node.id));
@@ -91,5 +93,6 @@ export function layerOrder(nodes, elevated, containers) {
   }
   // Hibás (körkörös) szülőlánc esetén se tűnjön el doboz.
   if (ordered.length < lower.length) ordered.push(...lower.filter(node => !seen.has(node.id)).sort(siblings));
-  return ordered.concat(nodes.filter(node => elevated.has(node.id)).sort(bySize));
+  const resting = lifted?.size ? ordered.filter(node => !lifted.has(node.id)).concat(ordered.filter(node => lifted.has(node.id))) : ordered;
+  return resting.concat(nodes.filter(node => elevated.has(node.id)).sort(bySize));
 }

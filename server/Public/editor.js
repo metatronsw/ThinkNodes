@@ -16,7 +16,7 @@ import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
 import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, reverseWidth, wireRoutes, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=31";
 
-import {ancestors, layerOrder, overlapFraction} from "./containers.js?v=10";
+import {ancestors, layerOrder, overlapFraction} from "./containers.js?v=11";
 import {glowFilter, glowId, glowReach, glowVNode} from "./glow.js";
 import {awaitWebPreview} from "./web-preview-refresh.js";
 import {cellName, columnName, decodeTable, encodeTable, limits as tableLimits} from "./table/table-document.js";
@@ -471,7 +471,16 @@ createApp({
       return elevated;
     });
     const containerIDs = computed(() => new Set(sceneNodes.value.filter(node => isBox(node) && node.container).map(node => node.id)));
-    const orderedNodes = computed(() => layerOrder(sceneNodes.value, elevatedNodes.value, containerIDs.value));
+    // Az éppen húzott dobozok (a tartalmukkal együtt): húzás közben a többi doboz fölé kerülnek (containers.js layerOrder).
+    const noLift = new Set();
+    const liftedNodes = computed(() => {
+      const drag = gesture.value;
+      if (!drag?.moved || drag.locked) return noLift;
+      if (drag.type === "move") return new Set(drag.group.map(member => member.id));
+      if (drag.type === "batch") return drag.members;
+      return noLift;
+    });
+    const orderedNodes = computed(() => layerOrder(sceneNodes.value, elevatedNodes.value, containerIDs.value, liftedNodes.value));
     // Vonalak rétege – egyetlen szabály: minden vonal minden doboz fölött fut (konténer, a tartalma és a sima dobozok
     // fölött is), kivéve a Kiemelt objektumokat: azok a vonalak fölött vannak. Egyetlen kivétel a data-connection
     // (táblázatot és grafikont összekötő adatvonal): az mindig minden objektum mögött van.

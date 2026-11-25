@@ -1,5 +1,11 @@
 # Változások
 
+## 2026-11-25 – Másik konténerbe áthúzott doboz húzás közben is látszik
+
+- **Hiba:** ha egy dobozt az egyik konténerből a másikba húztál, a doboz az egér elengedéséig eltűnt. Ok: húzás közben a doboz még a régi konténeréhez tartozik, és a konténer a tartalmával egy tömb a rajzolási sorrendben – a később rajzolt másik konténer ezért eltakarta.
+- **Javítás:** az éppen húzott doboz (a tartalmával együtt), illetve a húzott csoport húzás közben minden nem kiemelt doboz fölé kerül; elengedéskor a végleges helyére áll a sorrendben (`containers.js layerOrder` `lifted`, `editor.js liftedNodes`).
+- Ellenőrzés: Safari, két konténeres próbalap, húzás közben megállítva: a sorrend `nagy konténer, kis konténer, m, áthúzott doboz` (előtte a doboz a kis konténer előtt állt), a képernyőképen a doboz látszik; elengedve a kis konténer tartalma lett. `test.sh editor` rendben. Csak kliensoldali változás. Más szerkesztő húzásánál (távoli mozgás) nem vonatkozik.
+
 ## 2026-11-25 – Vonalak rétege: minden vonal minden doboz fölött
 
 - **Egyetlen szabály:** minden vonal minden doboz fölött fut – konténer, a konténer tartalma és a sima dobozok fölött is. Kivétel a **Kiemelt** objektum: az a vonalak fölött van.

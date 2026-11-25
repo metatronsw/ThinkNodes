@@ -202,3 +202,6 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 - **Konténerben lévő csomópont az első mozdításra feloldódik a konténerben; csomópont nem húzható konténerbe** (2026-11-25)
   - Javítva: konténerre ejtve a csomópont a konténer tartalma lesz; dobozra ejtve változatlanul feloldódik.
 
+- **Másik konténerbe áthúzott doboz az elengedésig eltűnik** (2026-11-25)
+  - Javítva: a húzott doboz húzás közben a többi doboz fölé kerül.
+
