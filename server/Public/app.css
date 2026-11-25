@@ -724,17 +724,8 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 .hl-p { color: color-mix(in oklab, currentColor 35%, #1c7ed6); }
 .hl-t { color: color-mix(in oklab, currentColor 35%, #0c9aa6); }
 .hl-f { color: color-mix(in oklab, currentColor 35%, #7950f2); }
-/* Dobozon szerkesztés (editor.js renderTextEditor): a szövegmező kitölti a doboz tartalmát. A háttér és a szín
-   !important: sötét módban az általános űrlapmező-szabály (:root[data-display="dark"] … textarea) erősebb, és a
-   szövegmező háttere eltakarná a doboz felületét, kódfájlnál a színezett réteget. */
-.node-note:has(> .node-text-editor) { padding: 0; overflow: hidden; }
-.node-text-editor { display: block; width: 100%; height: 100%; box-sizing: border-box; margin: 0; padding: 8px 20px 8px 10px; border: 0; outline: 0; resize: none;
-  background: transparent !important; color: inherit !important; font: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92em; line-height: 1.4;
-  white-space: pre-wrap; overflow-wrap: anywhere; overscroll-behavior: contain;
-  /* A vászon tiltja a kijelölést (.editor-canvas); a szövegmezőben egérrel is ki kell tudni jelölni. */
-  -webkit-user-select: text; user-select: text; cursor: text; }
-/* Kódfájl szerkesztése (editor.js renderCodeEditor): maga a színezett szöveg szerkeszthető, egy rétegben. A vászon
-   tiltja a kijelölést (.editor-canvas); itt engedni kell, különben Safariban gépelni sem lehet. */
+/* Szövegfájl szerkesztése a dobozon (editor.js renderTextEditor): maga a megjelenített szöveg szerkeszthető, egy
+   rétegben. A vászon tiltja a kijelölést (.editor-canvas); itt engedni kell, különben Safariban gépelni sem lehet. */
 .node-code-input { min-height: 100%; outline: 0; cursor: text; caret-color: currentColor; }
 .node-code-input, .node-code-input * { -webkit-user-select: text; user-select: text; }
 .node-plain { white-space: pre-wrap; overflow-wrap: anywhere; }

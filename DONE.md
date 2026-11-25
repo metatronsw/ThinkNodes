@@ -6,6 +6,10 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **A .txt doboz szerkesztésekor a szöveg áttördelt (a sor utolsó szava új sorba került), kilépéskor visszaállt** (2026-11-25)
+  - Ok: a `.txt` / `.md` külön szövegmezőben volt szerkeszthető, amely más szélességen tördel, mint a megjelenítés.
+  - Javítás: a szövegfájlok is az egyrétegű szerkesztőt használják (a megjelenített elem szerkeszthető, `renderTextEditor`); a szövegmező megszűnt.
+
 - **Safari: kódfájl szerkesztésébe lépve megváltozott a betű és a tartalom magassága** (2026-11-25)
   - Ok: megjelenítéskor a szöveg `<pre><code>` elemben áll, a szerkesztő közvetlenül a `<pre>`-be írt, a `code` elem pedig a böngésző saját egyenközű betűjét kapja.
   - Javítás: a szerkesztő is `<code>` elembe ír (`renderCodeEdit`).

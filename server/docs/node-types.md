@@ -171,7 +171,8 @@ Importált szöveges fájl: minden nem bináris fájl (UTF-8, NUL bájt nélkül
 - Dobozon szerkesztés: a szövegfájl (`.txt`, `.md`, kód) a vásznon szerkeszthető, a panelen nincs szövegmező.
   Dupla kattintás nyitja (Alt-tal a panel), Esc vagy a doboz elengedése zárja. Színezhető kódfájl szerkesztés közben
   is színes, egy rétegben: maga a színezett szöveg szerkeszthető (nincs fölötte szövegmező). A színezést ilyenkor a böngésző végzi (`Public/highlight`, a Swift-modul pontos mása; egyezésüket a
-  `Tests/Fixtures/highlight.json` őrzi), kilépéskor a szerver színezése váltja fel. Más szövegfájl közben sima szöveg.
+  `Tests/Fixtures/highlight.json` őrzi), kilépéskor a szerver színezése váltja fel. A `.txt` és a `.md` ugyanebben az egyrétegű
+  szerkesztőben szerkeszthető (színezés nélkül; a `.md` közben nyers szövegként látszik); külön szövegmező nincs.
   Nagy fájl (256 KB fölött) továbbra is külön ablakban szerkeszthető.
 
 **Döntések:**

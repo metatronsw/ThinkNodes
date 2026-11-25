@@ -1,5 +1,13 @@
 # Változások
 
+## 2026-11-25 – Szövegfájlok (.txt, .md) is az egyrétegű szerkesztőben
+
+- **Hiba:** a `.txt` doboz szerkesztésekor a szöveg áttördelt (pl. a sor utolsó szava új sorba került), kilépéskor visszaállt. Ok: a `.txt` / `.md` még külön szövegmezőben (`textarea`) volt szerkeszthető, amely más szélességen tördel, mint a megjelenítés.
+- **Javítás:** minden szövegfájl ugyanazt az egyrétegű szerkesztőt használja, mint a kód (`renderTextEditor`): maga a megjelenített elem szerkeszthető, ugyanazokkal az osztályokkal, így a betű és a tördelés nem változik. A szövegmező és a hozzá tartozó kód / stílus megszűnt. A saját egérkijelölés, a kurzor követése és a visszavonás így a szövegfájlokra is érvényes. Tab (két szóköz) és a behúzás megtartása csak kódfájlban; a `.md` szerkesztéskor nyers szövegként látszik (megjelenítéskor formázva).
+- **Tényleges méret:** sortöréssel végződő szövegnél a doboz a záró üres sornak is helyet hagy (szerkesztéskor oda áll a kurzor), így a tartalomra igazított dobozban szerkesztésbe lépve nem jelenik meg görgetősáv.
+- Safariban kipróbálva (`test-container`): a `jegyzet.txt`-ben a „kicsit.” szó megjelenítéskor és szerkesztéskor ugyanott áll, a doboz nem görget; gépelés, Enter, törlés működik; a `demo.css` változatlan; a `leiras.md` nyers szövegre vált és vissza.
+- Szerverkód: csak a szkript- és stíluslap-verzió változott; release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – Kódszerkesztő: azonos betű, saját egérkijelölés; „tényleges méret” szöveg- és kóddobozra
 
 - **Betű és magasság:** szerkesztésbe lépve a kód betűje és a tartalom magassága megváltozott. Ok: megjelenítéskor a szöveg `<pre><code>` elemben áll (a `code` a böngésző saját egyenközű betűjét kapja), a szerkesztő viszont közvetlenül a `<pre>`-be írt. Most a szerkesztő is `<code>` elembe ír, a kettő azonos (Safariban mérve: 900 → 900 képpont).

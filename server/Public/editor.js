@@ -3223,32 +3223,18 @@ createApp({
       if (pendingFileSaves.has(id)) transfer(() => saveFileText(id));
     }
     watch(held, id => { if (textEdit.value && textEdit.value !== id) stopTextEdit(); });
-    function insertTyped(area, text) {
-      if (document.execCommand?.("insertText", false, text)) return;
-      area.setRangeText(text, area.selectionStart, area.selectionEnd, "end");
-      area.dispatchEvent(new Event("input", {bubbles: true}));
-    }
-    function textEditKey(event, node) {
-      event.stopPropagation();
-      if (event.key === "Escape") { event.preventDefault(); stopTextEdit(); return; }
-      if (node.type !== "code" || event.isComposing || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
-      const area = event.target;
-      if (event.key === "Tab") { event.preventDefault(); insertTyped(area, "  "); }
-      else if (event.key === "Enter") {
-        // Az új sor az előző sor behúzásával kezdődik.
-        const line = area.value.slice(0, area.selectionStart).split("\n").pop();
-        const indent = /^[ \t]*/.exec(line)[0];
-        if (indent) { event.preventDefault(); insertTyped(area, "\n" + indent); }
-      }
-    }
-    // Kódfájl (színezhető nyelv) szerkesztése: egyetlen réteg – maga a böngészőben színezett szöveg szerkeszthető
-    // (`contenteditable`), nincs fölötte szövegmező. A színezést a Public/highlight végzi (a szerveroldali ThinkHighlight
-    // mása); a szerver színezése szerkesztés alatt nem látszik, kilépéskor (mentés után) az váltja fel.
+    // Szövegfájl (kód, .txt, .md) szerkesztése a dobozon: egyetlen réteg – maga a megjelenített szöveg szerkeszthető
+    // (`contenteditable`), ugyanabban az elemben és ugyanazzal a tördeléssel, mint megjelenítéskor; nincs fölötte
+    // szövegmező. Színezhető kódfájlnál a szöveget a böngésző színezi (Public/highlight – a szerveroldali ThinkHighlight
+    // mása); a szerver színezése szerkesztés alatt nem látszik, kilépéskor (mentés után) az váltja fel. A .md fájl
+    // szerkesztéskor nyers szövegként látszik.
     // A szöveg egy helyen él (`codeEdit.text`): a böngésző a DOM-ot nem módosítja, minden bevitelt a `beforeinput`
-    // fog el, a szöveget mi írjuk át, újraszínezzük, és a kurzort karakterpozíció szerint visszatesszük. Kivétel az
+    // fog el, a szöveget mi írjuk át, újrarajzoljuk, és a kurzort karakterpozíció szerint visszatesszük. Kivétel az
     // összetett bevitel (holt billentyű, IME): az a DOM-ba ír, a végén onnan olvassuk vissza. A visszavonás saját
-    // (a tartalom cseréje a böngésző visszavonási listáját törli). Más szövegfájl: sima szövegmező (renderTextEditor).
-    const codeEdit = {el: null, id: null, ext: "", text: "", nodes: null, undo: [], redo: [], kind: null, stamp: 0, composing: false};
+    // (a tartalom cseréje a böngésző visszavonási listáját törli).
+    // `code`: kódfájl (`<code>` elemben, Tab és behúzás); `coloured`: van hozzá színező nyelv.
+    const codeEdit = {el: null, id: null, ext: "", code: false, coloured: false, text: "", nodes: null, undo: [], redo: [], kind: null, stamp: 0, composing: false};
+    const plainHTML = text => text.replace(/[&<>]/g, character => character === "&" ? "&amp;" : character === "<" ? "&lt;" : "&gt;");
     function codeOffset(container, offset) {
       const range = document.createRange();
       range.selectNodeContents(codeEdit.el);
@@ -3417,7 +3403,8 @@ createApp({
     // A szöveg ugyanúgy `<code>` elemben áll, mint megjelenítéskor (renderFileText): a betű és a sormagasság így a
     // szerkesztésbe lépve nem változik.
     const renderCodeEdit = () => {
-      codeEdit.el.innerHTML = "<code>" + highlightHTML(codeEdit.text, codeEdit.ext) + "\n</code>";
+      const body = (codeEdit.coloured ? highlightHTML(codeEdit.text, codeEdit.ext) : plainHTML(codeEdit.text)) + "\n";
+      codeEdit.el.innerHTML = codeEdit.code ? "<code>" + body + "</code>" : body;
       codeEdit.nodes = null;
     };
     function commitCodeEdit() {
@@ -3500,8 +3487,8 @@ createApp({
         return;
       }
       if (type === "insertParagraph" || type === "insertLineBreak") {
-        // Az új sor az előző sor behúzásával kezdődik.
-        const indent = /^[ \t]*/.exec(text.slice(0, start).split("\n").pop())[0];
+        // Kódfájlban az új sor az előző sor behúzásával kezdődik.
+        const indent = codeEdit.code ? /^[ \t]*/.exec(text.slice(0, start).split("\n").pop())[0] : "";
         replaceCode(start, end, "\n" + indent, "break");
         return;
       }
@@ -3516,17 +3503,21 @@ createApp({
       if (command && !event.altKey && (key === "z" || key === "y")) {
         event.preventDefault();
         stepCodeHistory(key === "y" || event.shiftKey);
-      } else if (event.key === "Tab" && !command && !event.altKey && !event.shiftKey) {
+      } else if (event.key === "Tab" && codeEdit.code && !command && !event.altKey && !event.shiftKey) {
         event.preventDefault();
         const [start, end] = codeSelection();
         replaceCode(start, end, "  ", "type");
       }
     }
-    function renderCodeEditor(node, text, ext) {
+    function renderTextEditor(node, text) {
       const stop = e => e.stopPropagation();
+      const ext = (node.file.filename ?? "").split(".").pop().toLowerCase();
+      const code = node.type === "code", coloured = code && supportsHighlight(ext);
+      // Ugyanazok az osztályok, mint megjelenítéskor (renderFileText): a betű és a tördelés nem változik.
+      const look = code ? "node-code" : ["node-plain", {"justified-text": node.justified}];
       // A tartalmat nem a Vue rajzolja (nincs gyermek és innerHTML tulajdonság): újrarajzoláskor a kurzor a helyén marad.
-      return h("pre", {key: "edit-code", class: "node-code node-code-input", contenteditable: "plaintext-only", role: "textbox", "aria-multiline": "true",
-        "aria-label": "Fájl tartalma", spellcheck: false, autocapitalize: "off", autocorrect: "off",
+      return h("pre", {key: "edit-text", class: [look, "node-code-input"], contenteditable: "plaintext-only", role: "textbox", "aria-multiline": "true",
+        "aria-label": "Fájl tartalma", spellcheck: !code, autocapitalize: "off", autocorrect: "off",
         onBeforeinput: codeBeforeInput,
         onInput: () => { if (!codeEdit.composing) resyncCodeEdit(); },
         onCompositionstart: () => { codeEdit.composing = true; },
@@ -3555,7 +3546,7 @@ createApp({
         // A billentyűzettel mozgatott kurzor után a doboz görgetését is mi igazítjuk (a böngészőé itt nem megbízható).
         onKeyup: event => { if (/^(Arrow|Page|Home|End)/.test(event.key) && codeEdit.el) revealCodeCaret(codeSelectionEnds()[1]); },
         onVnodeMounted: ({el}) => {
-          Object.assign(codeEdit, {el, id: node.id, ext, text, nodes: null, undo: [], redo: [], kind: null, stamp: 0, composing: false});
+          Object.assign(codeEdit, {el, id: node.id, ext, code, coloured, text, nodes: null, undo: [], redo: [], kind: null, stamp: 0, composing: false});
           renderCodeEdit();
           el.focus({preventScroll: true});
           setCodeSelection(0, 0, false);
@@ -3563,18 +3554,6 @@ createApp({
         onVnodeBeforeUnmount: () => { codeEdit.el = null; codeEdit.id = null; },
       });
     }
-    function renderTextEditor(node, text) {
-      const stop = e => e.stopPropagation();
-      const ext = (node.file.filename ?? "").split(".").pop().toLowerCase();
-      if (node.type === "code" && supportsHighlight(ext)) return renderCodeEditor(node, text, ext);
-      return h("textarea", {key: "edit", class: "node-text-editor", "aria-label": "Fájl tartalma", value: text,
-        spellcheck: node.type !== "code", autocapitalize: "off", autocomplete: "off",
-        onInput: event => { const current = nodeMap.value.get(node.id); if (current?.file && held.value === node.id) editFileText(current, event.target.value); },
-        onKeydown: event => textEditKey(event, node), onPointerdown: stop, onMousedown: stop, onTouchstart: stop, onClick: stop, onDblclick: stop,
-        onContextmenu: stop, onWheel: stop, onCopy: stop, onCut: stop, onPaste: stop,
-        onVnodeMounted: ({el}) => el.focus({preventScroll: true})});
-    }
-
     // Táblázat doboz (docs/EXCEL.md): olvasó nézet a fájl szövegéből, szerkesztési mód a TableEditor vezérlővel.
     // A mentés a szövegfájlokéval azonos (editFileText); a tárolt értéket a szerver számolja újra.
     const tableEdit = shallowRef(null);      // {id, editor}
@@ -3831,6 +3810,9 @@ createApp({
         // Mérés a tartalom rejtett másolatán (a doboz elrendezését nem mozdítja; a méretek a doboz saját képpontjai).
         const copy = content.cloneNode(true);
         Object.assign(copy.style, {position: "absolute", visibility: "hidden", pointerEvents: "none", left: "0", top: "0", height: "auto", minHeight: "0", maxWidth: "none"});
+        // Sortöréssel végződő szöveg: szerkesztéskor a záró üres sor is látszik (oda áll a kurzor); a doboz ennek is
+        // helyet hagy, hogy szerkesztésbe lépve ne jelenjen meg görgetősáv.
+        if (content.matches("pre") && content.textContent.endsWith("\n")) (copy.querySelector("code") ?? copy).append("\n");
         note.append(copy);
         try {
           // A doboz mérete és a tartalom helye közti különbség a ténylegesen kirajzolt dobozból (keret, belső térközök).
