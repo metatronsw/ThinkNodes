@@ -40,7 +40,3 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 - **Az új doboz ugyanolyan színű, mint a konténer, amibe kerül** (2026-11-25)
   - Az új doboz mindig a 2-es színt kapja; ha a konténer is 2-es színű (alapértelmezett doboz), a belehelyezett doboz csak a keretéről látszik, amíg más színt nem kap (`projects/b`). Döntés kell: kapjon-e az új / belehúzott doboz automatikusan eltérő színt.
-
-- **Kijelölt csomópont megjelenése Safariban nincs képen ellenőrizve** (2026-11-25)
-  - A kijelölt csomópont a kód szerint szűrős körvonalat kap (`selection-own`, `ownFrame`), a felülete pedig CSS `brightness(1.3)` szűrőt (`app.css .own-selected .junction-surface`), amit a Safari SVG-elemen a `glow.js` megjegyzése szerint nem rajzol ki. Az automatizált Safari a próba idején nem kapta meg az egérműveleteket, így a kijelölést nem lehetett előidézni. Kell: szemmel megnézni; ha a világosítás nem látszik, a szabály törölhető vagy szűrő nélküli jelzésre cserélhető.
-

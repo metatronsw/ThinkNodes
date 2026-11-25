@@ -785,7 +785,6 @@ svg text { text-rendering: geometricPrecision; }
 /* A doboz felületén és keretén nincs szűrő: nagy (vagy a képernyőről kilógó) dobozon a Safari a szűrős felületet nem
    rajzolta ki, a kijelölt konténer háttere eltűnt. A világosítást szűrő nélküli fedőréteg adja (.selection-own-tint). */
 .selection-own-tint { fill: #fff; fill-opacity: .1; stroke: none; pointer-events: none; }
-.own-selected .junction-surface { filter: brightness(1.3); }
 /* Útvonal gombok: munkalaponként a mappa neve; az aktuális kiemelve, nem kattintható. */
 /* Elválasztó (›) a gombok közötti résben: nulla szélességű, így nem növeli a távolságot. */
 .crumb-sep { flex: none; width: 0; margin-inline: calc(var(--crumb-gap, 13px) / -2); display: inline-flex; justify-content: center; color: #97a9c5; font-size: 1rem; line-height: 1; pointer-events: none; user-select: none; }
