@@ -1,5 +1,11 @@
 # Változások
 
+## 2026-11-25 – Idegen doboz húzása nem tördeli át a konténerek szövegét
+
+- **Hiba:** bármelyik doboz húzásakor a körbefuttatott szövegű konténerek szövege átrendeződött, amíg a dobozt el nem engedték. Ok: a „ritkább újratördelés húzás közben” (12 képpontos kerekítés) minden konténer minden gyermekére vonatkozott, amíg bármilyen húzás tartott – a kerekített helyek miatt a szöveg kissé másképp tördelődött.
+- **Javítás:** a kerekítés csak az éppen húzott gyermekre érvényes, és csak akkor, ha a konténere nem mozog vele (`editor.js flowObstacles`, a `liftedNodes` alapján). Idegen doboz vagy maga a konténer húzásakor a szöveg nem változik.
+- Ellenőrzés: Safari, próbalap (konténer szöveggel és egy rácson kívüli helyű belső dobozzal, mellette idegen doboz), húzás közben megállítva: idegen doboz és a konténer húzásakor a sorok azonosak a nyugalmival, elengedés után is; a belső doboz húzásakor a szöveg újratördelődik. A javítás előtti kódot ezzel a szkripttel nem futtattam le. `test.sh editor` rendben. Csak kliensoldali változás.
+
 ## 2026-11-25 – Szövegfájlok (.txt, .md) is az egyrétegű szerkesztőben
 
 - **Hiba:** a `.txt` doboz szerkesztésekor a szöveg áttördelt (pl. a sor utolsó szava új sorba került), kilépéskor visszaállt. Ok: a `.txt` / `.md` még külön szövegmezőben (`textarea`) volt szerkeszthető, amely más szélességen tördel, mint a megjelenítés.

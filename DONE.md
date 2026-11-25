@@ -225,3 +225,6 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 - **Másik konténerbe áthúzott doboz az elengedésig eltűnik** (2026-11-25)
   - Javítva: a húzott doboz húzás közben a többi doboz fölé kerül.
 
+- **Bármelyik doboz húzásakor átrendeződik a konténerek körbefuttatott szövege** (2026-11-25)
+  - Javítva: a húzás közbeni kerekítés csak az éppen húzott belső dobozra vonatkozik.
+

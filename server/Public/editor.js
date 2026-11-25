@@ -577,16 +577,17 @@ createApp({
     // Szövegkörbefuttatás: a konténer szövege kikerüli a közvetlen gyermekdobozait; alapból be van kapcsolva, a
     // konténeren kikapcsolható (`textFlow: false`). Konténerenként a
     // gyermekek helye a konténer közepéhez mérve; csak akkor számol, ha van ilyen konténer a lapon.
-    // Húzás közben ritkább újratördelés: a gyermekek helye ilyenkor 12 képpontos lépésekre kerekítve számít, így a szöveg
-    // csak akkor tördelődik újra, ha a doboz egy lépésnyit elmozdult (a legfeljebb 6 képpontos eltérés a doboz körüli
-    // térközön belül marad); a mozdulat végén a pontos hellyel. A változatlan akadálylista ugyanaz az objektum marad,
+    // Húzás közben ritkább újratördelés: az éppen húzott gyermek helye 12 képpontos lépésekre kerekítve számít, így a
+    // szöveg csak akkor tördelődik újra, ha a doboz egy lépésnyit elmozdult (a legfeljebb 6 képpontos eltérés a doboz
+    // körüli térközön belül marad); a mozdulat végén a pontos hellyel. Csak a húzott dobozra vonatkozik (és csak ha a
+    // konténere nem mozog vele): a többi konténer szövege egy idegen doboz húzásától nem változhat. A változatlan akadálylista ugyanaz az objektum marad,
     // így a konténer szövege nem számolódik és nem rajzolódik újra (a konténer húzásakor sem, amikor a gyermekek vele mozognak).
     const noObstacles = new Map();
     const flowStep = 12;
     let knownObstacles = new Map();
     const flowObstacles = computed(() => {
-      const step = gesture.value?.moved ? flowStep : 0;
-      const place = value => step ? Math.round(value / step) * step : value;
+      const moving = liftedNodes.value;
+      const place = (value, coarse) => coarse ? Math.round(value / flowStep) * flowStep : value;
       const nodes = board.value?.nodes ?? [];
       const flowing = new Map(nodes.filter(node => node.textFlow !== false && containerIDs.value.has(node.id)).map(node => [node.id, node]));
       if (!flowing.size) return noObstacles;
@@ -595,7 +596,8 @@ createApp({
         const parent = flowing.get(child.parent);
         if (!parent || isJunction(child)) continue;
         if (!found.has(parent.id)) found.set(parent.id, []);
-        found.get(parent.id).push({x: place(child.position.x - parent.position.x), y: place(child.position.y - parent.position.y),
+        const coarse = moving.has(child.id) && !moving.has(parent.id);
+        found.get(parent.id).push({x: place(child.position.x - parent.position.x, coarse), y: place(child.position.y - parent.position.y, coarse),
           width: child.width, height: child.height});
       }
       for (const [id, list] of found) {
