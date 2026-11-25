@@ -222,6 +222,65 @@
           "type": "number",
           "minimum": 0.1,
           "maximum": 5
+        },
+        "lineScale": {
+          "type": "object",
+          "description": "Vonalvastagság-szorzó vonaltípusonként: egy szám, vagy megjelenésenként (plain, thick, dashed, dotted) külön szám.",
+          "propertyNames": {
+            "enum": [
+              "straight",
+              "sCurve",
+              "zigzag",
+              "lightning",
+              "arc",
+              "rope"
+            ]
+          },
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "number",
+                "minimum": 0.1,
+                "maximum": 10
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "plain": {
+                    "type": "number",
+                    "minimum": 0.1,
+                    "maximum": 10
+                  },
+                  "thick": {
+                    "type": "number",
+                    "minimum": 0.1,
+                    "maximum": 10
+                  },
+                  "dashed": {
+                    "type": "number",
+                    "minimum": 0.1,
+                    "maximum": 10
+                  },
+                  "dotted": {
+                    "type": "number",
+                    "minimum": 0.1,
+                    "maximum": 10
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "boxRadius": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 40
+        },
+        "effects": {
+          "enum": [
+            "liquid"
+          ]
         }
       },
       "additionalProperties": false

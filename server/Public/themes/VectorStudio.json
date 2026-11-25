@@ -118,7 +118,14 @@
     "lineArc": 0.1,
     "roundedWires": true,
     "junctionSize": 10,
-    "lineScale": {"straight": 1, "sCurve": 1, "zigzag": 1, "lightning": 1, "arc": 1, "rope": 1},
+    "lineScale": {
+      "straight": {"plain": 1, "thick": 1, "dashed": 1, "dotted": 1},
+      "sCurve": {"plain": 1, "thick": 1, "dashed": 1, "dotted": 1},
+      "zigzag": {"plain": 1, "thick": 1, "dashed": 1, "dotted": 1},
+      "lightning": {"plain": 1, "thick": 1, "dashed": 1, "dotted": 1},
+      "arc": {"plain": 1, "thick": 1, "dashed": 1, "dotted": 1},
+      "rope": {"plain": 1, "thick": 1, "dashed": 1, "dotted": 1}
+    },
     "motionSpeed": 0.8,
     "junction": "ellipse",
     "grid": "dots",

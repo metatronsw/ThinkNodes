@@ -1121,3 +1121,92 @@ svg text { text-rendering: geometricPrecision; }
 .debug-badge { position: fixed; right: 12px; bottom: 12px; z-index: 30; max-width: min(560px, calc(100vw - 24px)); box-sizing: border-box; display: grid; gap: 2px; padding: 7px 11px; border-radius: 7px; background: #ffd35a; color: #3a2a00; border: 1px solid #c79a12; box-shadow: 0 4px 14px #00000033; font-size: 12px; line-height: 1.35; pointer-events: auto; }
 .debug-badge strong { text-transform: uppercase; letter-spacing: .04em; font-size: 11px; }
 .debug-badge span { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; user-select: all; }
+
+/* ===== Látványcsomag: Liquid Glass (téma: graphics.effects = "liquid") =====
+   Minden szabály a [data-effects="liquid"] jelző alatt áll (szerkesztő: .editor-workspace; megtekintő: a vászon SVG-je),
+   így más témában semmibe sem kerül. A doboz rétegeit (fx-shadow, fx-sheen) és a definíciókat (fx-rim, fx-glow) az
+   editor.js liquid… függvényei és a Rendering.swift adják. Safariban SVG elemen a CSS drop-shadow() nem rajzolódik ki:
+   a fényhatás áttetsző körvonalakból, átmenetekből és (rövid életű elemen) hivatkozott SVG-szűrőből áll. */
+/* Háttérfények: három lassan úszó folt a vászon alatt; csak a transzformjuk animált (a kompozitor végzi, festés nélkül). */
+.canvas-aurora { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.canvas-aurora > i { position: absolute; width: 74%; aspect-ratio: 1; border-radius: 50%; will-change: transform;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--fx-spot) 36%, transparent), color-mix(in srgb, var(--fx-spot) 12%, transparent) 56%, transparent);
+  animation: fx-drift 26s ease-in-out infinite alternate; }
+.canvas-aurora > i:nth-child(1) { --fx-spot: var(--fx-a); left: -20%; top: -34%; }
+.canvas-aurora > i:nth-child(2) { --fx-spot: var(--fx-b); right: -24%; top: -12%; animation-duration: 34s; animation-direction: alternate-reverse; }
+.canvas-aurora > i:nth-child(3) { --fx-spot: var(--fx-c); left: 14%; bottom: -52%; animation-duration: 41s; }
+@keyframes fx-drift { from { transform: translate3d(-7%, -5%, 0) scale(1); } to { transform: translate3d(9%, 7%, 0) scale(1.2); } }
+
+/* Doboz: rámutatáskor a csillogás kifényesedik, az árnyék megnő (a doboz „megemelkedik”), a perem megvastagszik. */
+[data-effects="liquid"] .fx-sheen { opacity: .78; transition: opacity .28s ease; }
+[data-effects="liquid"] .fx-shadow { transform-box: fill-box; transform-origin: 50% 40%; opacity: .85;
+  transition: transform .34s cubic-bezier(.2, .8, .2, 1), opacity .34s ease; }
+[data-effects="liquid"] .node-surface { transition: stroke-width .25s ease; }
+[data-effects="liquid"] [data-node]:hover .fx-sheen { opacity: 1; }
+[data-effects="liquid"] [data-node]:hover .fx-shadow { transform: translateY(5px) scale(1.07); opacity: 1; }
+[data-effects="liquid"] [data-node]:hover .node-surface:not([data-locked-outline]) { stroke-width: 2.6px; }
+[data-effects="liquid"] [data-node] .node-body img { transition: filter .28s ease; }
+[data-effects="liquid"] [data-node]:hover .node-body img { filter: brightness(1.06) saturate(1.12); }
+/* Csomópont: fénylő perem; rámutatáskor a fogója körül halvány udvar. */
+[data-effects="liquid"] .junction-surface { stroke: #fff; stroke-opacity: .75; stroke-width: 1.5px; }
+[data-effects="liquid"] .junction-handle { transition: fill .2s ease; stroke: transparent; stroke-width: 10px; }
+[data-effects="liquid"] .junction-handle:hover { fill: color-mix(in srgb, var(--fx-accent) 30%, transparent); stroke: color-mix(in srgb, var(--fx-accent) 16%, transparent); }
+/* Vonal: rámutatáskor a találati sávja halványan felfénylik. */
+[data-effects="liquid"] .wire-hit { transition: stroke .2s ease; }
+[data-effects="liquid"] .wire:hover .wire-hit { stroke: color-mix(in srgb, var(--fx-accent) 24%, transparent); }
+
+/* Saját kijelölés: felvillanás, majd lélegző fényudvar a saját színnel (szűrő nélkül: áttetsző, széles körvonal). */
+[data-effects="liquid"] .selection-own-tint { fill: var(--fx-select); fill-opacity: .1; stroke: var(--fx-select); stroke-width: 9px; stroke-opacity: .3;
+  animation: fx-select-in .55s cubic-bezier(.2, .8, .2, 1), fx-breathe 2.8s ease-in-out .55s infinite; }
+[data-effects="liquid"] .own-selected :is(.node-surface, .node-frame):not([data-locked-outline]) { stroke: var(--fx-select); stroke-width: 2.6px; }
+@keyframes fx-select-in { from { fill-opacity: .6; stroke-width: 30px; stroke-opacity: 0; } }
+@keyframes fx-breathe { 50% { stroke-opacity: .15; stroke-width: 14px; } }
+[data-effects="liquid"] .selection-own { animation: fx-fade 2.8s ease-in-out infinite; }
+[data-effects="liquid"] .wire-own-halo { animation: fx-fade 2.8s ease-in-out infinite; }
+@keyframes fx-fade { 50% { opacity: .45; } }
+/* Más felhasználó kijelölése: vastagabb, erősebben lüktető fénykeret (a glow sugarát a téma graphics.glow értéke adja). */
+[data-effects="liquid"] .selection-glow { stroke-width: 4px; animation: fx-peer 1.8s ease-in-out infinite; }
+@keyframes fx-peer { 50% { opacity: .5; stroke-width: 6px; } }
+
+/* Ping: felvillanó kitöltés, majd kétszer táguló, fénylő gyűrű. */
+[data-effects="liquid"] .node-ping { stroke: var(--fx-accent, #f58a16); fill: var(--fx-accent, #f58a16); filter: url(#fx-glow);
+  animation: fx-ping 1.5s cubic-bezier(.2, .7, .2, 1) forwards; }
+@keyframes fx-ping {
+  0% { transform: scale(.94); opacity: 1; fill-opacity: .5; stroke-width: 10px; }
+  30% { transform: scale(1.1); fill-opacity: .1; stroke-width: 5px; }
+  48% { transform: scale(1.03); fill-opacity: 0; opacity: 1; }
+  100% { transform: scale(1.5); fill-opacity: 0; stroke-width: 1px; opacity: 0; }
+}
+/* Kattintás: a mutató alól szétfutó gyűrű (editor.js pressCanvas). */
+[data-effects="liquid"] .fx-ripple { fill: var(--fx-accent); fill-opacity: .22; stroke: #fff; stroke-opacity: .85; stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke; transform-box: fill-box; transform-origin: center; animation: fx-ripple .55s ease-out forwards; }
+@keyframes fx-ripple { from { transform: scale(.4); opacity: .95; } to { transform: scale(3.4); opacity: 0; } }
+
+/* Mozgás közben (húzás, pásztázás, nagyítás) nincs áttűnés és lélegzés: csak a mozgó elemek festődnek újra. */
+.editor-workspace[data-moving][data-effects] .editor-canvas :is(.fx-sheen, .fx-shadow, .node-surface, .selection-own-tint, .selection-own, .wire-own-halo, .wire-hit) {
+  transition: none; animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .canvas-aurora > i, [data-effects="liquid"] :is(.selection-own-tint, .selection-own, .wire-own-halo, .selection-glow) { animation: none; }
+  [data-effects="liquid"] :is(.fx-sheen, .fx-shadow, .node-surface) { transition: none; }
+}
+
+/* Panelek, menük: semleges, erősen elmosott üveg (a [data-glass] szabályok változóit írja felül). */
+.editor-workspace[data-effects="liquid"], .quick-tools[data-effects="liquid"], .context-menu[data-effects="liquid"] {
+  --ink: #1d1d1f; --muted: #6e6e73; --line: #ffffffa6;
+  --accent: var(--fx-accent, #0a84ff); --accent-ink: color-mix(in srgb, var(--fx-accent, #0a84ff) 78%, #000);
+  --glass-surface: #ffffff8c; --glass-field: #ffffff5c; --glass-highlight: #ffffffe6; --glass-shadow: #1f268726;
+}
+.editor-workspace[data-effects="liquid"][data-glass="dark"], :root[data-display="dark"] :is(.quick-tools, .context-menu)[data-effects="liquid"] {
+  --ink: #f5f5f7; --muted: #a1a1a6; --line: #ffffff2e;
+  --accent-ink: color-mix(in srgb, var(--fx-accent, #0a84ff) 62%, #fff);
+  --glass-surface: #1c1c1e8f; --glass-field: #ffffff14; --glass-highlight: #ffffff38; --glass-shadow: #00000080;
+}
+.editor-workspace[data-effects="liquid"] :is(.inspector, .quick-search, .canvas-controls, .canvas-empty),
+.context-menu[data-effects="liquid"] {
+  color: var(--ink); background: var(--glass-surface); border: 1px solid var(--line); border-radius: 20px;
+  box-shadow: inset 0 1px var(--glass-highlight), inset 0 -1px #ffffff1f, 0 12px 36px var(--glass-shadow);
+  -webkit-backdrop-filter: blur(26px) saturate(185%); backdrop-filter: blur(26px) saturate(185%);
+}
+.editor-workspace[data-effects="liquid"] .canvas-controls { border-radius: 16px; }
+.editor-workspace[data-effects="liquid"] :is(.inspector, .canvas-controls) .button { border-radius: 11px; transition: transform .16s ease, background-color .16s ease; }
+.editor-workspace[data-effects="liquid"] :is(.inspector, .canvas-controls) .button:active { transform: scale(.94); }

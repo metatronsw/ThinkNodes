@@ -1,5 +1,20 @@
 # Változások
 
+## 2026-11-25 – Liquid Glass téma (látványcsomag), vonalvastagság típus × megjelenés szerint a témából, bemutató projekt
+
+- **Új téma: Liquid Glass** (`server/Public/themes/LiquidGlass.json`, téma-ID 4): öt paletta (Azúr, Aurora, Napnyugta, Lagúna, Grafit), mindegyikben 21 szín világos és sötét változattal (OKLCH-térben, azonos világosságon és telítettségen). 22-es saroksugár, ívelt egyenes vonalak, kerekített töréspontok.
+- **Látványcsomag** (`graphics.effects: "liquid"`): áttetsző dobozfelület fénylő peremmel (`fx-rim`) és csillogással (`fx-sheen`), puha árnyék (`fx-shadow`, a Kiemelésnél nagyobb, képen is), lassan úszó háttérfények a paletta színeiből (`.canvas-aurora`), üvegpanelek és -menük erős háttérelmosással.
+- **Effektek:** rámutatáskor a doboz csillogása kifényesedik, az árnyéka megnő, a pereme megvastagszik; vonal és csomópont fölött halvány fényudvar; kattintáskor szétfutó gyűrű; saját kijelölés felvillan, majd lélegző fényudvart kap a saját színnel; más felhasználó kijelölése erősebb, lüktető glow; a ping felvillanó, kétszer táguló, fénylő gyűrű.
+- **Az alaptémák nem lassulnak:** minden szabály a `[data-effects="liquid"]` jelző alatt áll, a plusz elemek csak ebben a témában keletkeznek. Szűrő (glow) csak rövid életű elemen van; mozgás közben az áttűnések és a lélegzés áll.
+- **Vonalvastagság a témából, vonaltípusonként és megjelenésenként:** a `lineScale` egy típusra egy szám, vagy megjelenésenként (`plain`, `thick`, `dashed`, `dotted`) külön szorzó (`Theme.swift LineScale`, `geometry.js edgePaint`). A három vonalméret megmaradt. A három meglévő téma `lineScale`-je az új, megjelenésenkénti alakra váltott (minden érték 1: a megjelenésük nem változott).
+- **Új témamezők:** `boxRadius` (a lekerekített doboz saroksugara), `effects`. Leírás: `server/docs/themes.md`, séma: `server/docs/theme.schema.json`.
+- **SVG-export és megtekintő:** a statikus rész (felület, perem, árnyék, álló háttérfények) megjelenik; a mozgás csak a böngészőben.
+- **Bemutató projekt** (csak helyben, a `projects/LiquidGlass` mappában, nincs gitben): 70 objektum és 26 vonal – mind a nyolc alakzat, öt felületmód, négy animáció, konténer gyerekekkel, mind a hat vonaltípus és négy megjelenés, csomópontok, szöveg-, kód- (Swift, JS, CSS, JSON), CSV- és táblázatfájl, három grafikon, három (saját, generált) kép, hang, PDF, és a paletta 21 színe.
+- **Mérés Safariban** (1600 × 948, kétszeres felbontás, a bemutató lapon, sötét és világos módban): nyugalomban, rámutatásnál, kijelölésnél és kijelölt állapotban 60 fps; pásztázás 59–60; nagyítás 57–58 (a leghosszabb képkocka 63 ms); dobozhúzás 58–59.
+- **Valódi háttérelmosás a dobozokon nincs:** kipróbálva, a Safari az SVG-n belül nem alkalmazza a `backdrop-filter`-t (sem SVG-elemen, sem `foreignObject`-ben). Valódi elmosást a panelek és menük kapnak; a dobozok áttetszők, alattuk átsejlenek a háttérfények.
+- Tesztek: `ThemeTests` új esetei (`lineScaleByTypeAndAppearance`, `liquidGlassTheme`) átmennek. Négy régi renderteszt és két JS-teszt már e változások előtt is bukott (BUGS.md).
+- Szerverkód változott (`Theme.swift`, `Model.swift`, `Rendering.swift`, verziószámok): release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – Gyors eszközök: négyirányú terjeszkedés, minden objektumon; futó pötty a vonalon; három vonalméret
 
 **Nincs tesztelve** (a felhasználó kérésére: tesztelés csak külön utasításra); a felhasználó kézzel próbálta ki. A meglévő tesztek egy része ezektől a változásoktól el fog törni (lásd BUGS.md).

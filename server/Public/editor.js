@@ -8,13 +8,13 @@ import {chooseZip, exportPackage, importPackage, isPackageZip} from "./package.j
 import {decodeWorksheet, encodeWorksheet} from "./worksheet-json.js";
 import {sharedMouse} from "./mouse.js";
 import {worksheetChanges, replayChanges, sameValue} from "./editor-history.js?v=2";
-import {flashNode, flashPoint} from "./ping.js";
+import {flashNode, flashPoint} from "./ping.js?v=2";
 import {showTooltip, hideTooltip} from "./tooltip.js";
 import {justifyRows, justifyShifts} from "./justify.js?v=7";
 import {canvasMarkdown, canvasMarkdownAvailable} from "./canvas-markdown.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, wireHeads, reverseWidth, wireRoutes, edgeInRectangle, edgePaint, labelLayout, editLabelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, taperedArc, lineSize, wireLabelLayout} from "./geometry.js?v=35";
+import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, wireHeads, reverseWidth, wireRoutes, edgeInRectangle, edgePaint, labelLayout, editLabelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, taperedArc, lineSize, wireLabelLayout} from "./geometry.js?v=36";
 
 import {ancestors, layerOrder, overlapFraction} from "./containers.js?v=15";
 import {glowFilter, glowId, glowReach, glowVNode} from "./glow.js";
@@ -358,7 +358,38 @@ function surfaceColor(node) {
   return backgroundMode(node) === "canvas" ? paint(currentBoard.value?.background, 0) : paint(node.fill, 2);
 }
 
+// Látványcsomag (graphics.effects = "liquid"): áttetsző dobozfelület fénylő peremmel és csillogással, a doboz alatt puha
+// árnyék; a rámutatás-, kattintás- és kijelöléseffektek az app.css `[data-effects="liquid"]` szabályai. Más témában
+// egyetlen plusz elem sem keletkezik. A szerveroldali pár: Rendering.swift boxSurface / liquidDefinitions.
+const liquid = () => graphics.value.effects === "liquid";
+function liquidShadow(node) {
+  // Kép alatt csak a Kiemelés vet árnyékot; doboznál minden kitöltött felület.
+  if (isJunction(node) || (isImage(node) ? !node.elevated : !["solid", "translucent", "canvas"].includes(backgroundMode(node)))) return null;
+  const lift = node.elevated ? 2 : 1;
+  return h("rect", {class: "fx-shadow", x: -node.width/2 - 14*lift, y: -node.height/2 - 2, width: node.width + 28*lift,
+    height: node.height + 4 + 26*lift, fill: "url(#fx-shadow)", "fill-opacity": node.elevated ? undefined : .6,
+    "pointer-events": "none", "aria-hidden": "true"});
+}
+function liquidDefinitions(dark) {
+  const stops = list => list.map(([offset, color, opacity]) => h("stop", {offset: offset + "%", "stop-color": color, "stop-opacity": opacity}));
+  return [
+    h("linearGradient", {id: "fx-rim", x2: "60%", y2: "100%"}, stops(dark
+      ? [[0, "#fff", .62], [32, "#fff", .14], [68, "#fff", .06], [100, "#fff", .36]]
+      : [[0, "#fff", .98], [32, "#fff", .5], [68, "#8791b4", .26], [100, "#fff", .82]])),
+    h("radialGradient", {id: "fx-sheen", cx: "22%", cy: "-12%", r: "105%"}, stops(dark
+      ? [[0, "#fff", .24], [42, "#fff", .07], [72, "#fff", 0]] : [[0, "#fff", .62], [42, "#fff", .2], [72, "#fff", 0]])),
+    h("radialGradient", {id: "fx-shadow"}, stops(dark
+      ? [[52, "#000", .5], [78, "#000", .2], [100, "#000", 0]] : [[52, "#1a2452", .3], [78, "#1a2452", .11], [100, "#1a2452", 0]])),
+    // A ping és a kattintás glow-ja (CSS-ből hivatkozva; a Safari SVG elemen csak hivatkozott szűrőt rajzol ki).
+    h("filter", {id: "fx-glow", x: "-50%", y: "-50%", width: "200%", height: "200%", "color-interpolation-filters": "sRGB"}, [
+      h("feGaussianBlur", {stdDeviation: 5, result: "blur"}),
+      h("feMerge", [h("feMergeNode", {in: "blur"}), h("feMergeNode", {in: "blur"}), h("feMergeNode", {in: "SourceGraphic"})]),
+    ]),
+  ];
+}
+
 function elevationShadow(node) {
+  if (liquid()) return liquidShadow(node);
   // Képnél a láthatósági mód nem számít: a Kiemelés árnyéka mindig a teljes kép alatt van.
   if (!node.elevated || (!isImage(node) && backgroundMode(node) === "free")) return null;
   const [tag, geometry] = shapeGeometry(node.shape, node.width, node.height);
@@ -403,15 +434,20 @@ function shape(node, linked, dropTarget = false) {
   if (free) return h(tag, {...geometry, "data-editor-only": "", fill: "none", stroke: "none", "pointer-events": "fill"});
   if (canvasTint && image) return h(tag, {...geometry, class: "node-surface", fill: surfaceColor(node), stroke: "none"});
   const locked = isBox(node) && node.locked;
-  const glass = graphics.value.glass && mode === "solid" && !image;
+  const glazed = liquid() && (mode === "solid" || mode === "translucent");
+  const glass = !glazed && graphics.value.glass && mode === "solid" && !image;
   const fill = surfaceColor(node);
   // Üres doboz: csak a keret látszik, a keret színe a doboz színe.
-  const frame = node.type === "preview" || frameless(node) ? "none" : empty ? paint(node.fill, 2) : image && !empty ? "none" : glass ? "url(#glass-rim)" : automaticBorder(fill);
+  const frame = node.type === "preview" || frameless(node) ? "none" : empty ? paint(node.fill, 2) : image && !empty ? "none" : glass ? "url(#glass-rim)" : glazed ? "url(#fx-rim)" : automaticBorder(fill);
   const translucent = mode === "translucent";
   const style = {fill: empty ? "none" : fill, stroke: frame, "fill-opacity": translucent ? .75 : undefined,
     "pointer-events": empty ? "fill" : undefined, class: "node-surface",
     "stroke-width": locked ? 6.4 : boxFrameWidth,
     "data-locked-outline": locked ? "" : undefined};
+  if (glazed) return [
+    h(tag, {...style, ...geometry, "fill-opacity": translucent ? .4 : .64}),
+    h(tag, {...geometry, class: "fx-sheen", fill: "url(#fx-sheen)", "pointer-events": "none", "aria-hidden": "true"}),
+  ];
   if (glass) return [
     h(tag, {...style, ...geometry, "fill-opacity": .66}),
     h(tag, {...geometry, fill: "url(#glass-sheen)", "pointer-events": "none", "aria-hidden": "true"}),
@@ -2688,6 +2724,11 @@ createApp({
 
     function pressCanvas(event) {
       flushView();
+      // Látványcsomag: kattintáskor gyűrű fut szét a mutató alól (app.css .fx-ripple).
+      if (liquid() && event.button === 0 && event.target?.closest?.("[data-node], [data-edge]")) {
+        const size = 26 / view.value.k;
+        flashPoint(canvas.value?.querySelector("[data-scene]"), world(event), size, size, "fx-ripple");
+      }
       // Szerkesztett táblázaton belül a táblázat kezeli a kattintást (cellakijelölés, Shift+kattintás tartomány).
       if (event.target?.closest?.("[data-table-editor]")) return;
       if (event.pointerType === "touch" && (!event.isPrimary || touchView)) {
@@ -4813,6 +4854,9 @@ createApp({
       // táblázatszerkesztő megnyitása (a foreignObject-beli fókusz) egy teljes képernyőnyit görgetett rajta, a nézet elugrott.
       const keepUnscrolled = event => { const area = event.currentTarget; if (area.scrollLeft || area.scrollTop) { area.scrollLeft = 0; area.scrollTop = 0; } };
       return h("div", {class: "canvas-area", onScroll: keepUnscrolled, style: {background: paint(board.value.background, 0), "--overscan": overscan}}, [
+        // Látványcsomag: lassan úszó fényfoltok a vászon alatt (app.css .canvas-aurora); csak a transzformjuk animált.
+        liquid() ? h("div", {class: "canvas-aurora", "aria-hidden": "true", "data-editor-only": "",
+          style: {"--fx-a": paint(4, 4), "--fx-b": paint(5, 5), "--fx-c": paint(7, 7)}}, [h("i"), h("i"), h("i")]) : null,
         perfOptions.grid === "separate" ? h(GridLayer) : null,
         perfOptions.grid === "css" ? h("div", {class: "canvas-grid-css", ref: gridElement, "aria-hidden": "true", "data-editor-only": ""}) : null,
         perfOptions.grid === "draw" ? h("canvas", {class: "canvas-grid-css canvas-grid-draw", ref: gridElement, "aria-hidden": "true", "data-editor-only": ""}) : null,
@@ -4861,7 +4905,7 @@ createApp({
         }, [
           h("defs", [
             ...glowDefinitions.value.map(spec => glowVNode(h, spec)),
-            ...(glass ? [
+            ...(liquid() ? liquidDefinitions(mode.value === "dark") : glass ? [
               h("linearGradient", {id: "glass-rim", x2: "25%", y2: "100%"}, [
                 h("stop", {offset: "0%", "stop-color": "#f4eeff", "stop-opacity": .93}),
                 h("stop", {offset: "40%", "stop-color": "#b39bd8", "stop-opacity": .72}),
@@ -4993,8 +5037,8 @@ createApp({
       // Objektumon a menü a gyors eszközök keretében áll (a keret pozicionál), egyébként önállóan.
       // A leíró `noMenu` típusain (pl. doboz) a hagyományos menü ki van kapcsolva: csak a gombok jelennek meg.
       if (open.tools) return renderQuickTools(open, menuDisabled(type, open.id)
-        ? null : h("div", {class: "context-menu panel", "aria-label": "Műveletek"}, entries));
-      return h("div", {class: "context-menu panel", "aria-label": "Műveletek",
+        ? null : h("div", {class: "context-menu panel", "data-effects": graphics.value.effects, "aria-label": "Műveletek"}, entries));
+      return h("div", {class: "context-menu panel", "data-effects": graphics.value.effects, "aria-label": "Műveletek",
         style: {left: open.x + "px", top: open.y + "px"}, onVnodeMounted: fit, onVnodeUpdated: fit}, entries);
     }
 
@@ -5162,7 +5206,7 @@ createApp({
       const stop = event => event.stopPropagation();
       const block = rows => rows.map(row => h("div", {class: "property-options property-tools quick-tools-row"},
         row.map(item => item.group ? renderFlyout(item) : quickButton(item))));
-      return h("div", {class: "quick-tools", role: "toolbar", "aria-label": "Gyors eszközök",
+      return h("div", {class: "quick-tools", "data-effects": graphics.value.effects, role: "toolbar", "aria-label": "Gyors eszközök",
         style: {left: open.x + "px", top: open.y + "px"}, onVnodeMounted: fit, onVnodeUpdated: fit,
         onPointerdown: stop, onDblclick: stop, onContextmenu: event => { event.preventDefault(); event.stopPropagation(); }}, [
         main.length ? h("div", {class: "quick-tools-above"}, block(main)) : null,
@@ -5956,7 +6000,10 @@ createApp({
       const currentStatus = reconnect.value ? "Kattints az új célra vagy a vászonra. Esc a megszakításhoz."
         : "";
       return [
-        h("div", {class: "editor-workspace", "data-glass": graphics.value.glass ? mode.value : undefined, style: {
+        h("div", {class: "editor-workspace", "data-glass": graphics.value.glass ? mode.value : undefined,
+          "data-effects": graphics.value.effects, style: {
+          // A látványcsomag kijelölés- és kiemelésszíne (saját szín, illetve a paletta jelzőszíne).
+          ...(liquid() ? {"--fx-select": selectionTint(), "--fx-accent": paint(4, 4)} : {}),
           "--sheet-glow": (graphics.value.glow ?? 3) + "px",
           // A keresési találat glow-ja CSS-ből hivatkozik a szűrőre (app.css).
           "--glow-search": glow("search", "#cf8200"),

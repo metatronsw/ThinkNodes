@@ -116,3 +116,37 @@ import VaporTesting
         #expect(reopened.resolvedBackground(mode: mode) == "#213a57")
     }
 }
+
+@Test func lineScaleByTypeAndAppearance() throws {
+    let scale = try JSONDecoder().decode([String: LineScale].self,
+        from: Data(#"{"straight": 2, "arc": {"plain": 0.5, "thick": 1.5}}"#.utf8))
+    var wire = Connection(id: "wire", sourcePoint: Point(x: 0, y: 0), target: ConnectionTarget(point: Point(x: 100, y: 0)))
+    #expect(wire.scaledWidth(scale) == 4)
+    wire.type = .arc
+    #expect(wire.scaledWidth(scale) == 1)
+    wire.appearance = .thick
+    #expect(wire.scaledWidth(scale) == 6)
+    // Megjelenés, amelyhez a téma nem ad szorzót: 1.
+    wire.appearance = .dashed
+    #expect(wire.scaledWidth(scale) == 2)
+    let allValid = scale.values.allSatisfy { $0.valid }
+    #expect(allValid)
+    #expect(!LineScale.byAppearance(["wavy": 1]).valid && !LineScale.uniform(0).valid)
+}
+
+@Test func liquidGlassTheme() throws {
+    let theme = try #require(Themes.catalog.first { $0.name == "Liquid Glass" })
+    let colorCounts = theme.palettes.map(\.colors.count)
+    #expect(theme.valid && colorCounts == [21, 21, 21, 21, 21])
+    var sheet = Worksheet(title: "Liquid")
+    sheet.background = "@0"
+    sheet.appearance = Appearance(theme: theme.id, palette: 2)
+    sheet.nodes = [Idea(id: "box", text: "Üveg", position: Point(x: 0, y: 0), fill: "@2", textColor: "@1")]
+    let svg = boardSVG(sheet, mode: "dark")
+    #expect(svg.contains(#"data-effects="liquid""#) && svg.contains(#"stroke="url(#fx-rim)""#))
+    #expect(svg.contains(#"class="fx-sheen" fill="url(#fx-sheen)""#) && svg.contains(#"class="fx-shadow""#))
+    #expect(svg.contains(#"rx="22.000""#) && svg.contains("fx-aurora-2"))
+    // Más témában a látványcsomag egyetlen eleme sem jelenik meg.
+    sheet.appearance = Appearance(theme: 1, palette: 1)
+    #expect(!boardSVG(sheet, mode: "dark").contains("fx-"))
+}

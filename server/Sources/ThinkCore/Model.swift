@@ -424,10 +424,10 @@ package struct Connection: Equatable, Codable, Sendable {
     /// A három méret alapvastagsága (geometry.js lineBaseWidths; egyezniük kell).
     static let baseWidths: [Double] = [2, 5, 10.5]
     var sizeIndex: Int { min(3, max(1, size ?? 1)) - 1 }
-    /// A vastagság a téma vonaltípusonkénti szorzójával (`scale`: vonaltípus neve → szorzó, híján 1); a vastag
+    /// A vastagság a téma szorzójával (`scale`: vonaltípus neve → szorzó, akár megjelenésenként; híján 1); a vastag
     /// megjelenés mindig kétszeres.
-    func scaledWidth(_ scale: [String: Double]?) -> Double {
-        min(Self.maximumWidth, Self.baseWidths[sizeIndex] * (appearance == .thick ? 2 : 1) * (scale?[type.rawValue] ?? 1))
+    func scaledWidth(_ scale: [String: LineScale]?) -> Double {
+        min(Self.maximumWidth, Self.baseWidths[sizeIndex] * (appearance == .thick ? 2 : 1) * (scale?[type.rawValue]?.factor(appearance) ?? 1))
     }
     var strokeWidth: Double { width ?? scaledWidth(nil) }
     var lineWidth: Double { min(Self.maximumWidth, strokeWidth * (appearance == .dotted ? 2 : 1)) }

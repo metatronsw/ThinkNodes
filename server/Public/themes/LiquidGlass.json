@@ -1,0 +1,729 @@
+{
+  "version": 1,
+  "id": 4,
+  "name": "Liquid Glass",
+  "modes": [
+    "light",
+    "dark"
+  ],
+  "palettes": [
+    {
+      "id": 1,
+      "name": "Azúr",
+      "colors": [
+        {
+          "id": 0,
+          "name": "Lap",
+          "light": "#f2f7fe",
+          "dark": "#060f1a"
+        },
+        {
+          "id": 1,
+          "name": "Tinta",
+          "light": "#15202d",
+          "dark": "#ebf1f8"
+        },
+        {
+          "id": 2,
+          "name": "Üveg",
+          "light": "#e6f2ff",
+          "dark": "#1d2f44"
+        },
+        {
+          "id": 3,
+          "name": "Grafit",
+          "light": "#5b6b7d",
+          "dark": "#a4b3c4"
+        },
+        {
+          "id": 4,
+          "name": "Azúr",
+          "light": "#1c7dee",
+          "dark": "#71adfd"
+        },
+        {
+          "id": 5,
+          "name": "Türkiz",
+          "light": "#0a938e",
+          "dark": "#16c3bc"
+        },
+        {
+          "id": 6,
+          "name": "Borostyán",
+          "light": "#df9c02",
+          "dark": "#febe4e"
+        },
+        {
+          "id": 7,
+          "name": "Rózsa",
+          "light": "#d73f6a",
+          "dark": "#fd7b97"
+        },
+        {
+          "id": 8,
+          "name": "Köd",
+          "light": "#d6dde6",
+          "dark": "#34414f"
+        },
+        {
+          "id": 9,
+          "name": "Halvány azúr",
+          "light": "#d8e8fd",
+          "dark": "#1c385e"
+        },
+        {
+          "id": 10,
+          "name": "Halvány türkiz",
+          "light": "#c1f2ed",
+          "dark": "#00413f"
+        },
+        {
+          "id": 11,
+          "name": "Ibolya",
+          "light": "#7f66e9",
+          "dark": "#a79bfe"
+        },
+        {
+          "id": 12,
+          "name": "Cián",
+          "light": "#058eaf",
+          "dark": "#1abde6"
+        },
+        {
+          "id": 13,
+          "name": "Menta",
+          "light": "#099864",
+          "dark": "#11ca86"
+        },
+        {
+          "id": 14,
+          "name": "Narancs",
+          "light": "#ca5b04",
+          "dark": "#fc8642"
+        },
+        {
+          "id": 15,
+          "name": "Orchidea",
+          "light": "#ad52c8",
+          "dark": "#d586ed"
+        },
+        {
+          "id": 16,
+          "name": "Halvány borostyán",
+          "light": "#f9e3c2",
+          "dark": "#4c3200"
+        },
+        {
+          "id": 17,
+          "name": "Halvány rózsa",
+          "light": "#fedce1",
+          "dark": "#572530"
+        },
+        {
+          "id": 18,
+          "name": "Halvány ibolya",
+          "light": "#e4e3ff",
+          "dark": "#37315c"
+        },
+        {
+          "id": 19,
+          "name": "Halvány cián",
+          "light": "#c3effe",
+          "dark": "#003f4f"
+        },
+        {
+          "id": 20,
+          "name": "Halvány menta",
+          "light": "#cbf1db",
+          "dark": "#03432a"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Aurora",
+      "colors": [
+        {
+          "id": 0,
+          "name": "Lap",
+          "light": "#f7f5fe",
+          "dark": "#100b1b"
+        },
+        {
+          "id": 1,
+          "name": "Tinta",
+          "light": "#211b2e",
+          "dark": "#f1eef9"
+        },
+        {
+          "id": 2,
+          "name": "Üveg",
+          "light": "#f2edfe",
+          "dark": "#312745"
+        },
+        {
+          "id": 3,
+          "name": "Grafit",
+          "light": "#6c647e",
+          "dark": "#b3adc6"
+        },
+        {
+          "id": 4,
+          "name": "Ibolya",
+          "light": "#8d60e2",
+          "dark": "#b495fd"
+        },
+        {
+          "id": 5,
+          "name": "Málna",
+          "light": "#ca4498",
+          "dark": "#f27cc1"
+        },
+        {
+          "id": 6,
+          "name": "Cián",
+          "light": "#03919d",
+          "dark": "#0dc1d0"
+        },
+        {
+          "id": 7,
+          "name": "Menta",
+          "light": "#009a4d",
+          "dark": "#44c875"
+        },
+        {
+          "id": 8,
+          "name": "Köd",
+          "light": "#dddae6",
+          "dark": "#423c51"
+        },
+        {
+          "id": 9,
+          "name": "Halvány ibolya",
+          "light": "#e8e2fd",
+          "dark": "#3c2f5a"
+        },
+        {
+          "id": 10,
+          "name": "Halvány málna",
+          "light": "#fedbed",
+          "dark": "#532640"
+        },
+        {
+          "id": 11,
+          "name": "Indigó",
+          "light": "#5074f0",
+          "dark": "#87a7ff"
+        },
+        {
+          "id": 12,
+          "name": "Orchidea",
+          "light": "#b250c2",
+          "dark": "#da84e8"
+        },
+        {
+          "id": 13,
+          "name": "Azúr",
+          "light": "#028cbc",
+          "dark": "#0fbaf8"
+        },
+        {
+          "id": 14,
+          "name": "Korall",
+          "light": "#da4149",
+          "dark": "#fe7e7d"
+        },
+        {
+          "id": 15,
+          "name": "Türkiz",
+          "light": "#039580",
+          "dark": "#18c6ab"
+        },
+        {
+          "id": 16,
+          "name": "Halvány cián",
+          "light": "#c0f1f6",
+          "dark": "#064045"
+        },
+        {
+          "id": 17,
+          "name": "Halvány menta",
+          "light": "#cff0d6",
+          "dark": "#124324"
+        },
+        {
+          "id": 18,
+          "name": "Halvány indigó",
+          "light": "#dce6fe",
+          "dark": "#27355f"
+        },
+        {
+          "id": 19,
+          "name": "Halvány orchidea",
+          "light": "#f7dcfb",
+          "dark": "#4a2a4f"
+        },
+        {
+          "id": 20,
+          "name": "Halvány azúr",
+          "light": "#cbecfe",
+          "dark": "#043d54"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Napnyugta",
+      "colors": [
+        {
+          "id": 0,
+          "name": "Lap",
+          "light": "#fef5f1",
+          "dark": "#190904"
+        },
+        {
+          "id": 1,
+          "name": "Tinta",
+          "light": "#2d1a13",
+          "dark": "#f8ede9"
+        },
+        {
+          "id": 2,
+          "name": "Üveg",
+          "light": "#fdece6",
+          "dark": "#432519"
+        },
+        {
+          "id": 3,
+          "name": "Grafit",
+          "light": "#7d6258",
+          "dark": "#c4aba1"
+        },
+        {
+          "id": 4,
+          "name": "Korall",
+          "light": "#d7473d",
+          "dark": "#ff7f71"
+        },
+        {
+          "id": 5,
+          "name": "Borostyán",
+          "light": "#ec9400",
+          "dark": "#febc72"
+        },
+        {
+          "id": 6,
+          "name": "Málna",
+          "light": "#cb468f",
+          "dark": "#f37db9"
+        },
+        {
+          "id": 7,
+          "name": "Ibolya",
+          "light": "#9360db",
+          "dark": "#bb91ff"
+        },
+        {
+          "id": 8,
+          "name": "Köd",
+          "light": "#e6d9d5",
+          "dark": "#4f3a32"
+        },
+        {
+          "id": 9,
+          "name": "Halvány korall",
+          "light": "#feded9",
+          "dark": "#572822"
+        },
+        {
+          "id": 10,
+          "name": "Halvány borostyán",
+          "light": "#fce1c5",
+          "dark": "#503003"
+        },
+        {
+          "id": 11,
+          "name": "Narancs",
+          "light": "#ca5a03",
+          "dark": "#f98848"
+        },
+        {
+          "id": 12,
+          "name": "Rózsa",
+          "light": "#d64363",
+          "dark": "#fd7c90"
+        },
+        {
+          "id": 13,
+          "name": "Borostyán 2",
+          "light": "#cda606",
+          "dark": "#f0c634"
+        },
+        {
+          "id": 14,
+          "name": "Orchidea",
+          "light": "#b551b9",
+          "dark": "#dd85e0"
+        },
+        {
+          "id": 15,
+          "name": "Indigó",
+          "light": "#5275ec",
+          "dark": "#87a7fd"
+        },
+        {
+          "id": 16,
+          "name": "Halvány málna",
+          "light": "#fedbea",
+          "dark": "#53273d"
+        },
+        {
+          "id": 17,
+          "name": "Halvány ibolya",
+          "light": "#eae1fe",
+          "dark": "#3e2e57"
+        },
+        {
+          "id": 18,
+          "name": "Halvány narancs",
+          "light": "#fedfd0",
+          "dark": "#552b13"
+        },
+        {
+          "id": 19,
+          "name": "Halvány rózsa",
+          "light": "#fddde0",
+          "dark": "#57262e"
+        },
+        {
+          "id": 20,
+          "name": "Halvány borostyán 2",
+          "light": "#f2e6c3",
+          "dark": "#453602"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Lagúna",
+      "colors": [
+        {
+          "id": 0,
+          "name": "Lap",
+          "light": "#eff9f8",
+          "dark": "#001211"
+        },
+        {
+          "id": 1,
+          "name": "Tinta",
+          "light": "#092422",
+          "dark": "#e7f3f2"
+        },
+        {
+          "id": 2,
+          "name": "Üveg",
+          "light": "#dff6f3",
+          "dark": "#043632"
+        },
+        {
+          "id": 3,
+          "name": "Grafit",
+          "light": "#4f706d",
+          "dark": "#9ab8b5"
+        },
+        {
+          "id": 4,
+          "name": "Türkiz",
+          "light": "#019390",
+          "dark": "#19c3bf"
+        },
+        {
+          "id": 5,
+          "name": "Menta",
+          "light": "#07985f",
+          "dark": "#3ec785"
+        },
+        {
+          "id": 6,
+          "name": "Borostyán",
+          "light": "#d2a403",
+          "dark": "#f4c440"
+        },
+        {
+          "id": 7,
+          "name": "Korall",
+          "light": "#d44a4a",
+          "dark": "#fc807b"
+        },
+        {
+          "id": 8,
+          "name": "Köd",
+          "light": "#d2e0de",
+          "dark": "#2b4643"
+        },
+        {
+          "id": 9,
+          "name": "Halvány türkiz",
+          "light": "#c4f1ee",
+          "dark": "#03413f"
+        },
+        {
+          "id": 10,
+          "name": "Halvány menta",
+          "light": "#cef0db",
+          "dark": "#0f422a"
+        },
+        {
+          "id": 11,
+          "name": "Azúr",
+          "light": "#0c8db6",
+          "dark": "#04bbf1"
+        },
+        {
+          "id": 12,
+          "name": "Türkiz 2",
+          "light": "#099678",
+          "dark": "#19c7a1"
+        },
+        {
+          "id": 13,
+          "name": "Lime",
+          "light": "#659007",
+          "dark": "#8fbc4a"
+        },
+        {
+          "id": 14,
+          "name": "Narancs",
+          "light": "#c06400",
+          "dark": "#f28e3e"
+        },
+        {
+          "id": 15,
+          "name": "Indigó",
+          "light": "#427ae7",
+          "dark": "#7caafe"
+        },
+        {
+          "id": 16,
+          "name": "Halvány borostyán",
+          "light": "#f3e5c4",
+          "dark": "#473501"
+        },
+        {
+          "id": 17,
+          "name": "Halvány korall",
+          "light": "#ffddda",
+          "dark": "#562826"
+        },
+        {
+          "id": 18,
+          "name": "Halvány azúr",
+          "light": "#c7edff",
+          "dark": "#023e52"
+        },
+        {
+          "id": 19,
+          "name": "Halvány türkiz 2",
+          "light": "#c8f1e3",
+          "dark": "#024334"
+        },
+        {
+          "id": 20,
+          "name": "Halvány lime",
+          "light": "#ddedcc",
+          "dark": "#2d3e14"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Grafit",
+      "colors": [
+        {
+          "id": 0,
+          "name": "Lap",
+          "light": "#f4f7fb",
+          "dark": "#0a0e16"
+        },
+        {
+          "id": 1,
+          "name": "Tinta",
+          "light": "#1b1f28",
+          "dark": "#edf0f5"
+        },
+        {
+          "id": 2,
+          "name": "Üveg",
+          "light": "#ebf0f9",
+          "dark": "#262e3c"
+        },
+        {
+          "id": 3,
+          "name": "Grafit",
+          "light": "#626975",
+          "dark": "#abb1bd"
+        },
+        {
+          "id": 4,
+          "name": "Indigó",
+          "light": "#5281c6",
+          "dark": "#82adeb"
+        },
+        {
+          "id": 5,
+          "name": "Cián",
+          "light": "#019298",
+          "dark": "#4cbec4"
+        },
+        {
+          "id": 6,
+          "name": "Borostyán",
+          "light": "#d0a34b",
+          "dark": "#ecc47b"
+        },
+        {
+          "id": 7,
+          "name": "Rózsa",
+          "light": "#bc606b",
+          "dark": "#e49097"
+        },
+        {
+          "id": 8,
+          "name": "Köd",
+          "light": "#d9dce2",
+          "dark": "#3b404a"
+        },
+        {
+          "id": 9,
+          "name": "Halvány indigó",
+          "light": "#d8e8fe",
+          "dark": "#273853"
+        },
+        {
+          "id": 10,
+          "name": "Halvány cián",
+          "light": "#cceeef",
+          "dark": "#0b4043"
+        },
+        {
+          "id": 11,
+          "name": "Ibolya",
+          "light": "#7b74c3",
+          "dark": "#a5a1e9"
+        },
+        {
+          "id": 12,
+          "name": "Azúr",
+          "light": "#148bba",
+          "dark": "#61b6e0"
+        },
+        {
+          "id": 13,
+          "name": "Menta",
+          "light": "#28966a",
+          "dark": "#6abf97"
+        },
+        {
+          "id": 14,
+          "name": "Narancs",
+          "light": "#b9673f",
+          "dark": "#e19673"
+        },
+        {
+          "id": 15,
+          "name": "Orchidea",
+          "light": "#a167aa",
+          "dark": "#c995d1"
+        },
+        {
+          "id": 16,
+          "name": "Halvány borostyán",
+          "light": "#f2e5cd",
+          "dark": "#453515"
+        },
+        {
+          "id": 17,
+          "name": "Halvány rózsa",
+          "light": "#fddddf",
+          "dark": "#502c30"
+        },
+        {
+          "id": 18,
+          "name": "Halvány ibolya",
+          "light": "#e4e3fd",
+          "dark": "#363452"
+        },
+        {
+          "id": 19,
+          "name": "Halvány azúr",
+          "light": "#d0ebfa",
+          "dark": "#173d4e"
+        },
+        {
+          "id": 20,
+          "name": "Halvány menta",
+          "light": "#d3eedf",
+          "dark": "#1b402f"
+        }
+      ]
+    }
+  ],
+  "graphics": {
+    "glow": 8,
+    "selection": 4,
+    "box": "rounded",
+    "boxRadius": 22,
+    "line": "straight",
+    "lineArc": 0.06,
+    "roundedWires": true,
+    "junction": "ellipse",
+    "junctionSize": 12,
+    "lineScale": {
+      "straight": {
+        "plain": 0.9,
+        "thick": 0.7,
+        "dashed": 0.8,
+        "dotted": 0.7
+      },
+      "sCurve": {
+        "plain": 0.9,
+        "thick": 0.7,
+        "dashed": 0.8,
+        "dotted": 0.7
+      },
+      "zigzag": {
+        "plain": 0.8,
+        "thick": 0.65,
+        "dashed": 0.75,
+        "dotted": 0.65
+      },
+      "lightning": {
+        "plain": 0.8,
+        "thick": 0.65,
+        "dashed": 0.75,
+        "dotted": 0.65
+      },
+      "arc": {
+        "plain": 1,
+        "thick": 0.75,
+        "dashed": 0.85,
+        "dotted": 0.7
+      },
+      "rope": {
+        "plain": 1.1,
+        "thick": 0.8,
+        "dashed": 0.9,
+        "dotted": 0.75
+      }
+    },
+    "motionSpeed": 0.9,
+    "grid": "dots",
+    "glass": true,
+    "effects": "liquid",
+    "fonts": [
+      "-apple-system, 'SF Pro Text', system-ui, sans-serif",
+      "ui-rounded, 'SF Pro Rounded', 'Avenir Next', sans-serif",
+      "ui-serif, 'New York', Georgia, serif"
+    ]
+  }
+}

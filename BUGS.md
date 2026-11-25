@@ -4,6 +4,17 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 ## Nyitott
 
+- **Liquid Glass: kézzel nézendő és nyitott tételek** (2026-11-25)
+  - Automatizált Safariban rendben (képernyőkép és mérés): világos / sötét mód, kijelölés fényudvara, ping, üvegpanel, megtekintő. Kézzel nézendő: a kattintásgyűrű és a rámutatás áttűnései szemre, más felhasználó kijelölésének glow-ja két böngészővel, a gyors eszközök és a helyi menü üveghatása, a többi négy paletta, mobil.
+  - A fejléc gombjai nem kapnak üveghatást (a szerkesztő munkaterületén kívül vannak).
+  - Élénk kitöltésen a doboz szövegszíne nem igazodik magától: világos módban a halványabb élénk színeken (pl. zöld) a világos szöveg nehezen olvasható.
+  - Csökkentett mozgás beállításnál (`prefers-reduced-motion`) a kattintásgyűrű és a ping animációja megmarad.
+
+- **Bukó tesztek, amelyek a 2026-11-25-i Liquid Glass munka előtt is buktak** (2026-11-25, mérve a módosítások nélkül is)
+  - Swift (`./test.sh --swift render`): `animatedConnectionsRoundTripAndRenderSVG`, `arcWidthFollowsArrowDirectionsInSVG`, `maximumWireThicknessIncludesDottedAndAnimatedStrokes`, `wirePathsMatchSharedFixtures`.
+  - JS: `Tests/Editor/wires.mjs` („vastag vonal, nyíllal”), `Tests/Editor/gestures.mjs` (1307. sor: a törölt gradiens animációt keresi).
+  - Ok: az előző commit vonalméret- és vonalanimáció-változása (lásd a következő tételt).
+
 - **Tesztek nincsenek hozzáigazítva a 2026-11-25-i vonal- és gyorseszköz-változásokhoz; a változások nincsenek tesztelve** (2026-11-25)
   - A tesztek nem futottak (tesztelés csak a felhasználó utasítására). Várhatóan eltörik: `gestures.mjs` („Alapvastagság” mező, vonalvastagság), a vonalas közös tesztek (`wires.mjs` / `Tests/Fixtures/wires.json`, ha `w` értéket használnak), a Swift `RenderingTests` vonalas részei (gradiens animáció, `width`), esetleg `ThemeTests`.
   - Kézzel nézendő Safariban: a futó pötty (szerkesztő, megjelenítő, export), a három vonalméret régi munkalapokon, a fájlnév helyben szerkesztése (ékezetek, Enter, Esc), a gyors eszközök az ablak négy sarkában.

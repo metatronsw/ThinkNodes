@@ -48,7 +48,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/lib/d3-zoom.js?v=1"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=81"></script>
+        <script type="module" src="/editor.js?v=82"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -59,7 +59,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=51">
+          <link rel="stylesheet" href="/app.css?v=52">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -661,7 +661,7 @@ private func boxGeometry(_ node: Idea, graphics: VisualTheme.Graphics?) -> Strin
     }
     switch node.shape {
     case .rectangle, .rounded:
-        return "rect x=\"\(number(-x))\" y=\"\(number(-y))\" width=\"\(number(node.width))\" height=\"\(number(node.height))\" rx=\"\(node.type == "preview" || node.isImage || node.isGrid ? "5" : node.shape == .rounded ? "12" : "0")\""
+        return "rect x=\"\(number(-x))\" y=\"\(number(-y))\" width=\"\(number(node.width))\" height=\"\(number(node.height))\" rx=\"\(node.type == "preview" || node.isImage || node.isGrid ? "5" : node.shape == .rounded ? graphics?.boxRadius.map(number) ?? "12" : "0")\""
     case .ellipse:
         return "ellipse rx=\"\(number(x))\" ry=\"\(number(y))\""
     case .diamond, .triangle, .pentagon, .hexagon, .parallelogram:
@@ -693,6 +693,13 @@ private func boxOutline(_ node: Idea, graphics: VisualTheme.Graphics?) -> String
 
 private func elevationShadow(_ node: Idea, geometry: String, graphics: VisualTheme.Graphics?) -> String {
     // Képnél a láthatósági mód nem számít: a Kiemelés árnyéka mindig a teljes kép alatt van.
+    // Látványcsomag (liquid): minden kitöltött doboz alatt puha árnyék, a Kiemelés erősebb (editor.js liquidShadow).
+    // Kép alatt csak a Kiemelés vet árnyékot.
+    if graphics?.effects == "liquid" {
+        guard !node.isJunction, node.isImage ? node.elevated == true : [.solid, .translucent, .canvas].contains(node.resolvedBackgroundMode) else { return "" }
+        let lift: Double = node.elevated == true ? 2 : 1
+        return "<rect class=\"fx-shadow\" x=\"\(number(-node.width / 2 - 14 * lift))\" y=\"\(number(-node.height / 2 - 2))\" width=\"\(number(node.width + 28 * lift))\" height=\"\(number(node.height + 4 + 26 * lift))\" fill=\"url(#fx-shadow)\"\(node.elevated == true ? "" : " fill-opacity=\".6\"") pointer-events=\"none\" aria-hidden=\"true\"/>"
+    }
     guard node.elevated == true, node.isImage || node.resolvedBackgroundMode != .free else { return "" }
     // Üres dobozon csak a keret vet árnyékot; kitöltött doboznál a kitöltés (nincs clipPath: gyorsabb mozgatás).
     if !node.isImage && node.resolvedBackgroundMode == .empty {
@@ -707,6 +714,49 @@ private func elevationShadow(_ node: Idea, geometry: String, graphics: VisualThe
           <\(geometry) transform="translate(12 28)" fill="#11172b" fill-opacity=".44"/>
         </g>
         """
+}
+
+/// Sötét-e a munkalap háttere (a látványcsomag fényei ehhez igazodnak; a szerkesztőben az oldal módja dönt).
+private func darkBackground(_ board: Worksheet) -> Bool {
+    let hex = board.backgroundColor.dropFirst()
+    guard hex.count == 6, let value = Int(hex, radix: 16) else { return false }
+    return 0.2126 * Double(value >> 16 & 255) + 0.7152 * Double(value >> 8 & 255) + 0.0722 * Double(value & 255) < 128
+}
+
+/// A liquid látványcsomag definíciói (editor.js liquidDefinitions párja): perem, csillogás, árnyék, a háttér három
+/// fényfoltja (a paletta 4., 5. és 7. színe) és a ping glow-szűrője.
+private func liquidAccent(_ board: Worksheet, _ id: Int) -> String {
+    let palette = Themes.catalog.first { $0.id == board.appearance?.theme }?.palettes.first { $0.id == board.appearance?.palette }
+    let color = palette?.colors.first { $0.id == id }
+    return (darkBackground(board) ? color?.dark ?? color?.light : color?.light ?? color?.dark) ?? "#5b8cff"
+}
+
+private func liquidDefinitions(_ board: Worksheet) -> String {
+    let dark = darkBackground(board)
+    func accent(_ id: Int) -> String { liquidAccent(board, id) }
+    func stops(_ list: [(Int, String, Double)]) -> String {
+        list.map { "<stop offset=\"\($0.0)%\" stop-color=\"\($0.1)\" stop-opacity=\"\(number($0.2))\"/>" }.joined()
+    }
+    let blobs = [4, 5, 7].enumerated().map { index, id in
+        "<radialGradient id=\"fx-aurora-\(index)\">" + stops([(0, accent(id), dark ? 0.34 : 0.3), (55, accent(id), dark ? 0.12 : 0.1), (100, accent(id), 0)]) + "</radialGradient>"
+    }.joined()
+    return "<linearGradient id=\"fx-rim\" x2=\"60%\" y2=\"100%\">"
+        + stops(dark ? [(0, "#fff", 0.62), (32, "#fff", 0.14), (68, "#fff", 0.06), (100, "#fff", 0.36)]
+                     : [(0, "#fff", 0.98), (32, "#fff", 0.5), (68, "#8791b4", 0.26), (100, "#fff", 0.82)])
+        + "</linearGradient><radialGradient id=\"fx-sheen\" cx=\"22%\" cy=\"-12%\" r=\"105%\">"
+        + stops(dark ? [(0, "#fff", 0.24), (42, "#fff", 0.07), (72, "#fff", 0)] : [(0, "#fff", 0.62), (42, "#fff", 0.2), (72, "#fff", 0)])
+        + "</radialGradient><radialGradient id=\"fx-shadow\">"
+        + stops(dark ? [(52, "#000", 0.5), (78, "#000", 0.2), (100, "#000", 0)] : [(52, "#1a2452", 0.3), (78, "#1a2452", 0.11), (100, "#1a2452", 0)])
+        + "</radialGradient>" + blobs
+        + "<filter id=\"fx-glow\" x=\"-50%\" y=\"-50%\" width=\"200%\" height=\"200%\" color-interpolation-filters=\"sRGB\"><feGaussianBlur stdDeviation=\"5\" result=\"blur\"/><feMerge><feMergeNode in=\"blur\"/><feMergeNode in=\"blur\"/><feMergeNode in=\"SourceGraphic\"/></feMerge></filter>"
+}
+
+/// A háttér álló fényfoltjai (a szerkesztőben lassan úsznak: app.css .canvas-aurora).
+private func liquidAurora(originX: Double, originY: Double, width: Double, height: Double) -> String {
+    let spots: [(Double, Double, Double)] = [(0.18, 0.2, 0.62), (0.84, 0.3, 0.56), (0.5, 0.92, 0.66)]
+    return "<g class=\"fx-aurora\" pointer-events=\"none\" aria-hidden=\"true\">" + spots.enumerated().map { index, spot in
+        "<ellipse cx=\"\(number(originX + width * spot.0))\" cy=\"\(number(originY + height * spot.1))\" rx=\"\(number(width * spot.2))\" ry=\"\(number(height * spot.2))\" fill=\"url(#fx-aurora-\(index))\"/>"
+    }.joined() + "</g>"
 }
 
 /// Kép és előnézetes doboz kerete (editor.js frameOutline): a doboz színével, a beállított vastagsággal, a tartalom felett.
@@ -726,19 +776,22 @@ private func boxSurface(_ node: Idea, geometry: String, graphics: VisualTheme.Gr
     if node.isImage { return mode == .canvas ? "<\(geometry) class=\"node-surface\" fill=\"\(escaped(node.fill))\" stroke=\"none\"/>" : "" }
     let image = node.isImage
     let locked = node.isBox && node.locked == true
-    let glass = graphics?.glass == true && mode == .solid && !image
+    // Látványcsomag (liquid): áttetsző felület, fénylő perem és csillogás (editor.js shape).
+    let liquid = graphics?.effects == "liquid" && [.solid, .translucent].contains(mode)
+    let glass = !liquid && graphics?.glass == true && mode == .solid && !image
     let fill = node.fill
     // Üres doboz keretének színe a doboz színe.
     // Szövegfájl- és táblázatdoboz kerete kikapcsolható (frame: false), bármelyik háttérmód mellett.
     let frameless = node.type == "preview" || (node.isTextFile && node.frame == false)
-    let stroke = frameless ? "none" : empty ? escaped(node.fill) : image ? "none" : glass ? "url(#glass-rim)" : escaped(node.border)
+    let stroke = frameless ? "none" : empty ? escaped(node.fill) : image ? "none" : glass ? "url(#glass-rim)" : liquid ? "url(#fx-rim)" : escaped(node.border)
     // Minden doboz kerete sima és egyforma vastag (a zárolt konténer jelzése kivétel).
     let width = locked ? "6.4" : "1.6"
     let dash = ""
     let closed = locked ? " data-locked-outline=\"\"" : ""
-    let effect = glass ? " fill-opacity=\".66\"" : mode == .translucent ? " fill-opacity=\".75\"" : ""
+    let effect = glass ? " fill-opacity=\".66\"" : liquid ? " fill-opacity=\"\(mode == .translucent ? ".4" : ".64")\"" : mode == .translucent ? " fill-opacity=\".75\"" : ""
     let pointer = empty && interactive ? " pointer-events=\"fill\"" : ""
     let surface = "<\(geometry) class=\"node-surface\" fill=\"\(empty ? "none" : escaped(fill))\" stroke=\"\(stroke)\" stroke-width=\"\(width)\"\(closed)\(dash)\(effect)\(pointer)/>"
+    if liquid { return surface + "<\(geometry) class=\"fx-sheen\" fill=\"url(#fx-sheen)\" pointer-events=\"none\" aria-hidden=\"true\"/>" }
     return surface + (glass ? "<\(geometry) fill=\"url(#glass-sheen)\" pointer-events=\"none\" aria-hidden=\"true\"/>" : "")
 }
 
@@ -1571,6 +1624,7 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
     let width = number(spanX)
     let height = number(spanY)
     let step = board.gridSpacing ?? 32
+    let liquid = graphics?.effects == "liquid"
     let glass = graphics?.glass == true
     let grid: String
     switch graphics?.grid {
@@ -1602,7 +1656,7 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
     default:
         grid = ""
     }
-    let glassDefinitions = glass ? """
+    let glassDefinitions = liquid ? liquidDefinitions(board) : glass ? """
         <linearGradient id="glass-rim" x2="25%" y2="100%">
           <stop offset="0%" stop-color="#f4eeff" stop-opacity=".93"/>
           <stop offset="40%" stop-color="#b39bd8" stop-opacity=".72"/>
@@ -1626,10 +1680,11 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
     }) ? "<style>.node-code { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; } "
         + CodeHighlight.colourRules.joined(separator: " ") + "</style>" : ""
     let svg = """
-        <svg xmlns="http://www.w3.org/2000/svg" class="canvas passive-canvas" role="\(noteBase == nil ? "img" : "group")" aria-label="\(escaped(board.title))" width="\(width)" height="\(height)" viewBox="\(number(originX)) \(number(originY)) \(width) \(height)">
+        <svg xmlns="http://www.w3.org/2000/svg" class="canvas passive-canvas"\(liquid ? " data-effects=\"liquid\" style=\"--fx-accent: \(liquidAccent(board, 4))\"" : "") role="\(noteBase == nil ? "img" : "group")" aria-label="\(escaped(board.title))" width="\(width)" height="\(height)" viewBox="\(number(originX)) \(number(originY)) \(width) \(height)">
           \(noteBase == nil ? "<title>\(escaped(board.title))</title>" : "")
           <defs>\(codeStyle)\(definitions.joined())\(grid)\(glassDefinitions)</defs>
           \(backdrop(escaped(board.backgroundColor)))
+          \(liquid ? liquidAurora(originX: originX, originY: originY, width: spanX, height: spanY) : "")
           \(grid.isEmpty ? "" : backdrop("url(#draft-grid)"))
           \(scene.joined(separator: "\n"))
         </svg>

@@ -78,9 +78,15 @@ package struct VisualTheme: Content, Equatable {
         var grid: String?
         var glass: Bool?
         var junctionSize: Double?
-        /// Vonalvastagság-szorzók vonaltípusonként (straight, sCurve, zigzag, lightning, arc, rope → szorzó); a vonal
-        /// vastagsága = a méret alapvastagsága × a vonaltípus szorzója (vastag megjelenésnél ennek kétszerese).
-        var lineScale: [String: Double]?
+        /// Vonalvastagság-szorzók vonaltípusonként (straight, sCurve, zigzag, lightning, arc, rope) és megjelenésenként
+        /// (plain, thick, dashed, dotted). Egy típus értéke egyetlen szám (minden megjelenésre) vagy megjelenésenkénti
+        /// szorzók. A vonal vastagsága = a méret alapvastagsága × a szorzó (vastag megjelenésnél ennek kétszerese).
+        var lineScale: [String: LineScale]?
+        /// A lekerekített doboz sarkának sugara vászonegységben (alap: 12).
+        var boxRadius: Double?
+        /// Látványcsomag (jelenleg: "liquid"): gazdagabb dobozfelület, háttérfények, rámutatás-, kattintás- és
+        /// kijelöléseffektek. A csomag stílusai az app.css `[data-effects]` szabályaiban vannak; téma nélküle nem fizet értük.
+        var effects: String?
         var motionSpeed: Double?
         /// Három betűtípus (CSS font-family): alap, valamint két jól eltérő választható.
         var fonts: [String]?
@@ -128,10 +134,10 @@ package struct VisualTheme: Content, Equatable {
         guard (0.0...24.0).contains(boxChamfer), (0.0...24.0).contains(glow), (0..<8).contains(selection),
               (4.0...128.0).contains(junctionSize), (0.0...0.25).contains(lineArc), (0.1...5.0).contains(motionSpeed)
         else { return false }
-        for (name, factor) in graphics.lineScale ?? [:] {
-            guard ConnectionType(rawValue: name) != nil,
-                  (0.1...10.0).contains(factor) else { return false }
+        for (name, scale) in graphics.lineScale ?? [:] {
+            guard ConnectionType(rawValue: name) != nil, scale.valid else { return false }
         }
+        guard (0.0...40.0).contains(graphics.boxRadius ?? 12), ["liquid"].contains(graphics.effects ?? "liquid") else { return false }
         let grids: [String] = ["dots", "lines", "drafting"]
         guard grids.contains(graphics.grid ?? "dots") else { return false }
         let junctions: [Shape] = [.rectangle, .ellipse, .diamond]
@@ -143,6 +149,37 @@ package struct VisualTheme: Content, Equatable {
     private static func validFont(_ font: String) -> Bool {
         let forbidden: Set<Character> = ["<", ">", "\"", ";", "{", "}"]
         return !font.isEmpty && font.count <= 200 && !font.contains(where: forbidden.contains)
+    }
+}
+
+/// Egy vonaltípus vastagságszorzója: egyetlen szám, vagy megjelenésenként (plain, thick, dashed, dotted) külön szám.
+package enum LineScale: Codable, Equatable, Sendable {
+    case uniform(Double)
+    case byAppearance([String: Double])
+    package init(from decoder: Decoder) throws {
+        let field = try decoder.singleValueContainer()
+        if let factor = try? field.decode(Double.self) { self = .uniform(factor) }
+        else { self = .byAppearance(try field.decode([String: Double].self)) }
+    }
+    package func encode(to encoder: Encoder) throws {
+        var field = encoder.singleValueContainer()
+        switch self {
+        case .uniform(let factor): try field.encode(factor)
+        case .byAppearance(let factors): try field.encode(factors)
+        }
+    }
+    func factor(_ appearance: ConnectionAppearance) -> Double {
+        switch self {
+        case .uniform(let factor): factor
+        case .byAppearance(let factors): factors[appearance.rawValue] ?? 1
+        }
+    }
+    var valid: Bool {
+        switch self {
+        case .uniform(let factor): (0.1...10.0).contains(factor)
+        case .byAppearance(let factors):
+            factors.allSatisfy { ConnectionAppearance(rawValue: $0.key) != nil && (0.1...10.0).contains($0.value) }
+        }
     }
 }
 

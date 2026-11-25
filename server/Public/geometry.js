@@ -79,7 +79,7 @@ export function shapeGeometry(shape, width, height, padding = 0) {
   if (shape === "ellipse") return ["ellipse", {rx: x, ry: y}];
   const vertices = polygonVertices(shape, x, y);
   if (vertices) return ["polygon", {points: vertices.map(vertex => vertex.join(",")).join(" ")}];
-  return ["rect", {x: -x, y: -y, width: 2*x, height: 2*y, rx: shape === "rounded" ? 12 + padding : 0}];
+  return ["rect", {x: -x, y: -y, width: 2*x, height: 2*y, rx: shape === "rounded" ? (currentGraphics().boxRadius ?? 12) + padding : 0}];
 }
 
 export function selectionOutline(shape, width, height) {
@@ -138,9 +138,10 @@ export function lineSize(edge) {
 export function edgePaint(edge) {
   const appearance = edge.appearance ?? "plain";
   const color = edge.color ?? cableColor;
-  const scale = currentGraphics().lineScale;
+  // A téma szorzója vonaltípusonként egy szám, vagy megjelenésenként külön szám (Theme.swift LineScale).
+  const scale = currentGraphics().lineScale?.[edge.type ?? "straight"] ?? 1;
   const width = Math.min(maximumLineWidth, lineBaseWidths[lineSize(edge) - 1]
-    * (appearance === "thick" ? 2 : 1) * (scale?.[edge.type ?? "straight"] ?? 1));
+    * (appearance === "thick" ? 2 : 1) * (typeof scale === "number" ? scale : scale[appearance] ?? 1));
   const lineWidth = Math.min(maximumLineWidth, width * (appearance === "dotted" ? 2 : 1));
   const dash = appearance === "dashed" ? `${width * 3.5} ${width * 2.5}`
     : appearance === "dotted" ? `0 ${width * 8}` : undefined;

@@ -7,13 +7,13 @@ import {decodeConnection} from "./worksheet-json.js";
 import {sharedMouse} from "./mouse.js";
 import {contextMenu, documentEntries} from "./cards.js";
 import {openExternalLink} from "./links.js";
-import {flashNode, flashPoint} from "./ping.js";
+import {flashNode, flashPoint} from "./ping.js?v=2";
 import {hideTooltip, showTooltip} from "./tooltip.js";
 import {justifyRows} from "./justify.js?v=7";
 import {attachScrollbars} from "./scrollbar-drag.js";
 import {liveConnection} from "./collaboration.js";
 
-import {useWorksheetGeometry, wireHeads, plugTransform, edgeGeometry, reverseWidth, wireRoutes, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireLabelLayout} from "./geometry.js?v=35";
+import {useWorksheetGeometry, wireHeads, plugTransform, edgeGeometry, reverseWidth, wireRoutes, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireLabelLayout} from "./geometry.js?v=36";
 import {ancestors} from "./containers.js?v=15";
 import {ensureGlow, glowReach} from "./glow.js";
 
