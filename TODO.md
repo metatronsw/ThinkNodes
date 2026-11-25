@@ -63,4 +63,8 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 - Nyilak konténerben: a konténerből a saját belső dobozára húzott (beágyazott) vonal a konténer szélétől a dobozig tart; ha a doboz a szél közelében van, a vonal nagyon rövid. Lehetőség: más kiindulópont (pl. a konténer címsora vagy közepe felől).
 - Nagy csoport (150+ doboz és 200+ vonal) húzása lassú (Safari: 14 képkocka/mp): minden kijelölt doboz és vonal képkockánként újrarajzolódik, a végpontfogantyúkkal együtt. Lehetőség: a csoport együtt mozgatása egy közös transzformációval.
 - Konténer ráhúzása kint lévő csomópontra: a konténer a dobozokat befogja, a csomópontokat nem.
+- Kétféle „konténer” fogalom (2026-11-25): a tárolt `container` jelző (kiürülve is konténer; ezt használja a rétegsorrend, a csomópont ejtése, a befogás, a panel és a szövegkörbefuttatás) és a „van benne doboz” (csak a nyíl rárugrása). Eltérés csak kiürült konténernél van. Döntés kell az egységesítésről.
+- A régebbi munkamenet-mentés maradéka az `editor.js`-ben (`checkpointState`, `checkpointRevision`, `checkpointBusy`, `receiveCheckpoint`): a hívója (`sessionAction`) törölve, az állapotot már semmi nem állítja.
+- Modulverziók (`?v=`) kézi léptetése négy fájlban: automatizálható (a szerver adja a verziót).
+- `perf.py`: a téglalap-kijelölő lépés Alt nélkül fut (`ALT = ""`), így alapból nem kijelölést mér.
 
