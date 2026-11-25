@@ -18,16 +18,10 @@
           "dark": "#18191b"
         },
         {
-          "id": 1,
-          "name": "Tinta",
-          "light": "#1c2024",
-          "dark": "#edeef0"
-        },
-        {
-          "id": 2,
-          "name": "Felület",
-          "light": "#e6f4fe",
-          "dark": "#0d2847"
+          "id": 8,
+          "name": "Finom árnyék",
+          "light": "#e0e1e6",
+          "dark": "#2e3135"
         },
         {
           "id": 3,
@@ -36,22 +30,22 @@
           "dark": "#b0b4ba"
         },
         {
-          "id": 4,
-          "name": "Jelzőfény",
-          "light": "#0090ff",
-          "dark": "#0090ff"
+          "id": 1,
+          "name": "Tinta",
+          "light": "#1c2024",
+          "dark": "#edeef0"
         },
         {
-          "id": 5,
-          "name": "Moha",
-          "light": "#29a383",
-          "dark": "#29a383"
+          "id": 16,
+          "name": "Pünkösdi rózsa",
+          "light": "#d6409f",
+          "dark": "#d6409f"
         },
         {
-          "id": 6,
-          "name": "Arany",
-          "light": "#ffc53d",
-          "dark": "#ffc53d"
+          "id": 20,
+          "name": "Rózsaszirom",
+          "light": "#ffdce1",
+          "dark": "#4e1325"
         },
         {
           "id": 7,
@@ -60,16 +54,28 @@
           "dark": "#e54666"
         },
         {
-          "id": 8,
-          "name": "Finom árnyék",
-          "light": "#e0e1e6",
-          "dark": "#2e3135"
+          "id": 14,
+          "name": "Narancs",
+          "light": "#f76b15",
+          "dark": "#f76b15"
         },
         {
-          "id": 9,
-          "name": "Pasztell",
-          "light": "#c2e5ff",
-          "dark": "#004074"
+          "id": 18,
+          "name": "Méz pasztell",
+          "light": "#ffee9c",
+          "dark": "#3f2700"
+        },
+        {
+          "id": 6,
+          "name": "Arany",
+          "light": "#ffc53d",
+          "dark": "#ffc53d"
+        },
+        {
+          "id": 17,
+          "name": "Fű",
+          "light": "#46a758",
+          "dark": "#46a758"
         },
         {
           "id": 10,
@@ -78,10 +84,10 @@
           "dark": "#0b3b2c"
         },
         {
-          "id": 11,
-          "name": "Ibolya",
-          "light": "#6e56cf",
-          "dark": "#6e56cf"
+          "id": 5,
+          "name": "Moha",
+          "light": "#29a383",
+          "dark": "#29a383"
         },
         {
           "id": 12,
@@ -90,22 +96,46 @@
           "dark": "#00a2c7"
         },
         {
-          "id": 13,
-          "name": "Szilva",
-          "light": "#ab4aba",
-          "dark": "#ab4aba"
+          "id": 2,
+          "name": "Felület",
+          "light": "#e6f4fe",
+          "dark": "#0d2847"
         },
         {
-          "id": 14,
-          "name": "Narancs",
-          "light": "#f76b15",
-          "dark": "#f76b15"
+          "id": 9,
+          "name": "Pasztell",
+          "light": "#c2e5ff",
+          "dark": "#004074"
+        },
+        {
+          "id": 4,
+          "name": "Jelzőfény",
+          "light": "#0090ff",
+          "dark": "#0090ff"
         },
         {
           "id": 15,
           "name": "Indigó",
           "light": "#3e63dd",
           "dark": "#3e63dd"
+        },
+        {
+          "id": 11,
+          "name": "Ibolya",
+          "light": "#6e56cf",
+          "dark": "#6e56cf"
+        },
+        {
+          "id": 19,
+          "name": "Bíbor",
+          "light": "#8e4ec6",
+          "dark": "#8e4ec6"
+        },
+        {
+          "id": 13,
+          "name": "Szilva",
+          "light": "#ab4aba",
+          "dark": "#ab4aba"
         }
       ]
     },
@@ -120,64 +150,16 @@
           "dark": "#171918"
         },
         {
-          "id": 1,
-          "name": "Tinta",
-          "light": "#1a211e",
-          "dark": "#eceeed"
-        },
-        {
-          "id": 2,
-          "name": "Felület",
-          "light": "#e0f8f3",
-          "dark": "#0d2d2a"
-        },
-        {
-          "id": 3,
-          "name": "Grafit",
-          "light": "#5f6563",
-          "dark": "#adb5b2"
-        },
-        {
-          "id": 4,
-          "name": "Jelzőfény",
-          "light": "#12a594",
-          "dark": "#12a594"
-        },
-        {
-          "id": 5,
-          "name": "Moha",
-          "light": "#46a758",
-          "dark": "#46a758"
-        },
-        {
-          "id": 6,
-          "name": "Arany",
-          "light": "#978365",
-          "dark": "#978365"
-        },
-        {
-          "id": 7,
-          "name": "Korall",
-          "light": "#e54d2e",
-          "dark": "#e54d2e"
-        },
-        {
           "id": 8,
           "name": "Finom árnyék",
           "light": "#dfe2e0",
           "dark": "#2e3130"
         },
         {
-          "id": 9,
-          "name": "Pasztell",
-          "light": "#b8eae0",
-          "dark": "#084843"
-        },
-        {
-          "id": 10,
-          "name": "Köd",
-          "light": "#daf1db",
-          "dark": "#1d3a24"
+          "id": 19,
+          "name": "Homok",
+          "light": "#e2e1de",
+          "dark": "#31312e"
         },
         {
           "id": 11,
@@ -186,16 +168,34 @@
           "dark": "#687066"
         },
         {
-          "id": 12,
-          "name": "Menta",
-          "light": "#86ead4",
-          "dark": "#86ead4"
+          "id": 3,
+          "name": "Grafit",
+          "light": "#5f6563",
+          "dark": "#adb5b2"
         },
         {
-          "id": 13,
-          "name": "Bronz",
-          "light": "#a18072",
-          "dark": "#a18072"
+          "id": 1,
+          "name": "Tinta",
+          "light": "#1a211e",
+          "dark": "#eceeed"
+        },
+        {
+          "id": 18,
+          "name": "Szeder",
+          "light": "#ab4aba",
+          "dark": "#ab4aba"
+        },
+        {
+          "id": 7,
+          "name": "Korall",
+          "light": "#e54d2e",
+          "dark": "#e54d2e"
+        },
+        {
+          "id": 20,
+          "name": "Barack",
+          "light": "#ffdfb5",
+          "dark": "#462100"
         },
         {
           "id": 14,
@@ -204,10 +204,70 @@
           "dark": "#ad7f58"
         },
         {
+          "id": 13,
+          "name": "Bronz",
+          "light": "#a18072",
+          "dark": "#a18072"
+        },
+        {
+          "id": 6,
+          "name": "Arany",
+          "light": "#978365",
+          "dark": "#978365"
+        },
+        {
+          "id": 17,
+          "name": "Méz",
+          "light": "#ffc53d",
+          "dark": "#ffc53d"
+        },
+        {
+          "id": 16,
+          "name": "Rügy",
+          "light": "#bdee63",
+          "dark": "#bdee63"
+        },
+        {
+          "id": 10,
+          "name": "Köd",
+          "light": "#daf1db",
+          "dark": "#1d3a24"
+        },
+        {
+          "id": 5,
+          "name": "Moha",
+          "light": "#46a758",
+          "dark": "#46a758"
+        },
+        {
           "id": 15,
           "name": "Jáde",
           "light": "#29a383",
           "dark": "#29a383"
+        },
+        {
+          "id": 12,
+          "name": "Menta",
+          "light": "#86ead4",
+          "dark": "#86ead4"
+        },
+        {
+          "id": 2,
+          "name": "Felület",
+          "light": "#e0f8f3",
+          "dark": "#0d2d2a"
+        },
+        {
+          "id": 9,
+          "name": "Pasztell",
+          "light": "#b8eae0",
+          "dark": "#084843"
+        },
+        {
+          "id": 4,
+          "name": "Jelzőfény",
+          "light": "#12a594",
+          "dark": "#12a594"
         }
       ]
     }
@@ -219,12 +279,42 @@
     "line": "straight",
     "junctionSize": 12,
     "lineScale": {
-      "straight": {"plain": 1, "thick": 1, "dashed": 1, "dotted": 1},
-      "sCurve": {"plain": 1, "thick": 1, "dashed": 1, "dotted": 1},
-      "zigzag": {"plain": 1, "thick": 1, "dashed": 1, "dotted": 1},
-      "lightning": {"plain": 1, "thick": 1, "dashed": 1, "dotted": 1},
-      "arc": {"plain": 1, "thick": 1, "dashed": 1, "dotted": 1},
-      "rope": {"plain": 1, "thick": 1, "dashed": 1, "dotted": 1}
+      "straight": {
+        "plain": 1,
+        "thick": 1,
+        "dashed": 1,
+        "dotted": 1
+      },
+      "sCurve": {
+        "plain": 1,
+        "thick": 1,
+        "dashed": 1,
+        "dotted": 1
+      },
+      "zigzag": {
+        "plain": 1,
+        "thick": 1,
+        "dashed": 1,
+        "dotted": 1
+      },
+      "lightning": {
+        "plain": 1,
+        "thick": 1,
+        "dashed": 1,
+        "dotted": 1
+      },
+      "arc": {
+        "plain": 1,
+        "thick": 1,
+        "dashed": 1,
+        "dotted": 1
+      },
+      "rope": {
+        "plain": 1,
+        "thick": 1,
+        "dashed": 1,
+        "dotted": 1
+      }
     },
     "motionSpeed": 1,
     "junction": "ellipse",

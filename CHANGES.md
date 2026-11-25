@@ -1,5 +1,14 @@
 # Változások
 
+## 2026-11-25 – ThinkDefault: mindkét paletta 21 színű, hasonlóság szerint rendezve
+
+- **Műhely** új színei (Radix Colors 3.0, világos és sötét változattal): Pünkösdi rózsa (pink 9), Rózsaszirom (ruby 4), Méz pasztell (amber 4), Fű (grass 9), Bíbor (purple 9).
+- **Botanika** új színei: Szeder (plum 9), Barack (orange 4), Méz (amber 9), Rügy (lime 9), Homok (sand 5).
+- **Sorrend:** elöl a semleges színek (papír → tinta), utána színkör szerint (rózsa → piros → narancs → sárga → zöld → cián → kék → ibolya), a pasztell a saját élénk színe mellett. A színválasztó a fájl sorrendjében mutatja őket.
+- A szín-ID-k nem változtak, így a meglévő munkalapok színei is ugyanazok maradnak.
+- A színértékek a Radix Colors forrásából (`radix-ui/colors`) származnak; a meglévő 16 szín is ebből van, és egyezik vele.
+- Csak témafájl (`server/Public/themes/ThinkDefault.json`), kódmódosítás nélkül; a helyi szerver újraindítva (a témákat induláskor olvassa be).
+
 ## 2026-11-25 – Törölt téma vagy paletta: a munkalap az alaptémával nyílik meg
 
 - Eddig a szerver minden betöltéskor és mentéskor elutasította (422) a nem létező témájú vagy palettájú munkalapot, így egy témafájl törlése után az azt használó lapok nem nyíltak meg.
