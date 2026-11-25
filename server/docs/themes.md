@@ -5,7 +5,7 @@
 | Mező | Jelentés |
 |---|---|
 | `version`, `id`, `name` | Formátumverzió (1), stabil témaazonosító, megjelenített név. |
-| `modes` | `["light","dark"]`, vagy egyetlen támogatott mód. Az első az export alapértelmezése kliensmód hiányában. |
+| `modes` | `["light","dark"]`, vagy egyetlen támogatott mód. Az első az export alapértelmezése kliensmód hiányában. Elhagyható: ilyenkor `light`, és ha bármelyik színnek van `dark` változata, `dark` is. |
 | `palettes[]` | Minden paletta saját integer ID-t, nevet és 16–64 színt kap. Az ID-k a témán belül egyediek. |
 | `colors[]` | Egyedi ID 0–63 között, fantázianév és legalább egy hatjegyű `light` vagy `dark` HEX. Egyetlen változat mindkét módban használható. |
 
@@ -14,6 +14,10 @@ A 0–15 ID minden palettában kötelező. Az első nyolc sorrendben a lap, tint
 ## Grafika
 
 A `graphics` opcionális. A `glow` (0–24 px) és a `selection` (0–7 szín-ID) a vászon kijelölését állítja. A `grid` lehet `dots`, `lines` vagy `drafting`. A `drafting` módban minden ötödik vonal erősebb mindkét irányban. A `glass` áttetsző dobozokat és üveghatású szerkesztőpaneleket kapcsol be. A `boxChamfer` pozitív értéke a lekerekített dobozok sarkait 45°-ban letöri (0–24 vászonegység). A `roundedWires` a Villám és a Zigzag vonalainak töréspontjait kerekíti. A `motionSpeed` a dobozanimációk sebességszorzója (0,1–5). A panelek mérete és stílusa közös, színük az oldal világos vagy sötét módjához igazodik.
+
+Az esti (`dark`) szín bárhol elhagyható. Ilyenkor sötét módban a nappali szín látszik; ha egy palettának egyetlen esti színe sincs, a vászon sötét módban is teljesen nappali marad (a színek és a fényeffektek is).
+
+A ThinkDefault négy palettája: Műhely és Botanika (21–21 szín), Radix (37 szín: mind a 31 Radix-színskála 9. fokozata, plusz a lap, tinta, felület, grafit és pasztell szerepszínek) és Catppuccin (26 szín: nappal a Latte, este a Mocha változat; [catppuccin/palette](https://github.com/catppuccin/palette), MIT-licenc). A színválasztó a fájl sorrendjében mutatja a színeket: elöl a semlegesek, utána színkör szerint.
 
 A ThinkDefault paletták világos és sötét értékei a [Radix Colors](https://www.radix-ui.com/colors/docs/palette-composition/scales) 3.0.0 színskáláiból származnak.
 

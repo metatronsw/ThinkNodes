@@ -80,9 +80,12 @@ const activeTheme = computed(() => themes.find(t => t.id === appearance.value.th
 const activePalette = computed(() => activeTheme.value?.palettes.find(p => p.id === appearance.value.palette) ?? activeTheme.value?.palettes[0]);
 const siteDisplay = ref(document.documentElement?.dataset?.display || "light");
 window.addEventListener("thinknodes-display", () => { siteDisplay.value = document.documentElement.dataset.display; });
+// A vászon módja: az oldal módja, ha a téma támogatja; esti színek nélküli palettánál sötét módban is nappali
+// (a színek és a fényeffektek egyaránt; Theme.swift paintResolver).
 const mode = computed(() => {
   const wanted = siteDisplay.value;
-  return activeTheme.value?.modes.includes(wanted) ? wanted : activeTheme.value?.modes[0] ?? "light";
+  const chosen = activeTheme.value?.modes.includes(wanted) ? wanted : activeTheme.value?.modes[0] ?? "light";
+  return chosen === "dark" && !activePalette.value?.colors.some(c => c.dark) ? "light" : chosen;
 });
 const graphics = computed(() => activeTheme.value?.graphics ?? {});
 // A téma három betűtípusa (Theme.swift fontFamily): 1 = alap, 2 és 3 jól eltérő.

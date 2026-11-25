@@ -1,5 +1,13 @@
 # Változások
 
+## 2026-11-25 – ThinkDefault: Radix és Catppuccin paletta; esti színek nélküli téma is működik
+
+- **Radix paletta** (ThinkDefault, 3-as paletta, 37 szín): mind a 31 Radix Colors 3.0 színskála 9. fokozata világos és sötét változattal, plusz a lap, tinta, felület, grafit, finom árnyék, pasztell és köd szerepszín. Elöl a semlegesek (öt szürke családdal), utána színkör szerint.
+- **Catppuccin paletta** (4-es paletta, 26 szín): nappal a Latte, este a Mocha változat, a hivatalos `catppuccin/palette` adatai szerint (MIT-licenc). Szerepek: lap = base, tinta = text, felület = surface0, jelzőszín = blue. Elöl a semlegesek (base → text), utána a Catppuccin saját sorrendje (rosewater → lavender).
+- **Esti színek nélküli téma:** a témafájlban a `modes` mező elhagyható (ilyenkor `light`, és ha van esti szín, `dark` is); az esti szín bárhol elhagyható, sötét módban a nappali szín látszik. Ha egy palettának egyetlen esti színe sincs, a vászon sötét módban is teljesen nappali marad (szerkesztő: `editor.js mode`; szerver: `Theme.swift paintResolver`, `Palette.hasDark`). Eddig a `modes` nélküli témafájl be sem töltődött.
+- Teszt: `themeWithoutDarkColors` átmegy; a régi bukó tesztek változatlanok.
+- Szerverkód változott (`Theme.swift`, verziószám): release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – ThinkDefault: mindkét paletta 21 színű, hasonlóság szerint rendezve
 
 - **Műhely** új színei (Radix Colors 3.0, világos és sötét változattal): Pünkösdi rózsa (pink 9), Rózsaszirom (ruby 4), Méz pasztell (amber 4), Fű (grass 9), Bíbor (purple 9).

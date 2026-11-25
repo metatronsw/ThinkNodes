@@ -48,7 +48,11 @@ package struct Appearance: Codable, Equatable, Sendable {
 }
 package struct VisualTheme: Content, Equatable {
     package struct Color: Codable, Equatable, Sendable { var id: Int; var name: String; var light: String?; var dark: String? }
-    package struct Palette: Codable, Equatable, Sendable { var id: Int; var name: String; var colors: [Color] }
+    package struct Palette: Codable, Equatable, Sendable {
+        var id: Int; var name: String; var colors: [Color]
+        /// Van-e a palettának esti színe; ha nincs, sötét módban is a nappali színek látszanak.
+        var hasDark: Bool { colors.contains { $0.dark != nil } }
+    }
     package struct Graphics: Codable, Equatable, Sendable {
         var glow: Double?
         package var selection: Int?
@@ -133,9 +137,22 @@ package struct VisualTheme: Content, Equatable {
     package var version: Int
     package var id: Int
     package var name: String
+    /// A támogatott módok. Elhagyható: ilyenkor "light", és ha bármelyik színnek van esti változata, "dark" is.
     var modes: [String]
     var palettes: [Palette]
     package var graphics: Graphics?
+
+    private enum CodingKeys: String, CodingKey { case version, id, name, modes, palettes, graphics }
+    package init(from decoder: Decoder) throws {
+        let fields = try decoder.container(keyedBy: CodingKeys.self)
+        version = try fields.decode(Int.self, forKey: .version)
+        id = try fields.decode(Int.self, forKey: .id)
+        name = try fields.decode(String.self, forKey: .name)
+        palettes = try fields.decode([Palette].self, forKey: .palettes)
+        graphics = try fields.decodeIfPresent(Graphics.self, forKey: .graphics)
+        let hasDark = palettes.contains { $0.colors.contains { $0.dark != nil } }
+        modes = try fields.decodeIfPresent([String].self, forKey: .modes) ?? (hasDark ? ["light", "dark"] : ["light"])
+    }
     // Lépésenkénti guard: az egyetlen hosszú `&&`-lánc típusellenőrzése ~2 s fordítási időt vitt el.
     var valid: Bool {
         guard version == 1, !name.isEmpty, !modes.isEmpty, !palettes.isEmpty else { return false }
@@ -252,7 +269,8 @@ package enum Themes {
 extension VisualTheme {
     fileprivate func paintResolver(paletteID: Int, mode: String?) -> ((String?, Int) -> String)? {
         guard let palette = palettes.first(where: { $0.id == paletteID }) else { return nil }
-        let dark = (mode.flatMap { modes.contains($0) ? $0 : nil } ?? modes[0]) == "dark"
+        // Esti színek nélküli paletta sötét módban is a nappali színeket adja (editor.js mode).
+        let dark = (mode.flatMap { modes.contains($0) ? $0 : nil } ?? modes[0]) == "dark" && palette.hasDark
         let colors = Dictionary(uniqueKeysWithValues: palette.colors.map { ($0.id, $0) })
         return { value, role in
             if let value, value.hasPrefix("#") { return value }

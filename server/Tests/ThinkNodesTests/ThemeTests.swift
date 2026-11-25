@@ -277,3 +277,30 @@ import VaporTesting
     plain.repairAppearance()
     #expect(plain.appearance == nil)
 }
+
+/// Esti színek nélküli téma: a `modes` elhagyható, sötét módban a nappali színek látszanak.
+@Test func themeWithoutDarkColors() throws {
+    // 16 szín, csak nappali változattal: #102233, #182233, #202233 …
+    let colors = (0..<16).map { id in
+        ["id": id, "name": "Szín \(id)", "light": "#" + String(format: "%02x", 0x10 + id * 8) + "2233"] as [String: Any]
+    }
+    let document: [String: Any] = ["version": 1, "id": 77, "name": "Nappali", "palettes": [["id": 1, "name": "Egy", "colors": colors]]]
+    let light = try JSONDecoder().decode(VisualTheme.self, from: JSONSerialization.data(withJSONObject: document))
+    #expect(light.valid && light.modes == ["light"])
+    var sheet = Worksheet(title: "Nappali")
+    sheet.background = "@0"
+    sheet.appearance = Appearance(theme: 77, palette: 1)
+    sheet.nodes = [Idea(id: "box", text: "Doboz", position: Point(x: 0, y: 0), fill: "@2", textColor: "@1")]
+    let dark = sheet.painted(mode: "dark", catalog: [light])
+    #expect(dark.background == "#102233" && dark.nodes[0].fill == "#202233")
+    // A téma sötét módot is ígér, de a palettának nincs esti színe: szintén a nappali színek.
+    var promised = light
+    promised.modes = ["light", "dark"]
+    #expect(sheet.painted(mode: "dark", catalog: [promised]).background == "#102233")
+    // Esti színnel, `modes` nélkül: mindkét mód.
+    let both = try JSONDecoder().decode(VisualTheme.self, from: Data(#"""
+        {"version": 1, "id": 78, "name": "Kettő", "palettes": [{"id": 1, "name": "Egy", "colors": [
+        {"id": 0, "name": "a", "light": "#ffffff", "dark": "#000000"}]}]}
+        """#.utf8))
+    #expect(both.modes == ["light", "dark"])
+}
