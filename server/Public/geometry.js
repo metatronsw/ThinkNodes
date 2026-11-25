@@ -228,9 +228,31 @@ function roundedCorners(start, bends, end, wide) {
   });
 }
 
-export function edgeGeometry(edge, findNode, nested = 0) {
-  const sourceNode = findNode(edge.source);
-  const targetNode = findNode(edge.target.node);
+// Oda-vissza kötés (A → B és B → A): a két vonal ne fedje egymást. Mindkettő a saját haladási irányához képest jobbra
+// tolódik `pairGap` képponttal (a két doboz ennyivel eltolt helyéből számolva), így egymás mellett, párhuzamosan futnak,
+// és a csatlakozási pontjaik is egymás mellé kerülnek. (Rendering.swift ugyanígy számol.)
+export const pairGap = 6;
+// A lap vonalainak útvonalai ("forrás>cél"); ebből derül ki, van-e egy vonalnak ellenirányú párja.
+export function wireRoutes(edges) {
+  const routes = new Set();
+  for (const edge of edges) if (edge.source && edge.target?.node) routes.add(edge.source + ">" + edge.target.node);
+  return routes;
+}
+export const hasReverse = (edge, routes) => !!(edge.source && edge.target?.node && edge.source !== edge.target.node &&
+  routes.has(edge.target.node + ">" + edge.source));
+
+export function edgeGeometry(edge, findNode, nested = 0, paired = false) {
+  let sourceNode = findNode(edge.source);
+  let targetNode = findNode(edge.target.node);
+  if (paired && !nested && sourceNode && targetNode && !isDataLink(edge, findNode)) {
+    const across = targetNode.position.x - sourceNode.position.x, down = targetNode.position.y - sourceNode.position.y;
+    const length = Math.hypot(across, down);
+    if (length > 0) {
+      const shift = {x: -down / length * pairGap, y: across / length * pairGap};
+      sourceNode = {...sourceNode, position: {x: sourceNode.position.x + shift.x, y: sourceNode.position.y + shift.y}};
+      targetNode = {...targetNode, position: {x: targetNode.position.x + shift.x, y: targetNode.position.y + shift.y}};
+    }
+  }
   const source = sourceNode?.position ?? edge.sourcePoint;
   const target = targetNode?.position ?? edge.target.point;
   const graphics = currentGraphics();
@@ -487,8 +509,9 @@ export function canvasBounds(board) {
     }
     halfHeight = Math.max(halfHeight, Math.abs(node.position.y) + (node.extentY ?? node.height / 2) + padding);
   }
+  const routes = wireRoutes(board.edges);
   for (const edge of board.edges) {
-    const geometry = edgeGeometry(edge, id => nodes.get(id));
+    const geometry = edgeGeometry(edge, id => nodes.get(id), 0, hasReverse(edge, routes));
     for (const {x, y} of geometry.boundsPoints) {
       halfWidth = Math.max(halfWidth, Math.abs(x) + 40);
       halfHeight = Math.max(halfHeight, Math.abs(y) + 40);

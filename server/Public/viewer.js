@@ -13,8 +13,8 @@ import {justifyRows} from "./justify.js?v=7";
 import {attachScrollbars} from "./scrollbar-drag.js";
 import {liveConnection} from "./collaboration.js";
 
-import {useWorksheetGeometry, arrowLength, arrowTransform, plugTransform, edgeGeometry, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireGradientValues, wireLabelLayout} from "./geometry.js?v=28";
-import {ancestors} from "./containers.js?v=7";
+import {useWorksheetGeometry, arrowLength, arrowTransform, plugTransform, edgeGeometry, hasReverse, wireRoutes, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireGradientValues, wireLabelLayout} from "./geometry.js?v=29";
+import {ancestors} from "./containers.js?v=8";
 import {ensureGlow, glowReach} from "./glow.js";
 
 let selection;
@@ -118,6 +118,7 @@ function previewScene() {
       origin: {x: +x, y: +y}, position: {x: +x, y: +y}}];
   }));
   const wires = new Map(), nodesByMover = new Map(), wiresByNode = new Map();
+  let routes;  // a lap útvonalai az oda-vissza kötésekhez (egyszer számolva)
   function index(map, id, item) {
     if (!id) return;
     if (!map.has(id)) map.set(id, []);
@@ -160,7 +161,7 @@ function previewScene() {
     for (const {path, edge, gradient, sweep, paint, arrows, label, clip, taper, pulse} of affectedWires) {
       const source = nodes.get(edge.source), target = nodes.get(edge.target.node);
       const nested = source && target && (target.movers.includes(source.id) ? 1 : source.movers.includes(target.id) ? -1 : 0);
-      const geometry = edgeGeometry(edge, id => nodes.get(id), nested || 0);
+      const geometry = edgeGeometry(edge, id => nodes.get(id), nested || 0, hasReverse(edge, routes ??= wireRoutes(Array.from(wires.values(), wire => wire.edge))));
       const {d, from, to, sourceToward, targetToward} = geometry;
       const profile = taper ? taperedArc(geometry, paint) : null;
       const outline = profile?.outline();

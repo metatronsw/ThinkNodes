@@ -1,5 +1,13 @@
 # Változások
 
+## 2026-11-25 – Oda-vissza kötés: a két vonal egymás mellett fut
+
+- Ha két doboz között mindkét irányban van vonal (A → B és B → A), a két vonal nem fedi egymást: mindkettő a saját haladási irányához képest jobbra tolódik 6 képponttal, így párhuzamosan, 12 képpontra egymástól futnak, és a csatlakozási pontjaik is egymás mellé kerülnek. Egyirányú kötés változatlan. Azonos irányú második vonal továbbra sem húzható.
+- Megvalósítás: a páros vonal geometriája a két doboz eltolt helyéből számolódik (`geometry.js edgeGeometry`, `pairGap`; `wireRoutes` / `hasReverse` ismeri fel a párt), a szerkesztőben, a megtekintőben és a szerveroldali rajzban (`Rendering.swift`) egyformán. Konténer és a saját belső doboza közti (beágyazott) vonalra és az adatvonalra nem vonatkozik.
+- Korlát: ferdén érkező vonalnál az eltolt végpont néhány képponttal a doboz szélén belülre / kívülre eshet (a vonal a doboz alatt fut, így a belülre eső rész nem látszik; kívül legfeljebb pár képpontos rés lehet).
+- Sebesség: a párok felismerése csak vonal felvételekor / törlésekor / átkötésekor számol (a lap vonalainak száma szerint), mozgatáskor vonalanként egy halmazkeresés. Safari, 300 dobozos mérőlap (`perf.py --sheet p300`): dobozmozgatás 59,4, csoportmozgatás 59,9, gyors pásztázás 60 képkocka/mp – a korábbi méréssel azonos.
+- Ellenőrzés: Safari képernyőkép a szerkesztőről és a megtekintőről (vízszintes, függőleges, ferde pár, ellipszis–doboz pár). Külön automatikus teszt nincs. `test.sh render editor` rendben. Szerverkód változott: release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – Nyilak konténerben: rárugrás csak a szélnél, látható előnézet, vonal a konténerek fölött
 
 - **Rárugrás:** az a doboz, amiben van másik doboz (konténer tartalommal), a nyíl végét csak a széle körüli sávban (kb. 18 képernyőpont befelé, 8 kifelé) vonzza magához; a belsejében a nyíl szabadon áll, vagy a benne lévő dobozokra ugrik. Így a belső dobozból kifelé húzott nyíl nem ragad azonnal a konténerre, és a kívülről a konténer belsejébe húzott nyíl is eléri a belső dobozt (`editor.js snap`). Üres konténer és a sima doboz változatlanul a teljes felületén cél.

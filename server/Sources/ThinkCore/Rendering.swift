@@ -1275,9 +1275,26 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
         return false
     }
     var definitions: [String] = []
+    // Oda-vissza kötés (A → B és B → A): mindkét vonal a saját haladási irányához képest jobbra tolódik 6 képponttal
+    // (a két doboz eltolt helyéből számolva), így egymás mellett futnak (geometry.js edgeGeometry, pairGap).
+    let pairGap = 6.0
+    let routes = Set(board.edges.compactMap { edge -> String? in
+        guard let from = edge.source, let to = edge.target.node else { return nil }
+        return from + ">" + to
+    })
     let edges = board.edges.compactMap { edge -> (layer: Int, markup: String)? in
-        let sourceNode = edge.source.flatMap { nodes[$0] }
-        let targetNode = edge.target.node.flatMap { nodes[$0] }
+        var sourceNode = edge.source.flatMap { nodes[$0] }
+        var targetNode = edge.target.node.flatMap { nodes[$0] }
+        if let from = sourceNode, let to = targetNode, from.id != to.id, routes.contains(to.id + ">" + from.id),
+           !dataLinks.contains(edge.id), !isInside(to, from), !isInside(from, to) {
+            let across = to.position.x - from.position.x, down = to.position.y - from.position.y
+            let length = (across * across + down * down).squareRoot()
+            if length > 0 {
+                let shift = Point(x: -down / length * pairGap, y: across / length * pairGap)
+                sourceNode?.position = Point(x: from.position.x + shift.x, y: from.position.y + shift.y)
+                targetNode?.position = Point(x: to.position.x + shift.x, y: to.position.y + shift.y)
+            }
+        }
         guard let source = sourceNode?.position ?? edge.sourcePoint,
               let target = targetNode?.position ?? edge.target.point else { return nil }
         let command: String
