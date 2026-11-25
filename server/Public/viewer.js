@@ -13,8 +13,8 @@ import {justifyRows} from "./justify.js?v=7";
 import {attachScrollbars} from "./scrollbar-drag.js";
 import {liveConnection} from "./collaboration.js";
 
-import {useWorksheetGeometry, wireArrow, plugTransform, edgeGeometry, reverseWidth, wireRoutes, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireGradientValues, wireLabelLayout} from "./geometry.js?v=31";
-import {ancestors} from "./containers.js?v=11";
+import {useWorksheetGeometry, wireHeads, plugTransform, edgeGeometry, reverseWidth, wireRoutes, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireGradientValues, wireLabelLayout} from "./geometry.js?v=32";
+import {ancestors} from "./containers.js?v=12";
 import {ensureGlow, glowReach} from "./glow.js";
 
 let selection;
@@ -162,13 +162,11 @@ function previewScene() {
       const source = nodes.get(edge.source), target = nodes.get(edge.target.node);
       const nested = source && target && (target.movers.includes(source.id) ? 1 : source.movers.includes(target.id) ? -1 : 0);
       const geometry = edgeGeometry(edge, id => nodes.get(id), nested || 0, reverseWidth(edge, routes ??= wireRoutes(Array.from(wires.values(), wire => wire.edge))));
-      const {d, from, to, sourceToward, targetToward} = geometry;
+      const {from, to} = geometry;
       const profile = taper ? taperedArc(geometry, paint) : null;
       const outline = profile?.outline();
       // A vonal a nyílhegy talpáig tart (editor.js wireDrawing; Rendering.swift ugyanígy rajzol).
-      const headLimit = geometry.bent || !(paint.startArrow && paint.endArrow) ? Infinity : Math.hypot(to.x - from.x, to.y - from.y) / 2;
-      const heads = {source: wireArrow(from, sourceToward, paint.width, paint.startArrow, headLimit),
-        target: wireArrow(to, targetToward, paint.width, paint.endArrow, headLimit)};
+      const heads = wireHeads(geometry, paint);
       path.setAttribute("d", outline ?? geometry.path(heads.source.base, heads.target.base));
       if (pulse && profile) {
         const scale = Math.min(1.45, maximumLineWidth / paint.lineWidth);

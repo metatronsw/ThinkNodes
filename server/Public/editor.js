@@ -14,9 +14,9 @@ import {justifyRows, justifyShifts} from "./justify.js?v=7";
 import {canvasMarkdown, canvasMarkdownAvailable} from "./canvas-markdown.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, reverseWidth, wireRoutes, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=31";
+import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, wireHeads, reverseWidth, wireRoutes, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, taperedArc, wireGradientValues, wireLabelLayout} from "./geometry.js?v=32";
 
-import {ancestors, layerOrder, overlapFraction} from "./containers.js?v=11";
+import {ancestors, layerOrder, overlapFraction} from "./containers.js?v=12";
 import {glowFilter, glowId, glowReach, glowVNode} from "./glow.js";
 import {awaitWebPreview} from "./web-preview-refresh.js";
 import {cellName, columnName, decodeTable, encodeTable, limits as tableLimits} from "./table/table-document.js";
@@ -383,9 +383,7 @@ function wireDrawing(edge, geometry, plug = false) {
   if (taper) {
     return {ends: taper.ends, stroke: {d: taper.outline(), fill: paint.color, stroke: "none"}, paint, taper};
   }
-  const limit = bent || !(paint.startArrow && paint.endArrow) ? Infinity : Math.hypot(to.x - from.x, to.y - from.y) / 2;
-  const ends = {source: wireArrow(from, sourceToward, paint.width, paint.startArrow, limit),
-    target: wireArrow(to, targetToward, paint.width, paint.endArrow, limit)};
+  const ends = wireHeads(geometry, paint);
   const stroke = {d: path(ends.source.base, ends.target.base), fill: "none", stroke: paint.color,
     "stroke-width": paint.lineWidth, "stroke-linecap": paint.linecap, "stroke-dasharray": paint.dash};
   return {ends, stroke, paint};

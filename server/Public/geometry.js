@@ -450,6 +450,15 @@ export function wireArrow(tip, toward, width, visible, limit = Infinity) {
     base: {x: tip.x + dx * ratio, y: tip.y + dy * ratio}};
 }
 
+// A vonal két nyílhegye és a vonal rövidített végpontjai: a vonal a nyílhegy talpáig (`base`) tart, nem a csúcsáig.
+// Két nyílhegy rövid, egyenes vonalon legfeljebb a fél hosszig ér. A szerkesztő és a megtekintő közös számítása;
+// a szerveroldali párja: Rendering.swift (`head`).
+export function wireHeads({from, to, sourceToward, targetToward, bent}, {width, startArrow, endArrow}) {
+  const limit = bent || !(startArrow && endArrow) ? Infinity : Math.hypot(to.x - from.x, to.y - from.y) / 2;
+  return {source: wireArrow(from, sourceToward, width, startArrow, limit),
+    target: wireArrow(to, targetToward, width, endArrow, limit)};
+}
+
 export function taperedArc({from, to, arc}, {width, dash, startArrow, endArrow}) {
   if (!arc || dash || !(startArrow || endArrow)) return null;
   const span = Math.hypot(to.x - from.x, to.y - from.y);
