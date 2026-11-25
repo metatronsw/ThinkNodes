@@ -1055,7 +1055,6 @@ createApp({
     }
 
     function modified() {
-      restoreHomes();
       tidyChartLinks();
       if (editingField) fieldChanged = true;
       else recordChanges();
@@ -1782,21 +1781,6 @@ createApp({
         dy = limit(dy, -100000-y, 100000-y);
       }
       for (const {id, x, y} of group) nodeMap.value.get(id).position = {x: x+dx, y: y+dy};
-    }
-
-    // Az első, rácsba rendező változat a gyermekek kézi helyét a `home` mezőbe tette: a következő módosításkor a gyermek
-    // (a tartalmával együtt) visszaáll oda, és a mező megszűnik.
-    function restoreHomes() {
-      const nodes = board.value?.nodes;
-      if (!nodes?.some(node => node.home)) return;
-      for (const node of nodes) {
-        if (!node.home) continue;
-        const parent = nodeMap.value.get(node.parent);
-        const group = moveGroup(node);
-        if (group.some(member => occupied(member.id))) continue;
-        if (parent) translateGroup(group, parent.position.x + node.home.x - node.position.x, parent.position.y + node.home.y - node.position.y);
-        node.home = undefined;
-      }
     }
 
     function fitsInside(child, container) {
