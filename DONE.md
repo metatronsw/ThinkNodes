@@ -6,6 +6,14 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **Safari: kódfájl szerkesztésekor kijelöléstől a szöveg fél sorral elugrott, és megjelent alatta a másik réteg** (2026-11-25)
+  - Ok: a szerkesztő két rétegből állt (színezett szöveg, fölötte átlátszó betűjű szövegmező), és Safariban kijelöléskor a kettő elcsúszott egymáson.
+  - Javítás: egyetlen réteg – maga a színezett szöveg szerkeszthető (`renderCodeEditor`, `editor.js`).
+
+- **Sötét módban a dobozon szerkesztett szövegfájl mezője szürke hátteret kapott; egérrel nem lehetett benne kijelölni** (2026-11-25)
+  - Ok: az általános sötét módú űrlapmező-szabály erősebb volt a mező saját szabályánál; a mező a vászontól örökölte a `user-select: none` értéket.
+  - Javítás: `.node-text-editor` háttere és színe `!important`, `user-select: text` (`app.css`).
+
 - **A megtekintőben a görgethető tartalom kijelölés nélkül is görög** (2026-11-25) – döntés: így marad (a látogató nem jelöl ki), nem hiba.
 
 - **Megtekintő: két lap azonos nevű szövegfájlja ugyanazt a tartalmat mutatta** (2026-11-25)

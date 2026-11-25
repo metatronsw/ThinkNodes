@@ -4,9 +4,8 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 ## Nyitott
 
-- **Kódfájl dobozon szerkesztése színezett réteggel: Safariban nincs ellenőrizve** (2026-11-25)
-  - Chromiumban a színezett réteg és az átlátszó betűjű szövegmező pontosan fedi egymást. Safariban nézendő: a két réteg sorai egybeesnek-e (tördelés, betűköz), látszik-e a kurzor és a kijelölés, nagyított vásznon kattintható-e a szövegmező, és hosszú fájlnál a doboz követi-e a kurzort görgetéssel.
-  - Az automatizált Safari a munkamenet közben elakadt („already paired with another WebDriver session”); a Safari vezérelt ablakát kézzel kell bezárni, utána a `safaridriver` újra használható.
+- **Kódfájl egyrétegű szerkesztése: kézzel, Safariban nézendő tételek** (2026-11-25)
+  - Automatizált Safariban rendben: gépelés, Enter, törlés, visszavonás, minden kijelölése, kilépés. Kézzel nézendő, mert a vezérelt böngészőben nem próbálható megbízhatóan: kijelölés egérhúzással (a szintetikus húzás a vásznon nem jelöl ki, sem Safariban, sem Chromiumban – a sima szövegmezőn igen; a felhasználó valódi egérrel ki tudott jelölni), holt billentyűs / összetett bevitel, a jobb gombos menü, hosszú fájlnál a kurzor követése görgetéssel, nagyított vásznon a kurzor helye.
 
 - **Éles kirajzolás nagyítva: Safariban nincs mérve** (2026-11-24)
   - 100% fölött a nyugalmi réteg megszűnik (`restLayer`), hogy a táblázat / CSV / szövegfájl éles legyen. Safariban ellenőrizendő az élesség, és hogy a pásztázás / nagyítás indulásakor mekkora a megakadás (a réteg visszakapcsolása; PERF.md szerint 40–70 ms lehet).

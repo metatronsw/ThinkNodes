@@ -3218,7 +3218,6 @@ createApp({
     function stopTextEdit() {
       const id = textEdit.value;
       if (!id) return;
-      editHighlights.delete(id);
       textEdit.value = null;
       htmlTyping.value = false;
       if (pendingFileSaves.has(id)) transfer(() => saveFileText(id));
@@ -3242,35 +3241,206 @@ createApp({
         if (indent) { event.preventDefault(); insertTyped(area, "\n" + indent); }
       }
     }
-    // Kódfájl (színezhető nyelv): a szövegmező alatt, pontosan vele fedésben a böngészőben színezett szöveg áll
-    // (Public/highlight – a szerveroldali ThinkHighlight mása), a szövegmező betűi átlátszók, csak a kurzor és a
-    // kijelölés látszik. A két réteg egy rácscellában van (nem pozicionált: Safariban a foreignObject-beli pozicionált
-    // elem nagyított vásznon nem kattintható); a magasságot a színezett réteg adja, a görgetés a dobozé (`.node-note`).
-    // Más szövegfájl: sima szövegmező, saját görgetéssel. A szerver színezése szerkesztés alatt nem látszik.
-    const editHighlights = new Map();    // doboz → {text, ext, html}: az utolsó színezés, hogy a rajzolás ne ismételje
-    function editHighlight(node, text, ext) {
-      const known = editHighlights.get(node.id);
-      if (known && known.text === text && known.ext === ext) return known.html;
-      const html = highlightHTML(text, ext);
-      editHighlights.set(node.id, {text, ext, html});
-      return html;
+    // Kódfájl (színezhető nyelv) szerkesztése: egyetlen réteg – maga a böngészőben színezett szöveg szerkeszthető
+    // (`contenteditable`), nincs fölötte szövegmező. A színezést a Public/highlight végzi (a szerveroldali ThinkHighlight
+    // mása); a szerver színezése szerkesztés alatt nem látszik, kilépéskor (mentés után) az váltja fel.
+    // A szöveg egy helyen él (`codeEdit.text`): a böngésző a DOM-ot nem módosítja, minden bevitelt a `beforeinput`
+    // fog el, a szöveget mi írjuk át, újraszínezzük, és a kurzort karakterpozíció szerint visszatesszük. Kivétel az
+    // összetett bevitel (holt billentyű, IME): az a DOM-ba ír, a végén onnan olvassuk vissza. A visszavonás saját
+    // (a tartalom cseréje a böngésző visszavonási listáját törli). Más szövegfájl: sima szövegmező (renderTextEditor).
+    const codeEdit = {el: null, id: null, ext: "", text: "", undo: [], redo: [], kind: null, stamp: 0, composing: false};
+    function codeOffset(container, offset) {
+      const range = document.createRange();
+      range.selectNodeContents(codeEdit.el);
+      try { range.setEnd(container, offset); } catch { return codeEdit.text.length; }
+      // A szöveg végén álló jelző sortörés (renderCodeEdit) mögé nem kerülhet kurzor.
+      return Math.min(range.toString().length, codeEdit.text.length);
+    }
+    function codeSelection() {
+      const selection = window.getSelection(), end = codeEdit.text.length;
+      if (!selection.rangeCount || !codeEdit.el.contains(selection.anchorNode)) return [end, end];
+      const range = selection.getRangeAt(0);
+      return [codeOffset(range.startContainer, range.startOffset), codeOffset(range.endContainer, range.endOffset)];
+    }
+    function setCodeSelection(start, end = start, reveal = true) {
+      const el = codeEdit.el;
+      const locate = target => {
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        let node, left = target;
+        while ((node = walker.nextNode())) {
+          if (left <= node.length) return [node, left];
+          left -= node.length;
+        }
+        return [el, el.childNodes.length];
+      };
+      const range = document.createRange();
+      range.setStart(...locate(start));
+      range.setEnd(...locate(end));
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      if (!reveal) return;
+      // A doboz (`.node-note`) görgetése a kurzorhoz. A két téglalap ugyanabban a rendszerben van (Safariban a
+      // foreignObject-beli téglalapok nem követik a vászon nagyítását, máshol igen): a különbségüket a doboz
+      // mért és valódi magasságának aránya váltja át a doboz saját képpontjaira.
+      const note = el.closest(".node-note"), caret = range.getClientRects()[0] ?? range.getBoundingClientRect();
+      if (!note || !caret || (!caret.height && !caret.top)) return;
+      const box = note.getBoundingClientRect(), scale = box.height / note.offsetHeight || 1;
+      const top = (caret.top - box.top) / scale, bottom = (caret.bottom - box.top) / scale;
+      if (top < 4) note.scrollTop += top - 8;
+      else if (bottom > note.clientHeight - 4) note.scrollTop += bottom - note.clientHeight + 8;
+    }
+    // A záró sortörés után a böngésző csak akkor mutat üres sort (és tesz oda kurzort), ha még egy sortörés követi.
+    const renderCodeEdit = () => { codeEdit.el.innerHTML = highlightHTML(codeEdit.text, codeEdit.ext) + "\n"; };
+    function commitCodeEdit() {
+      const current = nodeMap.value.get(codeEdit.id);
+      if (current?.file && held.value === codeEdit.id) editFileText(current, codeEdit.text);
+    }
+    // A [start, end) rész cseréje; `kind`: az egymást követő azonos fajtájú (0,7 mp-en belüli) módosítások egy
+    // visszavonási lépést adnak.
+    function replaceCode(start, end, insert, kind) {
+      const now = performance.now();
+      if (kind !== codeEdit.kind || now - codeEdit.stamp > 700 || !codeEdit.undo.length) {
+        codeEdit.undo.push({text: codeEdit.text, start, end});
+        if (codeEdit.undo.length > 300) codeEdit.undo.shift();
+      }
+      codeEdit.kind = kind;
+      codeEdit.stamp = now;
+      codeEdit.redo.length = 0;
+      codeEdit.text = codeEdit.text.slice(0, start) + insert + codeEdit.text.slice(end);
+      renderCodeEdit();
+      setCodeSelection(start + insert.length);
+      commitCodeEdit();
+    }
+    function stepCodeHistory(forward) {
+      const from = forward ? codeEdit.redo : codeEdit.undo, to = forward ? codeEdit.undo : codeEdit.redo;
+      const entry = from.pop();
+      if (!entry) return;
+      const [start, end] = codeSelection();
+      to.push({text: codeEdit.text, start, end});
+      codeEdit.text = entry.text;
+      codeEdit.kind = null;
+      renderCodeEdit();
+      setCodeSelection(Math.min(entry.start, codeEdit.text.length), Math.min(entry.end, codeEdit.text.length));
+      commitCodeEdit();
+    }
+    // A DOM-ból visszaolvasott szöveg (összetett bevitel vége, vagy el nem fogható bevitel után).
+    function resyncCodeEdit() {
+      const raw = codeEdit.el.textContent.replace(/\r\n?/g, "\n"), text = raw.endsWith("\n") ? raw.slice(0, -1) : raw;
+      const selection = window.getSelection();
+      let caret = text.length;
+      if (selection.rangeCount && codeEdit.el.contains(selection.anchorNode)) {
+        const range = document.createRange();
+        range.selectNodeContents(codeEdit.el);
+        range.setEnd(selection.focusNode, selection.focusOffset);
+        caret = Math.min(range.toString().length, text.length);
+      }
+      if (text !== codeEdit.text) {
+        codeEdit.undo.push({text: codeEdit.text, start: caret, end: caret});
+        codeEdit.redo.length = 0;
+        codeEdit.kind = null;
+        codeEdit.text = text;
+        commitCodeEdit();
+      }
+      renderCodeEdit();
+      setCodeSelection(caret);
+    }
+    const plainClip = text => text.replace(/\r\n?/g, "\n");
+    function codeBeforeInput(event) {
+      const type = event.inputType ?? "";
+      // Összetett bevitel: nem fogható el; a végén a DOM-ból olvassuk vissza (compositionend).
+      if (codeEdit.composing || event.isComposing || type.includes("Composition")) return;
+      event.preventDefault();
+      if (type.startsWith("format")) return;
+      if (type === "historyUndo" || type === "historyRedo") { stepCodeHistory(type === "historyRedo"); return; }
+      let [start, end] = codeSelection();
+      const target = event.getTargetRanges?.()[0];
+      if (target) {
+        start = codeOffset(target.startContainer, target.startOffset);
+        end = codeOffset(target.endContainer, target.endOffset);
+      }
+      const text = codeEdit.text;
+      if (type.startsWith("delete")) {
+        if (start === end) {
+          // Nincs megadott tartomány: egy karakter (helyettesítő párnál kettő kódegység).
+          const pair = index => index >= 0 && index + 1 < text.length && /[\uD800-\uDBFF]/.test(text[index]) && /[\uDC00-\uDFFF]/.test(text[index + 1]);
+          if (type.includes("Forward")) end = Math.min(text.length, end + (pair(end) ? 2 : 1));
+          else start = Math.max(0, start - (pair(start - 2) ? 2 : 1));
+        }
+        if (start !== end) replaceCode(start, end, "", "delete");
+        return;
+      }
+      if (type === "insertParagraph" || type === "insertLineBreak") {
+        // Az új sor az előző sor behúzásával kezdődik.
+        const indent = /^[ \t]*/.exec(text.slice(0, start).split("\n").pop())[0];
+        replaceCode(start, end, "\n" + indent, "break");
+        return;
+      }
+      const data = event.data ?? event.dataTransfer?.getData("text/plain") ?? "";
+      if (data || start !== end) replaceCode(start, end, plainClip(data), type === "insertText" ? "type" : "insert");
+    }
+    function codeEditKey(event) {
+      event.stopPropagation();
+      if (event.key === "Escape") { event.preventDefault(); stopTextEdit(); return; }
+      if (event.isComposing) return;
+      const command = event.metaKey || event.ctrlKey, key = event.key.toLowerCase();
+      if (command && !event.altKey && (key === "z" || key === "y")) {
+        event.preventDefault();
+        stepCodeHistory(key === "y" || event.shiftKey);
+      } else if (event.key === "Tab" && !command && !event.altKey && !event.shiftKey) {
+        event.preventDefault();
+        const [start, end] = codeSelection();
+        replaceCode(start, end, "  ", "type");
+      }
+    }
+    function renderCodeEditor(node, text, ext) {
+      const stop = e => e.stopPropagation();
+      // A tartalmat nem a Vue rajzolja (nincs gyermek és innerHTML tulajdonság): újrarajzoláskor a kurzor a helyén marad.
+      return h("pre", {key: "edit-code", class: "node-code node-code-input", contenteditable: "plaintext-only", role: "textbox", "aria-multiline": "true",
+        "aria-label": "Fájl tartalma", spellcheck: false, autocapitalize: "off", autocorrect: "off",
+        onBeforeinput: codeBeforeInput,
+        onInput: () => { if (!codeEdit.composing) resyncCodeEdit(); },
+        onCompositionstart: () => { codeEdit.composing = true; },
+        onCompositionend: () => { codeEdit.composing = false; resyncCodeEdit(); },
+        onKeydown: codeEditKey,
+        onPaste: event => {
+          event.stopPropagation(); event.preventDefault();
+          const [start, end] = codeSelection(), data = plainClip(event.clipboardData?.getData("text/plain") ?? "");
+          if (data || start !== end) replaceCode(start, end, data, "insert");
+        },
+        onCut: event => {
+          event.stopPropagation(); event.preventDefault();
+          const [start, end] = codeSelection();
+          if (start === end) return;
+          event.clipboardData?.setData("text/plain", codeEdit.text.slice(start, end));
+          replaceCode(start, end, "", "insert");
+        },
+        onCopy: event => {
+          event.stopPropagation(); event.preventDefault();
+          const [start, end] = codeSelection();
+          event.clipboardData?.setData("text/plain", codeEdit.text.slice(start, end));
+        },
+        onDrop: event => { event.stopPropagation(); event.preventDefault(); },
+        onPointerdown: stop, onMousedown: stop, onTouchstart: stop, onClick: stop, onDblclick: stop, onContextmenu: stop,
+        onVnodeMounted: ({el}) => {
+          Object.assign(codeEdit, {el, id: node.id, ext, text, undo: [], redo: [], kind: null, stamp: 0, composing: false});
+          renderCodeEdit();
+          el.focus({preventScroll: true});
+          setCodeSelection(0, 0, false);
+        },
+        onVnodeBeforeUnmount: () => { codeEdit.el = null; codeEdit.id = null; },
+      });
     }
     function renderTextEditor(node, text) {
       const stop = e => e.stopPropagation();
       const ext = (node.file.filename ?? "").split(".").pop().toLowerCase();
-      const layered = node.type === "code" && supportsHighlight(ext);
-      const area = h("textarea", {key: "edit", class: ["node-text-editor", {"is-layered": layered}], "aria-label": "Fájl tartalma", value: text,
+      if (node.type === "code" && supportsHighlight(ext)) return renderCodeEditor(node, text, ext);
+      return h("textarea", {key: "edit", class: "node-text-editor", "aria-label": "Fájl tartalma", value: text,
         spellcheck: node.type !== "code", autocapitalize: "off", autocomplete: "off",
         onInput: event => { const current = nodeMap.value.get(node.id); if (current?.file && held.value === node.id) editFileText(current, event.target.value); },
         onKeydown: event => textEditKey(event, node), onPointerdown: stop, onMousedown: stop, onTouchstart: stop, onClick: stop, onDblclick: stop,
-        onContextmenu: stop, onWheel: layered ? undefined : stop, onCopy: stop, onCut: stop, onPaste: stop,
+        onContextmenu: stop, onWheel: stop, onCopy: stop, onCut: stop, onPaste: stop,
         onVnodeMounted: ({el}) => el.focus({preventScroll: true})});
-      if (!layered) return area;
-      // A záró sortörés után a szövegmező üres sort mutat; a színezett rétegben ehhez egy további sortörés kell.
-      return h("div", {key: "edit-layers", class: "node-code-edit"}, [
-        h("pre", {class: "node-code", "aria-hidden": "true"}, [h("code", {innerHTML: editHighlight(node, text, ext) + "\n"})]),
-        area,
-      ]);
     }
 
     // Táblázat doboz (docs/EXCEL.md): olvasó nézet a fájl szövegéből, szerkesztési mód a TableEditor vezérlővel.
