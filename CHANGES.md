@@ -1,5 +1,18 @@
 # Változások
 
+## 2026-11-25 – WhiteBoard téma: szabadkézi filcrajz, cetlik és füzetlapok; bemutató projekt
+
+- **Új téma: WhiteBoard** (`server/Public/themes/WhiteBoard.json`, téma-ID 6): nappal fehér tábla filcszínekkel, este fekete tábla hozzáillő, élénk színekkel. Betűk: Chalkboard SE, Marker Felt, Bradley Hand.
+- **Szabadkézi rajz** (`graphics.sketch`; `Public/sketch.js`, `Sources/ThinkCore/Sketch.swift`): a sarkos alakok egyetlen folytonos, kissé hajló vonalból állnak, a vége túlfut a kezdőponton; az ellipszis egyetlen, a bal oldalon pontosan össze nem érő vonal; a vonalak egy második, elcsúsztatott, halványabb húzást kapnak. A remegés a doboz azonosítójából számolódik (FNV-1a + Mulberry32), a szerkesztő és az SVG-export ugyanazt rajzolja (`Tests/Fixtures/sketch.json`, `Tests/Editor/sketch.mjs`, `sketchMatchesSharedFixtures`). A kattintható terület és a szöveg helye a szabályos alak marad. A rajz gyorsítótárazott (húzáskor nem számolódik újra), SVG-szűrő nincs.
+- **Papírfelületek** (`graphics.paper`): a táblázat és a CSV cetli (ragasztószalag, felpödrődő sarok, árnyék, egyenesen), a szöveg- és kódfájl füzetlap (sorvonalak a szöveg alapvonalán, margóvonal, lyukak). A papír mindkét módban világos, rajta a paletta nappali színei és sötét tinta. Kiemelt szabadkézi dobozon az árnyék nem látszik át a tónuson (tábla színű alap).
+- A tábla hátterén letörölt filcnyomok (álló, nem animált réteg). Saját kijelöléskor a szabadkézi vonal a kijelölés színére vált.
+- Az esti krétautánzás (szaggatott vonalminta, porréteg) a felhasználó kérésére kikerült: sötét módban a rajz ugyanaz, csak a színek mások.
+- **Új témamezők:** `sketch` (`roughness`, `passes`), `paper` (`grid`, `text`, `sheet`, `ink`, `rule`, `margin`). Leírás: `server/docs/themes.md`, séma: `theme.schema.json`. Más témában egyetlen plusz elem vagy szabály sem hat (teszt ellenőrzi).
+- **Bemutató projekt** (csak helyben, `projects/WhiteBoard`): 65 objektum, 26 vonal.
+- Safariban mérve (1600 × 948, kétszeres felbontás): WhiteBoard bemutató világos és sötét módban nyugalom, rámutatás, pásztázás, nagyítás, kijelölés 59,5–60 fps. Liquid Glass ellenőrzésként 55,7–60 fps (lassú nagyításnál egy 115 ms-os képkocka; korábban 57–58, a leghosszabb 63 ms – a különbség a mérés szórásán belül lehet, nincs a Liquid Glasst érintő kódváltozás).
+- Tesztek: új `sketchMatchesSharedFixtures`, `whiteBoardTheme` (Swift) és `sketch.mjs` (JS) átmegy; a régi bukó tesztek változatlanok (BUGS.md). A `test.sh` a `/bin/bash` 3.2-vel nem fut (asszociatív tömb): bash 4+ kell (`/opt/local/bin/bash ./test.sh`).
+- Szerverkód változott (`Sketch.swift` új, `Rendering.swift`, `Theme.swift`, `Model.swift`, verziószámok): release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – Felmérések a FUTURE.md-ben: WebAssembly, WebGL vászon, natív iOS/macOS kliens
 
 - `server/docs/FUTURE.md` új fejezete („Felmérések: WebAssembly, WebGL és natív kliens”): mit adna a WASM (a szerver változatlan, de a rajzolási szűk keresztmetszeten nem segít; számításra és a Swift/JS kettős kód kiváltására jó), az `editor.js` felosztása és a WebGL-átírás nehéz pontjai (szöveg, HTML-tartalmú dobozok rétegsorrendje, találatvizsgálat), a natív kliens felmérése a mostani kódhoz (újrahasznosítható Swift-modulok, portolandó JS-részek, kis szerveroldali kiegészítések, Core Animation-alapú rajzolás, munkabecslés, a fejlesztőgép korlátai), összevetés.

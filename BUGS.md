@@ -4,6 +4,12 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 ## Nyitott
 
+- **WhiteBoard: nyitott és kézzel nézendő tételek** (2026-11-25)
+  - Hiányzó témájú munkalap nem nyílik meg: a szerver betöltéskor és mentéskor is ellenőrzi a téma- és paletta-ID-t (`Worksheet.validate`), ezért egy témafájl törlése után az azt használó lapok 422-es hibát adnak. Javaslat: betöltéskor visszaesés az alaptémára (döntésre vár).
+  - Füzetlapon a markdown lista elemei között egy üres sor van (a sorvonalak tartása miatt); a nagy címsor egy sorvonalnyi magasságba szorul.
+  - Kézzel nézendő: szabadkézi doboz kijelölése és átméretezése (a rajz méretváltáskor újraszámolódik), zárolt konténer, megtekintő és SVG-export a füzetlappal (beágyazott CSS, `lh` nélkül, `--rule` változóval), a cetli táblázatszerkesztése.
+  - A `test.sh` a macOS `/bin/bash` 3.2-vel nem fut (asszociatív tömb); `/opt/local/bin/bash ./test.sh` kell.
+
 - **Liquid Glass: kézzel nézendő és nyitott tételek** (2026-11-25)
   - Automatizált Safariban rendben (képernyőkép és mérés): világos / sötét mód, kijelölés fényudvara, ping, üvegpanel, megtekintő. Kézzel nézendő: a kattintásgyűrű és a rámutatás áttűnései szemre, más felhasználó kijelölésének glow-ja két böngészővel, a gyors eszközök és a helyi menü üveghatása, a többi négy paletta, mobil.
   - A fejléc gombjai nem kapnak üveghatást (a szerkesztő munkaterületén kívül vannak).

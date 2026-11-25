@@ -309,6 +309,58 @@
             }
           },
           "additionalProperties": false
+        },
+        "sketch": {
+          "type": "object",
+          "description": "Szabadkézi (filc) rajz: a remegés mértéke és a körvonal húzásainak száma.",
+          "properties": {
+            "roughness": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 5
+            },
+            "passes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3
+            }
+          },
+          "additionalProperties": false
+        },
+        "paper": {
+          "type": "object",
+          "description": "Papírfelületek: táblázat és CSV cetli, szöveg- és kódfájl füzetlap; a lap, a tinta, a sorvonal és a margó színe.",
+          "properties": {
+            "grid": {
+              "enum": [
+                "sticky",
+                "plain"
+              ]
+            },
+            "text": {
+              "enum": [
+                "notebook",
+                "plain"
+              ]
+            },
+            "sheet": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            },
+            "ink": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            },
+            "rule": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            },
+            "margin": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

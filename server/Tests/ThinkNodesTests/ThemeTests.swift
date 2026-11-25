@@ -169,3 +169,74 @@ import VaporTesting
     let plain = boardSVG(sheet, mode: "dark")
     #expect(plain.contains(#"stroke-width="1.6""#) && !plain.contains("node-halo"))
 }
+
+/// Szabadkézi rajz: a szerver (Sketch.swift) ugyanazt rajzolja, mint a szerkesztő (Public/sketch.js). Közös esetek:
+/// Tests/Fixtures/sketch.json (kliensoldali párja: Tests/Editor/sketch.mjs). A két oldal trigonometriája egy-egy
+/// utolsó jegyben eltérhet, ezért a számok 0,11-es tűréssel egyeznek.
+@Test func sketchMatchesSharedFixtures() throws {
+    struct Case: Decodable {
+        var id: String; var shape: String; var width: Double; var height: Double; var roughness: Double; var passes: Int
+        var vertices: [[Double]]?; var fill: [Token]; var strokes: [[Token]]; var shift: [Double]
+    }
+    enum Token: Decodable {
+        case command(String), number(Double)
+        init(from decoder: Decoder) throws {
+            let value = try decoder.singleValueContainer()
+            if let number = try? value.decode(Double.self) { self = .number(number) } else { self = .command(try value.decode(String.self)) }
+        }
+    }
+    struct Fixture: Decodable { var seed: UInt32; var sticky: String; var cases: [Case] }
+    let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Fixtures/sketch.json")
+    let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
+    #expect(sketchSeed("box-a") == fixture.seed && stickyColor("#f0bd23") == fixture.sticky)
+    func tokens(_ d: String) -> [Token] {
+        var result: [Token] = [], number = ""
+        func flush() { if !number.isEmpty { result.append(.number(Double(number)!)); number = "" } }
+        for character in d {
+            if character.isLetter { flush(); result.append(.command(String(character))) }
+            else if character == " " { flush() }
+            else if character == "-" { flush(); number = "-" }
+            else { number.append(character) }
+        }
+        flush()
+        return result
+    }
+    func same(_ a: [Token], _ b: [Token]) -> Bool {
+        a.count == b.count && zip(a, b).allSatisfy { pair in
+            switch pair {
+            case let (.command(x), .command(y)): x == y
+            case let (.number(x), .number(y)): abs(x - y) <= 0.11
+            default: false
+            }
+        }
+    }
+    for item in fixture.cases {
+        let shape = try #require(Shape(rawValue: item.shape))
+        let outline = sketchOutline(shape, width: item.width, height: item.height, vertices: item.vertices?.map { ($0[0], $0[1]) })
+        let drawn = SketchPen.paths(seed: sketchSeed(item.id), outline: outline, rough: item.roughness, passes: item.passes)
+        #expect(same(tokens(drawn.fill), item.fill), "kitöltés: \(item.id)")
+        #expect(drawn.strokes.count == item.strokes.count && zip(drawn.strokes, item.strokes).allSatisfy { same(tokens($0), $1) }, "körvonal: \(item.id)")
+        let shift = sketchShift(sketchSeed(item.id), rough: item.roughness)
+        #expect(abs(shift.0 - item.shift[0]) <= 0.11 && abs(shift.1 - item.shift[1]) <= 0.11, "eltolás: \(item.id)")
+    }
+}
+
+@Test func whiteBoardTheme() throws {
+    let theme = try #require(Themes.catalog.first { $0.name == "WhiteBoard" })
+    #expect(theme.valid && theme.graphics?.sketch != nil && theme.graphics?.paper?.grid == "sticky")
+    var sheet = Worksheet(title: "Tábla")
+    sheet.background = "@0"
+    sheet.appearance = Appearance(theme: theme.id, palette: 1)
+    sheet.nodes = [Idea(id: "box", text: "Filc", position: Point(x: 0, y: 0), fill: "@4", textColor: "@1")]
+    for mode in ["light", "dark"] {
+        let svg = boardSVG(sheet, mode: mode)
+        // A kattintható felület a szabályos alak (láthatatlan), fölötte a szabadkézi kitöltés és egyetlen folytonos vonal.
+        #expect(svg.contains(#"class="node-surface""#) && svg.contains(#"fill-opacity="0" stroke="none""#))
+        #expect(svg.contains("sketch-fill") && svg.components(separatedBy: "class=\"sketch-stroke\"").count - 1 == 1)
+        #expect(svg.contains("sketch-smudges") && !svg.contains("stroke-dasharray"))
+    }
+    // Más témában semmi szabadkézi elem nincs.
+    sheet.appearance = Appearance(theme: 1, palette: 1)
+    let plain = boardSVG(sheet, mode: "light")
+    #expect(!plain.contains("sketch-") && !plain.contains("paper-"))
+}

@@ -1,0 +1,185 @@
+{
+  "version": 1,
+  "id": 6,
+  "name": "WhiteBoard",
+  "modes": [
+    "light",
+    "dark"
+  ],
+  "palettes": [
+    {
+      "id": 1,
+      "name": "Tábla",
+      "colors": [
+        {
+          "id": 0,
+          "name": "Tábla",
+          "light": "#f6f7f4",
+          "dark": "#0f0f10"
+        },
+        {
+          "id": 1,
+          "name": "Tinta",
+          "light": "#1f2533",
+          "dark": "#f2f2f0"
+        },
+        {
+          "id": 2,
+          "name": "Fekete / fehér filc",
+          "light": "#2a3142",
+          "dark": "#e4e4e2"
+        },
+        {
+          "id": 3,
+          "name": "Grafit",
+          "light": "#5a6170",
+          "dark": "#a9a9a6"
+        },
+        {
+          "id": 4,
+          "name": "Kék filc",
+          "light": "#1f5fbf",
+          "dark": "#6fb2ff"
+        },
+        {
+          "id": 5,
+          "name": "Zöld filc",
+          "light": "#1d8a4c",
+          "dark": "#6ed69a"
+        },
+        {
+          "id": 6,
+          "name": "Sárga",
+          "light": "#f0bd23",
+          "dark": "#ffd25a"
+        },
+        {
+          "id": 7,
+          "name": "Piros filc",
+          "light": "#d23b3b",
+          "dark": "#ff7468"
+        },
+        {
+          "id": 8,
+          "name": "Szivacs",
+          "light": "#c9ccd2",
+          "dark": "#2a2a2c"
+        },
+        {
+          "id": 9,
+          "name": "Égkék kiemelő",
+          "light": "#4fa8ff",
+          "dark": "#a8d4ff"
+        },
+        {
+          "id": 10,
+          "name": "Mentazöld kiemelő",
+          "light": "#33c27a",
+          "dark": "#b2ecc8"
+        },
+        {
+          "id": 11,
+          "name": "Lila filc",
+          "light": "#7b4bc4",
+          "dark": "#c2a3ff"
+        },
+        {
+          "id": 12,
+          "name": "Narancs filc",
+          "light": "#e8781f",
+          "dark": "#ffab5e"
+        },
+        {
+          "id": 13,
+          "name": "Rózsaszín filc",
+          "light": "#d1428f",
+          "dark": "#ff86c4"
+        },
+        {
+          "id": 14,
+          "name": "Barna filc",
+          "light": "#8a5a2b",
+          "dark": "#d9b083"
+        },
+        {
+          "id": 15,
+          "name": "Türkiz filc",
+          "light": "#148f94",
+          "dark": "#5fd8d0"
+        }
+      ]
+    }
+  ],
+  "graphics": {
+    "glow": 4,
+    "selection": 4,
+    "box": "rounded",
+    "line": "straight",
+    "lineArc": 0.04,
+    "roundedWires": true,
+    "junction": "ellipse",
+    "junctionSize": 10,
+    "lineScale": {
+      "straight": {
+        "plain": 1.2,
+        "thick": 0.9,
+        "dashed": 1.1,
+        "dotted": 1.0
+      },
+      "sCurve": {
+        "plain": 1.2,
+        "thick": 0.9,
+        "dashed": 1.1,
+        "dotted": 1.0
+      },
+      "zigzag": {
+        "plain": 1.2,
+        "thick": 0.9,
+        "dashed": 1.1,
+        "dotted": 1.0
+      },
+      "lightning": {
+        "plain": 1.2,
+        "thick": 0.9,
+        "dashed": 1.1,
+        "dotted": 1.0
+      },
+      "arc": {
+        "plain": 1.2,
+        "thick": 0.9,
+        "dashed": 1.1,
+        "dotted": 1.0
+      },
+      "rope": {
+        "plain": 1.2,
+        "thick": 0.9,
+        "dashed": 1.1,
+        "dotted": 1.0
+      }
+    },
+    "motionSpeed": 1,
+    "grid": "dots",
+    "frame": {
+      "width": 2.6,
+      "color": "fill",
+      "fillOpacity": 0.12
+    },
+    "sketch": {
+      "roughness": 1.3,
+      "passes": 1
+    },
+    "paper": {
+      "grid": "sticky",
+      "text": "notebook",
+      "sheet": "#fbfaf4",
+      "ink": "#25314d",
+      "rule": "#a9c8e8",
+      "margin": "#e58a8f"
+    },
+    "fonts": [
+      "'Chalkboard SE', 'Comic Sans MS', cursive",
+      "'Marker Felt', 'Chalkboard SE', cursive",
+      "'Bradley Hand', 'Segoe Print', cursive"
+    ]
+  }
+}

@@ -281,6 +281,10 @@ package struct Idea: Codable, Equatable, Sendable {
     var frame: Bool?
     /// A keret vastagsága (nil = 1,6, mint minden doboz kerete).
     var frameWidth: Double?
+    /// Papírfelület (téma `paper`) szövegszíne; nem tárolt mező, a `Worksheet.painted` tölti ki (Rendering.swift fileBox).
+    var paperInk: String? = nil
+    /// Kiemelt szabadkézi doboz alapszíne (a tábla színe); nem tárolt mező, a renderWorksheetCanvas tölti ki.
+    var sketchBase: String? = nil
     /// Görgethető tartalom (szövegfájl, CSV, táblázat) mentett görgetési helyzete képpontban: minden résztvevő és a
     /// megtekintő is ezt látja. Az állítja, aki a dobozt kijelölve görget.
     package var scroll: Point?

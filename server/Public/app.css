@@ -1210,3 +1210,28 @@ svg text { text-rendering: geometricPrecision; }
 .editor-workspace[data-effects="liquid"] .canvas-controls { border-radius: 16px; }
 .editor-workspace[data-effects="liquid"] :is(.inspector, .canvas-controls) .button { border-radius: 11px; transition: transform .16s ease, background-color .16s ease; }
 .editor-workspace[data-effects="liquid"] :is(.inspector, .canvas-controls) .button:active { transform: scale(.94); }
+
+/* ===== Szabadkézi téma (graphics.sketch / graphics.paper; editor.js sketchSurface, paperSurface; Rendering.swift) =====
+   Minden szabály a [data-sketch] jelző vagy a paper-… osztály alatt áll: más témában nem hat. */
+/* A tábla letörölt filcnyomai (sötét táblán világos maszatok): álló háttér, nem animált. */
+.canvas-smudge { position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(40% 22% at 22% 30%, #5b6b8a14, transparent 70%), radial-gradient(30% 18% at 74% 64%, #8a5b5b10, transparent 70%),
+    radial-gradient(34% 14% at 58% 18%, #5b8a6a0e, transparent 70%), radial-gradient(26% 20% at 30% 82%, #5b6b8a10, transparent 70%); }
+.canvas-smudge[data-dark] {
+  background: radial-gradient(42% 24% at 24% 28%, #ffffff12, transparent 70%), radial-gradient(32% 20% at 76% 62%, #ffffff0e, transparent 70%),
+    radial-gradient(36% 12% at 56% 16%, #ffffff0c, transparent 70%), radial-gradient(28% 22% at 30% 84%, #ffffff0d, transparent 70%); }
+/* Saját kijelölés: a szabadkézi vonal a kijelölés színére vált és megvastagszik. */
+.editor-workspace[data-sketch] .own-selected .sketch-stroke { stroke: var(--sketch-select); stroke-width: 4px; }
+.editor-workspace[data-sketch] .own-selected .paper-sheet { stroke: var(--sketch-select); stroke-opacity: 1; stroke-width: 3px; }
+/* Füzetlap: vonalas papír, a margóvonal és a lyukak mellett. Minden sor (a címsorok és a kód is) pontosan --rule magas
+   (a betűméret 1,6-szorosa egész képpontra, editor.js renderFileBox, Rendering.swift fileBox), a vonal a sor alapvonalán
+   fut (-.42em eltolás), és a szöveggel együtt görög (background-attachment: local). */
+.paper-notebook .node-note { padding: 10px 14px 10px 46px;
+  background-image: repeating-linear-gradient(to bottom, transparent 0 calc(var(--rule) - 1px), var(--paper-rule, #9cc3e6) calc(var(--rule) - 1px) var(--rule));
+  background-origin: content-box; background-position: 0 -.42em; background-attachment: local; }
+.paper-notebook .node-note, .paper-notebook .node-note * { line-height: var(--rule); }
+.paper-notebook .node-note :is(.node-code, .node-plain) { font-size: 1em; }
+.paper-notebook .formatted-text :is(h1, h2, h3, h4, h5, h6, p, ul, ol, li, pre, blockquote, table, hr) { margin-block: 0; }
+.paper-notebook .formatted-text > * + * { margin-top: var(--rule); }
+/* Cetli: a táblázat a papír színén, sötét tintával. */
+.paper-sticky .node-note { background: transparent; }

@@ -98,6 +98,31 @@ package struct VisualTheme: Content, Equatable {
             }
         }
         var frame: Frame?
+        /// Szabadkézi rajz (sketch.js, Rendering.swift SketchPen): `roughness` a remegés mértéke vászonegységben (0–5,
+        /// alap 1,2), `passes` a körvonal húzásainak száma (1–3, alap 2). Sötét módban ugyanígy rajzol, csak a színek mások.
+        package struct Sketch: Codable, Equatable, Sendable {
+            var roughness: Double?
+            var passes: Int?
+            var valid: Bool { (0.0...5.0).contains(roughness ?? 1.2) && (1...3).contains(passes ?? 2) }
+        }
+        var sketch: Sketch?
+        /// Papírfelületek: `grid` (táblázat, CSV) "sticky" = cetli, `text` (szöveg- és kódfájl) "notebook" = füzetlap;
+        /// `sheet` a füzetlap, `ink` a papíron álló szöveg, `rule` a sorvonalak, `margin` a margóvonal színe.
+        package struct Paper: Codable, Equatable, Sendable {
+            var grid: String?
+            var text: String?
+            var sheet: String?
+            var ink: String?
+            var rule: String?
+            var margin: String?
+            var valid: Bool {
+                ["sticky", "plain"].contains(grid ?? "plain") && ["notebook", "plain"].contains(text ?? "plain")
+                    && [sheet, ink, rule, margin].allSatisfy { color in
+                        color.map { $0.range(of: "^#[0-9A-Fa-f]{6}$", options: .regularExpression) != nil } ?? true
+                    }
+            }
+        }
+        var paper: Paper?
         /// Látványcsomag (jelenleg: "liquid"): gazdagabb dobozfelület, háttérfények, rámutatás-, kattintás- és
         /// kijelöléseffektek. A csomag stílusai az app.css `[data-effects]` szabályaiban vannak; téma nélküle nem fizet értük.
         var effects: String?
@@ -151,7 +176,7 @@ package struct VisualTheme: Content, Equatable {
         for (name, scale) in graphics.lineScale ?? [:] {
             guard ConnectionType(rawValue: name) != nil, scale.valid else { return false }
         }
-        guard graphics.frame?.valid ?? true else { return false }
+        guard graphics.frame?.valid ?? true, graphics.sketch?.valid ?? true, graphics.paper?.valid ?? true else { return false }
         guard (0.0...40.0).contains(graphics.boxRadius ?? 12), ["liquid"].contains(graphics.effects ?? "liquid") else { return false }
         let grids: [String] = ["dots", "lines", "drafting"]
         guard grids.contains(graphics.grid ?? "dots") else { return false }
@@ -257,6 +282,13 @@ extension Worksheet {
             sheet.nodes[i].fill = resolve(node.fill, 2)
             sheet.nodes[i].textColor = resolve(node.textColor, 1)
             if let color = node.file?.alphaBackground { sheet.nodes[i].file?.alphaBackground = resolve(color, 2) }
+            // Papírfelület: a cetli színe a doboz színe fehérrel keverve (alapszínnél a paletta sárgája, 6); a papíron
+            // a szöveg a téma tintája, hacsak a doboz szövegszínét külön nem állították be (editor.js paperColor, paperInk).
+            // A papír mindkét módban világos: a paletta színeinek nappali változata számít.
+            if let kind = paperKind(node, theme.graphics), let day = theme.paintResolver(paletteID: appearance.palette, mode: "light") {
+                if kind == "sticky" { sheet.nodes[i].fill = stickyColor(node.fill == "@2" ? day("@6", 6) : day(node.fill, 2)) }
+                sheet.nodes[i].paperInk = node.textColor == "@1" ? theme.graphics?.paper?.ink ?? "#25314d" : day(node.textColor, 1)
+            }
         }
         for i in sheet.edges.indices {
             sheet.edges[i].color = resolve(edges[i].color, 3)

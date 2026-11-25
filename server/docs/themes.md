@@ -36,6 +36,17 @@ A `frame` a dobozok keretét állítja. A `width` a vastagság (0,5–16, alap: 
 "frame": {"width": 4, "color": "fill", "fillOpacity": 0.14, "halo": 0.28}
 ```
 
+## Szabadkézi rajz és papír
+
+A `sketch` a dobozokat és a vonalakat szabadkézi (filc) rajzzá alakítja. A sarkos alakok egyetlen folytonos, kissé hajló vonalból állnak, amelynek a vége túlfut a kezdőponton; az ellipszis egyetlen, a bal oldalon pontosan össze nem érő vonal. A vonalak egy második, kissé elcsúsztatott, halványabb húzást kapnak. A `roughness` a remegés mértéke vászonegységben (0–5, alap 1,2), a `passes` a körvonal húzásainak száma (1–3, alap 2). A remegés a doboz azonosítójából számolódik, így minden újrarajzoláskor és az SVG-exportban is ugyanaz. A kattintható terület és a szöveg helye a szabályos alak marad. A keret vastagságát és színét, valamint a kitöltés átlátszatlanságát a `frame` adja. Sötét módban a rajz ugyanilyen, csak a színek mások. A közös algoritmus: `Public/sketch.js` és `Sources/ThinkCore/Sketch.swift`; a kettő egyezését a `Tests/Fixtures/sketch.json` ellenőrzi.
+
+A `paper` papírfelületeket ad. A `grid: "sticky"` a táblázatot és a CSV-t cetlivé teszi (ragasztószalag, felpödrődő sarok, árnyék). A cetli színe a doboz színe fehérrel félig keverve; alapszínnél (2) a paletta 6-os színe. A `text: "notebook"` a szöveg- és kódfájlt füzetlappá teszi (sorvonalak, margóvonal, lyukak); a sorok magassága a betűméret 1,6-szorosa, a szöveg a vonalakon ül. A `sheet` a füzetlap, az `ink` a papíron álló szöveg, a `rule` a sorvonalak, a `margin` a margóvonal színe. A papír mindkét módban világos, ezért rajta a paletta színeinek nappali változata látszik.
+
+```json
+"sketch": {"roughness": 1.3, "passes": 1},
+"paper": {"grid": "sticky", "text": "notebook", "sheet": "#fbfaf4", "ink": "#25314d", "rule": "#a9c8e8", "margin": "#e58a8f"}
+```
+
 ## Látványcsomag
 
 Az `effects: "liquid"` gazdagabb megjelenést kapcsol be: áttetsző dobozfelület fénylő peremmel és csillogással, puha árnyék, lassan úszó háttérfények a paletta 4., 5. és 7. színéből, valamint rámutatás-, kattintás-, kijelölés- és pingeffektek. A statikus rész (felület, perem, árnyék, háttérfények) az SVG-exportban is megjelenik, a mozgás csak a böngészőben. A `boxRadius` a lekerekített doboz sarkának sugara (0–40, alap: 12). A csomag stílusai az `app.css` `[data-effects="liquid"]` szabályai, a doboz rétegeit az `editor.js` `liquid…` függvényei és a `Rendering.swift` adják. Csomag nélküli témában egyetlen plusz elem vagy szabály sem hat. A panelek és menük háttérelmosásához a `glass: true` is kell.

@@ -9,12 +9,13 @@ import {decodeWorksheet, encodeWorksheet} from "./worksheet-json.js";
 import {sharedMouse} from "./mouse.js";
 import {worksheetChanges, replayChanges, sameValue} from "./editor-history.js?v=2";
 import {flashNode, flashPoint} from "./ping.js?v=2";
+import {sketchSeed, sketchOutline, sketchPaths, sketchShift, stickyColor} from "./sketch.js?v=3";
 import {showTooltip, hideTooltip} from "./tooltip.js";
 import {justifyRows, justifyShifts} from "./justify.js?v=7";
 import {canvasMarkdown, canvasMarkdownAvailable} from "./canvas-markdown.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, wireHeads, reverseWidth, wireRoutes, edgeInRectangle, edgePaint, labelLayout, editLabelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, taperedArc, lineSize, wireLabelLayout} from "./geometry.js?v=36";
+import {displayShape, useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, wireHeads, reverseWidth, wireRoutes, edgeInRectangle, edgePaint, labelLayout, editLabelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, taperedArc, lineSize, wireLabelLayout} from "./geometry.js?v=36";
 
 import {ancestors, layerOrder, overlapFraction} from "./containers.js?v=15";
 import {glowFilter, glowId, glowReach, glowVNode} from "./glow.js";
@@ -92,11 +93,12 @@ function fontFamily(index) {
 }
 useWorksheetGeometry(() => graphics.value);
 const fallbackColors = ["#f5f8fc","#182335","#dce9ff","#526982","#304ccc","#478666","#f3ae49","#e95c59"];
-function paint(value, role) {
+// `forced`: a színváltozat a megjelenítési módtól függetlenül (a papír mindkét módban világos: paperColor, paperInk).
+function paint(value, role, forced) {
   if (typeof value === "string") return value;
   const colors = activePalette.value?.colors ?? [];
   const color = colors.find(c => c.id === value) ?? colors.find(c => c.id === role);
-  return color?.[mode.value] ?? color?.light ?? color?.dark ?? fallbackColors[role];
+  return color?.[forced ?? mode.value] ?? color?.light ?? color?.dark ?? fallbackColors[role];
 }
 
 const ColorPicker = {
@@ -388,8 +390,85 @@ function liquidDefinitions(dark) {
   ];
 }
 
+// Szabadkézi rajz (graphics.sketch) és papírfelületek (graphics.paper), sketch.js; szerveroldali pár: Rendering.swift
+// SketchPen / paperSurface. Más témában egyik sem fut.
+const sketching = () => graphics.value.sketch;
+function darkBoard() {
+  const value = parseInt(paint(currentBoard.value?.background, 0).slice(1), 16);
+  return .2126 * (value >> 16 & 255) + .7152 * (value >> 8 & 255) + .0722 * (value & 255) < 128;
+}
+// Papírfajta: táblázat és CSV → cetli, szöveg- és kódfájl → füzetlap (graphics.paper.grid / .text).
+function paperKind(node) {
+  const paper = graphics.value.paper;
+  if (!paper || !node.file || ["empty", "free"].includes(backgroundMode(node))) return null;
+  if (isGridType(node.type)) return paper.grid === "sticky" ? "sticky" : null;
+  return isTextFile(node) && paper.text === "notebook" ? "notebook" : null;
+}
+// A papír színe: füzetlap a téma lapszíne; cetli a doboz színe fehérrel keverve (alapszínnél a paletta sárgája).
+// A papír mindkét módban világos, ezért a paletta színeinek nappali változata számít (sötét módban is).
+function paperColor(node, kind) {
+  if (kind === "notebook") return graphics.value.paper?.sheet ?? "#fbf9f1";
+  return stickyColor(node.fill == null || node.fill === 2 || node.fill === "@2" ? paint(6, 6, "light") : paint(node.fill, 2, "light"));
+}
+// A papíron a szöveg a téma tintája, vagy a beállított szövegszín nappali változata.
+function paperInk(node) {
+  return node.textColor == null || node.textColor === 1 || node.textColor === "@1" ? graphics.value.paper?.ink ?? "#25314d" : paint(node.textColor, 1, "light");
+}
+const sketchedBox = node => !!sketching() && !isJunction(node) && !isImage(node) && node.type !== "preview" && !paperKind(node);
+function boxSketch(node) {
+  const sketch = graphics.value.sketch;
+  const outline = sketchOutline(displayShape(node.shape), node.width, node.height, polygonVertices(node.shape, node.width / 2, node.height / 2));
+  return sketchPaths(sketchSeed(node.id), outline, sketch.roughness ?? 1.2, sketch.passes ?? 2);
+}
+
+function paperSurface(node, kind) {
+  const x = node.width / 2, y = node.height / 2, color = paperColor(node, kind), quiet = {"pointer-events": "none", "aria-hidden": "true"};
+  if (kind === "sticky") {
+    const c = Math.min(26, .14 * Math.min(node.width, node.height)), tape = Math.min(96, node.width * .36);
+    const tilt = (sketchSeed(node.id) % 9) - 4;
+    const shade = "#" + [16, 8, 0].map(shift => Math.round((parseInt(color.slice(1), 16) >> shift & 255) * .84).toString(16).padStart(2, "0")).join("");
+    return [
+      h("path", {class: "paper-shadow", d: `M${-x + 5} ${-y + 8}L${x + 4} ${-y + 10}L${x + 3} ${y - c + 6}L${x - c + 5} ${y + 7}Q0 ${y + 12} ${-x + 3} ${y + 5}Z`,
+        fill: "#000", "fill-opacity": .2, ...quiet}),
+      h("path", {class: "node-surface paper-sheet", d: `M${-x} ${-y}H${x}V${y - c}L${x - c} ${y}H${-x}Z`, fill: color, stroke: "#000", "stroke-opacity": .08, "stroke-width": 1}),
+      h("path", {class: "paper-curl", d: `M${x} ${y - c}L${x - c} ${y}Q${x - c * .78} ${y - c * .55} ${x - c * .9} ${y - c * .9}Q${x - c * .55} ${y - c * .78} ${x} ${y - c}Z`, fill: shade, ...quiet}),
+      h("rect", {class: "paper-tape", x: -tape / 2, y: -y - 11, width: tape, height: 22, transform: `rotate(${tilt} 0 ${-y})`,
+        fill: "#fffdf2", "fill-opacity": .6, stroke: "#000", "stroke-opacity": .07, ...quiet}),
+    ];
+  }
+  const count = Math.max(2, Math.min(8, Math.round(node.height / 110)));
+  return [
+    h("rect", {class: "paper-shadow", x: -x + 3, y: -y + 5, width: node.width, height: node.height, rx: 3, fill: "#000", "fill-opacity": .18, ...quiet}),
+    h("rect", {class: "node-surface paper-sheet", x: -x, y: -y, width: node.width, height: node.height, rx: 3, fill: color, stroke: "#000", "stroke-opacity": .1, "stroke-width": 1}),
+    h("path", {class: "paper-margin", d: `M${-x + 34} ${-y}V${y}`, stroke: graphics.value.paper?.margin ?? "#e2747c", "stroke-width": 1.4, ...quiet}),
+    ...Array.from({length: count}, (_, i) => h("circle", {class: "paper-hole", cx: -x + 15, cy: -y + node.height * (i + .5) / count, r: 5,
+      fill: "#000", "fill-opacity": .24, ...quiet})),
+  ];
+}
+
+function sketchSurface(node, tag, geometry, {fill, frame, empty, mode, locked, frameWidth}) {
+  const paths = boxSketch(node), quiet = {"pointer-events": "none", "aria-hidden": "true"};
+  const width = locked ? frameWidth + 3 : frameWidth, tint = graphics.value.frame?.fillOpacity ?? .18;
+  const strokes = frame === "none" ? [] : paths.strokes.map((d, pass) => h("path", {class: "sketch-stroke", d, fill: "none", stroke: frame,
+    "stroke-width": pass ? width * .8 : width, "stroke-opacity": pass ? .72 : 1, "stroke-linecap": "round", "stroke-linejoin": "round", ...quiet}));
+  return [
+    // A kattintható felület a szabályos alak (láthatatlan); a rajz fölötte, egéresemények nélkül.
+    h(tag, {...geometry, class: "node-surface", fill: empty ? "none" : fill, "fill-opacity": 0, stroke: "none",
+      "pointer-events": empty ? "fill" : undefined, "data-locked-outline": locked ? "" : undefined}),
+    // Kiemelt doboz: tábla színű alap a tónus alatt, hogy az árnyéka ne látsszon át.
+    node.elevated && !empty ? h("path", {class: "sketch-base", d: paths.fill, fill: paint(currentBoard.value?.background, 0), ...quiet}) : null,
+    empty ? null : h("path", {class: "sketch-fill", d: paths.fill, fill,
+      "fill-opacity": mode === "canvas" ? 1 : mode === "translucent" ? tint / 2 : tint, ...quiet}),
+    ...strokes,
+  ];
+}
+
 function elevationShadow(node) {
   if (liquid()) return liquidShadow(node);
+  if (node.elevated && sketchedBox(node) && !["free", "empty"].includes(backgroundMode(node))) {
+    return h("g", {class: "node-shadow", "pointer-events": "none", "aria-hidden": "true"},
+      [h("path", {d: boxSketch(node).fill, transform: "translate(10 16)", fill: "#11172b", "fill-opacity": .28})]);
+  }
   // Képnél a láthatósági mód nem számít: a Kiemelés árnyéka mindig a teljes kép alatt van.
   if (!node.elevated || (!isImage(node) && backgroundMode(node) === "free")) return null;
   const [tag, geometry] = shapeGeometry(node.shape, node.width, node.height);
@@ -447,6 +526,9 @@ function shape(node, linked, dropTarget = false) {
   // Fényudvar: a keret alatt háromszoros vastagságú, áttetsző körvonal (szűrő nélkül).
   const halo = themed.halo > 0 && frame !== "none" ? h(tag, {...geometry, class: "node-halo", fill: "none", stroke: frame,
     "stroke-width": frameWidth * 3, "stroke-opacity": themed.halo, "stroke-linejoin": "round", "pointer-events": "none", "aria-hidden": "true"}) : null;
+  const paperType = paperKind(node);
+  if (paperType) return paperSurface(node, paperType);
+  if (sketchedBox(node)) return sketchSurface(node, tag, geometry, {fill, frame, empty, mode, locked, frameWidth});
   const style = {fill: empty ? "none" : fill, stroke: frame, "fill-opacity": opacity ?? (translucent ? .75 : undefined),
     "pointer-events": empty ? "fill" : undefined, class: "node-surface",
     "stroke-width": locked ? Math.max(6.4, frameWidth + 3) : frameWidth,
@@ -4309,7 +4391,9 @@ createApp({
             nameEdit.value === node.id ? [h("header", {class: "node-file-name"}, [renderFileNameEdit(node)])]
               : file.showFilename !== false ? [h("header", {class: "node-file-name"}, [renderFileDownload(node)])] : []),
           // A tartalom szövegszíne a dobozé (a megjelenítőben: data-file-ink, viewer.js); --tn-paper: a táblázatszerkesztő háttere.
-          h("div", {class: ["node-file", "node-" + root], style: {height: node.height + "px", color: paint(node.textColor, 1), "--tn-paper": surfaceColor(node)}},
+          h("div", {class: ["node-file", "node-" + root, paperKind(node) && "paper-" + paperKind(node)], style: {height: node.height + "px",
+            color: paperKind(node) ? paperInk(node) : paint(node.textColor, 1), "--tn-paper": paperKind(node) ? paperColor(node, paperKind(node)) : surfaceColor(node),
+            "--paper-rule": graphics.value.paper?.rule, "--rule": Math.round((node.fontSize ?? 13) * 1.6) + "px"}},
             [h("div", {class: "node-body"}, [content])]),
           below ? h("div", {class: "node-below"}, [marker, comment]) : null,
         ]),
@@ -4513,7 +4597,7 @@ createApp({
           elevationShadow(drawn),
           shape(drawn, !!destination, ui.drop),
           // Saját kijelölés: világosabb felület, szűrő nélkül (app.css .selection-own-tint).
-          ownSelected && isBox(node) && !ui.drop && !["free", "empty"].includes(backgroundMode(node))
+          ownSelected && isBox(node) && !ui.drop && !["free", "empty"].includes(backgroundMode(node)) && !sketchedBox(node)
             ? h(boxShapeGeometry(drawn)[0], {...boxShapeGeometry(drawn)[1], "data-editor-only": "", class: "selection-own-tint", "aria-hidden": "true"}) : null,
           node.file ? renderFileBox(node, destination) : node.type === "chart" ? renderChartBox(node) : null,
           junctionLabel,
@@ -4685,6 +4769,10 @@ createApp({
             "stroke-opacity": .4, "stroke-width": paint.lineWidth + 8, "stroke-linecap": "round", "stroke-linejoin": "round",
             "pointer-events": "none", "clip-path": clipPath}) : null,
           h("path", {class: "wire-line", ...stroke, ...(taper ? {fill: shaftColor} : {stroke: shaftColor}), "pointer-events": "visiblePainted", "clip-path": clipPath}, animation.shaft ? [animation.shaft] : undefined),
+          // Szabadkézi téma: a vonal második, kissé elcsúsztatott, halványabb húzása (sketch.js sketchShift).
+          sketching() ? h("path", {class: "wire-sketch", ...stroke, ...(taper ? {fill: shaftColor, "fill-opacity": .4} : {stroke: shaftColor, "stroke-opacity": .5}),
+            transform: "translate(" + sketchShift(sketchSeed(edge.id), sketching().roughness ?? 1.2).join(" ") + ")",
+            "pointer-events": "none", "aria-hidden": "true", "clip-path": clipPath}) : null,
           renderArrow(ends.source, color, animatedArrows),
           renderArrow(ends.target, color, animatedArrows),
           animation.dot ?? null,
@@ -4866,6 +4954,8 @@ createApp({
         // Látványcsomag: lassan úszó fényfoltok a vászon alatt (app.css .canvas-aurora); csak a transzformjuk animált.
         liquid() ? h("div", {class: "canvas-aurora", "aria-hidden": "true", "data-editor-only": "",
           style: {"--fx-a": paint(4, 4), "--fx-b": paint(5, 5), "--fx-c": paint(7, 7)}}, [h("i"), h("i"), h("i")]) : null,
+        // Szabadkézi téma: a tábla letörölt filcnyomai (álló, festés után nem változik; app.css .canvas-smudge).
+        sketching() ? h("div", {class: "canvas-smudge", "data-dark": darkBoard() ? "" : undefined, "aria-hidden": "true", "data-editor-only": ""}) : null,
         perfOptions.grid === "separate" ? h(GridLayer) : null,
         perfOptions.grid === "css" ? h("div", {class: "canvas-grid-css", ref: gridElement, "aria-hidden": "true", "data-editor-only": ""}) : null,
         perfOptions.grid === "draw" ? h("canvas", {class: "canvas-grid-css canvas-grid-draw", ref: gridElement, "aria-hidden": "true", "data-editor-only": ""}) : null,
@@ -6010,7 +6100,8 @@ createApp({
         : "";
       return [
         h("div", {class: "editor-workspace", "data-glass": graphics.value.glass ? mode.value : undefined,
-          "data-effects": graphics.value.effects, style: {
+          "data-effects": graphics.value.effects, "data-sketch": sketching() ? "" : undefined, style: {
+          ...(sketching() ? {"--sketch-select": selectionTint()} : {}),
           // A látványcsomag kijelölés- és kiemelésszíne (saját szín, illetve a paletta jelzőszíne).
           ...(liquid() ? {"--fx-select": selectionTint(), "--fx-accent": paint(4, 4)} : {}),
           // Témából vastagított keretnél a saját kijelölés kerete ahhoz mérten vastagabb (app.css .own-selected).
