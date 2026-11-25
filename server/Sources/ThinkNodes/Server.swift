@@ -1279,6 +1279,20 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         } catch let error as Abort where error.status == .locked {
             return unlockPage(req, path: path, identity: identity, attachment: name)
         }
+        // `highlight=<kiterjesztés>`: a kódfájl vásznon megjelenő eleje színezett HTML-ként (a szerkesztő doboza kéri).
+        // 204: a kiterjesztéshez nincs nyelv, vagy a fájl nem szöveg – a doboz színezetlen marad.
+        if let ext = req.query[String.self, at: "highlight"] {
+            let html = try await req.application.threadPool.runIfActive { () -> String? in
+                guard let data = try? Data(contentsOf: file), let text = String(data: data, encoding: .utf8) else { return nil }
+                return highlightedCode(String(text.prefix(filePreviewLimit)), ext: ext)
+            }
+            guard let html else { return Response(status: .noContent, headers: ["Cache-Control": "no-store"]) }
+            let result = response(html, type: "text/html; charset=utf-8")
+            result.headers.replaceOrAdd(name: "X-Content-Type-Options", value: "nosniff")
+            result.headers.replaceOrAdd(name: "Content-Security-Policy", value: "sandbox; default-src 'none'")
+            result.headers.replaceOrAdd(name: .cacheControl, value: "no-store")
+            return result
+        }
         let result = try await req.fileio.asyncStreamFile(at: file.path)
         result.headers.replaceOrAdd(name: .contentDisposition, value: "attachment; filename*=UTF-8''" + encodeQuery(file.lastPathComponent))
         result.headers.replaceOrAdd(name: .contentType, value: "application/octet-stream")

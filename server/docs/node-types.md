@@ -164,6 +164,14 @@ Importált szöveges fájl: minden nem bináris fájl (UTF-8, NUL bájt nélkül
 - A szöveg másolata a munkalapon is tárolódik (`text`); a panel Mentés / Újratöltés gombja írja vissza a fájlba, illetve olvassa be onnan.
 - Panel: Cím (+ elrejtés), Fájlnév, Megjelenés (háttér, kiemelés, fájlnév mutatása), Szöveg (szerkesztő, sorkizárás, mentés, újratöltés).
 
+**Kódszínezés és dobozon szerkesztés (2026-11-25):**
+- A `code` doboz sorai tördelődnek. A `.json` és a `.css` színezve jelenik meg; a színezést a szerver készíti
+  (`Sources/ThinkHighlight`, saját könnyű elemző, nyelvenként egy fájl), a kliens a kész HTML-t mutatja
+  (`<span class="hl-…">`, színek: `app.css`). A szerkesztő a `GET /api/attachment/…&highlight=<kiterjesztés>` címről kéri.
+- Dobozon szerkesztés: a szövegfájl (`.txt`, `.md`, kód) a vásznon szerkeszthető, a panelen nincs szövegmező.
+  Dupla kattintás nyitja (Alt-tal a panel), Esc vagy a doboz elengedése zárja; közben sima szöveg látszik.
+  Nagy fájl (256 KB fölött) továbbra is külön ablakban szerkeszthető.
+
 **Döntések:**
 1. **Felismerés tartalom alapján:** ami UTF-8 és nincs benne NUL bájt, az `text`. A kiterjesztés csak a megjelenítést választja ki.
 2. **Megjelenítés:** marad a HTML-es lap. Alkategóriák már az első változatban:

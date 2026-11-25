@@ -18,6 +18,7 @@ Kapcsolók:
 
 Témák:
   table      Táblázatmotor (ThinkTable, Public/table, közös tesztesetek)
+  highlight  Kódszínezés (ThinkHighlight)
   markdown   Vászon-markdown és szövegdobozok
   editor     Szerkesztő (Public/*.js) – gestures.mjs
   render     SVG-renderelés és témák
@@ -51,6 +52,7 @@ js_files[markdown]="canvas-markdown.mjs"
 js_files[editor]="gestures.mjs text-flow.mjs wires.mjs"
 js_files[render]="text-flow.mjs wires.mjs"
 swift_files[render]="ThinkNodesTests/RenderingTests.swift ThinkNodesTests/ThemeTests.swift"
+swift_files[highlight]="ThinkHighlightTests/*.swift"
 swift_files[worksheet]="ThinkNodesTests/WorksheetTests.swift"
 swift_files[collab]="ThinkNodesTests/CollaborationTests.swift"
 swift_files[access]="ThinkNodesTests/AccessTests.swift"
@@ -60,7 +62,7 @@ swift_files[package]="ThinkNodesTests/ProjectPackageTests.swift"
 js_files[package]="package-upload.mjs"
 js_files[chart]="chart.mjs"
 swift_files[link]="ThinkNodesTests/LinkPreviewTests.swift"
-all_topics="table markdown editor render worksheet collab access files web package chart link core"
+all_topics="table highlight markdown editor render worksheet collab access files web package chart link core"
 
 # Módosított fájl (a server/ mappához képest) → témák. Üres eredmény: nincs hozzá teszt (dokumentáció, ikonok…).
 topics_for() {
@@ -75,6 +77,7 @@ topics_for() {
         Tests/Editor/*|Public/*.js) echo editor ;;
         Sources/*/Rendering.swift|Sources/*/Theme.swift|Public/themes/*|docs/theme.schema.json) echo render ;;
         Tests/ThinkNodesTests/RenderingTests.swift|Tests/ThinkNodesTests/ThemeTests.swift) echo render ;;
+        Sources/ThinkHighlight/*|Tests/ThinkHighlightTests/*) echo "highlight render" ;;
         Sources/*/Collaboration.swift|Sources/*/PageUpdates.swift) echo "collab access" ;;
         Tests/ThinkNodesTests/CollaborationTests.swift) echo collab ;;
         Tests/ThinkNodesTests/AccessTests.swift) echo access ;;

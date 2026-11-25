@@ -1,5 +1,19 @@
 # Változások
 
+## 2026-11-25 – Kódszínezés (JSON, CSS) és dobozon szerkesztés
+
+- **Kódszínezés:** a `.json` és a `.css` kódfájl doboza színezve jelenik meg a szerkesztőben és a megtekintőben. Saját, könnyű elemző (nem nyelvtani elemzés): megjegyzés, szöveg, szám, kulcsszó, kulcs / tulajdonságnév, szelektor, függvény, írásjel. A tévedés legfeljebb rossz szín, a fájl tartalmához a színező nem nyúl.
+- **Külön modul:** `server/Sources/ThinkHighlight` (önálló SwiftPM cél, csak a Foundationtől függ; teszt: `Tests/ThinkHighlightTests`). Új nyelv: egy fájl a modulban (`CodeLanguage`) és egy sor a `CodeHighlight.languages` listában. Most: `JSONLanguage.swift`, `CSSLanguage.swift`.
+- **A szerver színez, a kliens megjelenít:** a kész HTML a fájl tartalma szerint gyorsítótárazva (`highlightedCode`, `Rendering.swift`), így csak változáskor készül újra. A szerkesztő a doboz fájljához a `GET /api/attachment/<lap>?name=…&highlight=<kiterjesztés>` címről kéri (204: nincs hozzá nyelv). A fájl első 100 000 bájtja kap színt (`colouredLimit`), a többi sima szöveg.
+- **Színek:** hat szín a doboz szövegszínéhez keverve (`.hl-*`, `app.css`), így világos és sötét háttéren is olvasható, témától függetlenül.
+- **Tördelés:** a kódfájl sorai tördelődnek (eddig vízszintesen görgettek); sorszám nincs.
+- **Dobozon szerkesztés (új fogalom):** a szövegfájl (`.txt`, `.md`, kód) a vásznon, a doboz helyén szerkeszthető. Dupla kattintás nyitja (Alt-tal a tulajdonságpanel), Esc vagy a doboz elengedése zárja. Közben sima szöveg látszik; a formázott / színezett nézet bezáráskor, a mentés után tér vissza. Kódfájlban a Tab két szóközt ír, az Enter megtartja a sor behúzását.
+- **Panel:** a szövegfájlok szövegmezője megszűnt; helyette „Szerkesztés a dobozon” gomb. Marad a betűméret, a szövegszín, a mentés állapota (kódnál a NAGYBETŰS kapcsoló nincs). Nagy fájlnál (256 KB fölött) változatlanul a külön ablakos szerkesztés.
+- **Mentés:** a doboz elengedése előtt a függő fájlmentés lefut (`saveFileText`, `selectNode`), így a `file.rev` akkor is lép, ha a szerkesztést máshová kattintva hagyják el – a többi résztvevő ebből tölti újra a fájlt. (A táblázat / CSV cellaszerkesztésére is érvényes.)
+- Tesztek: `test.sh highlight` (5 teszt: JSON, CSS, HTML-védés, hibás bemenet, nagy fájl); `test.sh --swift render`, `--js editor` rendben.
+- Safariban kipróbálva (`projects/test-container`): behúzott `demo.json` és `demo.css` színes, a sorok tördelődnek; dupla kattintásra szövegmező nyílik fókusszal, gépelés után Esc-re a doboz mentve, újraszínezve jelenik meg. A megtekintő oldalon a színezett szakaszok megvannak.
+- Szerverkód változott: release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – Egységes konténer-fogalom: konténer az, amiben éppen van objektum
 
 - **Szabály:** konténer az a doboz, amiben éppen van másik objektum (van, aminek ő a szülője). Eddig kétféle fogalom élt: a tárolt `container` jelző (a doboz kiürülve is konténer maradt) – ezt használta a rétegsorrend, a csomópont ejtése, a befogás, a panel és a szövegkörbefuttatás – és a „van benne doboz” – ezt a nyíl rárugrása. Most mindenhol az utóbbi érvényes.

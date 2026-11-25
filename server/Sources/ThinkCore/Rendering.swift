@@ -1,4 +1,5 @@
 import Foundation
+import ThinkHighlight
 import ThinkTable
 import Vapor
 import cmark_gfm
@@ -47,7 +48,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/lib/d3-zoom.js?v=1"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=64"></script>
+        <script type="module" src="/editor.js?v=65"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -58,7 +59,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=36">
+          <link rel="stylesheet" href="/app.css?v=37">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -978,9 +979,21 @@ func parseCSV(_ source: String, separator: Character = ",") -> [[String]] {
     return rows.filter { !($0.count == 1 && $0[0].isEmpty) }
 }
 
+/// Kódfájl színezett HTML-je (ThinkHighlight modul) a tartalom szerint gyorsítótárazva: a színezés csak a fájl
+/// változásakor készül újra. `nil`: a kiterjesztéshez nincs nyelv, a szöveg színezetlenül jelenik meg.
+package func highlightedCode(_ text: String, ext: String) -> String? {
+    guard CodeHighlight.supports(ext) else { return nil }
+    return RenderedTables.code.html(for: ext.lowercased() + "\u{0}" + text) { CodeHighlight.html(text, ext: ext) ?? escaped(text) }
+}
+
+/// A fájl vásznon megjelenő eleje (karakter); a szerkesztő ugyanennyit mutat (editor.js renderFileText).
+package let filePreviewLimit = 200_000
+
 /// Táblázat dobozok kész HTML-je a `.tntable` fájl szövege szerint (a legutóbb használt néhány táblázat).
 final class RenderedTables: @unchecked Sendable {
     static let shared = RenderedTables()
+    /// Színezett kódfájlok (highlightedCode): külön tár, hogy a táblázatokat ne szorítsa ki.
+    static let code = RenderedTables()
     private let lock = NSLock()
     private var entries: [String: String] = [:]
     private var order: [String] = []      // a legrégebben használt elöl
@@ -1014,7 +1027,7 @@ final class RenderedTables: @unchecked Sendable {
 /// Szövegfájl tartalmának HTML-je a vásznon: `.md` formázva, `code` egyenközű, `csv` táblázat, egyéb egyszerű szöveg.
 func fileTextHTML(_ node: Idea, text: String?) -> String {
     guard let text else { return "<p class=\"muted\">…</p>" }
-    let preview = String(text.prefix(200_000))
+    let preview = String(text.prefix(filePreviewLimit))
     let ext = (node.file?.filename.map { ($0 as NSString).pathExtension } ?? "").lowercased()
     switch node.type {
     case "table":
@@ -1032,7 +1045,7 @@ func fileTextHTML(_ node: Idea, text: String?) -> String {
         let body = rows.dropFirst().map { "<tr>" + $0.map { "<td>\(escaped($0))</td>" }.joined() + "</tr>" }.joined()
         return "<table class=\"node-csv\"><thead>\(header)</thead><tbody>\(body)</tbody></table>"
     case "code":
-        return "<pre class=\"node-code\"><code>\(escaped(preview))</code></pre>"
+        return "<pre class=\"node-code\"><code>\(highlightedCode(preview, ext: ext) ?? escaped(preview))</code></pre>"
     default:
         if ext == "md" || ext == "markdown" {
             return "<div class=\"formatted-text\(node.justified == true ? " justified-text" : "")\">\(markdownHTML(preview))</div>"

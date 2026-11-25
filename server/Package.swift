@@ -20,6 +20,8 @@ let package = Package(
     targets: [
         // Táblázat doboz (docs/EXCEL.md): Vapor-független modul, a natív kliens is használhatja.
         .target(name: "ThinkTable"),
+        // Kódszínezés (docs/node-types.md, code): Vapor-független modul; nyelvenként egy fájl.
+        .target(name: "ThinkHighlight"),
         // Mag: munkalap-modell és tároló, renderelés, témák, prezentációk, csomagok. A modulhatáron átlátszó
         // deklarációk `package` láthatóságúak. Külön modul, hogy a szerverréteg módosításakor a release build
         // ne fordítsa újra (lásd README, „Szkriptek”).
@@ -27,6 +29,7 @@ let package = Package(
             name: "ThinkCore",
             dependencies: [
                 "ThinkTable",
+                "ThinkHighlight",
                 .product(name: "Vapor", package: "vapor"),
                 .product(name: "cmark-gfm", package: "swift-cmark"),
                 .product(name: "Crypto", package: "swift-crypto"),
@@ -51,6 +54,7 @@ let package = Package(
             name: "ThinkNodesTests",
             dependencies: ["ThinkNodes", "ThinkCore", .product(name: "VaporTesting", package: "vapor")]
         ),
-        .testTarget(name: "ThinkTableTests", dependencies: ["ThinkTable"])
+        .testTarget(name: "ThinkTableTests", dependencies: ["ThinkTable"]),
+        .testTarget(name: "ThinkHighlightTests", dependencies: ["ThinkHighlight"])
     ]
 )

@@ -917,6 +917,11 @@ createApp({
         return await enqueue(async () => {
           if (ticket !== selectionRequest) return false;
           if (held.value !== id || heldEdge !== edge) {
+            // A doboz elengedése előtt a függő fájlmentés lefut: a `file.rev` csak a fogott dobozon léptethető,
+            // és a többi résztvevő ebből tudja, hogy a fájl megváltozott.
+            if (held.value && pendingFileSaves.has(held.value)) {
+              try { await saveFileText(held.value); } catch (error) { problem.value = error.message; }
+            }
             if (dirty.value) await commit();
             const state = await live.select(id, edge);
             heldEdge = edge;
@@ -1259,7 +1264,7 @@ createApp({
     // transzformált réteg alatt a Safari a foreignObject minden változására a teljes réteget újrafesti (táblázatgörgetés:
     // 17 fps a 40 helyett), ezért ilyenkor nincs transzform – cserébe ott a pásztázás indulása akad meg egy pillanatra.
     const htmlTyping = ref(false), mediaPlaying = ref(0);
-    const htmlBusy = computed(() => !!tableEdit.value || !!editingObject.value || htmlTyping.value || mediaPlaying.value > 0);
+    const htmlBusy = computed(() => !!tableEdit.value || !!textEdit.value || !!editingObject.value || htmlTyping.value || mediaPlaying.value > 0);
     // A médiaesemények nem buborékolnak: elfogási fázisban figyeljük a vászon hanglejátszóit.
     const playing = new Set();
     for (const type of ["play", "pause", "ended", "emptied"]) document.addEventListener?.(type, event => {
@@ -3135,20 +3140,114 @@ createApp({
       htmlTyping.value = true;
       const key = fileTextKey(node);
       fileTexts.value = new Map(fileTexts.value).set(key, text);
+      unsavedTexts.add(key);
       fileSaveState.value = new Map(fileSaveState.value).set(node.id, "Mentés…");
       clearTimeout(pendingFileSaves.get(node.id));
-      pendingFileSaves.set(node.id, setTimeout(() => transfer(async () => {
-        pendingFileSaves.delete(node.id);
-        const current = nodeMap.value.get(node.id);
-        if (!current?.file) return;
-        const latest = fileTexts.value.get(fileTextKey(current)) ?? text;
-        await checked(await fetch(attachmentURL(fileSheet(path, current.file), current.file.asset), {method: "PUT",
-          headers: {"X-CSRF-Token": csrf, "Content-Type": "text/plain; charset=utf-8"}, body: latest}));
-        const rev = latestRev(current.file) + 1;
-        fileTexts.value = new Map(fileTexts.value).set(fileTextKey(current, rev), latest);
-        if (held.value === current.id) updateItem(current, "file", {...current.file, rev});
-        fileSaveState.value = new Map(fileSaveState.value).set(node.id, "Mentve");
-      }), delay));
+      pendingFileSaves.set(node.id, setTimeout(() => transfer(() => saveFileText(node.id)), delay));
+    }
+    // A doboz fájljának mentése most (a késleltetett mentés helyett is: szerkesztés vége, a doboz elengedése).
+    async function saveFileText(id) {
+      clearTimeout(pendingFileSaves.get(id));
+      pendingFileSaves.delete(id);
+      const current = nodeMap.value.get(id);
+      if (!current?.file) return;
+      const key = fileTextKey(current);
+      const latest = fileTexts.value.get(key);
+      if (latest == null) return;
+      await checked(await fetch(attachmentURL(fileSheet(path, current.file), current.file.asset), {method: "PUT",
+        headers: {"X-CSRF-Token": csrf, "Content-Type": "text/plain; charset=utf-8"}, body: latest}));
+      // Ha a mentés alatt tovább gépeltek, a következő mentés zárja le; addig a szöveg mentetlennek számít.
+      if (fileTexts.value.get(key) === latest && !pendingFileSaves.has(id)) unsavedTexts.delete(key);
+      dropHighlights(key);
+      const rev = latestRev(current.file) + 1;
+      fileTexts.value = new Map(fileTexts.value).set(fileTextKey(current, rev), latest);
+      if (held.value === current.id) updateItem(current, "file", {...current.file, rev});
+      fileSaveState.value = new Map(fileSaveState.value).set(id, "Mentve");
+    }
+
+    // Kódszínezés (docs/node-types.md, code): a szerver színez (Sources/ThinkHighlight), a doboz a kész HTML-t
+    // mutatja. Kulcs: fájlváltozat + kiterjesztés; érték: HTML, "" = nincs színezés, null = töltődik.
+    // A helyben módosított, még nem mentett szöveg színezetlen: a szerver a mentett fájlt látja.
+    const fileHighlights = shallowRef(new Map());
+    const unsavedTexts = new Set();
+    function dropHighlights(key) {
+      const next = new Map([...fileHighlights.value].filter(([name]) => !name.startsWith(key + "/")));
+      if (next.size !== fileHighlights.value.size) fileHighlights.value = next;
+    }
+    async function loadHighlight(key, ext) {
+      const name = key + "/" + ext;
+      if (fileHighlights.value.has(name)) return;
+      const [source, asset] = JSON.parse(key.slice(0, key.lastIndexOf("#")));
+      fileHighlights.value = new Map(fileHighlights.value).set(name, null);
+      let html = "";
+      try {
+        const result = await fetch(fileURL(path, {source: source ?? undefined, asset}) + "&highlight=" + encodeURIComponent(ext));
+        if (result.status === 200) html = await result.text();
+      } catch { /* színezés nélkül is olvasható */ }
+      if (fileHighlights.value.has(name)) fileHighlights.value = new Map(fileHighlights.value).set(name, html);
+    }
+    function codeHighlight(node, ext) {
+      const key = fileTextKey(node);
+      if (!ext || isCommonFile(node.file) || unsavedTexts.has(key)) return "";
+      const known = fileHighlights.value.get(key + "/" + ext);
+      if (known === undefined) queueMicrotask(() => loadHighlight(key, ext));
+      return known || "";
+    }
+
+    // Dobozon szerkesztés: a szövegfájl (txt, md, kód) a vásznon, a doboz helyén szerkeszthető; a tulajdonságpanelen
+    // nincs külön szövegmező. Dupla kattintás nyitja, Esc vagy a doboz elengedése zárja. Közben sima szöveg látszik,
+    // a formázott / színezett nézet a bezáráskor (mentés után) tér vissza.
+    const textEdit = ref(null);     // a szerkesztett doboz azonosítója
+    async function startTextEdit(node) {
+      if (occupied(node.id) || !online.value) return;
+      hideTooltip();
+      if (!(await selectNode(node.id))) return;
+      const current = nodeMap.value.get(node.id);
+      if (!current?.file) return;
+      if (isCommonFile(current.file)) { problem.value = "A közös könyvtár fájlja csak olvasható."; return; }
+      const text = fileTexts.value.get(fileTextKey(current));
+      if (text == null) { problem.value = "A fájl még nem töltődött be."; return; }
+      if (text.length > largeTextLimit) {
+        problem.value = "Nagy fájl: külön ablakban szerkeszthető (tulajdonságpanel, Text).";
+        openProperties("node", node.id, true);
+        return;
+      }
+      textEdit.value = node.id;
+    }
+    function stopTextEdit() {
+      const id = textEdit.value;
+      if (!id) return;
+      textEdit.value = null;
+      htmlTyping.value = false;
+      if (pendingFileSaves.has(id)) transfer(() => saveFileText(id));
+    }
+    watch(held, id => { if (textEdit.value && textEdit.value !== id) stopTextEdit(); });
+    function insertTyped(area, text) {
+      if (document.execCommand?.("insertText", false, text)) return;
+      area.setRangeText(text, area.selectionStart, area.selectionEnd, "end");
+      area.dispatchEvent(new Event("input", {bubbles: true}));
+    }
+    function textEditKey(event, node) {
+      event.stopPropagation();
+      if (event.key === "Escape") { event.preventDefault(); stopTextEdit(); return; }
+      if (node.type !== "code" || event.isComposing || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      const area = event.target;
+      if (event.key === "Tab") { event.preventDefault(); insertTyped(area, "  "); }
+      else if (event.key === "Enter") {
+        // Az új sor az előző sor behúzásával kezdődik.
+        const line = area.value.slice(0, area.selectionStart).split("\n").pop();
+        const indent = /^[ \t]*/.exec(line)[0];
+        if (indent) { event.preventDefault(); insertTyped(area, "\n" + indent); }
+      }
+    }
+    function renderTextEditor(node, text) {
+      const stop = e => e.stopPropagation();
+      return h("textarea", {key: "edit", class: ["node-text-editor", {"is-code": node.type === "code"}], "aria-label": "Fájl tartalma", value: text,
+        spellcheck: node.type !== "code", autocapitalize: "off", autocomplete: "off",
+        onInput: event => { const current = nodeMap.value.get(node.id); if (current?.file && held.value === node.id) editFileText(current, event.target.value); },
+        onKeydown: event => textEditKey(event, node), onPointerdown: stop, onMousedown: stop, onTouchstart: stop, onClick: stop, onDblclick: stop,
+        onContextmenu: stop, onWheel: stop, onCopy: stop, onCut: stop, onPaste: stop,
+        onVnodeMounted: ({el}) => el.focus({preventScroll: true})});
     }
 
     // Táblázat doboz (docs/EXCEL.md): olvasó nézet a fájl szövegéből, szerkesztési mód a TableEditor vezérlővel.
@@ -3588,6 +3687,7 @@ createApp({
         text = lastFileTexts.get(node.id);
         if (text == null) return h("p", {class: "muted"}, "…");
       } else lastFileTexts.set(node.id, text);
+      if (textEdit.value === node.id) return renderTextEditor(node, text);
       if (isGrid(node)) {
         tableTick.value;
         if (tableEdit.value?.id === node.id) return renderTableEditor(h, tableEdit.value.editor, {onExit: stopTableEdit, focusGrid: tableFocus.value, onScroll: element => shareScroll(node, element)});
@@ -3610,7 +3710,10 @@ createApp({
           ]);
         });
       }
-      if (node.type === "code") return h("pre", {class: "node-code"}, [h("code", preview)]);
+      if (node.type === "code") {
+        const html = codeHighlight(node, ext);
+        return h("pre", {class: "node-code"}, [html ? h("code", {key: "colour", innerHTML: html}) : h("code", {key: "plain"}, preview)]);
+      }
       if (ext === "md" || ext === "markdown") return h(FormattedText, {source: preview, justified: node.justified});
       return h("pre", {class: ["node-plain", {"justified-text": node.justified}]}, preview);
     }
@@ -3846,6 +3949,8 @@ createApp({
           // Táblázat és CSV: dupla kattintás a cellák szerkesztése (docs/EXCEL.md 6. fejezet); Alt-tal a tulajdonságpanel.
           if (isGrid(node) && !event.altKey) { startTableEdit(node, clickedCell(event, node)); return; }
           if (isGrid(node) || node.type === "chart") { editObject("node", node.id, true); return; }
+          // Szövegfájl: dupla kattintás a dobozon szerkesztés; Alt-tal a tulajdonságpanel.
+          if (isTextFile(node) && !event.altKey) { startTextEdit(node); return; }
           editObject("node", node.id, event.altKey ? "text" : true);
         },
         onContextmenu: event => context(event, "node", node.id),
@@ -4775,7 +4880,8 @@ createApp({
         const key = fileTextKey(single);
         const loaded = fileTexts.value.get(key);
         const justified = single.justified === true;
-        // A CSV tartalma közvetlenül a vásznon szerkeszthető (dupla kattintás), itt nincs szövegszerkesztő.
+        // A tartalom a vásznon, a dobozon szerkeszthető (dupla kattintás), itt nincs szövegszerkesztő.
+        const editingText = textEdit.value === single.id;
         panels.push(group(single.type === "csv" ? "Megjelenítés" : "Text", [
           single.type === "csv" ? null : loaded == null ? h("p", {class: "muted"}, "Betöltés…") :
             // Nagy fájl: az oldalsávon nem szerkeszthető (minden leütés a teljes fájlt mentené és a dobozt újrarajzolná);
@@ -4787,12 +4893,15 @@ createApp({
                 window.open("/edit/" + path + "?text=" + encodeURIComponent(single.id), "_blank", "noopener");
               }), {symbol: "edit", disabled: !online.value, title: "A teljes fájl szerkesztése külön ablakban"}),
             ]) :
-            h("textarea", {"aria-label": "Fájl tartalma", class: ["file-text-editor", {"justified-text": justified}], value: loaded, rows: 10,
-              spellcheck: single.type !== "code", onInput: event => editFileText(single, event.target.value)}),
+            isCommonFile(single.file) ? h("p", {class: "muted"}, "A közös könyvtár fájlja csak olvasható.") : h("div", {class: "stack"}, [
+              propertyTools(button(editingText ? "Szerkesztés vége" : "Szerkesztés a dobozon", () => editingText ? stopTextEdit() : startTextEdit(single),
+                {symbol: "edit", disabled: !online.value})),
+              h("p", {class: "muted"}, "Szerkesztés: dupla kattintás a dobozon, befejezés: Esc."),
+            ]),
           propertyTools(
             numeric(single.fontSize ?? 14, v => change("fontSize", Math.round(v)), 6, 72, {...controlName("Betűméret"), step: 1, clampValue: true}),
             color("Szövegszín", "textColor", 1),
-            uppercaseToggle(nodes, change),
+            single.type === "code" ? null : uppercaseToggle(nodes, change),
             single.type === "text" ? iconToggle("Sorkizárás", justified, () => change("justified", justified ? undefined : true), icon("justify")) : null,
             h("small", {class: "muted", role: "status"}, fileSaveState.value.get(single.id) ?? ""),
           ),

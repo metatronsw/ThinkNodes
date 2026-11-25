@@ -26,6 +26,16 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 
 
 
+# Kódszínezés (server/Sources/ThinkHighlight) és dobozon szerkesztés
+
++ Kész (2026-11-25): JSON és CSS színezés, tördelés, dobozon szerkesztés szövegfájlokra (CHANGES.md).
+- További nyelvek: `.js` / `.mjs` / `.cjs`, `.swift`, `.html` / `.htm` (a beágyazott `<script>` és `<style>` a JS és a CSS elemzőt hívja).
+- A letölthető SVG-ben a színezett szakaszok benne vannak, de szín nélkül: az exportált SVG-ben nincs stíluslap (a fájldobozok tartalma ott eddig is formázatlan). Megoldás lehet: a szükséges szabályok beágyazása az exportba.
+- A közös könyvtár (`@common`) kódfájljai a szerkesztőben színezetlenek (statikus címről töltődnek); a megtekintőben színesek.
+- Dobozon szerkesztés kiterjesztése más dobozokra (sima doboz szövege, megjegyzés); a külön ablakos nagyfájl-szerkesztő színezés nélküli.
+- Szerkesztés közben a szöveg nem színes (döntés: elsőre így); ha zavaró, átlátszó szövegmező a színezett réteg fölött.
+- Szemmel nézendő Safariban: a szövegmező háttere és betűje szerkesztés közben, a kurzor és a görgetés nagyított vásznon, mentetlen szöveg rövid színezetlen állapota bezárás után.
+
 # Google-bejelentkezés
 
 + Kész: belépés Google-fiókkal az admin által hozzárendelt e-mail-cím alapján (README „Google-bejelentkezés”).
