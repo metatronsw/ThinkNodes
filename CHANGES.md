@@ -1,5 +1,13 @@
 # Változások
 
+## 2026-11-25 – Nyilak konténerben: rárugrás csak a szélnél, látható előnézet, vonal a konténerek fölött
+
+- **Rárugrás:** az a doboz, amiben van másik doboz (konténer tartalommal), a nyíl végét csak a széle körüli sávban (kb. 18 képernyőpont befelé, 8 kifelé) vonzza magához; a belsejében a nyíl szabadon áll, vagy a benne lévő dobozokra ugrik. Így a belső dobozból kifelé húzott nyíl nem ragad azonnal a konténerre, és a kívülről a konténer belsejébe húzott nyíl is eléri a belső dobozt (`editor.js snap`). Üres konténer és a sima doboz változatlanul a teljes felületén cél.
+- **Húzott nyíl láthatósága:** az előnézeti vonal világos szegélyt kapott; a kék vonal a sötétkék konténeren belül húzva szinte nem látszott.
+- **Vonal két konténer dobozai között:** a vonalat a második konténer eltakarta (a mai rétegsorrend-váltás mellékhatása: a konténer és a tartalma egy tömb). A vonal most a végpontjai alatt, de minden őket tartalmazó konténer fölött fut; szabad végű vonal konténerből a konténer fölött. Szerkesztő és szerver párban (`editor.js wireLayers`, `Rendering.swift`).
+- Teszt: `wiresBetweenBoxesInDifferentContainersRenderAboveBothContainers`; `test.sh render editor` rendben. Safariban (WebDriver, a test-container másolatán) kipróbálva: Ctrl-húzás belső dobozból a másik konténer belső dobozára – közben nincs rárugrás a konténerekre, a kész vonal látszik mindkét konténer fölött; konténerből a belső dobozra húzva a vonal létrejön.
+- Szerverkód változott: release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – Címsor nem sorkizárt; alulra igazítás körbefuttatásnál; test-container próbaprojekt
 
 - **Címsor:** címsor sosem sorkizárt. Sorkizárt szövegű dobozban a címsor a vízszintes igazítást követi (bal / közép / jobb a 9 gombból), a törzsszöveg marad sorkizárt. Szerkesztő és szerver párban (`geometry.js labelLayout`, `Rendering.swift ideaDrawing`).

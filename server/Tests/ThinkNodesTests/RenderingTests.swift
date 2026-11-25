@@ -332,6 +332,19 @@ import VaporTesting
     #expect(containerOffset < wireOffset && wireOffset < sourceOffset && wireOffset < targetOffset)
 }
 
+@Test func wiresBetweenBoxesInDifferentContainersRenderAboveBothContainers() throws {
+    let first = Idea(id: "first", text: "Első", position: Point(x: 0, y: 0), width: 300, height: 300, container: true)
+    let second = Idea(id: "second", text: "Második", position: Point(x: 500, y: 0), width: 300, height: 300, container: true)
+    let a = Idea(id: "a", text: "A", position: Point(x: 0, y: 0), width: 100, height: 60, parent: first.id)
+    let b = Idea(id: "b", text: "B", position: Point(x: 500, y: 0), width: 100, height: 60, parent: second.id)
+    let edge = Connection(id: "wire", source: a.id, target: ConnectionTarget(node: b.id))
+    let svg = boardSVG(Worksheet(title: "Két konténer", nodes: [a, b, first, second], edges: [edge]), noteBase: "/ket-kontener")
+    let offset = { (id: String) in try #require(svg.range(of: "id=\"object-\(id)\"")).lowerBound }
+    let wire = try #require(svg.range(of: "class=\"wire\"")).lowerBound
+    #expect(try offset("first") < wire)
+    #expect(try offset("second") < wire)
+}
+
 @Test func boxesAboveAContainerAlsoCoverItsContents() throws {
     let container = Idea(id: "container", text: "Konténer", position: Point(x: 0, y: 0),
                          width: 300, height: 300, container: true)

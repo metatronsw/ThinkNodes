@@ -60,4 +60,5 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
   - csak az érintett bekezdések újratördelése és külön `<text>` bekezdésenként (kisebb csere);
   - a `dx` lista rövidítése (az utolsó szóköz utáni nullák elhagyása).
 - Keskeny konténerben a doboz melletti szűk helyre (40 képponttól) is kerül szöveg, szavanként egy sorban; lehetőség: nagyobb legkisebb szélesség, alatta a szöveg a doboz alatt folytatódjon.
+- Nyilak konténerben: a konténerből a saját belső dobozára húzott (beágyazott) vonal a konténer szélétől a dobozig tart; ha a doboz a szél közelében van, a vonal nagyon rövid. Lehetőség: más kiindulópont (pl. a konténer címsora vagy közepe felől).
 

@@ -480,8 +480,14 @@ createApp({
       for (const edge of sceneEdges.value) {
         const source = order.get(edge.source) ?? nodes.length;
         const target = order.get(edge.target.node) ?? nodes.length;
-        const nested = nestingDirection(nodeMap.value.get(edge.source), nodeMap.value.get(edge.target.node));
-        const index = nested ? Math.max(source, target) : Math.min(source, target);
+        const from = nodeMap.value.get(edge.source), to = nodeMap.value.get(edge.target.node);
+        const nested = nestingDirection(from, to);
+        // A vonal a végpontjai alatt, de minden őket tartalmazó konténer fölött fut: két külön konténerben lévő doboz
+        // vonalát egyik konténer sem takarhatja (a konténer és a tartalma egy tömb a sorrendben). Szabad végű vonal
+        // konténerből: a konténer fölött, hogy a belsejébe húzva is látsszon.
+        const above = node => node?.parent ? Math.max(-1, ...ancestors(node, nodeMap.value).map(parent => order.get(parent.id) ?? -1)) + 1 : 0;
+        const loose = !from !== !to && containerIDs.value.has((from ?? to).id) ? order.get((from ?? to).id) + 1 : 0;
+        const index = nested ? Math.max(source, target) : Math.max(Math.min(source, target), above(from), above(to), loose);
         // Adatvonal (táblázat ↔ grafikon): mindig minden objektum mögött van.
         layers[dataLink(edge) ? 0 : index === nodes.length && firstElevated >= 0 ? firstElevated : index].push(edge);
       }
@@ -1914,10 +1920,19 @@ createApp({
       if (inspector.value?.kind === "node" && !nodeMap.value.has(inspector.value.id)) inspectNothing();
     }
 
+    // Dobozok, amelyekben van másik doboz: a nyíl vége csak a szélük közelében ugrik rájuk.
+    const occupiedContainers = computed(() => new Set(sceneNodes.value.map(node => node.parent).filter(Boolean)));
     function snap(point, exclude, releaseFrom, inside) {
-      const padding = 8 / zoomScale.value;
-      const node = orderedNodes.value.findLast(node => node.id !== exclude && (!inside || ancestors(node, nodeMap.value).some(parent => parent.id === exclude)) &&
-        shapeDistance(drawnNode(node.id), point, node.id === releaseFrom ? 0 : padding) <= 1);
+      const padding = 8 / zoomScale.value, band = 18 / zoomScale.value;
+      const node = orderedNodes.value.findLast(node => {
+        if (node.id === exclude || (inside && !ancestors(node, nodeMap.value).some(parent => parent.id === exclude))) return false;
+        const drawn = drawnNode(node.id);
+        if (shapeDistance(drawn, point, node.id === releaseFrom ? 0 : padding) > 1) return false;
+        // Konténer, amiben van doboz: csak a széle körüli sávban cél. A belsejében a nyíl a benne lévő dobozokra ugrik
+        // (vagy szabadon áll), így a belső dobozból kifelé és a kívülről befelé húzott nyíl sem ragad a konténerre.
+        if (!occupiedContainers.value.has(node.id) || node.id === releaseFrom) return true;
+        return shapeDistance(drawn, point, -Math.min(band, drawn.width / 4, drawn.height / 4)) > 1;
+      });
       if (node) return {node: node.id};
     }
 
@@ -4140,7 +4155,11 @@ createApp({
             h(CanvasScene),
             preview.value?.junction ? h("circle", {"data-editor-only": "", cx: preview.value.junction.x, cy: preview.value.junction.y,
               r: 9 / view.value.k, stroke: "#078469", fill: "#b9f3e1", "stroke-width": 2 / view.value.k, "pointer-events": "none"}) : null,
-            shown ? h("g", {"pointer-events": "none"}, [h("path", shown.stroke),
+            // Az előnézeti vonal világos szegélyt kap: a kék vonal sötétkék dobozon (konténeren belül húzva) nem látszott.
+            shown ? h("g", {"pointer-events": "none"}, [
+              h("path", {...shown.stroke, stroke: "#ffffff", "stroke-opacity": .85, "stroke-dasharray": undefined,
+                "stroke-width": (Number(shown.stroke["stroke-width"]) || 2) + 3, "vector-effect": "non-scaling-stroke"}),
+              h("path", shown.stroke),
               renderArrow(shown.ends.source, shown.paint.color), renderArrow(shown.ends.target, shown.paint.color)]) : null,
             gesture.value?.type === "rectangle" ? h("rect", {class: "marquee", ...rectangle(gesture.value.initial,gesture.value.point),
               "stroke-dasharray": rectangleTouches(gesture.value) ? "6 4" : undefined,

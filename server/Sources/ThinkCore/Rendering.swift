@@ -1400,7 +1400,25 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
         let targetLayer = edge.target.node.flatMap { nodeLayers[$0] }
         let sourceIndex = sourceLayer ?? ordered.count
         let targetIndex = targetLayer ?? ordered.count
-        let layer = targetInside || sourceInside ? max(sourceIndex, targetIndex) : min(sourceIndex, targetIndex)
+        // A vonal a végpontjai alatt, de minden őket tartalmazó konténer fölött fut; szabad végű vonal konténerből a
+        // konténer fölött (editor.js wireLayers).
+        func above(_ node: Idea?) -> Int {
+            var top = -1
+            var parent = node?.parent
+            var steps = 0
+            while let id = parent, steps < 64 {
+                top = max(top, nodeLayers[id] ?? -1)
+                parent = nodes[id]?.parent
+                steps += 1
+            }
+            return top + 1
+        }
+        var loose = 0
+        if (sourceNode == nil) != (targetNode == nil), let only = sourceNode ?? targetNode, containers.contains(only.id) {
+            loose = (nodeLayers[only.id] ?? -1) + 1
+        }
+        let layer = targetInside || sourceInside ? max(sourceIndex, targetIndex)
+            : max(min(sourceIndex, targetIndex), above(sourceNode), above(targetNode), loose)
         // Adatvonal: mindig minden objektum mögött van.
         let wireLayer = dataLinks.contains(edge.id) ? 0 : layer == ordered.count ? freeWireLayer : layer
         guard let label else { return (wireLayer, wirePath()) }
