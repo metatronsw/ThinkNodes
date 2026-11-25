@@ -97,3 +97,10 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 
 + Kész (2026-11-25): dobozkeret a témából (`graphics.frame`: vastagság, szín, felület-átlátszatlanság, fényudvar). Hátra: élénk kitöltésű doboz szövegszíne nem igazodik magától; a keretszín csak „auto” vagy a doboz színe lehet.
 + NeonGlow: a Tokió és az Outrun paletta, a megtekintő és az SVG-export szemmel még nincs megnézve.
+
+# KLIENS-TECHNOLÓGIA (server/docs/FUTURE.md „Felmérések”)
+
+- Döntés: WebGL-hibrid vagy natív iOS/macOS kliens (vagy mindkettő, közös Swift-maggal).
+- WebGL: próba csak dobozokkal, vonalakkal és ráccsal, mérés a `p1000` lapon a mostani SVG-hez képest.
+- WASM: előbb mérni, mennyi idő megy JS-számításra (táblázat, kódszínezés) a `tabla` és a `p1000` lapon.
+- Natív: a fejlesztőgép frissíthetősége (macOS 13.7.8 / Xcode 15.2, Intel); `GET /api/session` végpont; Google-átadás az apphoz.

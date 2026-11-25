@@ -1,5 +1,10 @@
 # Változások
 
+## 2026-11-25 – Felmérések a FUTURE.md-ben: WebAssembly, WebGL vászon, natív iOS/macOS kliens
+
+- `server/docs/FUTURE.md` új fejezete („Felmérések: WebAssembly, WebGL és natív kliens”): mit adna a WASM (a szerver változatlan, de a rajzolási szűk keresztmetszeten nem segít; számításra és a Swift/JS kettős kód kiváltására jó), az `editor.js` felosztása és a WebGL-átírás nehéz pontjai (szöveg, HTML-tartalmú dobozok rétegsorrendje, találatvizsgálat), a natív kliens felmérése a mostani kódhoz (újrahasznosítható Swift-modulok, portolandó JS-részek, kis szerveroldali kiegészítések, Core Animation-alapú rajzolás, munkabecslés, a fejlesztőgép korlátai), összevetés.
+- Kód nem változott.
+
 ## 2026-11-25 – Dobozkeret a témából (vastagság, szín, fényudvar); a NeonGlow vastag neon kereteket kap
 
 - **Új témamező: `graphics.frame`** (`Theme.swift Frame`, `editor.js shape`, `Rendering.swift boxSurface`): `width` – a keret vastagsága (0,5–16, alap 1,6); `color: "fill"` – a keret a doboz saját színe, kitöltött dobozon is; `fillOpacity` – a kitöltött felület átlátszatlansága (áttetsző módban a fele); `halo` – fényudvar a keret körül (háromszoros vastagságú, áttetsző körvonal, szűrő nélkül). Leírás: `server/docs/themes.md`, séma: `theme.schema.json`.
