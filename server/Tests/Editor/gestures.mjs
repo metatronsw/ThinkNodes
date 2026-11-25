@@ -526,11 +526,17 @@ await drag(graphic("outside"), 580, -270, 180, 30); await save();
 assert.equal(model("inner").parent, undefined);
 assert.equal(model("child").parent, "inner");
 assert.equal(model("outside").parent, undefined);
+// A kiürült konténer újra sima doboz: mozgatva nem fog be más dobozt, akárhogy fedi.
+assert.equal(isContainer("outer"), false, "an emptied container is a plain box again");
 await drag(graphic("outer"), 440, -270, 330, 30); await save();
-assert.equal(model("outside").parent, undefined, "moving the container still requires more than 50 percent overlap");
-await drag(graphic("outer"), 330, 30, 320, 30, {}, true); await save();
-assert.equal(model("outside").parent, undefined, "canceling the container drag leaves the box outside");
+assert.equal(model("outside").parent, undefined);
 await drag(graphic("outer"), 330, 30, 320, 30); await save();
+assert.equal(model("outside").parent, undefined, "a plain box captures nothing when it is moved over another box");
+// A ráejtett doboztól újra konténer lesz.
+await drag(graphic("outside"), 180, 30, 195, 30); await save();
+assert.equal(model("outside").parent, "outer");
+assert.equal(isContainer("outer"), true);
+await drag(graphic("outside"), 195, 30, 180, 30); await save();
 assert.equal(model("outside").parent, "outer");
 assert.deepEqual(model("outside").position, {x: 180, y: 30});
 await properties("outside");
@@ -555,13 +561,15 @@ await press("Visszavonás"); await save();
 await properties("outside");
 await press("Kiemelés"); await save();
 assert.equal(prop("class", "node-shadow", graphic("outside")), undefined);
-await drag(graphic("outer"), 320, 30, 310, 30); await save();
+await drag(graphic("outside"), 180, 30, 195, 30); await save();
 assert.equal(model("outside").parent, "outer", "turning elevation off allows containment again");
 await press("Visszavonás"); await save();
 await press("Visszavonás"); await save();
 await press("Visszavonás"); await save();
 assert.equal(model("outside").elevated, undefined);
 assert.equal(model("outside").parent, "outer");
+// A dobozt két húzás tette a konténerbe (oda és vissza a helyére): mindkettőt vissza kell vonni.
+await press("Visszavonás"); await save();
 await press("Visszavonás"); await save();
 assert.equal(model("outside").parent, undefined);
 await press("Visszavonás"); await save();
@@ -582,6 +590,10 @@ assert.equal(sheet.edges.at(-1).label, "Új kapcsolat");
 await press("Visszavonás"); await save();
 await press("Visszavonás"); await save();
 
+// A további lépések a (közben kiürült, így sima dobozzá vált) „outer" dobozt a régi, távoli helyén várják.
+const outerPlace = model("outer").position;
+if (outerPlace.x !== 440 || outerPlace.y !== -270) { await drag(graphic("outer"), outerPlace.x, outerPlace.y, 440, -270); await save(); }
+assert.deepEqual(model("outer").position, {x: 440, y: -270});
 const free = endpoint("one", "target");
 assert.ok(["circle", "path"].includes(free.tag));
 assert.ok(["all", "stroke"].includes(free.props["pointer-events"]));
@@ -626,12 +638,12 @@ assert.ok(junctionWires.every(id => edge(id).target.node === junction.id));
 await drag(graphic(junction.id), 400, 230, 440, -270, {}, true); await save();
 assert.ok(junctionWires.every(id => edge(id).target.node === junction.id));
 await drag(graphic(junction.id), 400, 230, 440, -270); await save();
-assert.equal(model(junction.id).parent, "outer", "a junction dropped on a container becomes its child");
-assert.ok(junctionWires.every(id => edge(id).target.node === junction.id), "and keeps its wires");
+// Az „outer" itt már üres, tehát sima doboz: a ráejtett csomópont feloldódik benne.
+assert.equal(model(junction.id), undefined);
+assert.ok(junctionWires.every(id => edge(id).target.node === "outer"));
 await press("Visszavonás"); await save();
 assert.ok(model(junction.id));
 assert.ok(junctionWires.every(id => edge(id).target.node === junction.id));
-toggle("Escape", true); await tick();
 shiftClick(junction.id); await tick();
 const batchJunctionHit = {closest: selector => selector.includes("[data-node]") ? {dataset: {node: junction.id}} : null};
 canvas().props.onPointerdownCapture(event(canvas(), 400, 230, {target: batchJunctionHit}));
@@ -639,8 +651,8 @@ canvas().props.onPointermove(event(canvas(), 440, -270));
 await tick();
 canvas().props.onPointerup(event(canvas(), 440, -270));
 await save();
-assert.equal(model(junction.id).parent, "outer", "a batch-moved junction dropped on a container becomes its child");
-assert.ok(junctionWires.every(id => edge(id).target.node === junction.id));
+assert.equal(model(junction.id), undefined);
+assert.ok(junctionWires.every(id => edge(id).target.node === "outer"));
 await press("Visszavonás"); await save();
 await detachDrag("one", "target", 450, 245, true);
 assert.equal(endpoint("one", "target").props.class, "wire-handle is-attached", "cancel restores the attachment");

@@ -57,7 +57,7 @@ export function rebaseWorksheet(base, local, remote) {
     const visited = new Set([node.id]);
     let parent = node.parent;
     while (parent) {
-      if (visited.has(parent) || present.get(parent)?.type !== "box" || !present.get(parent).container) {
+      if (visited.has(parent) || present.get(parent)?.type !== "box") {
         delete node.parent;
         break;
       }

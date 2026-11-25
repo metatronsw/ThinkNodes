@@ -68,7 +68,7 @@ export function replayChanges(sheet, changes, redo, occupied) {
     let current = node;
     while (current.parent && !checked.has(current.id)) {
       const parent = nodes.get(current.parent);
-      if (parent?.type !== "box" || !parent.container || path.has(current.id)) return null;
+      if (parent?.type !== "box" || path.has(current.id)) return null;
       path.add(current.id);
       current = parent;
     }

@@ -1171,7 +1171,8 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
     var board = board
     for index in board.nodes.indices where board.nodes[index].backgroundMode == .canvas { board.nodes[index].fill = board.backgroundColor }
     // Szövegkörbefuttatás: a konténer szövege kikerüli a közvetlen gyermekdobozait; alapból be, `textFlow: false` kapcsolja ki.
-    let flowing = Set(board.nodes.filter { $0.textFlow != false && $0.isContainer }.map(\.id))
+    let parents = Set(board.nodes.compactMap(\.parent))
+    let flowing = Set(board.nodes.filter { $0.textFlow != false && $0.isBox && parents.contains($0.id) }.map(\.id))
     var obstacles: [String: [TextObstacle]] = [:]
     if !flowing.isEmpty {
         let places = Dictionary(board.nodes.map { ($0.id, $0.position) }, uniquingKeysWith: { first, _ in first })
@@ -1238,7 +1239,8 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
             }
         }
     }
-    let containers = Set(renderedIdeas.filter(\.isContainer).map(\.id))
+    // Konténer: az a doboz, amiben éppen van másik objektum (editor.js containerIDs).
+    let containers = Set(renderedIdeas.compactMap(\.parent))
     // A konténer és a teljes tartalma egy tömb a sorrendben: ami a konténer fölött van és nem a része,
     // az a tartalmát is kitakarja. Testvérek között: előbb a konténerek, aztán a nagyobb doboz.
     // Kiemelt rétegben csak a méret számít (a kisebb takarja a nagyobbat), a konténer-szabály ott nem hat.

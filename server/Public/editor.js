@@ -468,7 +468,14 @@ createApp({
       for (const id of elevated) for (const child of children.get(id) ?? []) elevated.add(child);
       return elevated;
     });
-    const containerIDs = computed(() => new Set(sceneNodes.value.filter(node => isBox(node) && node.container).map(node => node.id)));
+    // Konténer: az a doboz, amiben éppen van másik objektum (van, aminek ő a szülője). Egyetlen fogalom mindenhol:
+    // rétegsorrend, csomópont ejtése, befogás, nyíl rárugrása, szövegkörbefuttatás, panel. A kiürült konténer újra sima
+    // doboz. A tárolt `container` jelző ezt követi (syncContainerFlags), a kód nem belőle dolgozik.
+    const containerIDs = computed(() => {
+      const parents = new Set();
+      for (const node of sceneNodes.value) if (node.parent) parents.add(node.parent);
+      return parents;
+    });
     // Az éppen húzott dobozok (a tartalmukkal együtt): húzás közben a többi doboz fölé kerülnek (containers.js layerOrder).
     const noLift = new Set();
     const liftedNodes = computed(() => {
@@ -580,7 +587,7 @@ createApp({
       const step = gesture.value?.moved ? flowStep : 0;
       const place = value => step ? Math.round(value / step) * step : value;
       const nodes = board.value?.nodes ?? [];
-      const flowing = new Map(nodes.filter(node => node.container && node.textFlow !== false).map(node => [node.id, node]));
+      const flowing = new Map(nodes.filter(node => node.textFlow !== false && containerIDs.value.has(node.id)).map(node => [node.id, node]));
       if (!flowing.size) return noObstacles;
       const found = new Map();
       for (const child of nodes) {
@@ -611,7 +618,7 @@ createApp({
           lastBlocksById.set(node.id, blocks);
           return blocks;
         });
-        const obstacles = computed(() => node.container && node.textFlow !== false ? flowObstacles.value.get(node.id) : undefined);
+        const obstacles = computed(() => node.textFlow !== false ? flowObstacles.value.get(node.id) : undefined);
         layout = computed(() => labelLayout(node, text.value, obstacles.value));
         nodeLayouts.set(node, layout);
       }
@@ -1052,7 +1059,21 @@ createApp({
       if (dropped.size) sheet.edges = sheet.edges.filter(edge => !dropped.has(edge.id));
     }
 
+    // A tárolt `container` jelző kövesse a tényleges állapotot (van-e gyermeke a doboznak): a fájl, a megtekintő és a
+    // régebbi kliensek ebből olvasnak. A módosítással egy visszavonási lépésben íródik.
+    function syncContainerFlags() {
+      const nodes = board.value?.nodes;
+      if (!nodes) return;
+      const parents = new Set();
+      for (const node of nodes) if (node.parent) parents.add(node.parent);
+      for (const node of nodes) {
+        const flag = parents.has(node.id) ? true : undefined;
+        if ((node.container || undefined) !== flag) node.container = flag;
+      }
+    }
+
     function modified() {
+      syncContainerFlags();
       tidyChartLinks();
       if (editingField) fieldChanged = true;
       else recordChanges();
@@ -1917,8 +1938,6 @@ createApp({
       if (inspector.value?.kind === "node" && !nodeMap.value.has(inspector.value.id)) inspectNothing();
     }
 
-    // Dobozok, amelyekben van másik doboz: a nyíl vége csak a szélük közelében ugrik rájuk.
-    const occupiedContainers = computed(() => new Set(sceneNodes.value.map(node => node.parent).filter(Boolean)));
     function snap(point, exclude, releaseFrom, inside) {
       const padding = 8 / zoomScale.value, band = 18 / zoomScale.value;
       const node = orderedNodes.value.findLast(node => {
@@ -1927,7 +1946,7 @@ createApp({
         if (shapeDistance(drawn, point, node.id === releaseFrom ? 0 : padding) > 1) return false;
         // Konténer, amiben van doboz: csak a széle körüli sávban cél. A belsejében a nyíl a benne lévő dobozokra ugrik
         // (vagy szabadon áll), így a belső dobozból kifelé és a kívülről befelé húzott nyíl sem ragad a konténerre.
-        if (!occupiedContainers.value.has(node.id) || node.id === releaseFrom) return true;
+        if (!containerIDs.value.has(node.id) || node.id === releaseFrom) return true;
         return shapeDistance(drawn, point, -Math.min(band, drawn.width / 4, drawn.height / 4)) > 1;
       });
       if (node) return {node: node.id};

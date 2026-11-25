@@ -261,7 +261,8 @@ package struct Idea: Codable, Equatable, Sendable {
     /// junction: a címke elforgatása fokban a középpont körül.
     var angle: Double?
     var parent: String?
-    /// box: konténer (egyszer belehúztak valamit); kiürülve is konténer marad.
+    /// box: konténer jelző. Konténer az a doboz, amiben éppen van másik objektum; a szerkesztő a jelzőt ehhez igazítja
+    /// mentéskor, a rajzolás és az ellenőrzés viszont a tényleges szülő–gyermek kapcsolatból dolgozik (a jelző lehet elavult).
     var container: Bool?
     package var locked: Bool?
     /// konténer: szövegkörbefuttatás, alapból bekapcsolva (nil vagy true); false kapcsolja ki. A konténer saját szövege felülről folyik, és soronként kikerüli a közvetlen
@@ -326,7 +327,6 @@ package struct Idea: Codable, Equatable, Sendable {
               [fill, textColor, border].allSatisfy(validColor),
               link.map({ $0.isValid && has("link") }) ?? true,
               angle.map({ $0.isFinite && isJunction }) ?? true, container != true || isBox,
-              textFlow != true || isContainer,
               !isJunction || (text.count <= 120 && !text.contains("\n")) else { return false }
         guard let kind = NodeTypes.fileKind(type) else { return file == nil }
         guard let file, validImageStem(file.asset), file.filename.map(validImageStem) ?? true,
@@ -546,7 +546,7 @@ package struct Worksheet: Content, Equatable {
             var path = Set<String>()
             var current = node
             while let id = current.parent, !checked.contains(current.id) {
-                guard path.insert(current.id).inserted, let parent = byID[id], parent.isBox, parent.container == true else {
+                guard path.insert(current.id).inserted, let parent = byID[id], parent.isBox else {
                     throw Abort(.unprocessableEntity, reason: "Érvénytelen konténerkapcsolat.")
                 }
                 current = parent

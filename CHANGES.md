@@ -1,5 +1,15 @@
 # Változások
 
+## 2026-11-25 – Egységes konténer-fogalom: konténer az, amiben éppen van objektum
+
+- **Szabály:** konténer az a doboz, amiben éppen van másik objektum (van, aminek ő a szülője). Eddig kétféle fogalom élt: a tárolt `container` jelző (a doboz kiürülve is konténer maradt) – ezt használta a rétegsorrend, a csomópont ejtése, a befogás, a panel és a szövegkörbefuttatás – és a „van benne doboz” – ezt a nyíl rárugrása. Most mindenhol az utóbbi érvényes.
+- **Mi változik a gyakorlatban (csak kiürült konténernél):** a kiürült konténer újra sima doboz. A ráejtett csomópont feloldódik benne (nem a tartalma lesz); a rétegsorrendben a mérete szerint áll, nem a konténerek között legalul; mozgatva nem fog be más dobozt; a panelről eltűnnek a konténergombok (tartalom rögzítése, szövegkörbefuttatás). Ha újra dobozt ejtesz rá, megint konténer.
+- **Tárolt jelző:** a `container` mező megmarad a fájlban, de a kód nem belőle dolgozik; a szerkesztő minden módosításkor a tényleges állapothoz igazítja (`syncContainerFlags`), a módosítással egy visszavonási lépésben. A szerver a rajzoláskor és az ellenőrzéskor a szülő–gyermek kapcsolatból indul ki: a szülőnek doboznak kell lennie (a jelző már nem feltétel), és megszűnt az a szabály, hogy `textFlow: true` csak konténeren állhat.
+- Helye: `editor.js` (`containerIDs`, `syncContainerFlags`; az `occupiedContainers` megszűnt), `editor-history.js`, `collaboration.js` (a szülő érvényessége), `Model.swift` (`validate`), `Rendering.swift` (`containers`, `flowing`).
+- Tesztek: a `gestures.mjs` érintett részei az új szabályhoz igazítva (kiürült konténer nem fog be dobozt; újra konténer lesz, ha dobozt ejtenek rá; üres dobozra ejtett csomópont feloldódik). `test.sh --all` rendben (86 Swift-teszt, minden JS-teszt).
+- Safariban kipróbálva: tartalmas konténerben mozgatott és oda behúzott csomópont a konténer tartalma marad / lesz; a jelzős, de üres konténerre ejtett csomópont feloldódik benne, és a konténer jelzője a mentett fájlból eltűnik.
+- Szerverkód változott: release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – Takarítás a konténer- és vonalátalakítás után (a működés nem változik)
 
 - **Nem használt szűrők és CSS:** törölve az `ownSurface` és `ownWire` fényudvar-fajta (`glow.js`), a `--glow-own-surface` és `--glow-own-frame` CSS-változó (`editor.js`), és a mozgás közbeni szűrőkikapcsoló szabályból a három elavult elem (`app.css`). A doboz felülete és a vonal saját kijelölése már korábban szűrő nélküli lett.
