@@ -38,9 +38,5 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 - **Külön ablakos szövegszerkesztő és csomag-párbeszéd: a kinézet nincs szemmel ellenőrizve** (2026-11-25)
   - Automatizált Safariban a szövegszerkesztő oldal betölt és működik (a mező mérete, állapotsor, mentés gomb), a darabolt feltöltés a böngészőből végigment; képernyőkép nem készült (a kijelző aludt). A folyamatjelző és a „Folytatás” gomb megjelenése kézzel nézendő.
 
-- **Sok szöveget tartalmazó doboz mozgatása és kezelése nagyon lassú** (2026-11-25)
-  - A felhasználó jelezte a konténer-módosítások kipróbálásakor. Akkor a helyi szerver a lassú debug buildből futott, ez lehet az ok; release builddel nincs újra megnézve. A konténer-módosítások a doboz mozgatásának útját nem érintik. Nincs mérve, nincs reprodukálva.
-
-- **Üres vászonra tett új doboz nem látszik, amíg színt nem kap** (2026-11-25)
-  - A felhasználó jelezte. Automatizált Safariban, próbalapon (1-es téma és paletta) nem jött elő: az új doboz megjelenik a 2-es színnel. Kell: melyik lapon / témával történik.
-
+- **Az új doboz ugyanolyan színű, mint a konténer, amibe kerül** (2026-11-25)
+  - Az új doboz mindig a 2-es színt kapja; ha a konténer is 2-es színű (alapértelmezett doboz), a belehelyezett doboz csak a keretéről látszik, amíg más színt nem kap (`projects/b`). Döntés kell: kapjon-e az új / belehúzott doboz automatikusan eltérő színt.

@@ -1,5 +1,11 @@
 # Változások
 
+## 2026-11-25 – Sorkizárt szövegű doboz mozgatása gyorsabb
+
+- **Ok:** a sorkizárás (`Public/justify.js`) a doboz minden újrarajzolásakor – húzás közben képkockánként – újramérte a sorok szélességét (`getComputedTextLength`, kényszerített elrendezés). A `projects/b` lap másolatán a 22 soros, sorkizárt konténer húzása Safariban 30 fps volt (60 képkocka alatt 732 mérés, kb. 1,5 mp).
+- **Javítás:** a sor csak akkor mér újra, ha a tartalma, a kért szélessége vagy a betűje változott (soronkénti kulcs; betűkészlet betöltésekor érvénytelenedik). Ugyanaz a húzás most 54 fps, mérés nélkül.
+- Mérés: automatizált Safari, `Tests/Perf/perf.py` rögzítője, release szerver. `test.sh editor` rendben. Csak kliensoldali változás.
+
 ## 2026-11-25 – Konténer: a saját szöveg kikerüli a benne lévő dobozokat
 
 - **Mit csinál:** a konténer tulajdonságpaneljén (Doboz csoport, rács ikon) „Szöveg körbefuttatása a tartalom körül”. Bekapcsolva a konténer saját szövege felülről folyik, és soronként kikerüli a közvetlen gyermekdobozokat: a sor a doboz mellett, a legszélesebb szabad helyen folytatódik, vagy ha ott túl kevés a hely, a doboz alatt. A gyermekdobozok ott maradnak, ahová kézzel kerültek; a helyük és méretük nem változik.

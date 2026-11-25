@@ -171,3 +171,7 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 - **A bal felső sarokban kódrészlet vagy hibás keret látható** (2026-11-22)
   - Javítva: a felhasználó szerint már nincs jelen; nem történt célzott javítás, a forrását nem azonosítottuk.
+
+- **Sok szöveget tartalmazó (sorkizárt) doboz mozgatása nagyon lassú** (2026-11-25)
+  - Javítva: a sorkizárás húzás közben képkockánként újramérte a sorokat; most csak változáskor mér (`Public/justify.js`). Safari, `projects/b` másolata: 30 → 54 fps.
+
