@@ -3,6 +3,7 @@
 ## 2026-11-25 – Takarítás a konténer- és vonalátalakítás után (a működés nem változik)
 
 - **Nem használt szűrők és CSS:** törölve az `ownSurface` és `ownWire` fényudvar-fajta (`glow.js`), a `--glow-own-surface` és `--glow-own-frame` CSS-változó (`editor.js`), és a mozgás közbeni szűrőkikapcsoló szabályból a három elavult elem (`app.css`). A doboz felülete és a vonal saját kijelölése már korábban szűrő nélküli lett.
+- **Nem használt kód:** törölve a `viewer.js` felesleges importjai (`arrowLength`, `arrowTransform`), az `editor.js` felesleges importjai (`plainFirstLine`, `shapeOutline`) és a sehonnan nem hívott `sessionAction` (a korábbi munkamenet-mentés / visszaállítás függvénye), a `geometry.js` nem használt exportjai (`canvasBounds`, `edgeStyles`, `shapeOutline`), a `glow.js` `glowURL` függvénye és a szerveroldali rajz `nodeLayers` változója (a régi vonalréteg-számításhoz kellett). Megjegyzés: a `sessionAction` törlése után a `checkpointState` / `checkpointRevision` / `checkpointBusy` állapot még megvan (a szerver üzeneteit fogadja), de már semmi nem állítja – ez a régebbi mentési rendszer maradéka, nem ebben a körben került elő.
 
 ## 2026-11-25 – Másik konténerbe áthúzott doboz húzás közben is látszik
 

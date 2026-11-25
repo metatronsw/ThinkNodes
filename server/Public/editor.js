@@ -1,7 +1,7 @@
 import {openPresentation, setWebPublic, webPresentationURL} from "./web-presentations.js";
 import {fetchPage, updateSection, watchPageUpdates} from "./page-updates.js";
 import {bindAudioPlayers} from "./audio-player.js";
-import {assetURL, attachmentURL, checkText, fileSheet, fileURL, isCommonFile, plainFirstLine, sharedFileBox, fileName, fileNameParts, importFile, nodeName, objectURL, pngForClipboard, validImageStem, writeText} from "./canvas-files.js";
+import {assetURL, attachmentURL, checkText, fileSheet, fileURL, isCommonFile, sharedFileBox, fileName, fileNameParts, importFile, nodeName, objectURL, pngForClipboard, validImageStem, writeText} from "./canvas-files.js";
 import {hasTrait, rootType, traits, typeLabel} from "./node-types.js";
 import {chooseRemoval, openFileBrowser} from "./file-browser.js";
 import {chooseZip, exportPackage, importPackage, isPackageZip} from "./package.js";
@@ -14,7 +14,7 @@ import {justifyRows, justifyShifts} from "./justify.js?v=7";
 import {canvasMarkdown, canvasMarkdownAvailable} from "./canvas-markdown.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, reverseWidth, wireRoutes, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=31";
+import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, reverseWidth, wireRoutes, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=31";
 
 import {ancestors, layerOrder, overlapFraction} from "./containers.js?v=11";
 import {glowFilter, glowId, glowReach, glowVNode} from "./glow.js";
@@ -2796,27 +2796,6 @@ createApp({
         problem.value = error.message;
         if (!error.status || error.status >= 500) setTimeout(() => { if (dirty.value) save(); }, 1200);
       }
-    }
-
-    async function sessionAction(action) {
-      if (!online.value || checkpointBusy.value || gesture.value) return;
-      if (action === "resign" && !confirm("Visszaállítod a közös munkalapot a legutóbbi Mentéshez vagy a munkamenet elejéhez? Ez minden résztvevő vásznára érvényes. A visszaállítás során eltűnő fájlok a lomtárba kerülnek.")) return;
-      checkpointBusy.value = true;
-      problem.value = "";
-      const expectedCheckpoint = checkpointRevision;
-      const observedRevision = baseline.revision;
-      try {
-        await enqueue(async () => {
-          if (action === "checkpoint") await commit();
-          const revision = action === "resign" ? observedRevision : baseline.revision;
-          const state = await live.checkpoint(action, revision, expectedCheckpoint);
-          receiveCheckpoint(state);
-          if (action === "resign") await refresh();
-        });
-      } catch (error) {
-        problem.value = error.message;
-        if (error.status === 412) await enqueue(refresh).catch(() => {});
-      } finally { checkpointBusy.value = false; }
     }
 
     // Mentett állapotok: a lap `.version` mappájában sorszámozott, időbélyeges .thnode másolatok.

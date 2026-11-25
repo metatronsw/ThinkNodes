@@ -21,10 +21,6 @@ export function glowId(kind, color, glow = 3) {
   return ("glow-" + kind + "-" + (kind === "peer" ? glow + "-" : "") + color).replace(/[^\w-]/g, "_");
 }
 
-export function glowURL(kind, color, glow) {
-  return "url(#" + glowId(kind, color, glow) + ")";
-}
-
 // A szűrő leírása {tag, attrs, children} fában; a szerkesztő Vue-csomópontot, a megtekintő DOM-ot épít belőle.
 // A szűrőterület a befoglaló téglalaphoz képest arányos: a kis csomópontnak (12 px) is maradjon hely a glow-nak.
 // Vízszintes vagy függőleges vonal téglalapja nulla vastag, ezért a vonalak a glow csoportba láthatatlan

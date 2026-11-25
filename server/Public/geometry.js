@@ -49,13 +49,6 @@ const labelRatios = {
 };
 export const shapeLabelRatios = shape => labelRatios[displayShape(shape)] ?? [.94, .94, .94];
 
-export const edgeStyles = {
-  arrow: "Egyirányú nyíl",
-  both: "Kétirányú nyíl",
-  dashed: "Szaggatott nyíl",
-  rope: "Íves kötél",
-};
-
 export function automaticBorder(fill) {
   return "#" + [1, 3, 5].map(i => Math.floor(parseInt(fill.slice(i, i+2), 16)*2/3).toString(16).padStart(2,"0")).join("");
 }
@@ -87,17 +80,6 @@ export function shapeGeometry(shape, width, height, padding = 0) {
   const vertices = polygonVertices(shape, x, y);
   if (vertices) return ["polygon", {points: vertices.map(vertex => vertex.join(",")).join(" ")}];
   return ["rect", {x: -x, y: -y, width: 2*x, height: 2*y, rx: shape === "rounded" ? 12 + padding : 0}];
-}
-
-export function shapeOutline(tag, geometry) {
-  if (tag === "polygon") return "M" + geometry.points + "Z";
-  if (tag === "ellipse") {
-    const {rx, ry} = geometry;
-    return `M${-rx} 0A${rx} ${ry} 0 1 0 ${rx} 0A${rx} ${ry} 0 1 0 ${-rx} 0Z`;
-  }
-  const {x, y, width, height, rx: r} = geometry;
-  const right = x + width, bottom = y + height;
-  return `M${x+r} ${y}H${right-r}Q${right} ${y} ${right} ${y+r}V${bottom-r}Q${right} ${bottom} ${right-r} ${bottom}H${x+r}Q${x} ${bottom} ${x} ${bottom-r}V${y+r}Q${x} ${y} ${x+r} ${y}Z`;
 }
 
 export function selectionOutline(shape, width, height) {
@@ -506,41 +488,6 @@ export function taperedArc({from, to, arc}, {width, dash, startArrow, endArrow})
     return "M " + [...side(1), ...side(-1).reverse()].join(" L ") + " Z";
   }
   return {outline, ends: {source, target}};
-}
-
-export function canvasBounds(board) {
-  let halfWidth = 360;
-  let halfHeight = 240;
-  const nodes = new Map(board.nodes.map(node => [node.id, node]));
-  for (const node of board.nodes) {
-    const padding = node.elevated === true ? 84 : 40;
-    halfWidth = Math.max(halfWidth, Math.abs(node.position.x) + (node.extentX ?? node.width / 2) + padding);
-    if (node.type === "junction" && node.text) {
-      const reach = node.width / 2 + 4 + textWidth(node.text, 14);
-      halfWidth = Math.max(halfWidth, Math.abs(node.position.x) + reach + 40);
-      halfHeight = Math.max(halfHeight, Math.abs(node.position.y) + reach + 40);
-    }
-    halfHeight = Math.max(halfHeight, Math.abs(node.position.y) + (node.extentY ?? node.height / 2) + padding);
-  }
-  const routes = wireRoutes(board.edges);
-  for (const edge of board.edges) {
-    const geometry = edgeGeometry(edge, id => nodes.get(id), 0, reverseWidth(edge, routes));
-    for (const {x, y} of geometry.boundsPoints) {
-      halfWidth = Math.max(halfWidth, Math.abs(x) + 40);
-      halfHeight = Math.max(halfHeight, Math.abs(y) + 40);
-    }
-    if (edge.label?.trim()) {
-      const {labelPosition, angle} = geometry;
-      const label = wireLabelLayout(geometry, edge.label, edgePaint(edge), edge.labelInLine);
-      const radius = label.width / 2;
-      const radians = angle * Math.PI / 180;
-      const cosine = Math.cos(radians), sine = Math.sin(radians);
-      const padding = Math.max(28, label.fontSize + 12);
-      halfWidth = Math.max(halfWidth, Math.abs(labelPosition.x - sine * label.y) + Math.abs(cosine) * radius + padding);
-      halfHeight = Math.max(halfHeight, Math.abs(labelPosition.y + cosine * label.y) + Math.abs(sine) * radius + padding);
-    }
-  }
-  return {x: -halfWidth, y: -halfHeight, width: halfWidth * 2, height: halfHeight * 2};
 }
 
 // Becsült betűszélesség em-ben; a böngészőben mért rendszer-, talpas és kézírásos betűkhöz kalibrálva,

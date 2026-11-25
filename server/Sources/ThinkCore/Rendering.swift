@@ -1263,7 +1263,6 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
     }
     ordered += lower.filter { !placed.contains($0.node.id) }.sorted(by: siblings)
     ordered += drawings.filter { elevated.contains($0.node.id) }.sorted(by: bySize)
-    let nodeLayers = Dictionary(uniqueKeysWithValues: ordered.enumerated().map { ($0.element.node.id, $0.offset) })
     let freeWireLayer = ordered.firstIndex { elevated.contains($0.node.id) } ?? ordered.count
     func isInside(_ node: Idea?, _ outer: Idea?) -> Bool {
         guard let outer else { return false }
