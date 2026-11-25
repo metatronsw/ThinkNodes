@@ -1,5 +1,16 @@
 # Változások
 
+## 2026-11-25 – Csomag: darabolt, folytatható feltöltés és közvetlen letöltés; nagy szövegfájl külön ablakban
+
+- **Csomag-mérethatár:** 200 MiB helyett 4 GiB (a ZIP64 nélküli ZIP formátum határa; a saját export tömörítés nélküli), kibontva 8 GiB, 20 000 fájl. Induláskor szabadhely-ellenőrzés.
+- **Feltöltés darabokban:** 8 MiB-os darabok, folyamatjelző a párbeszédablakban. Megszakadt kapcsolatnál a kliens magától újrapróbál (egyre hosszabb szünetekkel), utána „Folytatás” gomb; a kapcsolat visszatértekor magától folytat. A szerver csak a saját folytatási pontjától fogad el adatot, így darab nem kerülhet be kétszer és nem maradhat ki. Az oldal újratöltése vagy a szerver újraindítása után ugyanazt a fájlt kiválasztva onnan folytatódik (24 óráig). Részletek: `server/docs/migration.md`.
+- **Letöltés:** a csomag a szerveren várja a letöltést (egy óráig, csak a készítőjének); a böngésző közvetlenül lemezre tölti, a saját letöltéskezelőjével folytathatóan – korábban az egész csomag a lap memóriájába töltődött.
+- **Nagy szövegfájl (256 KB fölött):** az oldalsávon szövegmező helyett „Szerkesztés külön ablakban” gomb; a külön ablak a teljes fájlt szerkeszti, automatikus mentéssel és ütközésvédelemmel (ha közben más mentett, nem írja felül). A fájl eredeti sorvégei megmaradnak.
+- **Döntések:** a megtekintő görgetése marad; a hozzáférés-kérelmező nem kap levelet; projektek között a beillesztett fájl másolat marad.
+- **Tesztek:** `packageUploadsInChunksAndResumes`, `textFileEditorSavesAndDetectsConflicts` (Swift), `package-upload.mjs` (JS: hálózati hiba, elveszett válasz, folytatás, lejárat). Élő próba a helyi szerveren: letöltés részleges kéréssel, feltöltés két darabban megszakítással, rossz folytatási pontra 409. Automatizált Safariban a szövegszerkesztő oldal és a böngészőből indított darabolt feltöltés működik; képernyőkép nem készült (a kijelző aludt).
+- Nincs kipróbálva: több GB-os csomag, valódi hálózati megszakadás, a párbeszédablak és a szövegszerkesztő kinézete.
+- Szerverkód változott: újrafordítva és újraindítva.
+
 ## 2026-11-25 – Szűkített d3-csomag
 
 - A szerkesztő a teljes d3 (280 KB, tömörítve 93 KB) helyett csak a használt részt kapja: `zoom`, `zoomIdentity`, `select`, `pointer` és a függőségeik – `server/Public/lib/d3-zoom.js`, 55 KB (tömörítve 18,6 KB). A fájl a tárolóban van, a saját szerver adja ki; a `deploy/build.sh` a d3-at már nem tölti le.

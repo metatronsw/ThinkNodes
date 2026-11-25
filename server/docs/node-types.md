@@ -177,8 +177,11 @@ Importált szöveges fájl: minden nem bináris fájl (UTF-8, NUL bájt nélkül
    így nincs szerkesztési ütközés. A szöveg a fájlban van, a panelen szerkesztve automatikusan oda mentődik;
    a Mentés / Újratöltés gomb megszűnik. A munkalapon nincs másolat: gépelés közben néhány másodpercenként
    automatikus mentés, a szerver értesíti a többieket, náluk a doboz újratölti a fájlt.
-5. **Méret:** nincs 100 KB-os határ; a lap mindig görgethető. Nagy fájlnál (határ később) a vásznon az eleje
-   látszik, a szerkesztés külső szerkesztőben történik (későbbi feladat, TODO.md).
+5. **Méret:** nincs 100 KB-os határ; a lap mindig görgethető. Nagy fájlnál (256 KB fölött, `largeTextLimit`) a vásznon
+   az eleje látszik, az oldalsávon szövegmező helyett „Szerkesztés külön ablakban” gomb van. A külön ablak
+   (`/edit/<lap>?text=<doboz>`, `text-editor.js`) a teljes fájlt szerkeszti; mentés gombbal, Ctrl/Cmd+S-sel és gépelés
+   után 2,5 mp-cel magától (`PUT /api/text-file/<lap>?id=<doboz>&rev=N`). A szerver a doboz `file.rev` számlálóját
+   ellenőrzi: ha közben más mentett, nem írja felül (409). A fájl felső határa változatlanul 12 MiB.
 6. **Képességek:** `text` (betűméret, szín, sorkizárás; a félkövér/dőlt/aláhúzott itt nem kell), `comment`, `file`, `surface`, `elevation`, `size`. Link: nem (a kattintás görget).
 7. **Panel:** Fájlnév (+ mutatás) → Text → Megjegyzés → Megjelenés (háttér, kiemelés).
 8. **Színek és keret:** a tartalom szövegszíne a doboz szövegszíne (`textColor`, alapból a paletta 1-es színe), a háttér a doboz

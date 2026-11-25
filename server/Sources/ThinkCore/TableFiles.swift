@@ -48,7 +48,7 @@ extension WorksheetStore {
     }
 
     /// Melléklet tartalma olvasásra, jogosultság-ellenőrzéssel.
-    func attachmentData(_ path: WorksheetPath, named name: String, user: User?, unlocks: Set<String>, limit: Int = 12 * 1024 * 1024) throws -> Data {
+    package func attachmentData(_ path: WorksheetPath, named name: String, user: User?, unlocks: Set<String>, limit: Int = 12 * 1024 * 1024) throws -> Data {
         guard let url = try contents(path, user: user, unlocks: unlocks, named: name).first,
               let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { throw Abort(.notFound) }
         guard size <= limit else { throw Abort(.payloadTooLarge, reason: "A fájl túl nagy.") }

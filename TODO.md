@@ -4,7 +4,8 @@
 + Kész (docs/migration.md „Megvalósítás”): ZIP-export (projekt / részfa / lap, .version, külső fájlok, titkosítás), import főoldalon és allapként.
 + Kész (2026-11-24): a vászonra húzott ThinkNodes-csomag ZIP-et a szerkesztő felismeri, és felajánlja az importot allapként.
 
-+ Projektcsomag mérethatára: most a .web ZIP max. 100 MiB, a .thnode max. 12 MiB, a teljes projekt (képek, .web, .version) ennél jóval nagyobb lehet. Dönteni kell a felső határról (és a kibontott méret/fájlszám korlátjáról); ha több száz MB vagy GB is előfordulhat, streamelt feltöltés és letöltés kell (nem `body.collect` memóriába), plusz folyamatjelző a kliensen.
++ Kész (2026-11-25): csomag-mérethatár 4 GiB (kibontva 8 GiB, 20 000 fájl); darabolt, megszakadás után folytatható feltöltés folyamatjelzővel; a letöltést a böngésző közvetlenül lemezre végzi.
++ Hátra: a darabolt feltöltés kipróbálása valódi, több GB-os csomaggal és megszakított hálózattal (eddig tesztek és kis csomag); a `.web` ZIP (100 MiB) és a `.thnode` (12 MiB) feltöltése továbbra is egyben megy.
 
 
 
@@ -13,13 +14,12 @@
 
 # FILE KEZELÉS
 
-+ Nagy szövegfájl szerkesztése külső szerkesztőben (docs/node-types.md, text típus). A mérethatárt is meg kell adni.
++ Kész (2026-11-25): 256 KB fölötti szövegfájl külön ablakban szerkeszthető (`/edit/<lap>?text=<doboz>`, `text-editor.js`). Hátra: a nagy fájl a vászonhoz is egészben töltődik le (elég lenne az eleje); a külön ablak kinézete szemmel nézendő.
 
 Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 + Kipróbálni két szerkesztővel: törlés („lomtárba, a többi doboz törlődik / üres lesz”) és .web átnevezés, miközben a másik lapot valaki szerkeszti (kijelölt dobozt kihagy, és szól).
 + Visszavonás lomtárba tétel után: a fájl visszaáll (2026-11-24), de a többi lapon a törölt / üres dobozzá alakított dobozok nem állnak vissza. Ehhez a lomtárba tételkor fel kellene jegyezni a többi lap érintett dobozait.
 + A pillangó ikon és az átnevezett fájlnév a többi lapon a következő betöltéskor frissül (a szerver olvasáskor adja); nyitott szerkesztőben azonnali frissítéshez értesítés kellene a többi lapnak.
-+ Másik projektből beillesztett fájldoboz továbbra is új példányt tölt fel (projektek között nincs közös hivatkozás).
 + Törölt projekt visszaállítása más néven (most csak az eredeti néven, ha szabad).
 
 
@@ -31,7 +31,7 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 + Kész: belépés Google-fiókkal az admin által hozzárendelt e-mail-cím alapján (README „Google-bejelentkezés”).
 + Hátra: kipróbálás valódi Google OAuth-klienssel (Cloud Console: kliens létrehozása, visszatérési cím felvétele), helyben `http://localhost:8888`-on és élesben.
 + Kész: hozzáférés-kérés admin jóváhagyással, jelvény a fejléc Admin gombján (AdminMessages), README és server/deploy/GOOGLE.md.
-+ Hátra: a kérelmező értesítése a döntésről (most nincs; a szerver nem küld e-mailt).
++ Döntés (2026-11-25): a kérelmező nem kap levelet a döntésről; visszatéréskor látja az állapotot.
 + Lehetőség: további adminisztrátori jelzések (AdminMessage.Kind), pl. lemezhely, hibás mentés.
 + Lehetőség: a felhasználó maga kösse össze / válassza le a Google-fiókját (most csak az admin teheti); a Google `sub` azonosítójának rögzítése az e-mail-cím mellé.
 

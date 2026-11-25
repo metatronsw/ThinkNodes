@@ -249,7 +249,10 @@ final class Collaboration: @unchecked Sendable {
         }
     }
 
-    func update(_ path: WorksheetPath, sheet: Worksheet, user: User?, client: String?, unlocks: Set<String> = [], restoring: Bool = false) throws -> Worksheet {
+    /// `ownSelections`: a mentő felhasználó saját (másik ablakban lévő) kijelölése nem zárja a dobozt – a külön ablakos
+    /// szövegszerkesztő így akkor is menthet, ha a lap szerkesztőjében ugyanő éppen kijelölve tartja a dobozt.
+    func update(_ path: WorksheetPath, sheet: Worksheet, user: User?, client: String?, unlocks: Set<String> = [], restoring: Bool = false,
+                ownSelections: Bool = false) throws -> Worksheet {
         try lock.withLock {
             rooms[path.url]?.expire()
             let saved = try store.update(path, worksheet: sheet, user: user, restoring: restoring, unlocks: unlocks) { current in
@@ -261,7 +264,8 @@ final class Collaboration: @unchecked Sendable {
                     }
                 }
                 guard let room = rooms[path.url] else { return }
-                let locked = Set(room.peers.filter { $0.key != client && !$0.value.viewing }.values.compactMap(\.node))
+                let locked = Set(room.peers.filter { $0.key != client && !$0.value.viewing && !(ownSelections && $0.value.name == user?.name) }
+                    .values.compactMap(\.node))
                 guard !locked.isEmpty else { return }
                 let submitted = Dictionary(sheet.nodes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
                 for node in current.nodes where locked.contains(node.id) && submitted[node.id] != node {

@@ -531,8 +531,28 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
              try user.flatMap { try store.settings().preferences?[$0.name] })
         }
         guard access.editable else { return accessDeniedPage(identity, updates: live.pages.subscribe(.index)) }
-        let loading = local ? "Szerkesztő betöltése…" : "A szerkesztőhöz futtasd a teljes ./build.sh parancsot."
         let csrf = token(req)
+        // Nagy szövegfájl külön ablakos szerkesztője (docs/node-types.md, text típus 5. pont): `?text=<doboz>`.
+        if let nodeID = req.query[String.self, at: "text"] {
+            guard validSlug(nodeID), let node = worksheet.nodes.first(where: { $0.id == nodeID }), let file = node.file,
+                  node.isTextFile, node.type != "table", !file.isCommon else {
+                return missingPage(identity, updates: live.pages.subscribe(.index))
+            }
+            let name = file.displayName(image: false)
+            return htmlPage(title: name, body: """
+                <div class="editor-root">
+                \(siteHeader(path: path.url, project: worksheet.title, user: user, csrf: csrf, editing: true))
+                <main id="text-editor" class="text-editor" data-path="\(path.url)" data-node="\(escaped(nodeID))" data-csrf="\(csrf)" data-rev="\(file.rev ?? 0)" data-name="\(escaped(name))" data-limit="\(largeTextLimit)">
+                  <div class="text-editor-bar"><strong>\(escaped(name))</strong><span class="text-editor-status" role="status">Betöltés…</span>
+                    <button type="button" class="button primary" data-save disabled>\(uiIcon("save"))Mentés</button>
+                    <a class="button" href="/edit/\(path.url)">\(uiIcon("file"))Vissza a lapra</a></div>
+                  <textarea class="text-editor-area" aria-label="Fájl tartalma" spellcheck="false" disabled></textarea>
+                  <noscript><p>A szerkesztőhöz JavaScript szükséges.</p></noscript>
+                </main></div>
+                <script type="module" src="/text-editor.js?v=1"></script>
+                """)
+        }
+        let loading = local ? "Szerkesztő betöltése…" : "A szerkesztőhöz futtasd a teljes ./build.sh parancsot."
         let prefs = storedPrefs ?? UserPreferences()
         let preferences = String(decoding: try JSONEncoder().encode(prefs), as: UTF8.self)
         return htmlPage(title: worksheet.title, body: """
@@ -870,12 +890,75 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         let file = try await req.application.threadPool.runIfActive {
             try store.exportPackage(path, options: options, user: identity.user, unlocks: identity.unlocks)
         }
+        // `?prepare=1`: a csomag a szerveren marad, a válasz a letöltés címe – a böngésző közvetlenül, lemezre tölti le
+        // (nem a lap memóriájába), és megszakadás után folytatni tudja. Enélkül a régi működés: a válasz maga a fájl.
+        if req.query[String.self, at: "prepare"] == "1" {
+            let prepared = try await req.application.threadPool.runIfActive { try store.registerExport(file, user: identity.user) }
+            struct Prepared: Content { let url: String; let name: String; let size: Int64 }
+            return try await Prepared(url: "/api/package/download/" + prepared.token + "?name=" + encodeQuery(path.name + ".zip"),
+                                      name: path.name + ".zip", size: prepared.size).encodeResponse(for: req)
+        }
         let response = try await req.fileio.asyncStreamFile(at: file.path, mediaType: .zip) { _ in
             try? FileManager.default.removeItem(at: file)
         }
         response.headers.replaceOrAdd(name: .cacheControl, value: "no-store")
         response.headers.replaceOrAdd(name: .contentDisposition, value: attachmentDisposition(path.name + ".zip"))
         return response
+    }
+
+    app.get("api", "package", "download", ":token") { req async throws -> Response in
+        let identity = try session(req, store: store)
+        let token = req.parameters.get("token") ?? ""
+        let file = try await req.application.threadPool.runIfActive { try store.registeredExport(token, user: identity.user) }
+        let name = req.query[String.self, at: "name"].flatMap { $0.hasSuffix(".zip") && !$0.contains("/") ? $0 : nil } ?? "csomag.zip"
+        let response = try await req.fileio.asyncStreamFile(at: file.path, mediaType: .zip)
+        response.headers.replaceOrAdd(name: .cacheControl, value: "no-store")
+        response.headers.replaceOrAdd(name: .contentDisposition, value: attachmentDisposition(name))
+        return response
+    }
+
+    // Darabolt, folytatható csomagfeltöltés (ProjectPackage.swift): munkamenet → darabok → befejezés.
+    app.post("api", "package", "uploads") { req async throws -> WorksheetStore.PackageUploadState in
+        struct Begin: Content { let size: Int64; let target: String? }
+        let identity = try session(req, store: store)
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        let body = try req.content.decode(Begin.self)
+        let target = try body.target.flatMap { $0.isEmpty ? nil : $0 }.map {
+            try WorksheetPath($0.split(separator: "/").map { String($0).removingPercentEncoding ?? String($0) })
+        }
+        return try await req.application.threadPool.runIfActive {
+            try store.beginPackageUpload(size: body.size, target: target, user: identity.user, unlocks: identity.unlocks)
+        }
+    }
+    app.get("api", "package", "uploads", ":id") { req async throws -> WorksheetStore.PackageUploadState in
+        let identity = try session(req, store: store)
+        let id = req.parameters.get("id") ?? ""
+        return try await req.application.threadPool.runIfActive { try store.packageUploadState(id, user: identity.user) }
+    }
+    app.on(.PUT, "api", "package", "uploads", ":id", body: .collect(maxSize: "17mb")) { req async throws -> WorksheetStore.PackageUploadState in
+        let identity = try session(req, store: store)
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        guard let offset = req.query[Int64.self, at: "offset"], let body = req.body.data else { throw Abort(.badRequest) }
+        let id = req.parameters.get("id") ?? ""
+        let bytes = Data(body.readableBytesView)
+        return try await req.application.threadPool.runIfActive {
+            try store.appendPackageUpload(id, offset: offset, bytes: bytes, user: identity.user)
+        }
+    }
+    app.post("api", "package", "uploads", ":id", "finish") { req async throws -> PackageReport in
+        let identity = try session(req, store: store)
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        let id = req.parameters.get("id") ?? ""
+        return try await req.application.threadPool.runIfActive {
+            try store.finishPackageUpload(id, user: identity.user, unlocks: identity.unlocks)
+        }
+    }
+    app.delete("api", "package", "uploads", ":id") { req async throws -> HTTPStatus in
+        let identity = try session(req, store: store)
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        let id = req.parameters.get("id") ?? ""
+        try await req.application.threadPool.runIfActive { try store.cancelPackageUpload(id, user: identity.user) }
+        return .noContent
     }
 
     @Sendable func uploadPackage(_ req: Request, target: WorksheetPath?) async throws -> PackageReport {
@@ -1095,6 +1178,40 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         }
         live.pages.publish(.attachments, at: path)
         return .noContent
+    }
+
+    // Szövegfájl mentése a külön ablakos szerkesztőből: a fájl tartalma cserélődik, a doboz `file.rev` számlálója nő
+    // (ebből töltik újra a többiek). `rev`: az a változat, amelyből a szerkesztés indult – ha közben más mentett, 409.
+    app.on(.PUT, "api", "text-file", "**", body: .collect(maxSize: "13mb")) { req async throws -> [String: Int] in
+        let identity = try session(req, store: store)
+        let user = identity.user
+        guard user != nil || req.hasSession else { throw Abort(.unauthorized) }
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        guard let id = req.query[String.self, at: "id"], validSlug(id), let base = req.query[Int.self, at: "rev"] else { throw Abort(.badRequest) }
+        let bytes = req.body.data.map { Data($0.readableBytesView) } ?? Data()
+        let rev = try await req.application.threadPool.runIfActive { () throws -> Int in
+            var board = try store.load(path, user: user, unlocks: identity.unlocks)
+            guard let index = board.nodes.firstIndex(where: { $0.id == id }), let file = board.nodes[index].file,
+                  board.nodes[index].isTextFile, board.nodes[index].type != "table", !file.isCommon,
+                  let owner = file.sheet(from: path) else { throw Abort(.notFound) }
+            guard (file.rev ?? 0) == base else {
+                throw Abort(.conflict, reason: "A fájlt közben más is módosította. Töltsd újra, mielőtt mentesz.")
+            }
+            // Előbb a fájl, aztán a számláló: a többi kliens a számláló változására tölt újra, addigra az új tartalomnak
+            // kell a helyén lennie. Ha a lap mentése nem sikerül (pl. más fogja a dobozt), a régi tartalom visszakerül.
+            let previous = try store.attachmentData(owner, named: file.asset, user: user, unlocks: identity.unlocks)
+            _ = try store.storeAttachment(bytes, named: file.asset, at: owner, user: user, unlocks: identity.unlocks, replaceText: true)
+            board.nodes[index].file?.rev = base + 1
+            do { _ = try live.update(path, sheet: board, user: user, client: nil, unlocks: identity.unlocks, ownSelections: true) }
+            catch {
+                _ = try? store.storeAttachment(previous, named: file.asset, at: owner, user: user, unlocks: identity.unlocks, replaceText: true)
+                throw error
+            }
+            return base + 1
+        }
+        live.pages.publish(.attachments, at: path)
+        return ["rev": rev]
     }
 
     // Táblázat doboz (docs/EXCEL.md): forrásfájlból táblázat, forrásfájl figyelése.

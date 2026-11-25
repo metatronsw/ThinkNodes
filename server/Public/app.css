@@ -726,6 +726,13 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 .editor-canvas .node-link:hover text, .passive-canvas a:hover .node-link text { text-decoration: underline; }
 .markdown-editor textarea { width: 100%; box-sizing: border-box; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .markdown-tools { flex-wrap: wrap; }
+/* Nagy szövegfájl külön ablakos szerkesztője (text-editor.js). */
+.text-editor { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 12px; box-sizing: border-box; }
+.text-editor-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.text-editor-status { flex: 1 1 200px; color: var(--muted); }
+.text-editor-status.error { color: var(--danger, #b00020); }
+.text-editor-area { flex: 1; min-height: 60vh; width: 100%; box-sizing: border-box; resize: none; white-space: pre; overflow: auto;
+  font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; tab-size: 4; }
 .file-text-editor { width: 100%; box-sizing: border-box; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
 .link-group legend { display: flex; align-items: center; justify-content: space-between; width: 100%; }
 /* Link sora: cél, mappa, megnyitás és törlés egy sorban, egységes eszközgomb-mérettel. */
@@ -942,6 +949,7 @@ svg text { text-rendering: geometricPrecision; }
 .package-choice input { width: auto; flex: none; margin: 0; }
 .package-dialog [hidden] { display: none !important; }
 .package-status:empty { display: none; }
+.package-progress { width: 100%; height: 10px; accent-color: var(--accent); }
 .package-warnings ul { max-height: 30vh; overflow-y: auto; margin: 6px 0 0; padding-left: 18px; font-size: .9em; }
 .package-dialog .editor-membership select { width: auto; flex: 0 1 60%; }
 .package-dialog .editor-membership span { flex: 1 1 auto; min-width: 0; }

@@ -284,3 +284,45 @@ import VaporTesting
         #expect(try store.load(child, user: admin).nodes.first?.link?.target == "uj.web")
     }
 }
+
+/// Nagy szövegfájl külön ablakos szerkesztője: oldal, mentés (a változásszámláló nő), ütközés régi változattal.
+@Test func textFileEditorSavesAndDetectsConflicts() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-texteditor-\(UUID().uuidString)")
+    let store = try WorksheetStore(root: root)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let password = UUID().uuidString
+    try store.setUser(name: "admin", role: .admin, passwordHash: try Bcrypt.hash(password, cost: 4))
+    let admin = try #require(try store.user(named: "admin"))
+    let project = try WorksheetPath(["szoveg"])
+    var sheet = try store.open(project, user: admin)
+    let asset = try store.storeAttachment(Data("első".utf8), named: "nagy.md", at: project, user: admin, unlocks: [])
+    sheet.nodes = [Idea(id: "doboz", type: "text", file: CanvasFile(asset: asset, filename: "nagy.md"), position: Point(x: 0, y: 0), width: 340, height: 240),
+                   Idea(id: "sima", text: "nem fájl", position: Point(x: 400, y: 0))]
+    sheet = try store.update(project, worksheet: sheet, user: admin)
+
+    try await withApp(configure: { app in configure(app, store: store, secureCookies: false) }) { app in
+        let browser = try app.testing()
+        let session = try await login(browser, name: "admin", password: password, path: project.url)
+        let page = try await browser.sendRequest(.GET, "/edit/szoveg?text=doboz", headers: ["Cookie": session.cookie])
+        #expect(page.status == .ok && page.body.string.contains("id=\"text-editor\"") && page.body.string.contains("data-rev=\"0\""))
+        #expect(page.body.string.contains("nagy.md") && page.body.string.contains("/text-editor.js"))
+        #expect(try await browser.sendRequest(.GET, "/edit/szoveg?text=sima", headers: ["Cookie": session.cookie]).status == .notFound)
+
+        let headers: HTTPHeaders = ["Cookie": session.cookie, "X-CSRF-Token": session.csrf, "Content-Type": "text/plain; charset=utf-8"]
+        func put(_ text: String, rev: Int, id: String = "doboz", headers: HTTPHeaders = headers) async throws -> TestingHTTPResponse {
+            try await browser.sendRequest(.PUT, "/api/text-file/szoveg?id=\(id)&rev=\(rev)", headers: headers, body: ByteBuffer(string: text))
+        }
+        let saved = try await put("második változat", rev: 0)
+        #expect(saved.status == .ok)
+        #expect(try saved.content.decode([String: Int].self) == ["rev": 1])
+        #expect(try String(contentsOf: root.appendingPathComponent("szoveg/nagy.md"), encoding: .utf8) == "második változat")
+        #expect(try store.load(project, user: admin).nodes.first { $0.id == "doboz" }?.file?.rev == 1)
+        // Régi változatból mentve: ütközés, a fájl nem változik.
+        #expect(try await put("elavult", rev: 0).status == .conflict)
+        #expect(try String(contentsOf: root.appendingPathComponent("szoveg/nagy.md"), encoding: .utf8) == "második változat")
+        #expect(try await put("harmadik", rev: 1).status == .ok)
+        #expect(try await put("x", rev: 0, id: "sima").status == .notFound)
+        #expect(try await put("x", rev: 2, headers: ["Cookie": session.cookie, "Content-Type": "text/plain"]).status != .ok)
+        #expect(try String(contentsOf: root.appendingPathComponent("szoveg/nagy.md"), encoding: .utf8) == "harmadik")
+    }
+}

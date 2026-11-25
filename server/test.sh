@@ -56,6 +56,7 @@ swift_files[access]="ThinkNodesTests/AccessTests.swift"
 swift_files[files]="ThinkNodesTests/AttachmentTests.swift ThinkNodesTests/SharedFilesTests.swift"
 swift_files[web]="ThinkNodesTests/WebPresentationTests.swift"
 swift_files[package]="ThinkNodesTests/ProjectPackageTests.swift"
+js_files[package]="package-upload.mjs"
 swift_files[link]="ThinkNodesTests/LinkPreviewTests.swift"
 all_topics="table markdown editor render worksheet collab access files web package link core"
 
@@ -66,6 +67,7 @@ topics_for() {
         Sources/*/TableFiles.swift) echo "table files" ;;
         Sources/*/CanvasMarkdown.swift|Public/canvas-markdown.js|Tests/Fixtures/canvas-markdown.json) echo "markdown editor" ;;
         Tests/Editor/canvas-markdown.mjs|Tests/ThinkNodesTests/CanvasMarkdownTests.swift|Tests/ThinkNodesTests/TextNoteTests.swift) echo markdown ;;
+        Public/package.js|Tests/Editor/package-upload.mjs) echo "package editor" ;;
         Tests/Editor/*|Public/*.js) echo editor ;;
         Sources/*/Rendering.swift|Sources/*/Theme.swift|Public/themes/*|docs/theme.schema.json) echo render ;;
         Tests/ThinkNodesTests/RenderingTests.swift|Tests/ThinkNodesTests/ThemeTests.swift) echo render ;;

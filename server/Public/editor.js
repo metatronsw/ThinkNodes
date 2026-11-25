@@ -198,6 +198,9 @@ function propertyTools(...controls) {
 }
 
 
+// Nagy szövegfájl határa (karakter): e fölött a tartalom külön ablakban szerkeszthető (Model.swift largeTextLimit).
+const largeTextLimit = 256 * 1024;
+
 // Egyszerű CSV/TSV feldolgozás a táblázatnézethez (Rendering.swift parseCSV).
 // A nézet kihagyja az üres sorokat; minden megmaradó sor `index` mezője a fájlbeli sorszáma (0-tól), mert a
 // cellakijelölés és a szerkesztő a fájl sorai szerint számol.
@@ -4567,6 +4570,15 @@ createApp({
         // A CSV tartalma közvetlenül a vásznon szerkeszthető (dupla kattintás), itt nincs szövegszerkesztő.
         panels.push(group(single.type === "csv" ? "Megjelenítés" : "Text", [
           single.type === "csv" ? null : loaded == null ? h("p", {class: "muted"}, "Betöltés…") :
+            // Nagy fájl: az oldalsávon nem szerkeszthető (minden leütés a teljes fájlt mentené és a dobozt újrarajzolná);
+            // a vásznon az eleje látszik, a szerkesztés külön ablakban történik (text-editor.js).
+            loaded.length > largeTextLimit && !isCommonFile(single.file) ? h("div", {class: "stack"}, [
+              h("p", {class: "muted"}, "Nagy fájl (" + Math.round(loaded.length / 1024).toLocaleString("hu-HU") + " KB): a vásznon az eleje látszik."),
+              button("Szerkesztés külön ablakban", () => transfer(async () => {
+                if (dirty.value) await save();
+                window.open("/edit/" + path + "?text=" + encodeURIComponent(single.id), "_blank", "noopener");
+              }), {symbol: "edit", disabled: !online.value, title: "A teljes fájl szerkesztése külön ablakban"}),
+            ]) :
             h("textarea", {"aria-label": "Fájl tartalma", class: ["file-text-editor", {"justified-text": justified}], value: loaded, rows: 10,
               spellcheck: single.type !== "code", onInput: event => editFileText(single, event.target.value)}),
           propertyTools(

@@ -6,6 +6,8 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **A megtekintőben a görgethető tartalom kijelölés nélkül is görög** (2026-11-25) – döntés: így marad (a látogató nem jelöl ki), nem hiba.
+
 - **Megtekintő: két lap azonos nevű szövegfájlja ugyanazt a tartalmat mutatta** (2026-11-25)
   - Ok: a szövegfájlok tartalma fájlazonosító szerint volt kulcsolva; a tallózóból beillesztett, névvel hivatkozott fájloknál a saját és a másik lap azonos nevű fájlja ütközött.
   - Javítás: a kulcs a forrással együtt egyedi (`CanvasFile.textKey`, `textContents`); teszt: `sameNamedFilesFromTwoSheetsKeepTheirOwnText`.

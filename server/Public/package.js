@@ -65,16 +65,15 @@ export function exportPackage({path, csrf, protected: locked = false}) {
     submit.disabled = true;
     status.textContent = "Csomag készítése…";
     try {
-      const response = await fetch("/api/package/export/" + path, {method: "POST",
+      const response = await fetch("/api/package/export/" + path + "?prepare=1", {method: "POST",
         headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf},
         body: JSON.stringify({scope: form.elements.scope.value, external: form.elements.external.value,
           versions: versions.checked, password: encrypt.checked ? password.value : undefined})});
       if (!response.ok) throw await failure(response, "A csomag nem készült el");
-      const blob = await response.blob();
-      const name = decodeURIComponent(path.split("/").pop()) + ".zip";
-      const url = URL.createObjectURL(blob);
-      el("a", {href: url, download: name}).click();
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      // A csomag a szerveren várja a letöltést (egy óráig): a böngésző közvetlenül lemezre tölti, nem a lap memóriájába,
+      // és megszakadás után a saját letöltéskezelőjével folytatni tudja.
+      const prepared = await response.json();
+      el("a", {href: prepared.url, download: prepared.name}).click();
       dialog.close();
     } catch (error) {
       status.textContent = error.message;
@@ -93,9 +92,17 @@ export function importPackage(file, {target = null, csrf}) {
     let token = null, done = false;
     const body = el("div", {class: "stack"});
     const finish = value => { done = true; resolve(value); dialog.close(); };
+    const upload = new AbortController();
+    let uploadID = null;
     dialog.addEventListener("close", () => {
+      upload.abort();
       if (done) return;
       resolve(null);
+      // Megszakítás feltöltés közben: a félbemaradt rész törlődik a szerverről.
+      if (uploadID) {
+        forgetUpload(file, target);
+        fetch("/api/package/uploads/" + uploadID, {method: "DELETE", headers: {"X-CSRF-Token": csrf}}).catch(() => {});
+      }
       if (token) fetch("/api/package/cancel", {method: "POST", headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf},
         body: JSON.stringify({token})}).catch(() => {});
     });
@@ -172,26 +179,117 @@ export function importPackage(file, {target = null, csrf}) {
     }
 
     (async () => {
-      body.replaceChildren(el("p", {text: file.name + " · " + megabytes(file.size)}), el("div", {class: "property-inline"}, [cancel()]));
-      status.textContent = "Feltöltés és ellenőrzés…";
-      try {
-        if (file.size > 200 * 1024 * 1024) throw Error("A csomag legfeljebb 200 MiB lehet.");
-        const response = await fetch("/api/package/upload" + (target ? "/" + target : ""), {method: "POST",
-          headers: {"Content-Type": "application/zip", "X-CSRF-Token": csrf}, body: file});
-        if (!response.ok) throw await failure(response, "A feltöltés sikertelen");
-        const report = await response.json();
-        token = report.token;
-        if (report.needsPassword) { status.textContent = ""; askPassword(); } else review(report);
-      } catch (error) { status.textContent = error.message; }
+      const bar = el("progress", {max: 1, value: 0, class: "package-progress", "aria-label": "Feltöltés"});
+      const retry = el("button", {class: "button primary", type: "button", text: "Folytatás", hidden: true});
+      body.replaceChildren(el("p", {text: file.name + " · " + megabytes(file.size)}), bar, el("div", {class: "property-inline"}, [retry, cancel()]));
+      const run = async () => {
+        retry.hidden = true;
+        try {
+          const report = await uploadInChunks(file, {target, csrf, signal: upload.signal, session: id => { uploadID = id; },
+            progress: (received, size, note) => {
+              bar.value = size ? received / size : 0;
+              status.textContent = note ?? "Feltöltés: " + megabytes(received) + " / " + megabytes(size) + " (" + Math.floor(100 * received / size) + "%)";
+            }});
+          uploadID = null;
+          token = report.token;
+          if (report.needsPassword) { status.textContent = ""; askPassword(); } else review(report);
+        } catch (error) {
+          if (upload.signal.aborted) return;
+          status.textContent = error.message;
+          // Megszakadt kapcsolat: a már feltöltött rész megmarad a szerveren, innen folytatható.
+          retry.hidden = !error.resumable;
+        }
+      };
+      retry.addEventListener("click", run);
+      window.addEventListener("online", () => { if (!retry.hidden && !done) run(); }, {signal: upload.signal});
+      run();
     })();
   });
+}
+
+// --- Darabolt, folytatható feltöltés (ProjectPackage.swift) -----------------------------------------------------
+// A fájl 8 MiB-os darabokban megy fel; a szerver minden darab után megmondja, meddig jutott. Megszakadt kapcsolatnál
+// a feltöltés néhányszor magától újrapróbál, és mindig onnan folytat, ahol a szerver tart. A munkamenet azonosítója
+// a böngészőben megmarad (localStorage), így ugyanazt a fájlt újra kiválasztva az oldal újratöltése után is folytatódik.
+export const maximumPackage = 4 * 1024 ** 3 - 1;
+const uploadKey = (file, target) => "tnPackageUpload:" + [file.name, file.size, file.lastModified, target ?? ""].join("|");
+const remembered = (file, target) => { try { return localStorage.getItem(uploadKey(file, target)); } catch { return null; } };
+const remember = (file, target, id) => { try { localStorage.setItem(uploadKey(file, target), id); } catch { /* privát mód */ } };
+const forgetUpload = (file, target) => { try { localStorage.removeItem(uploadKey(file, target)); } catch { /* privát mód */ } };
+const pause = (ms, signal) => new Promise((resolve, reject) => {
+  const timer = setTimeout(resolve, ms);
+  signal?.addEventListener("abort", () => { clearTimeout(timer); reject(new DOMException("Megszakítva", "AbortError")); }, {once: true});
+});
+
+/// A fájl feltöltése darabokban; az import jelentésével tér vissza. `progress(received, size, note?)`, `session(id)`.
+/// Megszakadt kapcsolat miatti végleges hibánál a hiba `resumable` – ugyanez a hívás onnan folytatja.
+export async function uploadInChunks(file, {target = null, csrf, signal, progress = () => {}, session = () => {}, retries = 6, wait = pause} = {}) {
+  if (file.size > maximumPackage) throw Error("A csomag legfeljebb 4 GiB lehet.");
+  const json = {"Content-Type": "application/json", "X-CSRF-Token": csrf};
+  const lost = cause => Object.assign(Error("A kapcsolat megszakadt; a feltöltött rész megmaradt, folytatható."), {resumable: true, cause});
+  // Hálózati hiba és átmeneti szerverhiba (5xx) újrapróbálható; minden más válasz végleges.
+  const attempt = async request => {
+    for (let failures = 0; ; failures++) {
+      try {
+        const response = await request();
+        if (response.status < 500) return response;
+        if (failures >= retries) throw await failure(response, "A feltöltés sikertelen");
+      } catch (error) {
+        if (signal?.aborted || error.name === "AbortError") throw error;
+        if (!(error instanceof TypeError) && !error.resumable && failures >= retries) throw error;
+        if (failures >= retries) throw lost(error);
+      }
+      progress(received, file.size, "A kapcsolat megszakadt, újrapróbálás…");
+      await wait(Math.min(15000, 1000 * 2 ** failures), signal);
+    }
+  };
+  let received = 0, state = null;
+  const begin = async () => {
+    const response = await attempt(() => fetch("/api/package/uploads", {method: "POST", headers: json, signal,
+      body: JSON.stringify({size: file.size, target})}));
+    if (!response.ok) throw await failure(response, "A feltöltés nem indítható");
+    state = await response.json();
+    remember(file, target, state.id);
+  };
+  // Korábban félbemaradt feltöltés ugyanerről a fájlról: onnan folytatjuk.
+  const known = remembered(file, target);
+  if (known) {
+    const response = await attempt(() => fetch("/api/package/uploads/" + known, {signal}));
+    if (response.ok) { const found = await response.json(); if (found.size === file.size) state = found; }
+  }
+  if (!state) await begin();
+  session(state.id);
+  received = state.received;
+  let restarted = false;
+  while (received < file.size) {
+    progress(received, file.size);
+    const part = file.slice(received, Math.min(file.size, received + state.chunk));
+    const response = await attempt(() => fetch("/api/package/uploads/" + state.id + "?offset=" + received, {method: "PUT", signal,
+      headers: {"Content-Type": "application/octet-stream", "X-CSRF-Token": csrf}, body: part}));
+    if (response.ok) received = (await response.json()).received;
+    else if (response.status === 409 && response.headers.has("X-ThinkNodes-Received")) {
+      // A szerver máshol tart (pl. az előző darab megérkezett, csak a válasz veszett el): onnan folytatjuk.
+      received = Number(response.headers.get("X-ThinkNodes-Received"));
+    } else if ((response.status === 410 || response.status === 404) && !restarted) {
+      // A félbemaradt feltöltés lejárt a szerveren: elölről.
+      restarted = true;
+      await begin();
+      session(state.id);
+      received = 0;
+    } else throw await failure(response, "A feltöltés sikertelen");
+  }
+  progress(file.size, file.size, "Kicsomagolás és ellenőrzés…");
+  const finished = await attempt(() => fetch("/api/package/uploads/" + state.id + "/finish", {method: "POST", headers: json, signal}));
+  forgetUpload(file, target);
+  if (!finished.ok) throw await failure(finished, "Az importálás sikertelen");
+  return finished.json();
 }
 
 /// ThinkNodes-csomag-e a ZIP (docs/migration.md): titkosított csomag (`thinknodes-encrypted.json`), vagy nyitott csomag,
 /// amelynek gyökerében `Név/Név.thnode` van. Csak a ZIP tartalomjegyzékét olvassa (a fájl végéről), a tartalmat nem.
 export async function isPackageZip(blob) {
   try {
-    if (blob.size < 22 || blob.size > 200 * 1024 * 1024) return false;
+    if (blob.size < 22 || blob.size > maximumPackage) return false;
     const tailStart = Math.max(0, blob.size - 65557);
     const tail = new DataView(await blob.slice(tailStart).arrayBuffer());
     let end = -1;

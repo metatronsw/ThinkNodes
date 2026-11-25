@@ -264,9 +264,15 @@ package struct PackageCommit: Content {
 // MARK: - Tároló
 
 extension WorksheetStore {
-    static let maximumPackage = 200 * 1024 * 1024
-    static let maximumPackageExtracted: Int64 = 1024 * 1024 * 1024
+    /// Csomag felső határa: a ZIP (ZIP64 nélküli) formátum korlátja, 4 GiB. A saját export tömörítés nélküli, így a
+    /// kicsomagolt méret nagyjából ugyanennyi; idegen (tömörített) ZIP-nél a kicsomagolt tartalom legfeljebb 8 GiB.
+    package static let maximumPackage = 4 * 1024 * 1024 * 1024 - 1
+    static let maximumPackageExtracted: Int64 = 8 * 1024 * 1024 * 1024
     static let maximumPackageEntries = 20_000
+    /// Darabolt feltöltés: egy darab mérete (a kliens ekkora szeleteket küld), és a félbemaradt feltöltés élettartama.
+    package static let packageChunk = 8 * 1024 * 1024
+    private static let uploadLifetime: TimeInterval = 24 * 3600
+    private static let uploadsPerUser = 3
     private static let stagingName = ".package-staging"
     private static let stagingLifetime: TimeInterval = 3600
 
@@ -279,12 +285,19 @@ extension WorksheetStore {
         return url
     }
 
-    /// Lejárt (vagy indításkor minden) ideiglenes csomag törlése.
+    /// Lejárt (vagy indításkor minden) ideiglenes csomag törlése. A félbemaradt feltöltések (`upload-…`) a szerver
+    /// újraindítását is túlélik, hogy folytathatók legyenek; ezek az utolsó darab után 24 órával járnak le.
     package func cleanPackageStaging(all: Bool = false) {
-        let limit = Date().addingTimeInterval(-Self.stagingLifetime)
+        let limit = Date().addingTimeInterval(-Self.stagingLifetime), uploadLimit = Date().addingTimeInterval(-Self.uploadLifetime)
         for url in (try? files.contentsOfDirectory(at: stagingRoot, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [] {
-            let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            if all || modified < limit { try? files.removeItem(at: url) }
+            func modified(_ item: URL) -> Date {
+                (try? item.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            }
+            if url.lastPathComponent.hasPrefix("upload-") {
+                if modified(url.appendingPathComponent("data.part")) < uploadLimit && modified(url) < uploadLimit { try? files.removeItem(at: url) }
+            } else if all || modified(url) < limit {
+                try? files.removeItem(at: url)
+            }
         }
     }
 
@@ -329,6 +342,30 @@ extension WorksheetStore {
     }
 
     /// A csomag tartalma (zár alatt): a lapok átírt JSON-ja, a megtisztított beállítások és a fájlok helye.
+    /// Az elkészült csomag letöltési azonosítója: a fájl a letöltésig (legfeljebb egy óráig) az ideiglenes mappában marad,
+    /// és csak az töltheti le, aki készítette. Így a böngésző közvetlenül, lemezre tölti le (megszakadás után folytathatóan).
+    package func registerExport(_ file: URL, user: User?) throws -> (token: String, size: Int64) {
+        guard let user else { throw Abort(.forbidden) }
+        let token = file.deletingPathExtension().lastPathComponent
+        try Data(user.name.utf8).write(to: file.appendingPathExtension("owner"))
+        let size = ((try? files.attributesOfItem(atPath: file.path)[.size]) as? NSNumber)?.int64Value ?? 0
+        return (token, size)
+    }
+
+    package func registeredExport(_ token: String, user: User?) throws -> URL {
+        let parts = token.split(separator: "-", omittingEmptySubsequences: false)
+        let plain = token.hasPrefix("export-") && UUID(uuidString: String(token.dropFirst(7))) != nil
+        let sealed = token.hasPrefix("export-") && token.hasSuffix("-encrypted") && UUID(uuidString: String(token.dropFirst(7).dropLast(10))) != nil
+        guard plain || sealed, !parts.isEmpty else { throw Abort(.notFound) }
+        let file = stagingRoot.appendingPathComponent(token + ".zip")
+        try rejectLink(file)
+        guard files.fileExists(atPath: file.path) else { throw Abort(.gone, reason: "A csomag letöltési ideje lejárt; készítsd el újra.") }
+        guard let user, let owner = try? String(contentsOf: file.appendingPathExtension("owner"), encoding: .utf8), owner == user.name else {
+            throw Abort(.forbidden)
+        }
+        return file
+    }
+
     private func packageEntriesLocked(_ path: WorksheetPath, tree: Bool, versions: Bool, copyExternal: Bool,
                                       user: User, unlocks: Set<String>) throws -> ([ZipWriter.Entry], String?) {
         let ctx = try context(path)
@@ -532,21 +569,141 @@ extension WorksheetStore {
         return (directory, info, target)
     }
 
-    /// Feltöltés és kicsomagolás ideiglenes mappába. Titkosított csomagnál a jelszót a `unlockPackage` kéri.
+    /// Feltöltés (egyben) és kicsomagolás ideiglenes mappába. Titkosított csomagnál a jelszót a `unlockPackage` kéri.
+    /// Nagy csomaghoz a darabolt feltöltés való (`beginPackageUpload` … `finishPackageUpload`).
     package func uploadPackage(_ bytes: Data, target: WorksheetPath?, user: User?, unlocks: Set<String>) throws -> PackageReport {
         try checkImportRights(target, user: user, unlocks: unlocks)
-        guard bytes.count <= Self.maximumPackage else { throw Abort(.payloadTooLarge, reason: "A csomag legfeljebb 200 MiB lehet.") }
-        guard bytes.starts(with: [0x50, 0x4b, 0x03, 0x04]) else { throw Abort(.unsupportedMediaType, reason: "A fájl nem ZIP.") }
+        guard bytes.count <= Self.maximumPackage else { throw Abort(.payloadTooLarge, reason: Self.packageTooLarge) }
         cleanPackageStaging()
+        let temporary = try stagingDirectory().appendingPathComponent("single-" + UUID().uuidString + ".zip")
+        try bytes.write(to: temporary)
+        defer { try? files.removeItem(at: temporary) }
+        return try stagePackage(temporary, target: target, user: user!)
+    }
+
+    private static let packageTooLarge = "A csomag legfeljebb 4 GiB lehet."
+
+    // MARK: Darabolt, folytatható feltöltés
+    // A kliens munkamenetet nyit (méret, cél), majd sorban küldi a darabokat; minden darab a fájl végéhez fűződik, és
+    // csak akkor fogadható el, ha pontosan ott folytatja, ahol a szerver tart. Megszakadás után a kliens lekérdezi,
+    // meddig jutott a feltöltés, és onnan folytatja – akár az oldal újratöltése vagy a szerver újraindítása után is.
+
+    package struct PackageUploadState: Content, Equatable {
+        package var id: String
+        package var size: Int64
+        package var received: Int64
+        package var chunk: Int
+    }
+
+    private struct PendingUpload: Codable {
+        var user: String
+        var target: String?
+        var size: Int64
+    }
+
+    private func uploadDirectory(_ id: String, user: User?) throws -> (URL, PendingUpload) {
+        guard id.hasPrefix("upload-"), UUID(uuidString: String(id.dropFirst(7))) != nil else { throw Abort(.notFound) }
+        let url = stagingRoot.appendingPathComponent(id)
+        try rejectLink(url)
+        guard files.fileExists(atPath: url.path),
+              let info = try? JSONDecoder().decode(PendingUpload.self, from: Data(contentsOf: url.appendingPathComponent("info.json"))) else {
+            throw Abort(.gone, reason: "A feltöltés lejárt; kezdd újra.")
+        }
+        guard let user, user.name == info.user else { throw Abort(.forbidden) }
+        return (url, info)
+    }
+
+    private func received(_ directory: URL) -> Int64 {
+        let size = (try? files.attributesOfItem(atPath: directory.appendingPathComponent("data.part").path)[.size]) as? NSNumber
+        return size?.int64Value ?? 0
+    }
+
+    /// Új feltöltés: ellenőrzi a jogot, a méretet és a szabad lemezhelyet (a csomag és a kicsomagolt tartalom is elférjen).
+    package func beginPackageUpload(size: Int64, target: WorksheetPath?, user: User?, unlocks: Set<String>) throws -> PackageUploadState {
+        try checkImportRights(target, user: user, unlocks: unlocks)
+        guard size > 0 else { throw Abort(.badRequest, reason: "Üres fájl.") }
+        guard size <= Int64(Self.maximumPackage) else { throw Abort(.payloadTooLarge, reason: Self.packageTooLarge) }
+        cleanPackageStaging()
+        let staging = try stagingDirectory()
+        if let free = try? staging.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage,
+           free > 0, free < size * 5 / 2 + 256 * 1024 * 1024 {
+            throw Abort(.insufficientStorage, reason: "Nincs elég szabad hely a szerveren ehhez a csomaghoz.")
+        }
+        // Felhasználónként néhány félbemaradt feltöltés maradhat; a legrégebbiek törlődnek.
+        let own = ((try? files.contentsOfDirectory(at: staging, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [])
+            .filter { $0.lastPathComponent.hasPrefix("upload-") }
+            .filter { (try? JSONDecoder().decode(PendingUpload.self, from: Data(contentsOf: $0.appendingPathComponent("info.json"))))?.user == user!.name }
+            .sorted { received($0) > received($1) }
+        for stale in own.dropFirst(Self.uploadsPerUser - 1) { try? files.removeItem(at: stale) }
+        let id = "upload-" + UUID().uuidString
+        let directory = staging.appendingPathComponent(id)
+        try files.createDirectory(at: directory, withIntermediateDirectories: false)
+        do {
+            try JSONEncoder().encode(PendingUpload(user: user!.name, target: target?.url, size: size)).write(to: directory.appendingPathComponent("info.json"))
+            guard files.createFile(atPath: directory.appendingPathComponent("data.part").path, contents: nil) else { throw Abort(.internalServerError) }
+        } catch { try? files.removeItem(at: directory); throw error }
+        return PackageUploadState(id: id, size: size, received: 0, chunk: Self.packageChunk)
+    }
+
+    /// Hol tart a feltöltés (folytatáshoz).
+    package func packageUploadState(_ id: String, user: User?) throws -> PackageUploadState {
+        try lock.withLock {
+            let (directory, info) = try uploadDirectory(id, user: user)
+            return PackageUploadState(id: id, size: info.size, received: received(directory), chunk: Self.packageChunk)
+        }
+    }
+
+    /// Egy darab hozzáfűzése. Csak a szerver szerinti folytatási ponttól fogad el adatot: ha a kliens máshol tart
+    /// (pl. egy megszakadt darab mégis megérkezett), 409-cel és a tényleges állással válaszol – a kliens onnan folytat.
+    package func appendPackageUpload(_ id: String, offset: Int64, bytes: Data, user: User?) throws -> PackageUploadState {
+        try lock.withLock {
+            let (directory, info) = try uploadDirectory(id, user: user)
+            let current = received(directory)
+            guard offset == current else {
+                throw Abort(.conflict, headers: ["X-ThinkNodes-Received": String(current)], reason: "A feltöltés máshol tart.")
+            }
+            guard !bytes.isEmpty, bytes.count <= Self.packageChunk * 2, current + Int64(bytes.count) <= info.size else {
+                throw Abort(.badRequest, reason: "Érvénytelen darab.")
+            }
+            if current == 0, !bytes.starts(with: [0x50, 0x4b, 0x03, 0x04]) { throw Abort(.unsupportedMediaType, reason: "A fájl nem ZIP.") }
+            let handle = try FileHandle(forWritingTo: directory.appendingPathComponent("data.part"))
+            defer { try? handle.close() }
+            try handle.seekToEnd()
+            try handle.write(contentsOf: bytes)
+            return PackageUploadState(id: id, size: info.size, received: current + Int64(bytes.count), chunk: Self.packageChunk)
+        }
+    }
+
+    /// A teljes fájl megérkezett: kicsomagolás és elemzés, ahogy az egyben feltöltött csomagnál.
+    package func finishPackageUpload(_ id: String, user: User?, unlocks: Set<String>) throws -> PackageReport {
+        let (directory, info) = try lock.withLock { try uploadDirectory(id, user: user) }
+        guard received(directory) == info.size else { throw Abort(.conflict, reason: "A feltöltés még nem teljes.") }
+        let target = try info.target.map { try WorksheetPath($0.split(separator: "/").map { String($0).removingPercentEncoding ?? String($0) }) }
+        try checkImportRights(target, user: user, unlocks: unlocks)
+        defer { try? files.removeItem(at: directory) }
+        return try stagePackage(directory.appendingPathComponent("data.part"), target: target, user: user!)
+    }
+
+    package func cancelPackageUpload(_ id: String, user: User?) throws {
+        let (directory, _) = try lock.withLock { try uploadDirectory(id, user: user) }
+        try files.removeItem(at: directory)
+    }
+
+    /// A feltöltött ZIP (`source`, áthelyezve) kicsomagolása ideiglenes mappába, és az import előkészítése.
+    private func stagePackage(_ source: URL, target: WorksheetPath?, user: User) throws -> PackageReport {
+        let head = try FileHandle(forReadingFrom: source)
+        let magic = (try? head.read(upToCount: 4)) ?? Data()
+        try? head.close()
+        guard magic.starts(with: [0x50, 0x4b, 0x03, 0x04]) else { throw Abort(.unsupportedMediaType, reason: "A fájl nem ZIP.") }
         let token = "import-" + UUID().uuidString
         let directory = try stagingDirectory().appendingPathComponent(token)
         try files.createDirectory(at: directory, withIntermediateDirectories: false)
         do {
             let archive = directory.appendingPathComponent("upload.zip")
-            try bytes.write(to: archive)
+            try files.moveItem(at: source, to: archive)
             let names = Set(try WebArchive.entries(archive).filter { !$0.hasPrefix("__MACOSX/") })
             let encrypted = names == [PackageCrypto.headerName, PackageCrypto.contentName]
-            let info = PendingImport(user: user!.name, target: target?.url, encrypted: encrypted)
+            let info = PendingImport(user: user.name, target: target?.url, encrypted: encrypted)
             try JSONEncoder().encode(info).write(to: directory.appendingPathComponent("info.json"))
             if encrypted {
                 try WebArchive.extractSafely(archive, into: directory.appendingPathComponent("sealed"), maximumEntries: 2,
@@ -556,7 +713,7 @@ extension WorksheetStore {
                 return PackageReport(token: token, needsPassword: true, target: target == nil ? "project" : "sheet")
             }
             try extractTree(archive, in: directory)
-            return try analyze(token: token, directory: directory, target: target, user: user!)
+            return try analyze(token: token, directory: directory, target: target, user: user)
         } catch {
             try? files.removeItem(at: directory)
             throw error
@@ -595,7 +752,7 @@ extension WorksheetStore {
 
     private func extractTree(_ archive: URL, in directory: URL) throws {
         try WebArchive.extractSafely(archive, into: directory.appendingPathComponent("tree"), maximumEntries: Self.maximumPackageEntries,
-                                     maximumExtracted: Self.maximumPackageExtracted, sizeMessage: "A kicsomagolt csomag legfeljebb 1 GiB lehet.")
+                                     maximumExtracted: Self.maximumPackageExtracted, sizeMessage: "A kicsomagolt csomag legfeljebb 8 GiB lehet.")
         try? files.removeItem(at: archive)
     }
 

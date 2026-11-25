@@ -55,6 +55,10 @@ package struct NodeLink: Codable, Equatable, Sendable {
     }
 }
 
+/// Nagy szövegfájl határa (docs/node-types.md, text típus): e fölött a vásznon csak az eleje látszik, és a tartalom
+/// nem az oldalsávon, hanem külön ablakban szerkeszthető. A kliens párja: editor.js `largeTextLimit`.
+package let largeTextLimit = 256 * 1024
+
 /// A fájlt tároló objektumok (`text`, `code`, `csv`, `image`, `audio`, `document`) fájlja.
 package struct CanvasFile: Codable, Equatable, Sendable {
     package var asset: String
@@ -67,7 +71,7 @@ package struct CanvasFile: Codable, Equatable, Sendable {
     var alphaEnabled: Bool?
     @OptionalPaint var alphaBackground: String? = nil
     /// Szövegfájl változásszámlálója: mentés után nő, a többi kliens ebből tudja, hogy újra kell tölteni.
-    var rev: Int?
+    package var rev: Int?
 
     /// Közös könyvtár (Public/common): minden projekt olvashatja, senki nem módosíthatja.
     static let common = "@common"
@@ -85,7 +89,7 @@ package struct CanvasFile: Codable, Equatable, Sendable {
     /// azonos nevű fájl, és egy lapon mindkettőre mutathat doboz.
     package var textKey: String { source.map { $0 + "\u{0}" + asset } ?? asset }
 
-    var isCommon: Bool { source == Self.common || source?.hasPrefix(Self.common + "/") == true }
+    package var isCommon: Bool { source == Self.common || source?.hasPrefix(Self.common + "/") == true }
 
     /// Közös könyvtárbeli fájl címe (`/common/...`), nyilvános statikus fájlként.
     var commonURL: String? {
@@ -110,7 +114,7 @@ package struct CanvasFile: Codable, Equatable, Sendable {
     }
 
     /// Megjelenített fájlnév; képnél a tárolt tő + kiterjesztés.
-    func displayName(image: Bool) -> String {
+    package func displayName(image: Bool) -> String {
         if image {
             let ext = fileExtension ?? (asset as NSString).pathExtension
             return ext.isEmpty ? imageStem : imageStem + "." + ext
@@ -277,7 +281,7 @@ package struct Idea: Codable, Equatable, Sendable {
     var isContainer: Bool { isBox && container == true }
     var isImage: Bool { root == "image" }
     var isAudio: Bool { root == "audio" }
-    var isTextFile: Bool { root == "text" }
+    package var isTextFile: Bool { root == "text" }
     func has(_ trait: String) -> Bool { NodeTypes.has(type, trait) }
 
     /// Rövid név (kereső, akadálymentes felirat, listák): fájlnév, illetve a szöveg első sora formázójelek nélkül.

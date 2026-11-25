@@ -13,9 +13,6 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 - **Közös görgetés: a táblázat szerkesztő- és olvasó nézetének görgetési helyzete nem pontosan fedi egymást** (2026-11-24)
   - Cellaszerkesztés közben a rács görgetési értéke megy át változatlanul az olvasó nézetekbe; a fejlécsor és a belső térköz miatt a többieknél néhány képponttal (CSV-nél, ahol a sormagasság eltér, többel) máshol állhat a tartalom.
 
-- **A megtekintőben a görgethető tartalom kijelölés nélkül is görög** (2026-11-24)
-  - A „csak kijelölt dobozban görög” szabály a szerkesztőben él; a megtekintőben (ahol a látogató nem jelöl ki) a tartalom egérgörgővel továbbra is görgethető. Eldöntendő, hogy ott mi legyen a szabály.
-
 - **Teljesítmény: nagyítás végén 80–190 ms-os képkocka; táblázatszerkesztés görgetése ~50 fps** (2026-11-24)
   - Este enyhítve: görgős nagyításnál a rögzítés 0,3 mp nyugalmat vár, így mozdulatonként egyszer fut le (nem kattanásonként). Maga a rögzítő képkocka költsége nem változott.
   - A mérések szerint ez a két terület nem javult eleget; részletek és a kipróbált megoldások: `server/docs/PERF.md` („Ami nem javult vagy nyitva maradt”).
@@ -37,3 +34,6 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 - **Szűkített d3-csomag: a pásztázás kézzel ellenőrizendő** (2026-11-25)
   - Automatizált Safariban a nagyítás működik, és a teljes d3-mal azonos eredményt ad; az automatizált húzás (üres vászonról és szóközzel) egyik csomaggal sem mozdította a nézetet, így a pásztázás, az érintéses nagyítás és a „Mind” gomb szemmel nézendő.
+
+- **Külön ablakos szövegszerkesztő és csomag-párbeszéd: a kinézet nincs szemmel ellenőrizve** (2026-11-25)
+  - Automatizált Safariban a szövegszerkesztő oldal betölt és működik (a mező mérete, állapotsor, mentés gomb), a darabolt feltöltés a böngészőből végigment; képernyőkép nem készült (a kijelző aludt). A folyamatjelző és a „Folytatás” gomb megjelenése kézzel nézendő.

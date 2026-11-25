@@ -134,3 +134,87 @@ private func entries(_ zip: URL) throws -> Set<String> { Set(try WebArchive.entr
     let sheet = try store.load(path, user: owner)
     #expect(sheet.title == "Régi" && sheet.revision == 1 && sheet.schemaVersion == Worksheet.currentSchema)
 }
+
+/// Darabolt feltöltés: a darabok sorban fűződnek, megszakadás után a szerver megmondja, hol tart; a végén ugyanaz az
+/// import készül elő, mint az egyben feltöltött csomagnál. A közvetlen letöltés csak a készítőjének jár.
+@Test func packageUploadsInChunksAndResumes() async throws {
+    let (store, root) = try makeStore()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let password = UUID().uuidString
+    try store.setUser(name: "owner", role: .editor, passwordHash: try Bcrypt.hash(password, cost: 4))
+    let owner = User(name: "owner", role: .editor, passwordHash: ""), member = User(name: "member", role: .editor, passwordHash: "")
+    let project = try WorksheetPath(["darabolt"])
+    _ = try store.open(project, user: owner)
+    try Data(repeating: 7, count: 300_000).write(to: root.appendingPathComponent("darabolt/nagy.bin"))
+    _ = try store.load(project, user: owner)
+    let zip = try store.exportPackage(project, options: PackageExportRequest(), user: owner, unlocks: [])
+    let bytes = try Data(contentsOf: zip)
+
+    // Tároló: munkamenet, darabok, rossz folytatási pont, más felhasználó, folytatás.
+    #expect(throws: Abort.self) { try store.beginPackageUpload(size: 0, target: nil, user: owner, unlocks: []) }
+    #expect(throws: Abort.self) { try store.beginPackageUpload(size: Int64(WorksheetStore.maximumPackage) + 1, target: nil, user: owner, unlocks: []) }
+    #expect(throws: Abort.self) { try store.beginPackageUpload(size: 10, target: nil, user: nil, unlocks: []) }
+    let session = try store.beginPackageUpload(size: Int64(bytes.count), target: nil, user: owner, unlocks: [])
+    #expect(session.received == 0 && session.chunk == WorksheetStore.packageChunk)
+    let half = bytes.count / 2
+    #expect(throws: Abort.self) { try store.appendPackageUpload(session.id, offset: 0, bytes: Data("nem zip".utf8), user: owner) }
+    #expect(try store.appendPackageUpload(session.id, offset: 0, bytes: bytes.prefix(half), user: owner).received == Int64(half))
+    #expect(throws: Abort.self) { try store.appendPackageUpload(session.id, offset: 0, bytes: bytes.prefix(half), user: owner) }
+    #expect(throws: Abort.self) { try store.appendPackageUpload(session.id, offset: Int64(half), bytes: bytes.suffix(from: half), user: member) }
+    #expect(throws: Abort.self) { try store.finishPackageUpload(session.id, user: owner, unlocks: []) }
+    // Megszakadás után: az állapot lekérdezése (az újraindításkori takarítás a félbemaradt feltöltést megtartja).
+    store.cleanPackageStaging(all: true)
+    #expect(try store.packageUploadState(session.id, user: owner).received == Int64(half))
+    #expect(throws: Abort.self) { try store.appendPackageUpload(session.id, offset: Int64(half), bytes: bytes.suffix(from: half) + Data([0]), user: owner) }
+    #expect(try store.appendPackageUpload(session.id, offset: Int64(half), bytes: bytes.suffix(from: half), user: owner).received == Int64(bytes.count))
+    let report = try store.finishPackageUpload(session.id, user: owner, unlocks: [])
+    #expect(report.sheets == 1 && !report.needsPassword)
+    #expect(throws: Abort.self) { try store.packageUploadState(session.id, user: owner) }
+    let copy = try store.commitPackage(PackageCommit(token: report.token, name: "masolat"), user: owner, unlocks: [])
+    #expect(try Data(contentsOf: root.appendingPathComponent("masolat/nagy.bin")).count == 300_000)
+    #expect(copy.url == "masolat")
+
+    // Megszakítás: a munkamenet eltűnik.
+    let dropped = try store.beginPackageUpload(size: Int64(bytes.count), target: nil, user: owner, unlocks: [])
+    try store.cancelPackageUpload(dropped.id, user: owner)
+    #expect(throws: Abort.self) { try store.packageUploadState(dropped.id, user: owner) }
+
+    // HTTP: előkészített letöltés (részleges kéréssel is), és feltöltés darabokban.
+    try await withApp(configure: { app in configure(app, store: store, secureCookies: false) }) { app in
+        let browser = try app.testing()
+        let login = try await login(browser, name: "owner", password: password, path: "darabolt")
+        let headers: HTTPHeaders = ["Cookie": login.cookie, "X-CSRF-Token": login.csrf, "Content-Type": "application/json"]
+        struct Prepared: Content { let url: String; let name: String; let size: Int64 }
+        let prepared = try await browser.sendRequest(.POST, "/api/package/export/darabolt?prepare=1", headers: headers) { request in
+            try request.content.encode(PackageExportRequest())
+        }
+        #expect(prepared.status == .ok)
+        let link = try prepared.content.decode(Prepared.self)
+        #expect(link.size == Int64(bytes.count) && link.name == "darabolt.zip")
+        let whole = try await browser.sendRequest(.GET, link.url, headers: ["Cookie": login.cookie])
+        #expect(whole.status == .ok && whole.body.readableBytes == bytes.count)
+        #expect(whole.headers.first(name: .contentDisposition)?.contains("darabolt.zip") == true)
+        let tail = try await browser.sendRequest(.GET, link.url, headers: ["Cookie": login.cookie, "Range": "bytes=\(bytes.count - 100)-"])
+        #expect(tail.status == .partialContent && tail.body.readableBytes == 100)
+        #expect(try await browser.sendRequest(.GET, link.url).status != .ok)
+
+        struct Begin: Content { let size: Int64; let target: String? }
+        let begun = try await browser.sendRequest(.POST, "/api/package/uploads", headers: headers) { request in
+            try request.content.encode(Begin(size: Int64(bytes.count), target: nil))
+        }
+        let state = try begun.content.decode(WorksheetStore.PackageUploadState.self)
+        let binary: HTTPHeaders = ["Cookie": login.cookie, "X-CSRF-Token": login.csrf, "Content-Type": "application/octet-stream"]
+        let first = try await browser.sendRequest(.PUT, "/api/package/uploads/\(state.id)?offset=0", headers: binary, body: ByteBuffer(data: bytes.prefix(half)))
+        #expect(first.status == .ok)
+        // Ugyanaz a darab még egyszer (a kliens nem kapta meg a választ): 409 és a tényleges állás.
+        let repeated = try await browser.sendRequest(.PUT, "/api/package/uploads/\(state.id)?offset=0", headers: binary, body: ByteBuffer(data: bytes.prefix(half)))
+        #expect(repeated.status == .conflict && repeated.headers.first(name: "X-ThinkNodes-Received") == String(half))
+        let status = try await browser.sendRequest(.GET, "/api/package/uploads/\(state.id)", headers: ["Cookie": login.cookie])
+        #expect(try status.content.decode(WorksheetStore.PackageUploadState.self).received == Int64(half))
+        let second = try await browser.sendRequest(.PUT, "/api/package/uploads/\(state.id)?offset=\(half)", headers: binary, body: ByteBuffer(data: bytes.suffix(from: half)))
+        #expect(second.status == .ok)
+        let finished = try await browser.sendRequest(.POST, "/api/package/uploads/\(state.id)/finish", headers: headers)
+        #expect(finished.status == .ok)
+        #expect(try finished.content.decode(PackageReport.self).sheets == 1)
+    }
+}

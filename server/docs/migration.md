@@ -148,6 +148,16 @@ A mostani egylapos `.thnode` import megmarad.
 - **Ideiglenes mappa:** `<adatkönyvtár>/.package-staging`, egy óra után és szerverindításkor törlődik.
 - **Felület:** főoldal „Projekt importálása (.zip)”; projekt- és lapkártya menü „Letöltés (.zip)”; megtekintő „ZIP”;
   szerkesztő vászonpanel „Projektcsomag” (Letöltés, Importálás allapként + laplinkes doboz a látható terület közepén).
-- **Korlát:** feltöltés 200 MiB, kibontva 1 GiB, 20 000 fájl (TODO.md: mérethatár, streamelés).
+- **Korlát:** csomag 4 GiB (a ZIP64 nélküli ZIP határa; a saját export tömörítés nélküli), kibontva 8 GiB, 20 000 fájl.
+- **Feltöltés darabokban, folytathatóan:** a kliens munkamenetet nyit (`POST /api/package/uploads`: méret, cél), majd 8 MiB-os
+  darabokat küld (`PUT …/uploads/<id>?offset=N`). A szerver csak a saját folytatási pontjától fogad el adatot; ha a kliens
+  máshol tart, 409-cel és az `X-ThinkNodes-Received` fejléccel válaszol. Megszakadt kapcsolatnál a kliens néhányszor magától
+  újrapróbál, utána „Folytatás” gombot ad; az állás lekérdezhető (`GET …/uploads/<id>`). A munkamenet azonosítója a
+  böngészőben megmarad, így ugyanazt a fájlt újra kiválasztva az oldal újratöltése vagy a szerver újraindítása után is
+  folytatódik (a félbemaradt feltöltés az utolsó darab után 24 óráig él). A végén `POST …/uploads/<id>/finish` indítja
+  a kicsomagolást és az elemzést. Induláskor a szerver ellenőrzi a szabad lemezhelyet.
+- **Letöltés:** `POST /api/package/export/<lap>?prepare=1` elkészíti a csomagot, és a letöltés címét adja vissza
+  (`/api/package/download/<azonosító>`, egy óráig él, csak a készítőjének). A böngésző közvetlenül lemezre tölti
+  (nem a lap memóriájába), részleges kéréssel (`Range`) folytatható.
 - **„web” nevű mappa:** .web prezentációra hivatkozó lap útvonalában nem lehet `web` nevű mappa (a prezentációk címében
   foglalt). Ilyen néven az import hibát ad, a javasolt név `web-lap`.
