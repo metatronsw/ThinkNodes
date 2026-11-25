@@ -17,9 +17,6 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 - **A 2026-11-25-i vonal- és gyorseszköz-változások: kézzel, Safariban nézendő** (2026-11-25; a tesztek 2026-11-26-án hozzáigazítva, mind átmegy)
   - Kézzel nézendő Safariban: a futó pötty (szerkesztő, megjelenítő, export), a három vonalméret régi munkalapokon, a fájlnév helyben szerkesztése (ékezetek, Enter, Esc), a gyors eszközök az ablak négy sarkában.
 
-- **Két „Vastag” nevű gomb a vonal paneljén** (2026-11-26)
-  - A Vonalméret (Vékony / Közepes / Vastag) és a Megjelenés (Sima / Vastag / Szaggatott / Pontozott) csoportban is van „Vastag” gomb. A csoportnév (aria-label) megkülönbözteti őket, de a súgóban és képernyőolvasóval egyformának hangzanak. Döntés kell: átnevezés (pl. Megjelenés: „Kiemelt”, vagy Vonalméret: „Vékony / Közepes / Széles”).
-
 - **Gyors eszközök (próba): ismert hiányok** (2026-11-25)
   - A hagyományos menü „Szerkesztés” parancsa (panel megnyitása) nem került a gombok közé.
   - Ahol egy feliratos gombnak nincs saját ikonja (pl. táblázat egyes gombjai), az alapértelmezett fájl-ikon látszik, több gomb egyforma lehet.
