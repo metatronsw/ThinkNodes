@@ -1,5 +1,14 @@
 # Változások
 
+## 2026-11-25 – NeonGlow téma (retrowave, három paletta) és bemutató projekt – kódmódosítás nélkül
+
+- **Új téma: NeonGlow** (`server/Public/themes/NeonGlow.json`, téma-ID 5), csak témafájl, a kód nem változott. Három paletta 16–16 színnel: Miami (neon rózsa, cián, ultraibolya), Tokió (jégkék, magenta, savzöld), Outrun (naplemente narancs, forró rózsa, aranysárga).
+- **Sötét mindkét módban:** a nappali (világos) mód háttere mély alkonyat (pl. Miami: `#2e1d40`), az esti (sötét) módé majdnem fekete (`#06020d`). A neon színek árnyalatonként a legtelítettebb világosságon állnak, nappal egy fokkal mélyebbek.
+- **Grafika:** vastag vonalak (`lineScale` 1,2–1,5 minden típusra és megjelenésre), vonalas rács, letört sarkú dobozok (`boxChamfer: 10`), rombusz csomópont, nagy kijelölés-glow (`glow: 14`), üvegpanelek.
+- **Neon keret:** a doboz kerete „Üres” felületmódban a doboz színét veszi fel – a bemutató dobozai így kapnak neon keretet. A keret vastagsága a kódban rögzített (1,6), témából nem állítható: a kért vastag keret kódmódosítás nélkül nem érhető el (TODO.md).
+- **Bemutató projekt** (csak helyben, `projects/NeonGlow`, nincs gitben): 65 objektum, 26 vonal – ugyanaz a készlet, mint a Liquid Glass bemutatóban (alakzatok, felületmódok, animációk, konténer, vonaltípusok, csomópontok, szöveg-, kód-, CSV- és táblázatfájl, grafikonok, három generált kép, hang, PDF, a paletta 16 színe).
+- Safariban képernyőképpel ellenőrizve nappali és esti módban (Miami paletta). A helyi szerver újraindítva (a témákat induláskor olvassa be).
+
 ## 2026-11-25 – Liquid Glass téma (látványcsomag), vonalvastagság típus × megjelenés szerint a témából, bemutató projekt
 
 - **Új téma: Liquid Glass** (`server/Public/themes/LiquidGlass.json`, téma-ID 4): öt paletta (Azúr, Aurora, Napnyugta, Lagúna, Grafit), mindegyikben 21 szín világos és sötét változattal (OKLCH-térben, azonos világosságon és telítettségen). 22-es saroksugár, ívelt egyenes vonalak, kerekített töréspontok.

@@ -92,3 +92,8 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 
 + A „kinyíló rész semmit nem tol el” szabály bevezetése a tulajdonságpanelen is: a színválasztó listája ott még eltolja a többi gombot (a gyors eszközökben már rögzített réteg: `ColorPicker floating`, `placePopup`).
 + A többi típus (fájldobozok, kép, vonal, csomópont) elrendezése a `quick-tools.json`-ban; a tulajdonságpanel kiváltása (szöveg- és számmezők helye).
+
+# TÉMÁK
+
++ Dobozkeret a témából (2026-11-25, a NeonGlow témához félretéve): a keret vastagsága (most rögzített 1,6) és színe (pl. a doboz színe, kitöltött doboznál is) legyen témamező – ezzel lesz a NeonGlow kerete valóban vastag. Kódmódosítás kell hozzá (`editor.js shape`, `Rendering.swift boxSurface`, `Theme.swift`).
++ NeonGlow: a Tokió és az Outrun paletta, a megtekintő és az SVG-export szemmel még nincs megnézve.

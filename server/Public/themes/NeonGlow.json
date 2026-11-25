@@ -1,0 +1,372 @@
+{
+  "version": 1,
+  "id": 5,
+  "name": "NeonGlow",
+  "modes": [
+    "light",
+    "dark"
+  ],
+  "palettes": [
+    {
+      "id": 1,
+      "name": "Miami",
+      "colors": [
+        {
+          "id": 0,
+          "name": "Éjszaka",
+          "light": "#2e1d40",
+          "dark": "#06020d"
+        },
+        {
+          "id": 1,
+          "name": "Fény",
+          "light": "#f5effd",
+          "dark": "#f2ebfc"
+        },
+        {
+          "id": 2,
+          "name": "Panel",
+          "light": "#452d5e",
+          "dark": "#1a0b29"
+        },
+        {
+          "id": 3,
+          "name": "Vezeték",
+          "light": "#be95ec",
+          "dark": "#bb8aef"
+        },
+        {
+          "id": 4,
+          "name": "Neon rózsa",
+          "light": "#ea099b",
+          "dark": "#fe0ca9"
+        },
+        {
+          "id": 5,
+          "name": "Neon cián",
+          "light": "#1be5ee",
+          "dark": "#14f4fe"
+        },
+        {
+          "id": 6,
+          "name": "Ultraibolya",
+          "light": "#9833fe",
+          "dark": "#a053fd"
+        },
+        {
+          "id": 7,
+          "name": "Naplemente sárga",
+          "light": "#eec804",
+          "dark": "#fdd506"
+        },
+        {
+          "id": 8,
+          "name": "Árnyék",
+          "light": "#56436c",
+          "dark": "#2a1d37"
+        },
+        {
+          "id": 9,
+          "name": "Mély neon rózsa",
+          "light": "#772151",
+          "dark": "#420029"
+        },
+        {
+          "id": 10,
+          "name": "Mély neon cián",
+          "light": "#005256",
+          "dark": "#022729"
+        },
+        {
+          "id": 11,
+          "name": "Neon narancs",
+          "light": "#ec6f00",
+          "dark": "#fe790a"
+        },
+        {
+          "id": 12,
+          "name": "Lézerzöld",
+          "light": "#04ee70",
+          "dark": "#18fd79"
+        },
+        {
+          "id": 13,
+          "name": "Elektromos kék",
+          "light": "#236dfe",
+          "dark": "#3c7dff"
+        },
+        {
+          "id": 14,
+          "name": "Magenta",
+          "light": "#eb00ec",
+          "dark": "#fd09ff"
+        },
+        {
+          "id": 15,
+          "name": "Neon korall",
+          "light": "#e80636",
+          "dark": "#fe073b"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Tokió",
+      "colors": [
+        {
+          "id": 0,
+          "name": "Éjszaka",
+          "light": "#192446",
+          "dark": "#01030f"
+        },
+        {
+          "id": 1,
+          "name": "Fény",
+          "light": "#edf2fd",
+          "dark": "#e8eefd"
+        },
+        {
+          "id": 2,
+          "name": "Panel",
+          "light": "#273767",
+          "dark": "#08112e"
+        },
+        {
+          "id": 3,
+          "name": "Vezeték",
+          "light": "#88a7fd",
+          "dark": "#7ea0fd"
+        },
+        {
+          "id": 4,
+          "name": "Jégkék",
+          "light": "#11cded",
+          "dark": "#0adbfe"
+        },
+        {
+          "id": 5,
+          "name": "Magenta",
+          "light": "#ea05db",
+          "dark": "#fd0ded"
+        },
+        {
+          "id": 6,
+          "name": "Savzöld",
+          "light": "#4eed10",
+          "dark": "#51fd00"
+        },
+        {
+          "id": 7,
+          "name": "Ibolya",
+          "light": "#7453fe",
+          "dark": "#7f69fe"
+        },
+        {
+          "id": 8,
+          "name": "Árnyék",
+          "light": "#3d4b74",
+          "dark": "#1a233c"
+        },
+        {
+          "id": 9,
+          "name": "Mély jégkék",
+          "light": "#02515f",
+          "dark": "#02272e"
+        },
+        {
+          "id": 10,
+          "name": "Mély magenta",
+          "light": "#66315f",
+          "dark": "#370d33"
+        },
+        {
+          "id": 11,
+          "name": "Türkiz",
+          "light": "#17edd1",
+          "dark": "#12fcdf"
+        },
+        {
+          "id": 12,
+          "name": "Citromfény",
+          "light": "#e3d612",
+          "dark": "#f1e316"
+        },
+        {
+          "id": 13,
+          "name": "Neon piros",
+          "light": "#ec0878",
+          "dark": "#ff1583"
+        },
+        {
+          "id": 14,
+          "name": "Kobalt",
+          "light": "#0c89e8",
+          "dark": "#0b95fd"
+        },
+        {
+          "id": 15,
+          "name": "Borostyán",
+          "light": "#ea840c",
+          "dark": "#fc8e00"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Outrun",
+      "colors": [
+        {
+          "id": 0,
+          "name": "Éjszaka",
+          "light": "#3c182e",
+          "dark": "#0b0106"
+        },
+        {
+          "id": 1,
+          "name": "Fény",
+          "light": "#fcedf5",
+          "dark": "#fce8f2"
+        },
+        {
+          "id": 2,
+          "name": "Panel",
+          "light": "#582645",
+          "dark": "#25061a"
+        },
+        {
+          "id": 3,
+          "name": "Vezeték",
+          "light": "#e488be",
+          "dark": "#e57bba"
+        },
+        {
+          "id": 4,
+          "name": "Naplemente",
+          "light": "#ed7b06",
+          "dark": "#fe860f"
+        },
+        {
+          "id": 5,
+          "name": "Forró rózsa",
+          "light": "#e806bb",
+          "dark": "#fc0bcb"
+        },
+        {
+          "id": 6,
+          "name": "Aranysárga",
+          "light": "#eec804",
+          "dark": "#fdd506"
+        },
+        {
+          "id": 7,
+          "name": "Lila köd",
+          "light": "#8547ff",
+          "dark": "#8e60fe"
+        },
+        {
+          "id": 8,
+          "name": "Árnyék",
+          "light": "#683d56",
+          "dark": "#351929"
+        },
+        {
+          "id": 9,
+          "name": "Mély naplemente",
+          "light": "#6e3602",
+          "dark": "#371800"
+        },
+        {
+          "id": 10,
+          "name": "Mély forró rózsa",
+          "light": "#6a2f58",
+          "dark": "#3a0c2e"
+        },
+        {
+          "id": 11,
+          "name": "Lángvörös",
+          "light": "#e90b29",
+          "dark": "#fe0d2d"
+        },
+        {
+          "id": 12,
+          "name": "Hűs cián",
+          "light": "#00ddef",
+          "dark": "#1cebfe"
+        },
+        {
+          "id": 13,
+          "name": "Fukszia",
+          "light": "#c209eb",
+          "dark": "#d313ff"
+        },
+        {
+          "id": 14,
+          "name": "Menta",
+          "light": "#12ef9f",
+          "dark": "#19feaa"
+        },
+        {
+          "id": 15,
+          "name": "Éjkék",
+          "light": "#4a65fe",
+          "dark": "#5977ff"
+        }
+      ]
+    }
+  ],
+  "graphics": {
+    "glow": 14,
+    "selection": 4,
+    "box": "rounded",
+    "boxChamfer": 10,
+    "line": "straight",
+    "junction": "diamond",
+    "junctionSize": 14,
+    "lineScale": {
+      "straight": {
+        "plain": 1.5,
+        "thick": 1.2,
+        "dashed": 1.4,
+        "dotted": 1.3
+      },
+      "sCurve": {
+        "plain": 1.5,
+        "thick": 1.2,
+        "dashed": 1.4,
+        "dotted": 1.3
+      },
+      "zigzag": {
+        "plain": 1.5,
+        "thick": 1.2,
+        "dashed": 1.4,
+        "dotted": 1.3
+      },
+      "lightning": {
+        "plain": 1.5,
+        "thick": 1.2,
+        "dashed": 1.4,
+        "dotted": 1.3
+      },
+      "arc": {
+        "plain": 1.5,
+        "thick": 1.2,
+        "dashed": 1.4,
+        "dotted": 1.3
+      },
+      "rope": {
+        "plain": 1.5,
+        "thick": 1.2,
+        "dashed": 1.4,
+        "dotted": 1.3
+      }
+    },
+    "motionSpeed": 1.2,
+    "grid": "lines",
+    "glass": true,
+    "fonts": [
+      "'Avenir Next', 'Helvetica Neue', system-ui, sans-serif",
+      "Futura, 'Avenir Next Condensed', 'Trebuchet MS', sans-serif",
+      "Menlo, 'SF Mono', Consolas, monospace"
+    ]
+  }
+}
