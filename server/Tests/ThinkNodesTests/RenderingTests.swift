@@ -350,6 +350,30 @@ import VaporTesting
     #expect(try offset("second") < wire)
 }
 
+/// A konténer szövegének körbefuttatása a szerveren pontosan egyezzen a szerkesztőével: közös esetek a
+/// Tests/Fixtures/text-flow.json fájlban (kliensoldali párja: Tests/Editor/text-flow.mjs, Public/geometry.js labelLayout).
+@Test func textFlowMatchesSharedFixtures() throws {
+    let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("Fixtures/text-flow.json")
+    struct Line: Decodable { let text: String; let x: Double; let y: Double; let anchor: String }
+    struct Case: Decodable { let name: String; let nodes: [Idea]; let lines: [Line] }
+    let cases = try JSONDecoder().decode([Case].self, from: Data(contentsOf: fixture))
+    #expect(cases.count >= 10)
+    let row = try NSRegularExpression(pattern: #"<tspan text-anchor="(start|middle|end)"(?: data-justify="[^"]*")? x="([-0-9.]+)" y="([-0-9.]+)"[^>]*>([^<]*)</tspan>"#)
+    for item in cases {
+        let svg = boardSVG(Worksheet(title: "Körbefuttatás", nodes: item.nodes))
+        let found = row.matches(in: svg, range: NSRange(svg.startIndex..., in: svg)).map { match in
+            (1...4).map { String(svg[Range(match.range(at: $0), in: svg)!]) }
+        }
+        #expect(found.count == item.lines.count, "Sorok száma eltér: \(item.name)")
+        for (actual, expected) in zip(found, item.lines) {
+            let x = try #require(Double(actual[1])), y = try #require(Double(actual[2]))
+            #expect(actual[0] == expected.anchor && actual[3] == expected.text && abs(x - expected.x) < 0.002 && abs(y - expected.y) < 0.002,
+                    "Eltérés: \(item.name) – „\(expected.text)” (\(expected.x), \(expected.y)) helyett „\(actual[3])” (\(x), \(y))")
+        }
+    }
+}
+
 @Test func formerAutoLayoutKeyLoadsAsTextFlow() throws {
     // A 2026-11-25-i első változat `autoLayout` néven írta a szövegkörbefuttatás kapcsolóját.
     let data = Data(#"{"id":"group","type":"box","text":"Konténer","pos":{"x":0,"y":0},"w":300,"h":200,"container":true,"autoLayout":false}"#.utf8)

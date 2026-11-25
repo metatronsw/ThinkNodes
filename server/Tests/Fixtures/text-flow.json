@@ -1,0 +1,1169 @@
+[
+ {
+  "name": "nincs doboz, felül",
+  "nodes": [
+   {
+    "id": "kontener",
+    "type": "box",
+    "text": "# Címsor a konténerben\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\n- első felsorolási elem\n- második, valamivel hosszabb felsorolási elem, amely átfordul\n\nZáró bekezdés rövid szöveggel.",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "left",
+    "pos": {
+     "x": 40,
+     "y": -20
+    },
+    "w": 760,
+    "h": 620,
+    "container": true,
+    "vAlign": "top"
+   }
+  ],
+  "lines": [
+   {
+    "text": "Címsor a konténerben",
+    "x": -349.2,
+    "y": -260.57,
+    "anchor": "start"
+   },
+   {
+    "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut",
+    "x": -349.2,
+    "y": -217.62,
+    "anchor": "start"
+   },
+   {
+    "text": "labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco",
+    "x": -349.2,
+    "y": -197.62,
+    "anchor": "start"
+   },
+   {
+    "text": "laboris nisi ut aliquip ex ea commodo consequat.",
+    "x": -349.2,
+    "y": -177.62,
+    "anchor": "start"
+   },
+   {
+    "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut",
+    "x": -349.2,
+    "y": -137.62,
+    "anchor": "start"
+   },
+   {
+    "text": "labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco",
+    "x": -349.2,
+    "y": -117.62,
+    "anchor": "start"
+   },
+   {
+    "text": "laboris nisi ut aliquip ex ea commodo consequat.",
+    "x": -349.2,
+    "y": -97.62,
+    "anchor": "start"
+   },
+   {
+    "text": "• első felsorolási elem",
+    "x": -349.2,
+    "y": -57.62,
+    "anchor": "start"
+   },
+   {
+    "text": "• második, valamivel hosszabb felsorolási elem, amely átfordul",
+    "x": -349.2,
+    "y": -37.62,
+    "anchor": "start"
+   },
+   {
+    "text": "Záró bekezdés rövid szöveggel.",
+    "x": -349.2,
+    "y": 2.38,
+    "anchor": "start"
+   }
+  ]
+ },
+ {
+  "name": "egy doboz jobbra fent",
+  "nodes": [
+   {
+    "id": "kontener",
+    "type": "box",
+    "text": "# Címsor a konténerben\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\n- első felsorolási elem\n- második, valamivel hosszabb felsorolási elem, amely átfordul\n\nZáró bekezdés rövid szöveggel.",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "left",
+    "pos": {
+     "x": 40,
+     "y": -20
+    },
+    "w": 760,
+    "h": 620,
+    "container": true,
+    "vAlign": "top"
+   },
+   {
+    "id": "a",
+    "type": "box",
+    "text": "",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": 280,
+     "y": -200
+    },
+    "w": 200,
+    "h": 140,
+    "parent": "kontener"
+   }
+  ],
+  "lines": [
+   {
+    "text": "Címsor a konténerben",
+    "x": -349.2,
+    "y": -260.57,
+    "anchor": "start"
+   },
+   {
+    "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do",
+    "x": -349.2,
+    "y": -217.62,
+    "anchor": "start"
+   },
+   {
+    "text": "eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut",
+    "x": -349.2,
+    "y": -197.62,
+    "anchor": "start"
+   },
+   {
+    "text": "enim ad minim veniam, quis nostrud exercitation ullamco",
+    "x": -349.2,
+    "y": -177.62,
+    "anchor": "start"
+   },
+   {
+    "text": "laboris nisi ut aliquip ex ea commodo consequat.",
+    "x": -349.2,
+    "y": -157.62,
+    "anchor": "start"
+   },
+   {
+    "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do",
+    "x": -349.2,
+    "y": -117.62,
+    "anchor": "start"
+   },
+   {
+    "text": "eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut",
+    "x": -349.2,
+    "y": -97.62,
+    "anchor": "start"
+   },
+   {
+    "text": "enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea",
+    "x": -349.2,
+    "y": -77.62,
+    "anchor": "start"
+   },
+   {
+    "text": "commodo consequat.",
+    "x": -349.2,
+    "y": -57.62,
+    "anchor": "start"
+   },
+   {
+    "text": "• első felsorolási elem",
+    "x": -349.2,
+    "y": -17.62,
+    "anchor": "start"
+   },
+   {
+    "text": "• második, valamivel hosszabb felsorolási elem, amely átfordul",
+    "x": -349.2,
+    "y": 2.38,
+    "anchor": "start"
+   },
+   {
+    "text": "Záró bekezdés rövid szöveggel.",
+    "x": -349.2,
+    "y": 42.38,
+    "anchor": "start"
+   }
+  ]
+ },
+ {
+  "name": "egy doboz balra középen",
+  "nodes": [
+   {
+    "id": "kontener",
+    "type": "box",
+    "text": "# Címsor a konténerben\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\n- első felsorolási elem\n- második, valamivel hosszabb felsorolási elem, amely átfordul\n\nZáró bekezdés rövid szöveggel.",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "left",
+    "pos": {
+     "x": 40,
+     "y": -20
+    },
+    "w": 760,
+    "h": 620,
+    "container": true,
+    "vAlign": "top"
+   },
+   {
+    "id": "a",
+    "type": "box",
+    "text": "",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": -220,
+     "y": 0
+    },
+    "w": 180,
+    "h": 160,
+    "parent": "kontener"
+   }
+  ],
+  "lines": [
+   {
+    "text": "Címsor a konténerben",
+    "x": -349.2,
+    "y": -260.57,
+    "anchor": "start"
+   },
+   {
+    "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut",
+    "x": -349.2,
+    "y": -217.62,
+    "anchor": "start"
+   },
+   {
+    "text": "labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco",
+    "x": -349.2,
+    "y": -197.62,
+    "anchor": "start"
+   },
+   {
+    "text": "laboris nisi ut aliquip ex ea commodo consequat.",
+    "x": -349.2,
+    "y": -177.62,
+    "anchor": "start"
+   },
+   {
+    "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut",
+    "x": -349.2,
+    "y": -137.62,
+    "anchor": "start"
+   },
+   {
+    "text": "labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco",
+    "x": -349.2,
+    "y": -117.62,
+    "anchor": "start"
+   },
+   {
+    "text": "laboris nisi ut aliquip ex ea commodo consequat.",
+    "x": -349.2,
+    "y": -97.62,
+    "anchor": "start"
+   },
+   {
+    "text": "• első felsorolási elem",
+    "x": -152,
+    "y": -57.62,
+    "anchor": "start"
+   },
+   {
+    "text": "• második, valamivel hosszabb felsorolási elem, amely átfordul",
+    "x": -152,
+    "y": -37.62,
+    "anchor": "start"
+   },
+   {
+    "text": "Záró bekezdés rövid szöveggel.",
+    "x": -152,
+    "y": 2.38,
+    "anchor": "start"
+   }
+  ]
+ },
+ {
+  "name": "két doboz, sorkizárt",
+  "nodes": [
+   {
+    "id": "kontener",
+    "type": "box",
+    "text": "# Címsor a konténerben\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\n- első felsorolási elem\n- második, valamivel hosszabb felsorolási elem, amely átfordul\n\nZáró bekezdés rövid szöveggel.",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "left",
+    "pos": {
+     "x": 40,
+     "y": -20
+    },
+    "w": 760,
+    "h": 620,
+    "container": true,
+    "vAlign": "top",
+    "justified": true
+   },
+   {
+    "id": "a",
+    "type": "box",
+    "text": "",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": 260,
+     "y": -180
+    },
+    "w": 220,
+    "h": 120,
+    "parent": "kontener"
+   },
+   {
+    "id": "b",
+    "type": "box",
+    "text": "",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": -200,
+     "y": 120
+    },
+    "w": 200,
+    "h": 140,
+    "parent": "kontener"
+   }
+  ],
+  "lines": [
+   {
+    "text": "Címsor a konténerben",
+    "x": -349.2,
+    "y": -260.57,
+    "anchor": "start"
+   },
+   {
+    "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit,",
+    "x": -349.2,
+    "y": -217.62,
+    "anchor": "start"
+   },
+   {
+    "text": "sed do eiusmod tempor incididunt ut labore et dolore",
+    "x": -349.2,
+    "y": -197.62,
+    "anchor": "start"
+   },
+   {
+    "text": "magna aliqua. Ut enim ad minim veniam, quis nostrud",
+    "x": -349.2,
+    "y": -177.62,
+    "anchor": "start"
+   },
+   {
+    "text": "exercitation ullamco laboris nisi ut aliquip ex ea commodo",
+    "x": -349.2,
+    "y": -157.62,
+    "anchor": "start"
+   },
+   {
+    "text": "consequat.",
+    "x": -349.2,
+    "y": -137.62,
+    "anchor": "start"
+   },
+   {
+    "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit,",
+    "x": -349.2,
+    "y": -97.62,
+    "anchor": "start"
+   },
+   {
+    "text": "sed do eiusmod tempor incididunt ut labore et dolore",
+    "x": -349.2,
+    "y": -77.62,
+    "anchor": "start"
+   },
+   {
+    "text": "magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut",
+    "x": -349.2,
+    "y": -57.62,
+    "anchor": "start"
+   },
+   {
+    "text": "aliquip ex ea commodo consequat.",
+    "x": -349.2,
+    "y": -37.62,
+    "anchor": "start"
+   },
+   {
+    "text": "• első felsorolási elem",
+    "x": -349.2,
+    "y": 2.38,
+    "anchor": "start"
+   },
+   {
+    "text": "• második, valamivel hosszabb felsorolási elem, amely átfordul",
+    "x": -349.2,
+    "y": 22.38,
+    "anchor": "start"
+   },
+   {
+    "text": "Záró bekezdés rövid szöveggel.",
+    "x": -122,
+    "y": 62.38,
+    "anchor": "start"
+   }
+  ]
+ },
+ {
+  "name": "doboz a közepén (két oldalt kevés hely)",
+  "nodes": [
+   {
+    "id": "kontener",
+    "type": "box",
+    "text": "# Címsor a konténerben\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\n- első felsorolási elem\n- második, valamivel hosszabb felsorolási elem, amely átfordul\n\nZáró bekezdés rövid szöveggel.",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "left",
+    "pos": {
+     "x": 40,
+     "y": -20
+    },
+    "w": 760,
+    "h": 620,
+    "container": true,
+    "vAlign": "top"
+   },
+   {
+    "id": "a",
+    "type": "box",
+    "text": "",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": 40,
+     "y": -60
+    },
+    "w": 420,
+    "h": 120,
+    "parent": "kontener"
+   }
+  ],
+  "lines": [
+   {
+    "text": "Címsor a konténerben",
+    "x": -349.2,
+    "y": -260.57,
+    "anchor": "start"
+   },
+   {
+    "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut",
+    "x": -349.2,
+    "y": -217.62,
+    "anchor": "start"
+   },
+   {
+    "text": "labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco",
+    "x": -349.2,
+    "y": -197.62,
+    "anchor": "start"
+   },
+   {
+    "text": "laboris nisi ut aliquip ex ea commodo consequat.",
+    "x": -349.2,
+    "y": -177.62,
+    "anchor": "start"
+   },
+   {
+    "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut",
+    "x": -349.2,
+    "y": -137.62,
+    "anchor": "start"
+   },
+   {
+    "text": "labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco",
+    "x": -349.2,
+    "y": -117.62,
+    "anchor": "start"
+   },
+   {
+    "text": "laboris nisi ut",
+    "x": -349.2,
+    "y": -97.62,
+    "anchor": "start"
+   },
+   {
+    "text": "aliquip ex ea",
+    "x": -349.2,
+    "y": -77.62,
+    "anchor": "start"
+   },
+   {
+    "text": "commodo",
+    "x": -349.2,
+    "y": -57.62,
+    "anchor": "start"
+   },
+   {
+    "text": "consequat.",
+    "x": -349.2,
+    "y": -37.62,
+    "anchor": "start"
+   },
+   {
+    "text": "• első",
+    "x": -349.2,
+    "y": 2.38,
+    "anchor": "start"
+   },
+   {
+    "text": "felsorolási elem",
+    "x": -349.2,
+    "y": 22.38,
+    "anchor": "start"
+   },
+   {
+    "text": "• második,",
+    "x": -349.2,
+    "y": 42.38,
+    "anchor": "start"
+   },
+   {
+    "text": "valamivel hosszabb felsorolási elem, amely átfordul",
+    "x": -349.2,
+    "y": 62.38,
+    "anchor": "start"
+   },
+   {
+    "text": "Záró bekezdés rövid szöveggel.",
+    "x": -349.2,
+    "y": 102.38,
+    "anchor": "start"
+   }
+  ]
+ },
+ {
+  "name": "középre igazítva",
+  "nodes": [
+   {
+    "id": "kontener",
+    "type": "box",
+    "text": "# Címsor a konténerben\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\n- első felsorolási elem\n- második, valamivel hosszabb felsorolási elem, amely átfordul\n\nZáró bekezdés rövid szöveggel.",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": 40,
+     "y": -20
+    },
+    "w": 760,
+    "h": 620,
+    "container": true,
+    "vAlign": "middle"
+   },
+   {
+    "id": "a",
+    "type": "box",
+    "text": "",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": 280,
+     "y": -220
+    },
+    "w": 180,
+    "h": 120,
+    "parent": "kontener"
+   }
+  ],
+  "lines": [
+   {
+    "text": "Címsor a konténerben",
+    "x": -108.6,
+    "y": -121.57,
+    "anchor": "middle"
+   },
+   {
+    "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut",
+    "x": 0,
+    "y": -78.62,
+    "anchor": "middle"
+   },
+   {
+    "text": "labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco",
+    "x": 0,
+    "y": -58.62,
+    "anchor": "middle"
+   },
+   {
+    "text": "laboris nisi ut aliquip ex ea commodo consequat.",
+    "x": 0,
+    "y": -38.62,
+    "anchor": "middle"
+   },
+   {
+    "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut",
+    "x": 0,
+    "y": 1.38,
+    "anchor": "middle"
+   },
+   {
+    "text": "labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco",
+    "x": 0,
+    "y": 21.38,
+    "anchor": "middle"
+   },
+   {
+    "text": "laboris nisi ut aliquip ex ea commodo consequat.",
+    "x": 0,
+    "y": 41.38,
+    "anchor": "middle"
+   },
+   {
+    "text": "• első felsorolási elem",
+    "x": 0,
+    "y": 81.38,
+    "anchor": "middle"
+   },
+   {
+    "text": "• második, valamivel hosszabb felsorolási elem, amely átfordul",
+    "x": 0,
+    "y": 101.38,
+    "anchor": "middle"
+   },
+   {
+    "text": "Záró bekezdés rövid szöveggel.",
+    "x": 0,
+    "y": 141.38,
+    "anchor": "middle"
+   }
+  ]
+ },
+ {
+  "name": "jobbra és alulra igazítva, sorkizárt",
+  "nodes": [
+   {
+    "id": "kontener",
+    "type": "box",
+    "text": "# Címsor a konténerben\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\n- első felsorolási elem\n- második, valamivel hosszabb felsorolási elem, amely átfordul\n\nZáró bekezdés rövid szöveggel.",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "right",
+    "pos": {
+     "x": 40,
+     "y": -20
+    },
+    "w": 760,
+    "h": 620,
+    "container": true,
+    "vAlign": "bottom",
+    "justified": true
+   },
+   {
+    "id": "a",
+    "type": "box",
+    "text": "",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": 40,
+     "y": -200
+    },
+    "w": 240,
+    "h": 140,
+    "parent": "kontener"
+   }
+  ],
+  "lines": [
+   {
+    "text": "Címsor a konténerben",
+    "x": 349.2,
+    "y": 17.43,
+    "anchor": "end"
+   },
+   {
+    "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut",
+    "x": -349.2,
+    "y": 60.38,
+    "anchor": "start"
+   },
+   {
+    "text": "labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco",
+    "x": -349.2,
+    "y": 80.38,
+    "anchor": "start"
+   },
+   {
+    "text": "laboris nisi ut aliquip ex ea commodo consequat.",
+    "x": -349.2,
+    "y": 100.38,
+    "anchor": "start"
+   },
+   {
+    "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut",
+    "x": -349.2,
+    "y": 140.38,
+    "anchor": "start"
+   },
+   {
+    "text": "labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco",
+    "x": -349.2,
+    "y": 160.38,
+    "anchor": "start"
+   },
+   {
+    "text": "laboris nisi ut aliquip ex ea commodo consequat.",
+    "x": -349.2,
+    "y": 180.38,
+    "anchor": "start"
+   },
+   {
+    "text": "• első felsorolási elem",
+    "x": -349.2,
+    "y": 220.38,
+    "anchor": "start"
+   },
+   {
+    "text": "• második, valamivel hosszabb felsorolási elem, amely átfordul",
+    "x": -349.2,
+    "y": 240.38,
+    "anchor": "start"
+   },
+   {
+    "text": "Záró bekezdés rövid szöveggel.",
+    "x": -349.2,
+    "y": 280.38,
+    "anchor": "start"
+   }
+  ]
+ },
+ {
+  "name": "keskeny konténer",
+  "nodes": [
+   {
+    "id": "kontener",
+    "type": "box",
+    "text": "# Címsor a konténerben\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\n- első felsorolási elem\n- második, valamivel hosszabb felsorolási elem, amely átfordul\n\nZáró bekezdés rövid szöveggel.",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "left",
+    "pos": {
+     "x": 0,
+     "y": 0
+    },
+    "w": 360,
+    "h": 900,
+    "container": true,
+    "vAlign": "top"
+   },
+   {
+    "id": "a",
+    "type": "box",
+    "text": "",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": 60,
+     "y": -280
+    },
+    "w": 180,
+    "h": 140,
+    "parent": "kontener"
+   }
+  ],
+  "lines": [
+   {
+    "text": "Címsor a konténerben",
+    "x": -161.2,
+    "y": -392.17,
+    "anchor": "start"
+   },
+   {
+    "text": "Lorem ipsum",
+    "x": -161.2,
+    "y": -349.22,
+    "anchor": "start"
+   },
+   {
+    "text": "dolor sit amet,",
+    "x": -161.2,
+    "y": -329.22,
+    "anchor": "start"
+   },
+   {
+    "text": "consectetur",
+    "x": -161.2,
+    "y": -309.22,
+    "anchor": "start"
+   },
+   {
+    "text": "adipiscing elit,",
+    "x": -161.2,
+    "y": -289.22,
+    "anchor": "start"
+   },
+   {
+    "text": "sed do",
+    "x": -161.2,
+    "y": -269.22,
+    "anchor": "start"
+   },
+   {
+    "text": "eiusmod",
+    "x": -161.2,
+    "y": -249.22,
+    "anchor": "start"
+   },
+   {
+    "text": "tempor",
+    "x": -161.2,
+    "y": -229.22,
+    "anchor": "start"
+   },
+   {
+    "text": "incididunt ut",
+    "x": -161.2,
+    "y": -209.22,
+    "anchor": "start"
+   },
+   {
+    "text": "labore et",
+    "x": -161.2,
+    "y": -189.22,
+    "anchor": "start"
+   },
+   {
+    "text": "dolore magna aliqua. Ut enim ad minim",
+    "x": -161.2,
+    "y": -169.22,
+    "anchor": "start"
+   },
+   {
+    "text": "veniam, quis nostrud exercitation ullamco",
+    "x": -161.2,
+    "y": -149.22,
+    "anchor": "start"
+   },
+   {
+    "text": "laboris nisi ut aliquip ex ea commodo",
+    "x": -161.2,
+    "y": -129.22,
+    "anchor": "start"
+   },
+   {
+    "text": "consequat.",
+    "x": -161.2,
+    "y": -109.22,
+    "anchor": "start"
+   },
+   {
+    "text": "Lorem ipsum dolor sit amet, consectetur",
+    "x": -161.2,
+    "y": -69.22,
+    "anchor": "start"
+   },
+   {
+    "text": "adipiscing elit, sed do eiusmod tempor",
+    "x": -161.2,
+    "y": -49.22,
+    "anchor": "start"
+   },
+   {
+    "text": "incididunt ut labore et dolore magna aliqua.",
+    "x": -161.2,
+    "y": -29.22,
+    "anchor": "start"
+   },
+   {
+    "text": "Ut enim ad minim veniam, quis nostrud",
+    "x": -161.2,
+    "y": -9.22,
+    "anchor": "start"
+   },
+   {
+    "text": "exercitation ullamco laboris nisi ut aliquip",
+    "x": -161.2,
+    "y": 10.78,
+    "anchor": "start"
+   },
+   {
+    "text": "ex ea commodo consequat.",
+    "x": -161.2,
+    "y": 30.78,
+    "anchor": "start"
+   },
+   {
+    "text": "• első felsorolási elem",
+    "x": -161.2,
+    "y": 70.78,
+    "anchor": "start"
+   },
+   {
+    "text": "• második, valamivel hosszabb felsorolási",
+    "x": -161.2,
+    "y": 90.78,
+    "anchor": "start"
+   },
+   {
+    "text": "elem, amely átfordul",
+    "x": -161.2,
+    "y": 110.78,
+    "anchor": "start"
+   },
+   {
+    "text": "Záró bekezdés rövid szöveggel.",
+    "x": -161.2,
+    "y": 150.78,
+    "anchor": "start"
+   }
+  ]
+ },
+ {
+  "name": "körbefuttatás kikapcsolva",
+  "nodes": [
+   {
+    "id": "kontener",
+    "type": "box",
+    "text": "# Címsor a konténerben\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\n- első felsorolási elem\n- második, valamivel hosszabb felsorolási elem, amely átfordul\n\nZáró bekezdés rövid szöveggel.",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "left",
+    "pos": {
+     "x": 40,
+     "y": -20
+    },
+    "w": 760,
+    "h": 620,
+    "container": true,
+    "vAlign": "middle",
+    "textFlow": false
+   },
+   {
+    "id": "a",
+    "type": "box",
+    "text": "",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": 280,
+     "y": -200
+    },
+    "w": 200,
+    "h": 140,
+    "parent": "kontener"
+   }
+  ],
+  "lines": [
+   {
+    "text": "Címsor a konténerben",
+    "x": -349.2,
+    "y": -121.42,
+    "anchor": "start"
+   },
+   {
+    "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut",
+    "x": -349.2,
+    "y": -78.47,
+    "anchor": "start"
+   },
+   {
+    "text": "labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco",
+    "x": -349.2,
+    "y": -58.47,
+    "anchor": "start"
+   },
+   {
+    "text": "laboris nisi ut aliquip ex ea commodo consequat.",
+    "x": -349.2,
+    "y": -38.47,
+    "anchor": "start"
+   },
+   {
+    "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut",
+    "x": -349.2,
+    "y": 1.53,
+    "anchor": "start"
+   },
+   {
+    "text": "labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco",
+    "x": -349.2,
+    "y": 21.53,
+    "anchor": "start"
+   },
+   {
+    "text": "laboris nisi ut aliquip ex ea commodo consequat.",
+    "x": -349.2,
+    "y": 41.53,
+    "anchor": "start"
+   },
+   {
+    "text": "• első felsorolási elem",
+    "x": -349.2,
+    "y": 81.53,
+    "anchor": "start"
+   },
+   {
+    "text": "• második, valamivel hosszabb felsorolási elem, amely átfordul",
+    "x": -349.2,
+    "y": 101.53,
+    "anchor": "start"
+   },
+   {
+    "text": "Záró bekezdés rövid szöveggel.",
+    "x": -349.2,
+    "y": 141.53,
+    "anchor": "start"
+   }
+  ]
+ },
+ {
+  "name": "szöveg nem fér ki",
+  "nodes": [
+   {
+    "id": "kontener",
+    "type": "box",
+    "text": "# Címsor a konténerben\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\n- első felsorolási elem\n- második, valamivel hosszabb felsorolási elem, amely átfordul\n\nZáró bekezdés rövid szöveggel.",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "left",
+    "pos": {
+     "x": 0,
+     "y": 0
+    },
+    "w": 520,
+    "h": 300,
+    "container": true,
+    "vAlign": "top"
+   },
+   {
+    "id": "a",
+    "type": "box",
+    "text": "",
+    "shape": "rectangle",
+    "fill": 2,
+    "textCol": 1,
+    "fontSz": 16,
+    "align": "center",
+    "pos": {
+     "x": 120,
+     "y": -60
+    },
+    "w": 200,
+    "h": 120,
+    "parent": "kontener"
+   }
+  ],
+  "lines": [
+   {
+    "text": "Címsor a",
+    "x": -236.4,
+    "y": -110.17,
+    "anchor": "start"
+   },
+   {
+    "text": "konténerben",
+    "x": -236.4,
+    "y": -77.67,
+    "anchor": "start"
+   },
+   {
+    "text": "Lorem ipsum dolor sit amet,",
+    "x": -236.4,
+    "y": -34.72,
+    "anchor": "start"
+   },
+   {
+    "text": "consectetur adipiscing elit, sed",
+    "x": -236.4,
+    "y": -14.72,
+    "anchor": "start"
+   },
+   {
+    "text": "do eiusmod tempor incididunt ut",
+    "x": -236.4,
+    "y": 5.28,
+    "anchor": "start"
+   },
+   {
+    "text": "labore et dolore magna aliqua. Ut enim ad minim veniam, quis",
+    "x": -236.4,
+    "y": 25.28,
+    "anchor": "start"
+   },
+   {
+    "text": "nostrud exercitation ullamco laboris nisi ut aliquip ex ea",
+    "x": -236.4,
+    "y": 45.28,
+    "anchor": "start"
+   },
+   {
+    "text": "commodo consequat.",
+    "x": -236.4,
+    "y": 65.28,
+    "anchor": "start"
+   },
+   {
+    "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do",
+    "x": -236.4,
+    "y": 105.28,
+    "anchor": "start"
+   },
+   {
+    "text": "eiusmod tempor incididunt ut labore et dolore magna aliqua. U…",
+    "x": -236.4,
+    "y": 125.28,
+    "anchor": "start"
+   }
+  ]
+ }
+]
