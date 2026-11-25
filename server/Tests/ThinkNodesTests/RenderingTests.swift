@@ -398,6 +398,10 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     // Adatvonal: nyíl nélkül, mindkét végén félkorong; a másik dobozból jövő vonal közönséges nyíl marad.
     #expect(viewer.components(separatedBy: "data-plug").count == 3)
     #expect(!viewer.contains("id=\"arrow-adatvonal\"") && viewer.contains("id=\"arrow-nyil\""))
+    // Az adatvonal a két doboz egymás felé eső oldalának közepéhez csatlakozik, és minden objektum mögött van.
+    #expect(viewer.contains("translate(150.000 0.000)") && viewer.contains("translate(310.000 0.000)"))
+    let plug = try #require(viewer.range(of: "data-plug")), firstBox = try #require(viewer.range(of: "class=\"node-surface\""))
+    #expect(plug.lowerBound < firstBox.lowerBound)
     // A táblázat sarka 5 px-es, a grafikoné a szokásos.
     #expect(viewer.contains(#"width="300.000" height="200.000" rx="5""#) && viewer.contains(#"width="380.000" height="260.000" rx="12""#))
 

@@ -255,6 +255,11 @@ export function edgeGeometry(edge, findNode, nested = 0) {
     if (sourceNode) from = borderPoint(sourceNode, multiBend ? target : routed[0] ?? target);
     if (targetNode) to = borderPoint(targetNode, multiBend ? source : routed.at(-1) ?? source);
   }
+  // Adatvonal (táblázat ↔ grafikon): mindig a doboz másik doboz felé eső oldalának közepéhez csatlakozik.
+  if (sourceNode && targetNode && isDataLink(edge, findNode)) {
+    from = sideMidpoint(sourceNode, target);
+    to = sideMidpoint(targetNode, source);
+  }
   const points = multiBend ? route(type, from, to).points : routed;
   if (command === "Q" && rise) points[0] = arcControl(from, to, rise);
   const sourceToward = points[0] ?? to;
@@ -404,6 +409,13 @@ export function isDataLink(edge, node) {
 }
 // A félkorong az egységnyi nyíl koordinátáiban (a csúcs az origó): a lapos oldala a doboz oldalára simul, a domború
 // a vonal felé néz. A doboznak azt az oldalát követi, amelyiken a végpont van, nem a vonal irányát.
+// A doboz `toward` felé eső oldalának közepe (Rendering.swift sideMidpoint).
+export function sideMidpoint(node, toward) {
+  const dx = (toward.x - node.position.x) / (node.width / 2), dy = (toward.y - node.position.y) / (node.height / 2);
+  return Math.abs(dx) >= Math.abs(dy)
+    ? {x: node.position.x + (dx < 0 ? -1 : 1) * node.width / 2, y: node.position.y}
+    : {x: node.position.x, y: node.position.y + (dy < 0 ? -1 : 1) * node.height / 2};
+}
 export const plugPath = "M0 -.5A.5 .5 0 0 0 0 .5Z";
 export const plugSize = width => Math.max(16, width * 6);
 export function plugTransform(node, tip, width) {

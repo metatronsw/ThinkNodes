@@ -14,7 +14,7 @@ import {justifyRows} from "./justify.js";
 import {canvasMarkdown, canvasMarkdownAvailable} from "./canvas-markdown.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=24";
+import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapeOutline, shapes, taperedArc, wireArrow, wireGradientValues, wireLabelLayout} from "./geometry.js?v=25";
 
 import {ancestors, overlapFraction} from "./containers.js?v=3";
 import {glowFilter, glowId, glowReach, glowVNode} from "./glow.js";
@@ -485,7 +485,8 @@ createApp({
         const target = order.get(edge.target.node) ?? nodes.length;
         const nested = nestingDirection(nodeMap.value.get(edge.source), nodeMap.value.get(edge.target.node));
         const index = nested ? Math.max(source, target) : Math.min(source, target);
-        layers[index === nodes.length && firstElevated >= 0 ? firstElevated : index].push(edge);
+        // Adatvonal (táblázat ↔ grafikon): mindig minden objektum mögött van.
+        layers[dataLink(edge) ? 0 : index === nodes.length && firstElevated >= 0 ? firstElevated : index].push(edge);
       }
       return layers;
     });
@@ -3575,7 +3576,7 @@ createApp({
           h("small", {"data-audio-status": "", role: "status"}),
         ]);
       } else if (root === "text") {
-        content = h("div", {class: ["node-note", {"with-fold": backgroundMode(node) === "solid"}], style: {fontSize: (node.fontSize ?? 13) + "px"},
+        content = h("div", {class: "node-note", style: {fontSize: (node.fontSize ?? 13) + "px"},
           onPointerdown: e => scrollbarPress(e, node), onMousedown: e => scrollbarPress(e, node), onTouchstart: e => scrollbarPress(e, node), onWheel: e => stopScroll(e, node),
           onScroll: e => shareScroll(node, e.currentTarget),
           onVnodeMounted: ({el}) => { attachScrollbars(el); applyScroll(node, el, true); }, onVnodeUpdated: ({el}) => { attachScrollbars(el); applyScroll(node, el); }, onVnodeBeforeUnmount: ({el}) => detachScrollbars(el)},

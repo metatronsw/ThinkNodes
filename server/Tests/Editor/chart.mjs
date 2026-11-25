@@ -83,4 +83,17 @@ assert.equal(plugTransform(box, {x: 200, y: 70}, 2), "translate(200 70) rotate(1
 assert.equal(plugTransform(box, {x: 0, y: 40}, 2), "translate(0 40) rotate(0) scale(16)");
 assert.equal(plugTransform(box, {x: 120, y: 100}, 4), "translate(120 100) rotate(-90) scale(24)");
 assert.equal(plugTransform(box, {x: 120, y: 0}, 2), "translate(120 0) rotate(90) scale(16)");
+// Az adatvonal a két doboz egymás felé eső oldalának közepéhez csatlakozik, akármilyen szögben áll a két doboz.
+const {edgeGeometry, sideMidpoint} = await import("../../Public/geometry.js");
+const placed = new Map([["t", {type: "table", shape: "rounded", position: {x: 0, y: 0}, width: 200, height: 100}],
+  ["g", {type: "chart", shape: "rounded", position: {x: 400, y: 60}, width: 300, height: 200}],
+  ["b", {type: "box", shape: "rectangle", position: {x: 400, y: 60}, width: 300, height: 200}]]);
+let wire = edgeGeometry({source: "t", target: {node: "g"}, type: "straight"}, id => placed.get(id));
+assert.deepEqual([wire.from, wire.to], [{x: 100, y: 0}, {x: 250, y: 60}]);
+placed.get("g").position = {x: 60, y: 500};
+wire = edgeGeometry({source: "g", target: {node: "t"}, type: "straight"}, id => placed.get(id));
+assert.deepEqual([wire.from, wire.to], [{x: 60, y: 400}, {x: 0, y: 50}]);
+// Közönséges vonal (doboz → táblázat) nem oldalközépre megy.
+wire = edgeGeometry({source: "t", target: {node: "b"}, type: "straight"}, id => placed.get(id));
+assert.notDeepEqual(wire.to, sideMidpoint(placed.get("b"), {x: 0, y: 0}));
 console.log("chart: rendben");

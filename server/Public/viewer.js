@@ -13,7 +13,7 @@ import {justifyRows} from "./justify.js";
 import {attachScrollbars} from "./scrollbar-drag.js";
 import {liveConnection} from "./collaboration.js";
 
-import {useWorksheetGeometry, arrowLength, arrowTransform, plugTransform, edgeGeometry, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireGradientValues, wireLabelLayout} from "./geometry.js?v=24";
+import {useWorksheetGeometry, arrowLength, arrowTransform, plugTransform, edgeGeometry, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireGradientValues, wireLabelLayout} from "./geometry.js?v=25";
 import {ancestors} from "./containers.js?v=3";
 import {ensureGlow, glowReach} from "./glow.js";
 
@@ -113,8 +113,8 @@ bindAudioPlayers(main);
 const motions = new Map();
 function previewScene() {
   const nodes = new Map([...main.querySelectorAll("[data-node]")].map(anchor => {
-    const {node, x, y, width, height, shape, parent} = anchor.dataset;
-    return [node, {id: node, anchor, parent, shape, width: +width, height: +height,
+    const {node, type, x, y, width, height, shape, parent} = anchor.dataset;
+    return [node, {id: node, type, anchor, parent, shape, width: +width, height: +height,
       origin: {x: +x, y: +y}, position: {x: +x, y: +y}}];
   }));
   const wires = new Map(), nodesByMover = new Map(), wiresByNode = new Map();

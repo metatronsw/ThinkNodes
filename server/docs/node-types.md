@@ -158,7 +158,7 @@ Importált szöveges fájl: minden nem bináris fájl (UTF-8, NUL bájt nélkül
 
 **Mai állapot:**
 - Csak .txt, .md, .json lesz szövegdoboz; a többi szöveges fájl (.css, .js, .swift…) és a 100 KB fölötti fájl dokumentum lesz.
-- A vásznon HTML-ként jelenik meg (`foreignObject`): hajtott sarkú lap, fölötte a cím, alatta a fájlnév.
+- A vásznon HTML-ként jelenik meg (`foreignObject`): lap (a hajtott sarok jele 2026-11-25-én megszűnt), fölötte a cím, alatta a fájlnév.
   .md formázva, .txt és .json egyszerű, nem tördelt (`pre`) szövegként; .json importkor formázva.
   Kijelölve a lapon belül görgethető.
 - A szöveg másolata a munkalapon is tárolódik (`text`); a panel Mentés / Újratöltés gombja írja vissza a fájlba, illetve olvassa be onnan.
@@ -204,6 +204,8 @@ Importált szöveges fájl: minden nem bináris fájl (UTF-8, NUL bájt nélkül
   végpont típusa adja (`isDataLink`: geometry.js, Rendering.swift). Nyíl helyett mindkét végén félkorong áll, a lapos oldala a
   doboz oldalára simul (`plugTransform`); a nyílkapcsolók a panelen nem látszanak. A vonal egyébként közönséges: törölhető,
   átköthető, a színe, vastagsága, típusa állítható.
+  Mindig minden objektum mögött van (legalsó réteg), és a két doboz egymás felé eső oldalának közepéhez csatlakozik
+  (`sideMidpoint`).
 - **Egy táblázat:** egy grafikonba egy táblázat köthető; újabb bekötésekor a szerkesztő a korábbi adatvonalat törli, és az
   oszlopkiosztás automatikusra áll (`tidyChartLinks`). Más dobozból akárhány közönséges vonal mutathat a grafikonra; egy
   táblázatból több grafikon is táplálkozhat.

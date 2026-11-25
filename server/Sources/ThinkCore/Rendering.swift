@@ -47,7 +47,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/lib/d3-zoom.js?v=1"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=63"></script>
+        <script type="module" src="/editor.js?v=64"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -58,7 +58,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=35">
+          <link rel="stylesheet" href="/app.css?v=36">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -998,6 +998,14 @@ func isDataLink(_ edge: Connection, nodes: [String: Idea]) -> Bool {
     return (a.type == "chart" && b.isGrid) || (b.type == "chart" && a.isGrid)
 }
 
+/// A doboz `toward` felé eső oldalának közepe (geometry.js sideMidpoint).
+private func sideMidpoint(_ node: Idea, toward: Point) -> Point {
+    let dx = (toward.x - node.position.x) / (node.width / 2), dy = (toward.y - node.position.y) / (node.height / 2)
+    return abs(dx) >= abs(dy)
+        ? Point(x: node.position.x + (dx < 0 ? -1 : 1) * node.width / 2, y: node.position.y)
+        : Point(x: node.position.x, y: node.position.y + (dy < 0 ? -1 : 1) * node.height / 2)
+}
+
 /// A félkorong helye: a lapos oldala a doboz oldalára simul, a domború a vonal felé néz (geometry.js plugTransform).
 private func plugMarkup(_ end: String, node: Idea, tip: Point, width: Double, color: String) -> String {
     let dx = (tip.x - node.position.x) / (node.width / 2), dy = (tip.y - node.position.y) / (node.height / 2)
@@ -1037,10 +1045,9 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
             </div>
             """
     case "text":
-        let fold = node.resolvedBackgroundMode == .solid ? " with-fold" : ""
         // A mentett görgetési helyzetet a megtekintő szkriptje állítja be (viewer.js).
         let scroll = node.scroll.map { " data-scroll-x=\"\(number($0.x))\" data-scroll-y=\"\(number($0.y))\"" } ?? ""
-        content = "<div class=\"node-note\(fold)\" data-font-size=\"\(number(node.fontSize))\"\(scroll)>\(fileTextHTML(node, text: text))</div>"
+        content = "<div class=\"node-note\" data-font-size=\"\(number(node.fontSize))\"\(scroll)>\(fileTextHTML(node, text: text))</div>"
     default:
         content = "<div class=\"node-document\"><span class=\"node-document-icon\">\(packageIcon)<b>\(ext)</b></span>\(downloadControl("Letöltés", classes: "node-download button small"))</div>"
     }
@@ -1186,7 +1193,11 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
         let centeredDirection = Point(x: source.x + 1, y: source.y)
         let beginning: Point
         let ending: Point
-        if targetInside, let sourceNode, let targetNode {
+        if dataLinks.contains(edge.id), let sourceNode, let targetNode {
+            // Adatvonal: mindig a doboz másik doboz felé eső oldalának közepéhez csatlakozik.
+            beginning = sideMidpoint(sourceNode, toward: target)
+            ending = sideMidpoint(targetNode, toward: source)
+        } else if targetInside, let sourceNode, let targetNode {
             beginning = borderPoint(sourceNode, toward: source == target ? centeredDirection : target, graphics: graphics)
             ending = borderPoint(targetNode, toward: beginning, graphics: graphics)
         } else if sourceInside, let sourceNode, let targetNode {
@@ -1281,7 +1292,8 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
         let sourceIndex = sourceLayer ?? ordered.count
         let targetIndex = targetLayer ?? ordered.count
         let layer = targetInside || sourceInside ? max(sourceIndex, targetIndex) : min(sourceIndex, targetIndex)
-        let wireLayer = layer == ordered.count ? freeWireLayer : layer
+        // Adatvonal: mindig minden objektum mögött van.
+        let wireLayer = dataLinks.contains(edge.id) ? 0 : layer == ordered.count ? freeWireLayer : layer
         guard let label else { return (wireLayer, wirePath()) }
         let samples: [Point]
         if !corners.isEmpty {
