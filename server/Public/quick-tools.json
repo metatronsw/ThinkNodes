@@ -1,8 +1,6 @@
 {
- "about": "Gyors eszközök leírója (jobb kattintás objektumon: gombok a helyi menü fölött; editor.js quickRows / renderFlyout). Kézzel szerkeszthető. 'groups': lenyíló csoportok – label: felirat; open: 'row' (sor), 'column' (oszlop) vagy 'grid' (rács, 'columns' oszloppal); items: a csoport gombjai; icon (nem kötelező): állandó ikon neve az icons.svg-ből, nélküle az aktuális érték ikonja látszik. 'layouts': objektumtípusonként (node-types.json típusnév, vonalnál 'edge') a sorok, soronként gomb- vagy csoportnevek. Amelyik típusnak nincs elrendezése, ott a tulajdonságpanel sorai jelennek meg, a csoportok lenyílóként. Ami egy objektumon éppen nem érvényes (pl. link-open link nélkül), kimarad. 'tools': a használható gombazonosítók jegyzéke (csak tájékoztató, a program nem olvassa). 'noMenu': azok a típusok, amelyeken jobb kattintásra csak a gombok jelennek meg, a hagyományos (szöveges) helyi menü nem.",
- "noMenu": [
-  "box"
- ],
+ "about": "Gyors eszközök leírója (jobb kattintás objektumon: gombok a kattintás pontjától terjeszkedve; editor.js quickRows / renderFlyout). Kézzel szerkeszthető; a változás a lap újratöltése után él. 'noMenu': true = a hagyományos (szöveges) helyi menü minden objektumon ki van kapcsolva (a vászon üres részén megmarad); megadható típusnevek listája is (vonalnál 'edge'), vagy false. 'groups': lenyíló csoportok – label: felirat; open: 'row' (sor), 'column' (oszlop) vagy 'grid' (rács, 'columns' oszloppal); items: a csoport gombjai; icon (nem kötelező): állandó ikon neve az icons.svg-ből, nélküle az aktuális érték ikonja látszik. 'layouts': objektumtípusonként (node-types.json típusnév, vonalnál 'edge'; '*' = minden más típus) az elrendezés: 'rows' – a sorok, soronként gomb- vagy csoportnevek (ha nincs megadva, a tulajdonságpanel csoportjai, csoportonként egy sor); 'before' / 'after' – a sorok előtt, illetve után álló további sorok (az itt megnevezett gombok a panel automatikus soraiból kimaradnak); 'opposite' – a kattintás túloldalán megjelenő sorok. Ami egy objektumon éppen nem érvényes (pl. link-open link nélkül), kimarad. 'tools': a használható gombazonosítók jegyzéke (csak tájékoztató, a program nem olvassa).",
+ "noMenu": true,
  "groups": {
   "font": {
    "label": "Betűtípus",
@@ -46,7 +44,7 @@
   },
   "animation": {
    "label": "Animáció",
-   "open": "column",
+   "open": "row",
    "items": [
     "animation-none",
     "animation-pulse",
@@ -63,6 +61,15 @@
     "background-empty",
     "background-translucent",
     "background-canvas"
+   ]
+  },
+  "lineSize": {
+   "label": "Vonalméret",
+   "open": "row",
+   "items": [
+    "lineSize-1",
+    "lineSize-2",
+    "lineSize-3"
    ]
   },
   "lineType": {
@@ -89,33 +96,108 @@
   }
  },
  "layouts": {
-  "box": [
-   [
-    "autosize",
-    "font",
-    "text-color",
-    "justify",
-    "collapse",
-    "uppercase",
-    "align"
+  "box": {
+   "rows": [
+    [
+     "edit-name",
+     "autosize",
+     "font",
+     "text-color",
+     "justify",
+     "collapse",
+     "uppercase",
+     "align"
+    ],
+    [
+     "shape",
+     "animation",
+     "fill",
+     "background",
+     "elevation",
+     "lock",
+     "text-flow"
+    ],
+    [
+     "link-add",
+     "link-preview",
+     "link-public",
+     "link-open",
+     "link-remove"
+    ],
+    [
+     "delete"
+    ]
    ],
-   [
-    "shape",
-    "animation",
-    "fill",
-    "background",
-    "elevation",
-    "lock",
-    "text-flow",
-    "link-add"
-   ],
-   [
-    "link-preview",
-    "link-public",
-    "link-open",
-    "link-remove"
+   "opposite": [
+    [
+     "ping"
+    ]
    ]
-  ]
+  },
+  "edge": {
+   "rows": [
+    [
+     "edit-name",
+     "line-color",
+     "lineSize"
+    ],
+    [
+     "lineType-straight",
+     "lineType-sCurve",
+     "lineType-zigzag",
+     "lineType-lightning",
+     "lineType-arc",
+     "lineType-rope"
+    ],
+    [
+     "lineAppearance-plain",
+     "lineAppearance-thick",
+     "lineAppearance-dashed",
+     "lineAppearance-dotted",
+     "label-in-line",
+     "line-animation"
+    ],
+    [
+     "arrow-start",
+     "arrow-end",
+     "endpoint-source",
+     "endpoint-target"
+    ],
+    [
+     "delete"
+    ]
+   ],
+   "opposite": [
+    [
+     "ping"
+    ]
+   ]
+  },
+  "*": {
+   "before": [
+    [
+     "edit-name",
+     "hide-name",
+     "edit-comment",
+     "hide-comment"
+    ]
+   ],
+   "after": [
+    [
+     "copy-link",
+     "edit-cells",
+     "new-chart"
+    ],
+    [
+     "delete"
+    ]
+   ],
+   "opposite": [
+    [
+     "ping"
+    ]
+   ]
+  }
  },
  "tools": {
   "autosize": "AutoSize (a betűméret a dobozhoz igazodik)",
@@ -134,6 +216,14 @@
   "text-flow": "Szöveg körbefuttatása (csak konténeren)",
   "link-add": "Link hozzáadása (ha még nincs link)",
   "link-preview, link-public, link-open, link-remove": "Link: előnézet, publikus, megnyitás, törlés (ha van link)",
-  "lineType-<típus>, lineAppearance-<megjelenés>": "Vonal típusa és megjelenése"
+  "lineType-<típus>, lineAppearance-<megjelenés>": "Vonal típusa és megjelenése",
+  "delete": "Törlés (minden objektumon)",
+  "ping": "Ping (minden objektumon; vonalnál a kattintás pontja)",
+  "copy-link, edit-cells, new-chart": "Fájldoboz: link másolása; táblázat: cellák szerkesztése, grafikon létrehozása",
+  "line-color, label-in-line, line-animation, arrow-start, arrow-end, endpoint-source, endpoint-target": "Vonal: szín, felirat a vonalban, animáció, nyilak, végpontok leválasztása / lekötése",
+  "edit-name": "Név szerkesztése a vásznon: doboz szövege, fájlnév (a doboz fölötti felirat), vonal és csomópont címkéje",
+  "edit-comment": "Megjegyzés szerkesztése a vásznon (fájldoboz, előnézetes doboz, grafikon)",
+  "hide-name, hide-comment": "Fájlnév, illetve megjegyzés elrejtése / megjelenítése (ahol a panelen is van ilyen)",
+  "lineSize-<1|2|3>": "Vonalméret (vékony, közepes, vastag; a vastagság a téma szorzóitól függ: themes/*.json graphics.lineScale)"
  }
 }

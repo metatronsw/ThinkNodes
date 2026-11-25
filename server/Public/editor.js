@@ -14,9 +14,9 @@ import {justifyRows, justifyShifts} from "./justify.js?v=7";
 import {canvasMarkdown, canvasMarkdownAvailable} from "./canvas-markdown.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, wireHeads, reverseWidth, wireRoutes, edgeInRectangle, edgePaint, labelLayout, editLabelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, taperedArc, wireGradientValues, wireLabelLayout} from "./geometry.js?v=33";
+import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, wireHeads, reverseWidth, wireRoutes, edgeInRectangle, edgePaint, labelLayout, editLabelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, taperedArc, lineSize, wireLabelLayout} from "./geometry.js?v=35";
 
-import {ancestors, layerOrder, overlapFraction} from "./containers.js?v=13";
+import {ancestors, layerOrder, overlapFraction} from "./containers.js?v=15";
 import {glowFilter, glowId, glowReach, glowVNode} from "./glow.js";
 import {awaitWebPreview} from "./web-preview-refresh.js";
 import {cellName, columnName, decodeTable, encodeTable, limits as tableLimits} from "./table/table-document.js";
@@ -115,7 +115,7 @@ const ColorPicker = {
           props.transparent ? h("span", {class: "palette-tile transparent-swatch"}) : tile(props.color),
         ]),
       expanded.value && !props.disabled ? h("div", {class: ["color-tools color-presets", {floating: props.floating}],
-        onVnodeMounted: props.floating ? ({el}) => placePopup(el, el.parentNode?.querySelector?.(".color-sample")) : undefined}, [
+        onVnodeMounted: props.floating ? ({el}) => placePopup(el, el.parentNode?.querySelector?.(".color-sample"), quickDirection(el)) : undefined}, [
         h("button", {type: "button", ...controlName(props.clear ? "Háttér törlése" : "Alapértelmezett szín"),
           onClick: () => props.clear ? props.clear() : emit("update", props.role)}, [icon("clear-color")]),
         ...(activePalette.value?.colors ?? []).map(c => h("button", {type: "button", key: c.id, title: c.name,
@@ -149,17 +149,26 @@ function tool(id, vnode) {
   if (vnode && typeof vnode === "object") (vnode.props ??= {})["data-tool"] = id;
   return vnode;
 }
-// Felugró lista (lenyíló csoport, színválasztó) helye a kiváltó gombjához képest: arra nyílik, amerre több a hely
-// (lefelé vagy felfelé, jobbra vagy balra), a gombot és a többi gombot nem mozdítja el (rögzített helyzetű réteg), és
-// semmilyen része nem kerül az ablakon kívülre.
-function placePopup(el, anchor) {
+// Felugró lista (lenyíló csoport, színválasztó) helye a kiváltó gombjához képest. A gyors eszközök terjeszkedési
+// irányát követi (`prefer`: {x: "right" | "left", y: "down" | "up"}, alapból jobbra és lefelé); ha arra nem fér el,
+// a másik irányba nyílik (ha ott sem, amerre több a hely). Rögzített helyzetű réteg: a gombot és a többi gombot nem
+// mozdítja el, és semmilyen része nem kerül az ablakon kívülre. A választott irányt a `data-x` / `data-y` jelzi (a
+// lista sorrendje balra, illetve felfelé nyílva tükröződik, app.css).
+function placePopup(el, anchor, prefer = {}) {
   if (!el?.getBoundingClientRect || !anchor?.getBoundingClientRect || typeof innerWidth !== "number") return;
   const a = anchor.getBoundingClientRect(), b = el.getBoundingClientRect(), margin = 8, gap = 4;
-  const top = innerHeight - a.bottom >= a.top ? a.bottom + gap : a.top - gap - b.height;
-  const left = innerWidth - a.left >= a.right ? a.left : a.right - b.width;
+  const fitsRight = a.left + b.width <= innerWidth - margin, fitsLeft = a.right - b.width >= margin;
+  const fitsDown = a.bottom + gap + b.height <= innerHeight - margin, fitsUp = a.top - gap - b.height >= margin;
+  const wider = innerWidth - a.left >= a.right, taller = innerHeight - a.bottom >= a.top;
+  const right = prefer.x === "left" ? !fitsLeft && (fitsRight || wider) : fitsRight || (!fitsLeft && wider);
+  const down = prefer.y === "up" ? !fitsUp && (fitsDown || taller) : fitsDown || (!fitsUp && taller);
+  if (el.dataset) { el.dataset.x = right ? "right" : "left"; el.dataset.y = down ? "down" : "up"; }
+  const left = right ? a.left : a.right - b.width, top = down ? a.bottom + gap : a.top - gap - b.height;
   el.style.left = Math.max(margin, Math.min(left, innerWidth - b.width - margin)) + "px";
   el.style.top = Math.max(margin, Math.min(top, innerHeight - b.height - margin)) + "px";
 }
+// A gyors eszközök terjeszkedési iránya (a keret `data-x` / `data-y` jelzője) a benne lévő elemhez.
+const quickDirection = el => el?.closest?.(".quick-tools-opposite, .quick-tools")?.dataset ?? {};
 
 // `set`: a gombok azonosítójának előtagja a gyors eszközökhöz (pl. "shape" → shape-ellipse).
 function optionPicker(label, choices, current, change, preview, set) {
@@ -189,6 +198,11 @@ function lineTypeSymbol(type) {
   const sourcePoint = {x: 3, y: type === "sCurve" ? 6 : 12};
   const {d} = edgeGeometry({type, sourcePoint, target}, () => undefined);
   return optionSymbol("path", {d, "stroke-linecap": "round"});
+}
+
+const lineSizes = {1: "Vékony", 2: "Közepes", 3: "Vastag"};
+function lineSizeSymbol(size) {
+  return optionSymbol("path", {d: "M3 12H21", "stroke-width": [1.4, 3.2, 6][size - 1], "stroke-linecap": "round"});
 }
 
 function lineAppearanceSymbol(appearance) {
@@ -422,7 +436,10 @@ function wireDrawing(edge, geometry, plug = false) {
   return {ends, stroke, paint};
 }
 
-function animatedWire(edge, paint, from, to, taper, shaftPath) {
+// A vonal animációja: vastag vonal lüktet, szaggatott / pontozott vonal mintája halad, sima vonalon egy kis pötty fut
+// végig örök ismétléssel, a nyíl irányában (csak kezdőnyílnál visszafelé, két nyílnál oda-vissza). `route`: a vonal
+// teljes útja (Rendering.swift wireAnimation párja).
+function animatedWire(edge, paint, from, to, taper, shaftPath, route) {
   if (!edge.animated) return {};
   const loop = {repeatCount: "indefinite"};
   if (edge.appearance === "thick") {
@@ -438,17 +455,11 @@ function animatedWire(edge, paint, from, to, taper, shaftPath) {
       values: roundTrip ? "0;" + shift + ";0" : "0;" + shift, dur: roundTrip ? "3.2s" : "1.6s"})};
   }
   const dx = to.x - from.x, dy = to.y - from.y;
-  if (dx === 0 && dy === 0) return {};
-  const id = "editor-wire-gradient-" + edge.id;
-  const values = wireGradientValues(from, to, paint);
-  const gradient = h("linearGradient", {id, gradientUnits: "userSpaceOnUse",
-    x1: from.x, y1: from.y, x2: to.x, y2: to.y}, [
-    ...[0, .25, .5, .75, 1].map(offset => h("stop", {offset,
-      "stop-color": paint.color, "stop-opacity": offset === .5 ? .5 : 1})),
-    h("animateTransform", {...loop, attributeName: "gradientTransform", type: "translate",
-      values, dur: roundTrip ? "12s" : "6s"}),
-  ]);
-  return {gradient, color: "url(#" + id + ")"};
+  if ((dx === 0 && dy === 0) || !route) return {};
+  const seconds = Math.min(12, Math.max(1.5, Math.hypot(dx, dy) / 140)) * (roundTrip ? 2 : 1);
+  return {dot: h("circle", {key: "dot", class: "wire-dot", r: Math.max(3, paint.lineWidth * 1.3), fill: paint.color, stroke: "none", "pointer-events": "none"}, [
+    h("animateMotion", {...loop, path: route, dur: seconds + "s", calcMode: "linear",
+      keyPoints: roundTrip ? "0;1;0" : reverse ? "1;0" : "0;1", keyTimes: roundTrip ? "0;0.5;1" : "0;1"})])};
 }
 
 function setEndpoint(edge, end, endpoint) {
@@ -729,7 +740,7 @@ createApp({
     const dataLink = edge => isDataLink(edge, id => nodeMap.value.get(id));
     function cachedWireDrawing(edge, geometry) {
       const plug = dataLink(edge);
-      const inputs = [edge.appearance, resolveWireColor(edge), edge.width, edge.startArrow, edge.endArrow, plug];
+      const inputs = [edge.appearance, resolveWireColor(edge), edge.width, edge.size, edge.type, graphics.value.lineScale, edge.startArrow, edge.endArrow, plug];
       const cached = wireDrawings.get(edge);
       if (cached?.geometry === geometry && inputs.every((value, i) => value === cached.inputs[i])) return cached.drawing;
       const drawing = wireDrawing(edge, geometry, plug);
@@ -1670,6 +1681,24 @@ createApp({
 
     const editKey = ref("text");
     const inlineDraft = ref("");
+    // Szerkesztés a vásznon nyitott tulajdonságpanel mellett is (gyors eszközök: név / megjegyzés gomb): az objektum
+    // azonosítója, amíg a vásznon álló mezője szerkeszthető.
+    const forcedInline = ref(null);
+    async function editInline(kind, id) {
+      menu.value = null;
+      const item = kind === "edge" ? edgeMap.value.get(id) : nodeMap.value.get(id);
+      if (!item) return;
+      editKey.value = kind === "edge" ? "label" : "text";
+      inlineDraft.value = item[editKey.value] ?? "";
+      forcedInline.value = id;
+      editingObject.value = id;
+      await nextTick();
+      const input = mount.querySelector?.(".inline-edit input, .inline-edit textarea");
+      input?.focus?.();
+      input?.select?.();
+    }
+    // Fájlnév szerkesztése helyben: a doboz fölötti felirat maga szerkeszthető (renderFileBox), nincs külön mező.
+    const nameEdit = ref(null);
     async function editObject(kind, id, focus = true) {
       if (objectPanelOpen.value) return openProperties(kind, id, focus);
       await openProperties(kind, id);
@@ -2749,11 +2778,21 @@ createApp({
     // menü fölött és mellett megjelennek a panel gombjai. Csoportos kijelölés tagjára kattintva a kijelölés megmarad.
     // Ha az objektum nem jelölhető ki (más fogja), csak a helyi menü jelenik meg.
     const quickTools = true;
+    // A hagyományos (szöveges) helyi menü ki van-e kapcsolva az objektumon: a leíró `noMenu` mezője `true` (minden
+    // objektumon; a vászon üres részén a menü megmarad) vagy típusnevek listája (vonalnál "edge").
+    function menuDisabled(kind, itemID) {
+      const off = quickLayout.noMenu;
+      if (off === true) return true;
+      const type = kind === "edge" ? "edge" : nodeMap.value.get(itemID)?.type;
+      return Array.isArray(off) && off.includes(type);
+    }
     async function openQuickTools(event, kind, itemID) {
-      const open = {kind, id: itemID, x: Math.max(8, event.clientX), y: Math.max(8, event.clientY), position: world(event)};
+      const open = {kind, id: itemID, x: event.clientX, y: event.clientY, position: world(event)};
       const grouped = kind === "edge" ? batch.value?.edges.has(itemID) : batch.value?.nodes.has(itemID);
       if (!grouped) await openProperties(kind, itemID);
-      menu.value = {...open, tools: grouped || selected.value?.id === itemID};
+      const tools = grouped || selected.value?.id === itemID;
+      // Ha az objektum nem jelölhető ki (más fogja), és a menü ki van kapcsolva, semmi sem jelenik meg.
+      menu.value = tools || !menuDisabled(kind, itemID) ? {...open, tools} : null;
     }
 
     function updateItem(item, key, value) {
@@ -3949,7 +3988,7 @@ createApp({
 
     function editOverlay(item, x, y, width, height) {
       if (editingObject.value !== item.id) return null;
-      const key = editKey.value, inline = !objectPanelOpen.value;
+      const key = editKey.value, inline = !objectPanelOpen.value || forcedInline.value === item.id;
       if (!inline && key === "text") return null;
       const background = automaticGridColor(paint(item.fill, 2));
       const light = parseInt(background.slice(1,3),16)*.299 + parseInt(background.slice(3,5),16)*.587 + parseInt(background.slice(5),16)*.114 > 150;
@@ -3964,7 +4003,7 @@ createApp({
             const value = e.target.value;
             updateItem(target, key, value);
           },
-          onBlur: () => { if (inline) editingObject.value = null; },
+          onBlur: () => { if (inline) { editingObject.value = null; forcedInline.value = null; } },
           onKeydown: e => { e.stopPropagation(); if (e.key === "Enter" && !e.isComposing && !e.shiftKey) { e.preventDefault(); e.target.blur(); } }})
       ]);
     }
@@ -3981,6 +4020,34 @@ createApp({
       return {...destination, preview: "/api/link-preview?url=" + encodeURIComponent(link.target)};
     }
 
+    // A fájlnév helyben szerkeszthető felirata (a kiterjesztés nélkül): Enter vagy a mező elhagyása átnevez, Esc elveti.
+    function renderFileNameEdit(node) {
+      const {stem} = fileNameParts(node.file, isImage(node));
+      const stop = event => event.stopPropagation();
+      let cancelled = false;
+      return h("span", {key: "name-edit", class: "node-download node-name-edit", contenteditable: "plaintext-only", role: "textbox",
+        "aria-label": "Fájlnév", spellcheck: false,
+        onPointerdown: stop, onMousedown: stop, onClick: stop, onDblclick: stop, onContextmenu: stop,
+        onKeydown: event => {
+          event.stopPropagation();
+          if (event.isComposing) return;
+          if (event.key === "Enter") { event.preventDefault(); event.target.blur(); }
+          else if (event.key === "Escape") { event.preventDefault(); cancelled = true; event.target.blur(); }
+        },
+        onBlur: event => {
+          const name = (event.target.textContent ?? "").replace(/\s+/g, " ").trim();
+          nameEdit.value = null;
+          const current = nodeMap.value.get(node.id);
+          if (!cancelled && current && name && name !== stem) renameFile(current, name);
+        },
+        onVnodeMounted: ({el}) => {
+          el.textContent = stem;
+          el.focus?.({preventScroll: true});
+          const selection = window.getSelection?.(), range = document.createRange?.();
+          if (selection && range) { range.selectNodeContents(el); selection.removeAllRanges(); selection.addRange(range); }
+        },
+      });
+    }
     function renderFileDownload(node, label = null, classes = "node-download") {
       const filename = nodeName(node);
       const href = isCommonFile(node.file) ? fileURL(path, node.file) : "/api/box-file/" + path + "?id=" + encodeURIComponent(node.id);
@@ -4189,7 +4256,8 @@ createApp({
         height: fileNameSpace + node.height + (below ? belowSpace : 0)}, [
         h("div", {class: "node-file-stack", style: {color: paint(node.textColor, 1)}}, [
           h("div", {class: "node-above", style: {height: fileNameSpace + "px"}},
-            file.showFilename !== false ? [h("header", {class: "node-file-name"}, [renderFileDownload(node)])] : []),
+            nameEdit.value === node.id ? [h("header", {class: "node-file-name"}, [renderFileNameEdit(node)])]
+              : file.showFilename !== false ? [h("header", {class: "node-file-name"}, [renderFileDownload(node)])] : []),
           // A tartalom szövegszíne a dobozé (a megjelenítőben: data-file-ink, viewer.js); --tn-paper: a táblázatszerkesztő háttere.
           h("div", {class: ["node-file", "node-" + root], style: {height: node.height + "px", color: paint(node.textColor, 1), "--tn-paper": surfaceColor(node)}},
             [h("div", {class: "node-body"}, [content])]),
@@ -4491,8 +4559,8 @@ createApp({
       const selectionColor = ui.peerColor;
       // Kijelöléskor a vonal és a nyilak megőrzik az eredeti színüket; a felhasználó színű glow az eredeti alakot követi.
       const color = paint.color;
-      const animation = animatedWire(edge, {...paint, color}, from, to, taper, stroke.d);
-      const shaftColor = animation.color ?? color;
+      const animation = animatedWire(edge, {...paint, color}, from, to, taper, stroke.d, d);
+      const shaftColor = color;
       return h("g", {key: "edge/" + edge.id, class: "wire", "data-edge": edge.id, fill: "none", "stroke-linecap": "round",
         tabindex: 0, role: "button", "aria-label": edge.label || "Vonal",
         onPointerdown: event => {
@@ -4546,7 +4614,6 @@ createApp({
         ])]) : null,
         ui.candidate ? h("path", {"data-editor-only": "", d: taper ? d : stroke.d, class: "search-candidate", "clip-path": clipPath,
           "stroke-width": paint.lineWidth + 9 / zoomScale.value}) : null,
-        animation.gradient ? h("defs", [animation.gradient]) : null,
         // Találati sáv: nagyítástól független, 14 képpont széles (non-scaling-stroke), így nagyításkor semmit sem kell
         // újrarajzolni vagy újrastílusozni. Erős nagyításnál a vonal maga szélesebb ennél: ott a látható vonal fogja a kattintást.
         h("path", {"data-editor-only": "", d, stroke: "transparent", "stroke-width": 14, "vector-effect": "non-scaling-stroke",
@@ -4570,6 +4637,7 @@ createApp({
           h("path", {class: "wire-line", ...stroke, ...(taper ? {fill: shaftColor} : {stroke: shaftColor}), "pointer-events": "visiblePainted", "clip-path": clipPath}, animation.shaft ? [animation.shaft] : undefined),
           renderArrow(ends.source, color, animatedArrows),
           renderArrow(ends.target, color, animatedArrows),
+          animation.dot ?? null,
           ...(dataLink(edge) ? [[edge.source, from], [edge.target.node, to]].map(([nodeID, tip]) => {
             const box = drawnNode(nodeID);
             return box ? h("path", {class: "wire-arrow wire-plug", transform: plugTransform(box, tip, paint.width), stroke: "none", fill: color,
@@ -4924,7 +4992,7 @@ createApp({
       };
       // Objektumon a menü a gyors eszközök keretében áll (a keret pozicionál), egyébként önállóan.
       // A leíró `noMenu` típusain (pl. doboz) a hagyományos menü ki van kapcsolva: csak a gombok jelennek meg.
-      if (open.tools) return renderQuickTools(open, type === "node" && node && (quickLayout.noMenu ?? []).includes(node.type) && !batch.value
+      if (open.tools) return renderQuickTools(open, menuDisabled(type, open.id)
         ? null : h("div", {class: "context-menu panel", "aria-label": "Műveletek"}, entries));
       return h("div", {class: "context-menu panel", "aria-label": "Műveletek",
         style: {left: open.x + "px", top: open.y + "px"}, onVnodeMounted: fit, onVnodeUpdated: fit}, entries);
@@ -4952,34 +5020,54 @@ createApp({
         return [...rows, loose].filter(row => row.length);
       });
     }
-    // A gyors eszközök sorai a leíró (quick-tools.json) szerint. Egyetlen kijelölt objektumnál, ha a típusának van
-    // elrendezése (`layouts`), pontosan az ott felsorolt gombok jelennek meg, a megadott sorokban; egyébként a panel
-    // sorai, de a leíró csoportjaiba tartozó gombok ott is egy lenyíló gombbá állnak össze (az első tagjuk helyén).
-    // Egy sor eleme: gomb (vnode) vagy {group, buttons} (lenyíló csoport).
-    function quickRows(panels, type) {
-      const groups = quickLayout.groups ?? {}, layout = type ? quickLayout.layouts?.[type] : null;
+    // A gyors eszközök sorai a leíró (quick-tools.json) szerint: {main, opposite}. A típus elrendezése (`layouts`,
+    // ennek híján a "*" bejegyzés): `rows` – a megadott gombok soronként (ha nincs megadva, a panel csoportjai, soronként
+    // egy csoport, a máshol név szerint elhelyezett gombok nélkül); `before` / `after` – ezek előtt, illetve után álló
+    // további sorok; `opposite` – a kattintás túloldalán megjelenő sorok. Az
+    // elrendezés lehet egyszerű sorlista is (= `rows`). A leíró csoportjaiba tartozó gombok egy lenyíló gombbá állnak
+    // össze. `actions`: a panelen nem szereplő műveletek gombjai (Törlés, Ping …). Egy sor eleme: gomb vagy
+    // {group, buttons}; ami az objektumon éppen nem érvényes, kimarad.
+    function quickRows(panels, type, actions) {
+      const groups = quickLayout.groups ?? {};
+      const entry = quickLayout.layouts?.[type] ?? quickLayout.layouts?.["*"] ?? {};
+      const spec = Array.isArray(entry) ? {rows: entry} : entry;
       const rows = toolRows(panels), id = vnode => vnode.props?.["data-tool"];
-      const tools = new Map(rows.flat().filter(id).map(vnode => [id(vnode), vnode]));
+      const tools = new Map([...rows.flat(), ...actions].filter(id).map(vnode => [id(vnode), vnode]));
       const members = name => (groups[name].items ?? []).map(item => tools.get(item)).filter(Boolean);
-      if (layout) return layout.map(row => row.flatMap(name => {
+      const resolve = list => (list ?? []).map(row => row.flatMap(name => {
         if (!groups[name]) return tools.get(name) ?? [];
         const buttons = members(name);
         return buttons.length > 1 ? [{group: name, buttons}] : buttons;
       })).filter(row => row.length);
-      const owner = new Map(Object.entries(groups).flatMap(([name, group]) => (group.items ?? []).map(item => [item, name])));
-      const placed = new Set();
-      return rows.map(row => row.flatMap(vnode => {
-        const name = owner.get(id(vnode));
-        if (!name || members(name).length < 2) return vnode;
-        if (placed.has(name)) return [];
-        placed.add(name);
-        return {group: name, buttons: members(name)};
-      })).filter(row => row.length);
+      const automatic = () => {
+        const owner = new Map(Object.entries(groups).flatMap(([name, group]) => (group.items ?? []).map(item => [item, name])));
+        const placed = new Set();
+        // Amit a leíró név szerint máshová tett (before / after / opposite), az a panel soraiból kimarad.
+        const elsewhere = new Set([spec.before, spec.after, spec.opposite].flatMap(list => (list ?? []).flat()));
+        // Panelcsoportonként egy sor (a csoport gombsorai egymás mellé kerülnek).
+        return panels.map(panel => toolRows([panel]).flat().flatMap(vnode => {
+          if (elsewhere.has(id(vnode))) return [];
+          const name = owner.get(id(vnode));
+          if (!name || members(name).length < 2) return vnode;
+          if (placed.has(name)) return [];
+          placed.add(name);
+          return {group: name, buttons: members(name)};
+        })).filter(row => row.length);
+      };
+      return {main: [...resolve(spec.before), ...(Array.isArray(spec.rows) ? resolve(spec.rows) : automatic()), ...resolve(spec.after)],
+        opposite: resolve(spec.opposite)};
     }
     // A gyors eszközökben minden gomb egyforma (a panel saját elrendezéséből kiemelt gombok, pl. az igazítás, is), a
     // színválasztó listája pedig rögzített rétegként nyílik.
+    // Csak ikon: a feliratos gombokról a szöveg lekerül (súgóként megmarad), ha van mellette ikon.
     function quickButton(vnode) {
       if (vnode.type === ColorPicker) return cloneVNode(vnode, {floating: true});
+      const children = [vnode.children].flat(), words = children.filter(child => typeof child === "string" && child.trim().length > 2);
+      if (words.length && children.some(child => child && typeof child === "object")) {
+        const name = words.join(" ").trim();
+        return h("button", {...vnode.props, class: [vnode.props?.class, "button option-icon"], title: vnode.props?.title ?? name,
+          "aria-label": vnode.props?.["aria-label"] ?? name}, children.filter(child => child && typeof child === "object"));
+      }
       const named = [vnode.props?.class].flat().some(value => typeof value === "string" && value.split(" ").includes("button"));
       return named ? vnode : cloneVNode(vnode, {class: "button option-icon"});
     }
@@ -4995,7 +5083,7 @@ createApp({
         : [(current ?? buttons[0]).children].flat().map(child => child && typeof child === "object" ? cloneVNode(child) : child);
       const title = label + (current ? ": " + (current.props.title ?? "") : "");
       const mode = ["row", "column", "grid"].includes(group.open) ? group.open : "row";
-      const place = ({el}) => placePopup(el, el.parentNode?.querySelector?.(".quick-flyout-trigger"));
+      const place = ({el}) => placePopup(el, el.parentNode?.querySelector?.(".quick-flyout-trigger"), quickDirection(el));
       return h("div", {class: "quick-flyout", key: "flyout-" + name}, [
         h("button", {type: "button", class: ["button option-icon quick-flyout-trigger", {idle: !current && !group.icon}], title, "aria-label": title,
           "aria-haspopup": "true", "aria-expanded": open, onClick: () => { openFlyout.value = open ? null : name; }},
@@ -5005,36 +5093,81 @@ createApp({
           onVnodeMounted: place, onVnodeUpdated: place, onClick: () => { openFlyout.value = null; }}, buttons.map(quickButton)) : null,
       ]);
     }
-    // `list`: a helyi menü. Elrendezés: a menü bal felső sarka a mutatónál; a gombok sorai a menü fölött állnak
-    // (mellette nincs gomb). A keret semmilyen része nem kerül az ablakon kívülre.
+    // `list`: a helyi menü (vagy null, ha ki van kapcsolva). Elrendezés: a kattintás pontja az origó, onnan terjeszkedik
+    // a blokk egy síknegyedbe: alapból jobbra és lefelé; ha jobbra nem fér el, balra, ha lefelé nem, felfelé (a
+    // tengelyek külön döntenek). Az első sor első gombja mindig 5 képpontra áll a kattintástól: balra terjeszkedve a
+    // sorok tükröződnek (jobbról balra), felfelé terjeszkedve a sorok alulról fölfelé következnek. A sorok nem törnek
+    // (egyoszlopos elrendezés nincs). A `opposite` sorai a kattintás túloldalán állnak (vízszintesen átellenben; ha ott
+    // nem férnek el, függőlegesen átellenben). A lenyíló listák a blokkjuk irányát követik (placePopup). Semmi nem
+    // kerül az ablakon kívülre.
     function renderQuickTools(open, list) {
       let panels = [], type = null;
+      const actions = [];
+      const action = (id, title, symbol, onClick, extra = {}) => actions.push(tool(id, h("button", {type: "button",
+        class: ["button option-icon", extra.class], ...controlName(title), disabled: extra.disabled, onClick}, [icon(symbol)])));
       if (batch.value) {
         const nodes = board.value.nodes.filter(n => batch.value.nodes.has(n.id) && !occupied(n.id));
         const edges = board.value.edges.filter(e => batch.value.edges.has(e.id));
         panels = [...(nodes.length ? nodePanels(nodes) : []), ...(edges.length ? edgePanels(edges) : [])];
       } else if (inspector.value?.kind === "edge") {
         const edge = board.value.edges.find(item => item.id === inspector.value.id);
-        if (edge) { panels = edgePanels([edge]); type = "edge"; }
+        if (edge) {
+          panels = edgePanels([edge]); type = "edge";
+          action("delete", "Kapcsolat törlése", "trash", () => { menu.value = null; removeEdge(edge); }, {class: "danger"});
+          action("ping", "Ping", "center", () => ping({point: clampPoint(open.position)}), {disabled: !online.value});
+          action("edit-name", "Címke szerkesztése", "edit", () => editInline("edge", edge.id));
+        }
       } else if (inspector.value) {
         const node = nodeMap.value.get(inspector.value.id);
-        if (node && held.value === node.id && !occupied(node.id)) { panels = nodePanels([node]); type = node.type; }
+        if (node && held.value === node.id && !occupied(node.id)) {
+          panels = nodePanels([node]); type = node.type;
+          // A hagyományos menü műveletei gombként (a menü kikapcsolása miatt itt érhetők el).
+          action("delete", "Törlés", "trash", () => { menu.value = null; deleteNode(node); }, {class: "danger"});
+          action("ping", "Ping", "center", () => ping({node: node.id}), {disabled: !online.value});
+          // Név / megjegyzés szerkesztése a vásznon, a meglévő módon: doboz szövege a dobozon, fájlnév a doboz fölötti
+          // feliratban, címke és megjegyzés a vásznon megjelenő mezőben.
+          if (node.file) {
+            action("edit-name", "Fájlnév szerkesztése", "edit", () => { menu.value = null; nameEdit.value = node.id; });
+            action("edit-comment", "Megjegyzés szerkesztése", "comment", () => editInline("node", node.id));
+          } else if (editsOnBox(node)) action("edit-name", "Szöveg szerkesztése", "edit", () => { menu.value = null; startTextEdit(node); });
+          else if (isJunction(node)) action("edit-name", "Címke szerkesztése", "edit", () => editInline("node", node.id));
+          else action("edit-comment", "Megjegyzés szerkesztése", "comment", () => editInline("node", node.id));
+          if (node.file) action("copy-link", "Link másolása", "link", () => { menu.value = null; transfer(() => writeText(objectURL(path, node.id))); });
+          if (isGrid(node)) action("edit-cells", "Cellák szerkesztése", "table-grid", () => { menu.value = null; startTableEdit(node); });
+          if (isGrid(node)) action("new-chart", "Grafikon létrehozása", "chart", () => { menu.value = null; addChartBox(node); }, {disabled: !online.value});
+        }
       }
-      const rows = quickRows(panels, type);
-      if (!rows.length && !list) return null;
+      const {main, opposite} = quickRows(panels, type, actions);
+      if (!main.length && !opposite.length && !list) return null;
       const fit = ({el}) => {
         if (!el?.getBoundingClientRect || typeof innerWidth !== "number") return;
-        const box = el.getBoundingClientRect(), margin = 8, above = el.querySelector(".context-menu")?.offsetTop ?? 0;
-        el.style.left = Math.max(margin, Math.min(open.x, innerWidth - box.width - margin)) + "px";
-        el.style.top = Math.max(margin, Math.min(open.y - above, innerHeight - box.height - margin)) + "px";
+        const margin = 8, reach = 5, clampX = (x, w) => Math.max(margin, Math.min(x, innerWidth - w - margin)),
+          clampY = (y, h) => Math.max(margin, Math.min(y, innerHeight - h - margin));
+        const box = el.getBoundingClientRect(), need = {x: box.width + reach + margin, y: box.height + reach + margin};
+        const right = innerWidth - open.x >= need.x || (open.x < need.x && innerWidth - open.x >= open.x);
+        const down = innerHeight - open.y >= need.y || (open.y < need.y && innerHeight - open.y >= open.y);
+        if (el.dataset) { el.dataset.x = right ? "right" : "left"; el.dataset.y = down ? "down" : "up"; }
+        el.style.left = clampX(right ? open.x + reach : open.x - reach - box.width, box.width) + "px";
+        el.style.top = clampY(down ? open.y + reach : open.y - reach - box.height, box.height) + "px";
+        // A túloldali blokk: vízszintesen átellenben, az első sor magasságában; ha ott nem fér el, függőlegesen átellenben.
+        const other = el.querySelector?.(".quick-tools-opposite");
+        if (!other) return;
+        const size = other.getBoundingClientRect();
+        const across = right ? open.x - reach - size.width >= margin : open.x + reach + size.width <= innerWidth - margin;
+        const toRight = across ? !right : right, toDown = across ? down : !down;
+        if (other.dataset) { other.dataset.x = toRight ? "right" : "left"; other.dataset.y = toDown ? "down" : "up"; }
+        other.style.left = clampX(toRight ? open.x + reach : open.x - reach - size.width, size.width) + "px";
+        other.style.top = clampY(toDown ? open.y + reach : open.y - reach - size.height, size.height) + "px";
       };
       const stop = event => event.stopPropagation();
+      const block = rows => rows.map(row => h("div", {class: "property-options property-tools quick-tools-row"},
+        row.map(item => item.group ? renderFlyout(item) : quickButton(item))));
       return h("div", {class: "quick-tools", role: "toolbar", "aria-label": "Gyors eszközök",
         style: {left: open.x + "px", top: open.y + "px"}, onVnodeMounted: fit, onVnodeUpdated: fit,
         onPointerdown: stop, onDblclick: stop, onContextmenu: event => { event.preventDefault(); event.stopPropagation(); }}, [
-        rows.length ? h("div", {class: "quick-tools-above"}, rows.map(row => h("div", {class: "property-options property-tools quick-tools-row"},
-          row.map(item => item.group ? renderFlyout(item) : quickButton(item))))) : null,
+        main.length ? h("div", {class: "quick-tools-above"}, block(main)) : null,
         list,
+        opposite.length ? h("div", {class: "quick-tools-opposite"}, block(opposite)) : null,
       ]);
     }
 
@@ -5069,7 +5202,7 @@ createApp({
         const name = label + (attached ? " leválasztása" : " lekötése");
         const action = attached ? () => { detach(edge, end); menu.value = null; } : () => retarget(edge, end);
         const symbol = compact ? "endpoint-" + end : attached ? "unlink" : "right";
-        return compact ? iconToggle(name, attached, action, icon(symbol)) : button(name, action, {symbol});
+        return compact ? tool("endpoint-" + end, iconToggle(name, attached, action, icon(symbol))) : button(name, action, {symbol});
       });
     }
 
@@ -5376,8 +5509,8 @@ createApp({
               event.preventDefault(); event.stopPropagation(); event.target.blur();
             }}),
           extension ? h("span", {class: "muted"}, "." + extension) : null,
-          iconToggle(visible ? "Fájlnév elrejtése" : "Fájlnév megjelenítése", visible,
-            () => change("file", node => ({...node.file, showFilename: !visible})), icon(visible ? "eye" : "eye-off")),
+          tool("hide-name", iconToggle(visible ? "Fájlnév elrejtése" : "Fájlnév megjelenítése", visible,
+            () => change("file", node => ({...node.file, showFilename: !visible})), icon(visible ? "eye" : "eye-off"))),
         ])]));
       }
 
@@ -5542,8 +5675,8 @@ createApp({
           propertyTools(
             ...[["left", "Balra", "text-left"], ["center", "Középre", "text-center"], ["right", "Jobbra", "text-right"]].map(([align, label, symbol]) =>
               iconToggle(label, value("alignment", "center") === align, () => change("alignment", align), icon(symbol))),
-            iconToggle(hidden ? "Text megjelenítése" : "Text elrejtése", !hidden, () => change("hideText", hidden ? undefined : true),
-              icon(hidden ? "eye-off" : "eye")),
+            tool("hide-comment", iconToggle(hidden ? "Text megjelenítése" : "Text elrejtése", !hidden, () => change("hideText", hidden ? undefined : true),
+              icon(hidden ? "eye-off" : "eye"))),
             uppercaseToggle(nodes, change),
           ),
         ]));
@@ -5687,21 +5820,24 @@ createApp({
         group("Vonal", [
           single ? input(single.label || "", v => change("label", v), {...controlName("Címke"), "data-object-label": "", maxlength: 120}) : null,
           propertyTools(
-            colorPicker("Vonal színe", value("color", 3), v => change("color", v), edges.map(e => e.id).join(",") + "/line", false, true, 3),
-            numeric(value("width", 2), v => change("width", v), 0.5, maximumLineWidth, controlName("Alapvastagság")),
+            tool("line-color", colorPicker("Vonal színe", value("color", 3), v => change("color", v), edges.map(e => e.id).join(",") + "/line", false, true, 3)),
+            // Vonalméret: három méret, a vastagságukat a téma szorzói adják (geometry.js edgePaint). A régi egyedi
+            // vastagság a választáskor törlődik.
+            optionPicker("Vonalméret", lineSizes, edges.every(edge => lineSize(edge) === lineSize(first)) ? String(lineSize(first)) : null,
+              v => { change("width", undefined); change("size", Number(v) === 1 ? undefined : Number(v)); }, lineSizeSymbol, "lineSize"),
           ),
         ]),
         group("Vonaltípus", [optionPicker("Vonaltípus", lineTypes, value("type", "straight"), v => change("type", v), lineTypeSymbol, "lineType")]),
         group("Megjelenés", [h("div", {class: "property-options line-appearance-options"}, [
           optionPicker("Megjelenés", lineAppearances, value("appearance", "plain"), v => change("appearance", v), lineAppearanceSymbol, "lineAppearance"),
-          iconToggle("Felirat a vonalban", all("labelInLine", false), () => change("labelInLine", all("labelInLine", false) ? undefined : true), icon("wire-label")),
-          iconToggle("Animáció bekapcsolása", all("animated", false), () => change("animated", !all("animated", false)), icon("play")),
+          tool("label-in-line", iconToggle("Felirat a vonalban", all("labelInLine", false), () => change("labelInLine", all("labelInLine", false) ? undefined : true), icon("wire-label"))),
+          tool("line-animation", iconToggle("Animáció bekapcsolása", all("animated", false), () => change("animated", !all("animated", false)), icon("play"))),
         ])]),
         group("Végpontok", [h("div", {class: "property-options property-tools endpoint-tools"}, [
           // Adatvonal (táblázat ↔ grafikon): a végein félkorong áll, nyíl nem választható.
           ...(edges.every(dataLink) ? [h("small", {class: "muted"}, "Adatvonal")] : [
-            iconToggle("Nyíl a vonal elején", all("startArrow", false), () => change("startArrow", !all("startArrow", false)), icon("left")),
-            iconToggle("Nyíl a vonal végén", all("endArrow", true), () => change("endArrow", !all("endArrow", true)), icon("right")),
+            tool("arrow-start", iconToggle("Nyíl a vonal elején", all("startArrow", false), () => change("startArrow", !all("startArrow", false)), icon("left"))),
+            tool("arrow-end", iconToggle("Nyíl a vonal végén", all("endArrow", true), () => change("endArrow", !all("endArrow", true)), icon("right"))),
           ]),
           single ? h("span", {class: "endpoint-actions"}, endpointActions(single, true)) : null,
         ])]),

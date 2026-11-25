@@ -1,5 +1,18 @@
 # Változások
 
+## 2026-11-25 – Gyors eszközök: négyirányú terjeszkedés, minden objektumon; futó pötty a vonalon; három vonalméret
+
+**Nincs tesztelve** (a felhasználó kérésére: tesztelés csak külön utasításra); a felhasználó kézzel próbálta ki. A meglévő tesztek egy része ezektől a változásoktól el fog törni (lásd BUGS.md).
+
+- **Terjeszkedés a kattintás pontjától** (`renderQuickTools` fit): a kattintás az origó, a blokk alapból jobbra és lefelé nő; ha jobbra nem fér el, balra, ha lefelé nem, felfelé (tengelyenként). Az első sor első gombja mindig 5 képpontra áll a kattintástól; balra a sorok tükröződnek, felfelé a sorok alulról fölfelé következnek. A sorok nem törnek (egyoszlopos elrendezés nincs). A lenyíló listák és a színválasztó a blokk irányát követik (`placePopup`), és semmi nem lóg ki az ablakból.
+- **Hagyományos helyi menü kikapcsolva minden objektumon** (`quick-tools.json` `noMenu: true`; a kód megmaradt, a vásznon a menü él). A menü parancsai gombok lettek: Törlés, Ping, Link másolása, Cellák szerkesztése, Grafikon létrehozása.
+- **Leíró bővült** (`quick-tools.json`): elrendezésenként `rows` / `before` / `after` / `opposite` (a kattintás túloldalán megjelenő sorok – most a Ping), `"*"` = minden más típus. Doboz: a link külön sorban, Törlés az utolsó sorban. Vonal: a panel tagolása szerint (címke + szín + méret; vonaltípusok; megjelenés; végpontok; Törlés).
+- **Szerkesztő gombok:** `edit-name` (doboz szövege a dobozon; vonal és csomópont címkéje a vásznon, nyitott panel mellett is – `editInline`; fájlnév a doboz fölötti feliratban helyben – `renderFileNameEdit`), `edit-comment` (megjegyzés a vásznon); mellettük a panel meglévő elrejtő kapcsolói (`hide-name`, `hide-comment`).
+- **Csak ikonok:** a gyors eszközök feliratos gombjairól lekerül a szöveg (súgóként megmarad).
+- **Vonalanimáció:** a sima vonal gradiens animációja törölve (szerkesztő, megjelenítő, szerver rajzoló, `wireGradientValues`). Helyette egy kis pötty fut végig a vonalon örök ismétléssel a nyíl irányában (csak kezdőnyílnál visszafelé, két nyílnál oda-vissza; `animateMotion`). A vastag vonal lüktetése és a szaggatott / pontozott minta haladása maradt.
+- **Vonalméret:** az egyedi vastagság megszűnt (`w` mező, számmező a panelen). Minden vonalnak három mérete van (`size`: 1 vékony – alapértelmezett, 2 közepes, 3 vastag; alapvastagság 2 / 5 / 10,5 képpont), a téma vonaltípusonként szorozza (`themes/*.json graphics.lineScale`; a vastag megjelenés kétszeres). A régi egyedi vastagság betöltéskor a legközelebbi méretre vált. Panel: három gomb; gyors eszközök: lenyíló „Vonalméret”.
+- Szerverkód változott (`Model.swift`, `Theme.swift`, `Rendering.swift`, verziószámok): release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – Gyors eszközök: szerkeszthető leíró (quick-tools.json), doboz lebegő menüje, semmit el nem toló lenyílók
 
 - **Leíró: `server/Public/quick-tools.json`** (kézzel szerkeszthető, a fájl elején magyar leírással): `groups` – melyik gomb melyik lenyíló csoportba tartozik, és a csoport hogyan nyílik (`open`: `row` / `column` / `grid` + `columns`; `icon`: állandó ikon, nélküle az aktuális érték ikonja); `layouts` – típusonként a gombok sorai (kézi elrendezés); `noMenu` – mely típusokon nincs hagyományos menü; `tools` – a gombazonosítók jegyzéke (tájékoztató). A szerkesztő betöltéskor olvassa (gyorsítótár nélkül), a lap újratöltése elég, build nem kell. A korábbi `choiceSets` jegyzék (editor.js) megszűnt, ez váltotta fel.

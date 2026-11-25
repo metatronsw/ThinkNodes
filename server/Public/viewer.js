@@ -13,8 +13,8 @@ import {justifyRows} from "./justify.js?v=7";
 import {attachScrollbars} from "./scrollbar-drag.js";
 import {liveConnection} from "./collaboration.js";
 
-import {useWorksheetGeometry, wireHeads, plugTransform, edgeGeometry, reverseWidth, wireRoutes, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireGradientValues, wireLabelLayout} from "./geometry.js?v=33";
-import {ancestors} from "./containers.js?v=13";
+import {useWorksheetGeometry, wireHeads, plugTransform, edgeGeometry, reverseWidth, wireRoutes, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireLabelLayout} from "./geometry.js?v=35";
+import {ancestors} from "./containers.js?v=15";
 import {ensureGlow, glowReach} from "./glow.js";
 
 let selection;
@@ -131,9 +131,8 @@ function previewScene() {
   for (const path of main.querySelectorAll("[data-wire]")) {
     const edge = decodeConnection(JSON.parse(path.dataset.wire));
     const frame = path.parentElement;
-    const gradient = edge.animated && (edge.appearance ?? "plain") === "plain"
-      ? document.getElementById("wire-gradient-" + edge.id) : null;
-    const wire = {path, frame, edge, gradient, sweep: gradient?.querySelector("animateTransform"), paint: edgePaint(edge),
+    // Animált sima vonal: a végigfutó pötty útja (Rendering.swift wireAnimation) a vonallal együtt frissül.
+    const wire = {path, frame, edge, dot: frame.querySelector(".wire-dot animateMotion"), paint: edgePaint(edge),
       marker: document.getElementById("arrow-" + edge.id), arrows: [...frame.querySelectorAll("[data-arrow-end]")],
       label: edge.label?.trim() ? frame.nextElementSibling : null,
       clip: document.getElementById("wire-gap-" + edge.id)?.firstElementChild,
@@ -158,7 +157,7 @@ function previewScene() {
       if (delta) node.anchor.setAttribute("transform", "translate(" + delta.x + " " + delta.y + ")");
       else node.anchor.removeAttribute("transform");
     }
-    for (const {path, edge, gradient, sweep, paint, arrows, label, clip, taper, pulse} of affectedWires) {
+    for (const {path, edge, dot, paint, arrows, label, clip, taper, pulse} of affectedWires) {
       const source = nodes.get(edge.source), target = nodes.get(edge.target.node);
       const nested = source && target && (target.movers.includes(source.id) ? 1 : source.movers.includes(target.id) ? -1 : 0);
       const geometry = edgeGeometry(edge, id => nodes.get(id), nested || 0, reverseWidth(edge, routes ??= wireRoutes(Array.from(wires.values(), wire => wire.edge))));
@@ -172,12 +171,7 @@ function previewScene() {
         const scale = Math.min(1.45, maximumLineWidth / paint.lineWidth);
         pulse.setAttribute("values", [outline, profile.outline(scale), outline].join(";"));
       }
-      if (sweep) {
-        for (const [key, value] of Object.entries({x1: from.x, y1: from.y, x2: to.x, y2: to.y})) {
-          gradient.setAttribute(key, value);
-        }
-        sweep.setAttribute("values", wireGradientValues(from, to, paint));
-      }
+      if (dot) dot.setAttribute("path", geometry.path(heads.source.base, heads.target.base));
       for (const arrow of arrows) {
         const end = arrow.dataset.arrowEnd;
         const start = end === "source";

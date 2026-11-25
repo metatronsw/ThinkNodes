@@ -126,10 +126,21 @@ export const lineTypes = {straight: "Egyenes", sCurve: "S-forma", zigzag: "Vill�
 export const lineAppearances = {plain: "Sima", thick: "Vastag", dashed: "Szaggatott", dotted: "Pontozott"};
 export const maximumLineWidth = 32;
 
+// Vonalméret: minden vonalnak három mérete van (1 vékony – alapértelmezett, 2 közepes, 3 vastag). A vastagság a méret
+// alapvastagsága szorozva a téma vonaltípusonkénti szorzójával (graphics.lineScale: vonaltípus neve → szorzó, híján 1);
+// a vastag megjelenés mindig kétszeres (Model.swift Connection.scaledWidth; egyezniük kell). A régi egyedi vastagság
+// (`width`) a legközelebbi méretre vált.
+export const lineBaseWidths = [2, 5, 10.5];
+export function lineSize(edge) {
+  const size = edge.size ?? (edge.width == null || edge.width <= 3.5 ? 1 : edge.width <= 7.5 ? 2 : 3);
+  return Math.min(3, Math.max(1, Math.round(size) || 1));
+}
 export function edgePaint(edge) {
   const appearance = edge.appearance ?? "plain";
   const color = edge.color ?? cableColor;
-  const width = Math.min(maximumLineWidth, (edge.width ?? 2) * (appearance === "thick" ? 2 : 1));
+  const scale = currentGraphics().lineScale;
+  const width = Math.min(maximumLineWidth, lineBaseWidths[lineSize(edge) - 1]
+    * (appearance === "thick" ? 2 : 1) * (scale?.[edge.type ?? "straight"] ?? 1));
   const lineWidth = Math.min(maximumLineWidth, width * (appearance === "dotted" ? 2 : 1));
   const dash = appearance === "dashed" ? `${width * 3.5} ${width * 2.5}`
     : appearance === "dotted" ? `0 ${width * 8}` : undefined;
@@ -140,11 +151,6 @@ export function edgePaint(edge) {
     startArrow: edge.startArrow ?? false, endArrow: edge.endArrow ?? true};
 }
 
-export function wireGradientValues(from, to, {startArrow, endArrow}) {
-  const first = startArrow && !endArrow ? 1 : -1;
-  const directions = startArrow && endArrow ? [first, -first, first] : [first, -first];
-  return directions.map(direction => (direction * (to.x - from.x)) + " " + (direction * (to.y - from.y))).join(";");
-}
 
 export function edgeEndpoint(edge, end) {
   return end === "source" ? {node: edge.source, point: edge.sourcePoint} : edge.target;

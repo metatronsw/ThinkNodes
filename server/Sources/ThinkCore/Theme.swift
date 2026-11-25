@@ -78,6 +78,9 @@ package struct VisualTheme: Content, Equatable {
         var grid: String?
         var glass: Bool?
         var junctionSize: Double?
+        /// Vonalvastagság-szorzók vonaltípusonként (straight, sCurve, zigzag, lightning, arc, rope → szorzó); a vonal
+        /// vastagsága = a méret alapvastagsága × a vonaltípus szorzója (vastag megjelenésnél ennek kétszerese).
+        var lineScale: [String: Double]?
         var motionSpeed: Double?
         /// Három betűtípus (CSS font-family): alap, valamint két jól eltérő választható.
         var fonts: [String]?
@@ -125,6 +128,10 @@ package struct VisualTheme: Content, Equatable {
         guard (0.0...24.0).contains(boxChamfer), (0.0...24.0).contains(glow), (0..<8).contains(selection),
               (4.0...128.0).contains(junctionSize), (0.0...0.25).contains(lineArc), (0.1...5.0).contains(motionSpeed)
         else { return false }
+        for (name, factor) in graphics.lineScale ?? [:] {
+            guard ConnectionType(rawValue: name) != nil,
+                  (0.1...10.0).contains(factor) else { return false }
+        }
         let grids: [String] = ["dots", "lines", "drafting"]
         guard grids.contains(graphics.grid ?? "dots") else { return false }
         let junctions: [Shape] = [.rectangle, .ellipse, .diamond]

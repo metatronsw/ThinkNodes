@@ -48,7 +48,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/lib/d3-zoom.js?v=1"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=76"></script>
+        <script type="module" src="/editor.js?v=81"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -59,7 +59,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=48">
+          <link rel="stylesheet" href="/app.css?v=51">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -912,7 +912,9 @@ private func taperedWireArc(_ edge: Connection, from: Point, control: Point, to:
     return (startLength, endLength, outline(1), edge.animated == true && edge.appearance == .thick ? outline(edge.pulseWidth / edge.lineWidth) : nil)
 }
 
-private func wireAnimation(_ edge: Connection, from: Point, to: Point) -> (stroke: String, shaft: String, gradient: String) {
+/// A vonal animációja: vastag vonal lüktet, szaggatott / pontozott vonal mintája halad, sima vonalon egy kis pötty fut
+/// végig örök ismétléssel a nyíl irányában (két nyílnál oda-vissza); `path`: a vonal útja (editor.js animatedWire).
+private func wireAnimation(_ edge: Connection, from: Point, to: Point, path: String) -> (stroke: String, shaft: String, dot: String) {
     let color = escaped(edge.strokeColor)
     guard edge.animated == true else { return (color, "", "") }
     let width = edge.strokeWidth
@@ -929,19 +931,12 @@ private func wireAnimation(_ edge: Connection, from: Point, to: Point) -> (strok
     }
     let dx = to.x - from.x, dy = to.y - from.y
     guard dx != 0 || dy != 0 else { return (color, "", "") }
-    let id = "wire-gradient-" + edge.id
-    let first: Double = reverse ? 1 : -1
-    let directions = roundTrip ? [first, -first, first] : [first, -first]
-    let values = directions.map { "\(number($0 * dx)) \(number($0 * dy))" }.joined(separator: ";")
-    let gradient = """
-        <linearGradient id="\(id)" color="\(color)" gradientUnits="userSpaceOnUse" x1="\(number(from.x))" y1="\(number(from.y))" x2="\(number(to.x))" y2="\(number(to.y))">
-          <stop offset="0" stop-color="currentColor"/><stop offset=".25" stop-color="currentColor"/>
-          <stop offset=".5" stop-color="currentColor" stop-opacity=".5"/>
-          <stop offset=".75" stop-color="currentColor"/><stop offset="1" stop-color="currentColor"/>
-          <animateTransform attributeName="gradientTransform" type="translate" values="\(values)" dur="\(roundTrip ? "12s" : "6s")" repeatCount="indefinite"/>
-        </linearGradient>
-        """
-    return ("url(#" + id + ")", "", gradient)
+    let radius = max(3, edge.lineWidth * 1.3)
+    let seconds = min(12, max(1.5, hypot(dx, dy) / 140)) * (roundTrip ? 2 : 1)
+    let keys = roundTrip ? "keyPoints=\"0;1;0\" keyTimes=\"0;0.5;1\"" : "keyPoints=\"\(reverse ? "1;0" : "0;1")\" keyTimes=\"0;1\""
+    let dot = "<circle class=\"wire-dot\" r=\"\(number(radius))\" fill=\"\(color)\" stroke=\"none\" pointer-events=\"none\">"
+        + "<animateMotion path=\"\(path)\" dur=\"\(number(seconds))s\" calcMode=\"linear\" \(keys) repeatCount=\"indefinite\"/></circle>"
+    return (color, "", dot)
 }
 
 /// Egyszerű CSV/TSV feldolgozás a táblázatnézethez (idézőjeles mezők, legfeljebb 200 sor × 30 oszlop).
@@ -1178,6 +1173,8 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
     // Vászonszín háttérmód: a doboz felülete a munkalap háttérszínét kapja (editor.js surfaceColor).
     var board = board
     for index in board.nodes.indices where board.nodes[index].backgroundMode == .canvas { board.nodes[index].fill = board.backgroundColor }
+    // Vonalméret: a méret alapvastagsága a téma vonaltípusonkénti szorzójával (geometry.js edgePaint).
+    for index in board.edges.indices { board.edges[index].width = board.edges[index].scaledWidth(graphics?.lineScale) }
     // Szövegkörbefuttatás: a konténer szövege kikerüli a közvetlen gyermekdobozait; alapból be, `textFlow: false` kapcsolja ki.
     let parents = Set(board.nodes.compactMap(\.parent))
     let flowing = Set(board.nodes.filter { $0.textFlow != false && $0.isBox && parents.contains($0.id) }.map(\.id))
@@ -1377,8 +1374,7 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
             ? taperedWireArc(edge, from: beginning, control: points.first ?? arcControl(beginning, ending), to: ending) : nil
         for point in vertices { include(point.x, point.y, 40, 40) }
         let color = escaped(edge.strokeColor)
-        let motion = wireAnimation(edge, from: beginning, to: ending)
-        if !motion.gradient.isEmpty { definitions.append(motion.gradient) }
+        let motion = wireAnimation(edge, from: beginning, to: ending, path: drawing)
         let label = edge.label.flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
         let inlineLabel = edge.labelInLine == true && label != nil
         let gapID = "wire-gap-" + edge.id
@@ -1437,10 +1433,10 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
                     "><animate attributeName=\"d\" values=\"\(taper.outline);\($0);\(taper.outline)\" dur=\"3s\" repeatCount=\"indefinite\"/></path>"
                 } ?? "/>"
                 let fill = "<path class=\"wire-line\"\(wire) data-wire-taper=\"\" d=\"\(taper.outline)\" fill=\"\(motion.stroke)\" stroke=\"none\"\(clip)\(animation)"
-                return "<g class=\"wire\" fill=\"none\">\(fill)\(heads)</g>"
+                return "<g class=\"wire\" fill=\"none\">\(fill)\(heads)\(motion.dot)</g>"
             }
             let stroke = "<path class=\"wire-line\"\(wire) d=\"\(drawing)\" stroke=\"\(motion.stroke)\" stroke-width=\"\(number(lineWidth))\"\(markers)\(clip)\(shaft)"
-            return "<g class=\"wire\" fill=\"none\" stroke-linecap=\"round\">\(heads)\(stroke)</g>"
+            return "<g class=\"wire\" fill=\"none\" stroke-linecap=\"round\">\(heads)\(stroke)\(motion.dot)</g>"
         }
         // Vonalak rétege (editor.js wireLayers): minden vonal minden doboz fölött fut, a Kiemelt objektumok alatt;
         // a data-connection (táblázat ↔ grafikon adatvonal) mindig minden objektum mögött van.

@@ -4,9 +4,13 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 ## Nyitott
 
+- **Tesztek nincsenek hozzáigazítva a 2026-11-25-i vonal- és gyorseszköz-változásokhoz; a változások nincsenek tesztelve** (2026-11-25)
+  - A tesztek nem futottak (tesztelés csak a felhasználó utasítására). Várhatóan eltörik: `gestures.mjs` („Alapvastagság” mező, vonalvastagság), a vonalas közös tesztek (`wires.mjs` / `Tests/Fixtures/wires.json`, ha `w` értéket használnak), a Swift `RenderingTests` vonalas részei (gradiens animáció, `width`), esetleg `ThemeTests`.
+  - Kézzel nézendő Safariban: a futó pötty (szerkesztő, megjelenítő, export), a három vonalméret régi munkalapokon, a fájlnév helyben szerkesztése (ékezetek, Enter, Esc), a gyors eszközök az ablak négy sarkában.
+
 - **Gyors eszközök (próba): ismert hiányok** (2026-11-25)
-  - Dobozon a hagyományos menü kikapcsolásával jobb kattintásra nincs Törlés, Ping, Szerkesztés (eldöntendő, melyik kerüljön a gombok közé).
-  - A képernyőn belül tartás Safariban az ablak közepén és egy doboz sarkánál mérve; közvetlenül az ablak szélénél és kis ablakban kézzel nézendő.
+  - A hagyományos menü „Szerkesztés” parancsa (panel megnyitása) nem került a gombok közé.
+  - Ahol egy feliratos gombnak nincs saját ikonja (pl. táblázat egyes gombjai), az alapértelmezett fájl-ikon látszik, több gomb egyforma lehet.
   - A kinyitott lista csak a saját gombjára vagy választásra zárul; máshová kattintva nyitva marad, amíg a gyors eszközök látszanak.
   - Háttér nélküli gombok tarka tartalom fölött nehezebben olvashatók.
 

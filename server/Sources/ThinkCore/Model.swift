@@ -402,6 +402,11 @@ package struct Connection: Equatable, Codable, Sendable {
     package var appearance: ConnectionAppearance = .plain
     var animated: Bool?
     @OptionalPaint var color: String? = nil
+    /// Vonalméret: 1 (vékony, alapértelmezett), 2 (közepes), 3 (vastag). A tényleges vastagság a méret alapértéke
+    /// (`baseWidths`) szorozva a téma vonaltípusonkénti szorzójával (`Graphics.lineScale`, geometry.js edgePaint). Az egyedi vastagság
+    /// (régi `w` mező) megszűnt.
+    var size: Int?
+    /// A témából feloldott vonalvastagság (nem tárolt mező; renderWorksheetCanvas tölti ki).
     var width: Double?
     var startArrow: Bool?
     var endArrow: Bool?
@@ -409,14 +414,22 @@ package struct Connection: Equatable, Codable, Sendable {
     var labelInLine: Bool?
 
     private enum CodingKeys: String, CodingKey {
-        case id, source, target, type, appearance, animated, color, startArrow, endArrow, label, labelInLine
-        case sourcePoint = "srcPt", width = "w"
+        case id, source, target, type, appearance, animated, color, size, startArrow, endArrow, label, labelInLine
+        case sourcePoint = "srcPt"
     }
 
     var origin: ConnectionTarget { ConnectionTarget(node: source, point: sourcePoint) }
     var strokeColor: String { color ?? "#526982" }
     static let maximumWidth: Double = 32
-    var strokeWidth: Double { min(Self.maximumWidth, (width ?? 2) * (appearance == .thick ? 2 : 1)) }
+    /// A három méret alapvastagsága (geometry.js lineBaseWidths; egyezniük kell).
+    static let baseWidths: [Double] = [2, 5, 10.5]
+    var sizeIndex: Int { min(3, max(1, size ?? 1)) - 1 }
+    /// A vastagság a téma vonaltípusonkénti szorzójával (`scale`: vonaltípus neve → szorzó, híján 1); a vastag
+    /// megjelenés mindig kétszeres.
+    func scaledWidth(_ scale: [String: Double]?) -> Double {
+        min(Self.maximumWidth, Self.baseWidths[sizeIndex] * (appearance == .thick ? 2 : 1) * (scale?[type.rawValue] ?? 1))
+    }
+    var strokeWidth: Double { width ?? scaledWidth(nil) }
     var lineWidth: Double { min(Self.maximumWidth, strokeWidth * (appearance == .dotted ? 2 : 1)) }
     var pulseWidth: Double { min(Self.maximumWidth, lineWidth * 1.45) }
     var hasStartArrow: Bool { startArrow ?? false }
@@ -424,7 +437,7 @@ package struct Connection: Equatable, Codable, Sendable {
 }
 
 extension Connection {
-    private enum LegacyKey: String, CodingKey { case style }
+    private enum LegacyKey: String, CodingKey { case style, w }
     private enum LegacyStyle: String, Decodable { case arrow, both, solid, dashed, rope }
 
     package init(from decoder: Decoder) throws {
@@ -440,7 +453,10 @@ extension Connection {
         appearance = (try? fields.decode(ConnectionAppearance.self, forKey: .appearance)) ?? (legacy == .dashed ? .dashed : .plain)
         animated = try? fields.decode(Bool.self, forKey: .animated)
         color = (try? fields.decode(StoredPaint.self, forKey: .color).wrappedValue)
-        width = (try? fields.decode(Double.self, forKey: .width))
+        // Régi egyedi vastagság (`w`): a legközelebbi méretre vált (az eddigi alapértelmezett 2 a vékony).
+        let oldWidth = try? decoder.container(keyedBy: LegacyKey.self).decodeIfPresent(Double.self, forKey: .w)
+        size = (try? fields.decode(Int.self, forKey: .size)) ?? oldWidth.map { $0 <= 3.5 ? 1 : $0 <= 7.5 ? 2 : 3 }
+        if size == 1 { size = nil }
         startArrow = (try? fields.decode(Bool.self, forKey: .startArrow)) ?? (legacy == .both ? true : nil)
         endArrow = (try? fields.decode(Bool.self, forKey: .endArrow)) ?? (legacy == .rope || legacy == .solid ? false : nil)
         label = (try? fields.decode(String.self, forKey: .label))
@@ -530,7 +546,7 @@ package struct Worksheet: Content, Equatable {
               nodes.allSatisfy(\.isValid), edges.allSatisfy({
                   validSlug($0.id) && $0.origin.isValid(in: nodeIDs) && $0.target.isValid(in: nodeIDs)
                       && ($0.source == nil || $0.source != $0.target.node)
-                      && validColor($0.strokeColor) && (0.5...Connection.maximumWidth).contains($0.width ?? 2)
+                      && validColor($0.strokeColor) && (1...3).contains($0.size ?? 1)
                       && validComment($0.label) && ($0.label?.utf16.count ?? 0) <= 120
               })
         else {

@@ -232,8 +232,17 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 /* Gyors eszközök (editor.js renderQuickTools, próba): jobb kattintásra a gombok sorai a mutatónál, alattuk a helyi
    menü (ha a típuson be van kapcsolva); a gomboknak nincs közös háttere és kerete. Az elrendezést a
    quick-tools.json adja. */
-.quick-tools { position: fixed; z-index: 8; display: grid; gap: 10px; justify-items: start; max-width: calc(100vw - 16px); }
-.quick-tools-above { display: grid; gap: 4px; justify-items: start; }
+.quick-tools { position: fixed; z-index: 8; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; width: max-content; }
+.quick-tools-above, .quick-tools-opposite { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: max-content; }
+/* A túloldali blokk (leíró: opposite) külön rögzített helyen áll, a helyét a fit adja. */
+.quick-tools-opposite { position: fixed; left: 0; top: 0; }
+/* A sorok nem törnek: az ablak szélénél a blokk tükröződik, nem rendeződik egy oszlopba. */
+.quick-tools .quick-tools-row { flex-wrap: nowrap; }
+/* Terjeszkedési irány (editor.js renderQuickTools fit): balra a sorok tükröződnek és jobbra zárnak, felfelé a sorok
+   (és a szöveges menü) alulról fölfelé következnek – az első sor első gombja mindig a kattintás pontjánál áll. */
+.quick-tools[data-x="left"], .quick-tools[data-x="left"] > .quick-tools-above, .quick-tools-opposite[data-x="left"] { align-items: flex-end; }
+.quick-tools[data-x="left"] > .quick-tools-above .quick-tools-row, .quick-tools-opposite[data-x="left"] .quick-tools-row { flex-direction: row-reverse; }
+.quick-tools[data-y="up"], .quick-tools[data-y="up"] > .quick-tools-above, .quick-tools-opposite[data-y="up"] { flex-direction: column-reverse; }
 .quick-tools > .context-menu { position: static; }
 .quick-tools-row { gap: 4px; }
 .quick-tools-row > .button:not(.option-icon) { min-height: 32px; padding: 0 10px; }
@@ -247,8 +256,10 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .quick-flyout-trigger.idle > :not(.quick-flyout-mark) { opacity: .55; }
 .quick-flyout-mark { position: absolute; right: 2px; bottom: 2px; width: 0; height: 0; border: 3px solid transparent; border-right-color: currentColor; border-bottom-color: currentColor; }
 .quick-flyout-list, .color-tools.floating { position: fixed; z-index: 9; left: 0; top: 0; gap: 4px; padding: 4px; background: var(--panel-surface, white); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 20px #1c315333; }
-.quick-flyout-list { display: flex; }
+.quick-flyout-list { display: flex; width: max-content; }
 .quick-flyout-list.open-column { flex-direction: column; }
+.quick-flyout-list.open-row[data-x="left"] { flex-direction: row-reverse; }
+.quick-flyout-list.open-column[data-y="up"] { flex-direction: column-reverse; }
 .quick-flyout-list.open-grid { display: grid; }
 .color-tools.color-presets.floating { display: grid; grid-template-columns: repeat(5, 32px); width: max-content; }
 /* Egérrámutatás: a gyors eszközök gombjai és a helyi menü elemei kiemelődnek. */
@@ -720,6 +731,9 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 .node-file.node-image { padding: 0; gap: 2px; text-align: center; }
 .node-file-name { flex: none; display: flex; justify-content: center; min-width: 0; }
 .node-file-name .node-download { align-self: center; margin: 0; max-width: 100%; }
+/* Fájlnév szerkesztése helyben (editor.js renderFileNameEdit): maga a felirat szerkeszthető. */
+.node-name-edit { min-width: 3em; padding: 0 4px; outline: 1px dashed currentColor; outline-offset: 1px; border-radius: 3px; cursor: text; white-space: nowrap; }
+.node-name-edit, .node-name-edit * { -webkit-user-select: text; user-select: text; }
 .node-body { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .node-image .node-body img { display: block; flex: 1; width: 100%; min-height: 0; object-fit: contain; background: transparent; }
 .node-image .node-body img { border-radius: 5px; }
