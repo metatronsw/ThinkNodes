@@ -190,6 +190,22 @@ Importált szöveges fájl: minden nem bináris fájl (UTF-8, NUL bájt nélkül
    A táblázat (`table`) szövegszíne is itt állítható; a táblázat szerkesztési módja (képletsor, fejlécek, kijelölés) a doboz
    hátteréből és szövegszínéből kevert színeket használ (`--tn-paper`, `Public/app.css`).
 
+### Grafikon (a `csv` és a `table` megjelenítési módja)
+
+Nem külön típus: a táblázat- vagy CSV-doboz `chart` mezője. Ha be van állítva, a doboz a fájl tartalmát táblázat helyett
+grafikonként mutatja (`Public/chart.js`, D3: `Public/lib/d3-chart.js`).
+
+- **Mező:** `chart: {kind, labels, values, header}` – `kind`: `bar` / `line` / `pie` / `scatter`; `labels`: a kategóriák
+  (pontdiagramnál az x értékek) oszlopa, hiányzik = automatikus, `-1` = sorszám; `values`: értékoszlopok, hiányzik = minden
+  számoszlop (legfeljebb 8, pont: 3, kör: 1); `header: false` = az első sor is adat.
+- **Táblázat és grafikon együtt:** helyi menü → „Grafikon készítése”: új doboz ugyanarra a fájlra (nem másolat).
+  A fájl dobozai közül a mentés a legnagyobb `file.rev` fölé lép, a grafikon a legfrissebb változatot olvassa (`latestRev`).
+- **Szerkesztő:** a grafikon dobozán a dupla kattintás a panelt nyitja (nem a cellaszerkesztőt); a „Cellák szerkesztése”
+  idejére a doboz táblázatot mutat. Panel: Grafikon csoport (megjelenítés, kategóriák, értékoszlopok, fejlécsor).
+- **Megtekintő:** a szerver helyőrzőt ír (`.node-chart`, `data-chart`, `data-chart-source`), a `viewer.js` tölti be a modult
+  és a fájlt, és rajzol. Szkript nélkül (SVG-export, előnézeti kép) a doboz a táblázatot mutatja.
+- **Színek:** rögzített sorrendű kategóriaszínek, világos és sötét felületre külön lépcsővel; a szöveg a doboz szövegszíne.
+
 ### image
 
 Importált kép: .png, .jpg, .gif, .webp, .svg (legfeljebb 12 MiB, tartalom-ellenőrzéssel).

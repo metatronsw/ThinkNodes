@@ -1,5 +1,18 @@
 # Változások
 
+## 2026-11-25 – Grafikon a táblázat- és CSV-dobozokon (D3)
+
+- **Grafikon:** a táblázat (`.tntable`) és a CSV doboza a fájl tartalmát grafikonként is mutathatja: oszlop-, vonal-, kör- és pontdiagram. A beállítás a doboz `chart` mezője (típus, kategóriaoszlop, értékoszlopok, fejlécsor).
+- **Táblázat és grafikon együtt:** jobb kattintás a táblázaton → „Grafikon készítése” (vagy a panel „Grafikon a táblázat mellé” gombja) új dobozt tesz mellé ugyanarra a fájlra; nem másolat, a táblázat szerkesztését követi. A panel „Grafikon” csoportjában a meglévő doboz is átváltható.
+- **Automatikus kiosztás:** az első szöveges oszlop a kategória, a számoszlopok a sorozatok (legfeljebb 8; pontdiagramon 3, kördiagramon 1). A CSV számai magyar és angol írásmóddal is felismerődnek (1 234,5 · 1,234.5 · 12%). Kördiagramon a nyolc fölötti szeletek „Egyéb” néven összevonódnak.
+- **Megtekintő:** ugyanaz a modul (`Public/chart.js`) rajzol a fájlból; a szerver a doboz helyére helyőrzőt tesz. Szkript nélküli kimenetben (SVG-export, előnézeti kép) a doboz a táblázatot mutatja.
+- **D3:** új, külön csomag a rajzoláshoz: `Public/lib/d3-chart.js` (d3-scale + d3-shape, 39 KB), a tárolóban; csak akkor töltődik le, ha a lapon van grafikon. Újraépítés: `deploy/d3-slim.sh` (most már mindkét csomagot építi).
+- **Közös fájl változásszámlálója:** ha egy lapon több doboz mutat ugyanarra a fájlra, a mentés a legnagyobb számláló fölé lép (`latestRev`), a grafikon a legfrissebb változatot olvassa.
+- **Tesztek:** `chart.mjs` (JS: számfelismerés, kiosztás, a négy típus SVG-je), `chartBoxKeepsItsSettingsAndRendersAPlaceholderForTheViewer` (Swift). Safariban (WebDriver) ellenőrizve: a négy grafikon a szerkesztőben és a megtekintőben, típusváltás és sorozat ki-/bekapcsolása a panelen, mentés.
+- Nincs kipróbálva böngészőben: a grafikon követi-e gépelés közben a táblázat szerkesztését, a helyi menü „Grafikon készítése” pontja, `.tntable` forrás, világos téma.
+- Helyi próbalap: `projects/a/grafikon` (kézzel létrehozva a teszthez).
+- Szerverkód változott: újrafordítva és újraindítva.
+
 ## 2026-11-25 – Csomag: darabolt, folytatható feltöltés és közvetlen letöltés; nagy szövegfájl külön ablakban
 
 - **Csomag-mérethatár:** 200 MiB helyett 4 GiB (a ZIP64 nélküli ZIP formátum határa; a saját export tömörítés nélküli), kibontva 8 GiB, 20 000 fájl. Induláskor szabadhely-ellenőrzés.

@@ -175,6 +175,7 @@ Szerver:
 Kliens:
 - **Szűkített d3-csomag – kész (2026-11-25):** `Public/lib/d3-zoom.js` (`zoom`, `zoomIdentity`, `select`, `pointer`),
   280 → 55 KB, tömörítve 93 → 18,6 KB; újraépítés: `deploy/d3-slim.sh`.
+  A grafikonok rajzoló csomagja külön fájl (`Public/lib/d3-chart.js`, 39 KB), és csak grafikont tartalmazó lapon töltődik le.
 - **`modulepreload`** az `editor.js` importjaira: a modulok most lépcsőzetesen derülnek ki (2–3 körben).
 - **`commonmark.js` halasztva** (99 KB): csak markdown-szöveg megjelenítésekor kell.
 - A korábbi nyitott tételek változatlanok („Ami nem javult vagy nyitva maradt”); az új táblázat-fejlécsávok görgetési

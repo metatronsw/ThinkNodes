@@ -375,3 +375,36 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     #expect(!svg.contains("node-below"))
     #expect(svg.contains("Egyszer látszik"))
 }
+
+@Test func chartBoxKeepsItsSettingsAndRendersAPlaceholderForTheViewer() throws {
+    var table = Idea(id: "adat", type: "csv", file: CanvasFile(asset: "adat.csv", filename: "adat.csv"), position: Point(x: 0, y: 0))
+    table.width = 380; table.height = 260
+    table.chart = ChartSettings(kind: "bar", labels: 0, values: [1, 2], header: nil)
+    var sheet = Worksheet(title: "Grafikon", nodes: [table])
+    try sheet.validate()
+    // A beállítás a mentett lapon megmarad.
+    sheet = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(sheet))
+    #expect(sheet.nodes[0].chart == table.chart)
+
+    // Megtekintő: a doboz helyén a grafikon helyőrzője áll a beállítással és a fájl címével; a táblázat HTML-je nem megy ki.
+    let text: (Idea) -> String? = { _ in "Hónap;Bevétel\nJan;1\n" }
+    let viewer = boardSVG(sheet, noteBase: "/projekt/lap", fileText: text)
+    #expect(viewer.contains(#"class="node-chart""#) && viewer.contains("data-chart-type=\"csv\""))
+    #expect(viewer.contains("&quot;kind&quot;:&quot;bar&quot;") && viewer.contains("data-chart-source=\"/api/attachment"))
+    #expect(!viewer.contains("node-csv"))
+    // Szkript nélküli kimenet (SVG-export, előnézeti kép): a táblázat látszik.
+    let exported = boardSVG(sheet, fileText: text)
+    #expect(exported.contains("node-csv") && !exported.contains("node-chart"))
+
+    // Érvénytelen beállítás és nem táblázatos doboz: a lap nem menthető.
+    var wrong = sheet
+    wrong.nodes[0].chart = ChartSettings(kind: "radar", labels: nil, values: nil, header: nil)
+    #expect(throws: (any Error).self) { try wrong.validate() }
+    wrong.nodes[0].chart = ChartSettings(kind: "pie", labels: -2, values: nil, header: nil)
+    #expect(throws: (any Error).self) { try wrong.validate() }
+    wrong.nodes[0].chart = ChartSettings(kind: "line", labels: nil, values: Array(0..<9), header: nil)
+    #expect(throws: (any Error).self) { try wrong.validate() }
+    var note = Idea(id: "note", type: "text", file: CanvasFile(asset: "jegyzet.txt", filename: "jegyzet.txt"), position: Point(x: 0, y: 0))
+    note.chart = table.chart
+    #expect(throws: (any Error).self) { try Worksheet(title: "Szöveg", nodes: [note]).validate() }
+}

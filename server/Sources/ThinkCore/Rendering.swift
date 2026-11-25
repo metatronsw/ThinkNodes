@@ -47,7 +47,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/lib/d3-zoom.js?v=1"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=62"></script>
+        <script type="module" src="/editor.js?v=63"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -58,7 +58,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=34">
+          <link rel="stylesheet" href="/app.css?v=35">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -997,7 +997,13 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
         let fold = node.resolvedBackgroundMode == .solid ? " with-fold" : ""
         // A mentett görgetési helyzetet a megtekintő szkriptje állítja be (viewer.js).
         let scroll = node.scroll.map { " data-scroll-x=\"\(number($0.x))\" data-scroll-y=\"\(number($0.y))\"" } ?? ""
-        content = "<div class=\"node-note\(fold)\" data-font-size=\"\(number(node.fontSize))\"\(scroll)>\(fileTextHTML(node, text: text))</div>"
+        if interactive, let chart = node.chart, let settings = try? JSONEncoder().encode(chart) {
+            // Grafikon: a megtekintő szkriptje rajzolja ki a fájl tartalmából (viewer.js, chart.js). Szkript nélkül
+            // (SVG-export, előnézeti kép) a doboz a táblázatot mutatja.
+            content = "<div class=\"node-chart\" data-chart=\"\(escaped(String(decoding: settings, as: UTF8.self)))\" data-chart-type=\"\(escaped(node.type))\" data-chart-source=\"\(url)\" data-chart-name=\"\(escaped(file.filename ?? file.asset))\" data-chart-surface=\"\(escaped([.free, .empty].contains(node.resolvedBackgroundMode) ? "" : node.fill))\"><p class=\"muted\">…</p></div>"
+        } else {
+            content = "<div class=\"node-note\(fold)\" data-font-size=\"\(number(node.fontSize))\"\(scroll)>\(fileTextHTML(node, text: text))</div>"
+        }
     default:
         content = "<div class=\"node-document\"><span class=\"node-document-icon\">\(packageIcon)<b>\(ext)</b></span>\(downloadControl("Letöltés", classes: "node-download button small"))</div>"
     }

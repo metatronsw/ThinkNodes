@@ -3012,6 +3012,11 @@ createApp({
     const fileSaveState = ref(new Map());
     const fileTextKey = (node, rev = node.file.rev ?? 0) => JSON.stringify([node.file.source ?? null, node.file.asset]) + "#" + rev;
     const pendingFileSaves = new Map();
+    // Egy lapon több doboz is mutathat ugyanarra a fájlra (klón, a táblázat grafikonja). A számláló dobozonként tárolódik,
+    // ezért a mentés a fájl dobozai közül a legnagyobb fölé lép, és a csak megjelenítő doboz (grafikon) a legfrissebb
+    // változatot olvassa: így a táblázat szerkesztését a grafikon gépelés közben és a többi résztvevőnél is követi.
+    const sameFile = (a, b) => a.asset === b.asset && (a.source ?? null) === (b.source ?? null);
+    const latestRev = file => Math.max(file.rev ?? 0, ...(board.value?.nodes ?? []).filter(node => node.file && sameFile(node.file, file)).map(node => node.file.rev ?? 0));
     // Egy szövegfájl-változat betöltése (egyszer kulcsonként). A kirajzolás is hívja: ha a `file.rev` a figyelőn
     // kívül változik meg (pl. betöltéskor a munkalap frissítésekor), a hiányzó változat így is betöltődik (BUGS.md).
     async function loadFileText(key) {
@@ -3047,7 +3052,7 @@ createApp({
         const latest = fileTexts.value.get(fileTextKey(current)) ?? text;
         await checked(await fetch(attachmentURL(fileSheet(path, current.file), current.file.asset), {method: "PUT",
           headers: {"X-CSRF-Token": csrf, "Content-Type": "text/plain; charset=utf-8"}, body: latest}));
-        const rev = (current.file.rev ?? 0) + 1;
+        const rev = latestRev(current.file) + 1;
         fileTexts.value = new Map(fileTexts.value).set(fileTextKey(current, rev), latest);
         if (held.value === current.id) updateItem(current, "file", {...current.file, rev});
         fileSaveState.value = new Map(fileSaveState.value).set(node.id, "Mentve");
@@ -3259,7 +3264,7 @@ createApp({
       } else result = await tableFromProject(target);
       if (!result) return;
       const current = nodeMap.value.get(node.id);
-      if (current && held.value === current.id) updateItem(current, "file", {...current.file, rev: (current.file.rev ?? 0) + 1});
+      if (current && held.value === current.id) updateItem(current, "file", {...current.file, rev: latestRev(current.file) + 1});
       if (result.truncated) problem.value = "A fájl túl nagy volt; a korlát (1000 sor × 100 oszlop) fölötti rész kimaradt.";
     }
 
@@ -3321,6 +3326,15 @@ createApp({
       addNode({x: node.position.x + node.width / 2 + properties.width / 2 + 40, y: node.position.y}, properties);
     }
 
+
+    // Grafikon a táblázat mellé: új doboz ugyanarra a fájlra (nem másolat), így a táblázat szerkesztését követi.
+    function addChartBox(node, kind = "bar") {
+      const {fill, textColor, backgroundMode: mode, frame} = node;
+      const width = 380, height = 260;
+      addNode({x: node.position.x + node.width / 2 + width / 2 + 40, y: node.position.y},
+        {type: node.type, file: {...copy(node.file), showFilename: false}, fontSize: node.fontSize ?? 13, fill, textColor,
+          ...(mode ? {backgroundMode: mode} : {}), ...(frame === false ? {frame} : {}), width, height, chart: {kind}});
+    }
 
     function editOverlay(item, x, y, width, height) {
       if (editingObject.value !== item.id) return null;
@@ -3407,6 +3421,54 @@ createApp({
       gridViews.set(id, {content, marks, view});
       return view;
     }
+    // Grafikon (chart.js): a táblázat- vagy CSV-doboz a fájl tartalmát grafikonként mutatja (`node.chart`). A rajzoló modul
+    // és a d3 rajzoló része csak akkor töltődik le, ha a lapon van grafikon. A megtekintő ugyanezzel a modullal rajzol.
+    const chartModule = shallowRef(null);
+    let chartLoading = null;
+    function loadChartModule() {
+      chartLoading ??= import("./chart.js").then(module => { chartModule.value = markRaw(module); })
+        .catch(() => { chartLoading = null; problem.value = "A grafikon modulja nem tölthető be."; });
+    }
+    const showsChart = node => Boolean(node?.chart) && isGrid(node) && tableEdit.value?.id !== node.id;
+    // A fájl legfrissebb ismert tartalma (lásd latestRev): a grafikon doboza maga nem ment, a számlálója lemaradhat.
+    function chartText(node) {
+      const key = fileTextKey(node, latestRev(node.file));
+      const text = fileTexts.value.get(key);
+      if (text != null) { lastFileTexts.set(node.id, text); return text; }
+      if (!fileTexts.value.has(key)) queueMicrotask(() => loadFileText(key));
+      return lastFileTexts.get(node.id) ?? null;
+    }
+    const chartRowCache = new Map();
+    function chartRows(node) {
+      const text = chartText(node), module = chartModule.value;
+      if (text == null || !module) return undefined;
+      const cached = chartRowCache.get(node.id);
+      if (cached?.text === text) return cached.rows;
+      const rows = module.fileRows(node.type, text, node.file.filename ?? node.file.asset);
+      chartRowCache.set(node.id, {text, rows});
+      return rows;
+    }
+    const chartViews = new Map();
+    function renderChart(node) {
+      const module = chartModule.value;
+      if (!module) loadChartModule();
+      const rows = chartRows(node);
+      let html = '<p class="muted">…</p>';
+      if (rows !== undefined) {
+        // A rajz mérete a doboz tartalomterülete (.node-file: 8 px belső margó); a megtekintő a kirajzolt elemet méri.
+        const surface = ["free", "empty"].includes(backgroundMode(node)) ? undefined : surfaceColor(node);
+        const options = {width: node.width - 16, height: node.height - 16, surface, dark: module.darkSurface(surface, paint(node.textColor, 1))};
+        const key = JSON.stringify([node.chart, options]);
+        const cached = chartViews.get(node.id);
+        if (cached?.rows === rows && cached.key === key) html = cached.html;
+        else {
+          html = module.chartSVG(rows, node.chart, options);
+          chartViews.set(node.id, {rows, key, html});
+        }
+      }
+      return h("div", {class: "node-chart", innerHTML: html});
+    }
+
     function renderFileText(node) {
       let text = fileTexts.value.get(fileTextKey(node));
       if (text == null) {
@@ -3458,6 +3520,8 @@ createApp({
           h("small", {"data-audio-time": ""}, "0:00"),
           h("small", {"data-audio-status": "", role: "status"}),
         ]);
+      } else if (showsChart(node)) {
+        content = renderChart(node);
       } else if (root === "text") {
         content = h("div", {class: ["node-note", {"with-fold": backgroundMode(node) === "solid"}], style: {fontSize: (node.fontSize ?? 13) + "px"},
           onPointerdown: e => scrollbarPress(e, node), onMousedown: e => scrollbarPress(e, node), onTouchstart: e => scrollbarPress(e, node), onWheel: e => stopScroll(e, node),
@@ -3654,7 +3718,7 @@ createApp({
           // Előnézetes (linkes) doboz: dupla kattintás megnyitja a linket; Alt-tal a szerkesztés marad.
           if (node.type === "preview" && destination && !event.altKey) { followBoxLink(destination); return; }
           // Táblázat és CSV: dupla kattintás a cellák szerkesztése (docs/EXCEL.md 6. fejezet); Alt-tal a tulajdonságpanel.
-          if (isGrid(node) && !event.altKey) { startTableEdit(node, clickedCell(event, node)); return; }
+          if (isGrid(node) && !event.altKey && !node.chart) { startTableEdit(node, clickedCell(event, node)); return; }
           if (isGrid(node)) { editObject("node", node.id, true); return; }
           editObject("node", node.id, event.altKey ? "text" : true);
         },
@@ -4161,6 +4225,7 @@ createApp({
         }, {symbol: "link", disabled: !!occupied(node.id)}) : null,
         isGrid(node) ? button("Cellák szerkesztése", () => { menu.value = null; startTableEdit(node); }, {symbol: "table-grid", disabled: !!occupied(node.id)}) : null,
         node.type === "csv" ? button("Önálló táblázat (másolat)", () => { menu.value = null; transfer(() => tableFromCSVBox(node)); }, {symbol: "copy", disabled: !online.value}) : null,
+        isGrid(node) && !node.chart ? button("Grafikon készítése", () => { menu.value = null; addChartBox(node); }, {symbol: "chart", disabled: !online.value}) : null,
         button("Szerkesztés", () => openProperties("node", node.id), {symbol: "edit", disabled: !!occupied(node.id)}),
         // Egyetlen törlés: fájl- és linkes doboznál a közös kérdőablak jön fel (deleteObjects).
         button("Törlés", () => { menu.value = null; deleteNode(node); }, {class: "button danger", symbol: "trash", disabled: !!occupied(node.id)}),
@@ -4625,6 +4690,59 @@ createApp({
             h("a", {class: "button", href: exportURL(fileSheet(path, single.file), single.file.asset, "csv"), download: ""}, [icon("download"), "CSV"]),
             h("small", {class: "muted", role: "status"}, fileSaveState.value.get(single.id) ?? ""),
           ),
+        ]));
+      }
+
+      if (single && isGrid(single)) {
+        const chart = single.chart, module = chartModule.value;
+        if (chart && !module) loadChartModule();
+        const rows = chart ? chartRows(single) : undefined;
+        const data = rows && module ? module.chartData(rows, chart) : null;
+        const setChart = next => change("chart", next);
+        const update = patch => {
+          const next = {...chart, ...patch};
+          for (const key of Object.keys(next)) if (next[key] === undefined) delete next[key];
+          setChart(next);
+        };
+        const kinds = module?.chartKinds ?? {bar: "Oszlop", line: "Vonal", pie: "Kör", scatter: "Pont"};
+        const picker = (label, value, entries, pick) => field(label, h("select", {value, "aria-label": label, disabled: !online.value,
+          onChange: event => pick(event.target.value)}, entries.map(([id, name]) => h("option", {value: id}, name))));
+        const scatter = chart?.kind === "scatter";
+        const numericColumns = data?.columns.filter(column => column.numeric && column.index !== data.labelColumn) ?? [];
+        const limitReached = data && data.valueColumns.length >= (chart.kind === "pie" ? 1 : scatter ? 3 : module.maximumSeries);
+        panels.push(group("Grafikon", [
+          picker("Megjelenítés", chart?.kind ?? "", [["", "Táblázat"], ...Object.entries(kinds).map(([id, name]) => [id, name + "diagram"])],
+            // A sorozatok kiosztása típusonként más (kör: egy, pont: szám az x tengelyen), ezért váltáskor újra automatikus.
+            kind => setChart(kind ? {kind, ...(chart?.header === false ? {header: false} : {})} : undefined)),
+          chart && !data ? h("p", {class: "muted"}, rows === null ? "A táblázat nem olvasható." : "Betöltés…") : null,
+          data ? picker(scatter ? "X tengely" : chart.kind === "pie" ? "Szeletek neve" : "Kategóriák", chart.labels == null ? "auto" : String(chart.labels), [
+            ["auto", "Automatikus" + (data.labelColumn != null && chart.labels == null ? " (" + data.columns[data.labelColumn].name + ")" : "")],
+            ...(scatter ? [] : [["-1", "Sorszám"]]),
+            ...data.columns.filter(column => column.used && (!scatter || column.numeric)).map(column => [String(column.index), column.name]),
+          ], value => update({labels: value === "auto" ? undefined : Number(value), values: undefined})) : null,
+          data ? h("div", {class: "chart-columns", role: "group", "aria-label": "Értékoszlopok"}, [
+            h("span", chart.kind === "pie" ? "Értékek" : "Értékoszlopok"),
+            numericColumns.length ? numericColumns.map(column => {
+              const on = data.valueColumns.includes(column.index);
+              return h("label", {class: "check"}, [
+                h("input", {type: chart.kind === "pie" ? "radio" : "checkbox", checked: on, disabled: !online.value || (!on && limitReached && chart.kind !== "pie"),
+                  onChange: () => {
+                    const next = chart.kind === "pie" ? [column.index]
+                      : on ? data.valueColumns.filter(index => index !== column.index) : [...data.valueColumns, column.index].sort((a, b) => a - b);
+                    update({values: next.length ? next : undefined});
+                  }}),
+                h("span", column.name),
+              ]);
+            }) : h("small", {class: "muted"}, "Nincs számoszlop."),
+          ]) : null,
+          chart ? h("label", {class: "check"}, [
+            h("input", {type: "checkbox", checked: chart.header !== false, disabled: !online.value,
+              onChange: event => update({header: event.target.checked ? undefined : false})}),
+            h("span", "Az első sor fejléc"),
+          ]) : null,
+          data?.truncated ? h("p", {class: "muted"}, "A grafikon a táblázat elejét mutatja (" + data.labels.length + " sor).") : null,
+          chart ? h("p", {class: "muted"}, "A doboz a fájlt grafikonként mutatja. A táblázat mellé külön grafikon: jobb kattintás a táblázaton → Grafikon készítése.")
+            : propertyTools(button("Grafikon a táblázat mellé", () => addChartBox(single), {symbol: "chart", disabled: !online.value})),
         ]));
       }
 

@@ -58,6 +58,29 @@ function bindCanvas() {
   }
   hideTooltip();
   bindTooltips(svg);
+  drawCharts(svg);
+}
+
+// Grafikonként megjelenő táblázat- és CSV-dobozok: a rajzoló modul (chart.js és a d3 rajzoló része) csak akkor töltődik
+// le, ha a lapon van grafikon. Az adat a doboz fájlja; a szerkesztő ugyanebből, ugyanezzel a modullal rajzol.
+async function drawCharts(svg) {
+  const boxes = [...svg.querySelectorAll(".node-chart[data-chart]")];
+  if (!boxes.length) return;
+  let chart;
+  try { chart = await import("./chart.js"); } catch { return; }
+  await Promise.all(boxes.map(async box => {
+    try {
+      const response = await fetch(box.dataset.chartSource);
+      if (!response.ok) throw Error("A fájl nem olvasható.");
+      const rows = chart.fileRows(box.dataset.chartType, await response.text(), box.dataset.chartName);
+      const surface = box.dataset.chartSurface || undefined;
+      const dark = chart.darkSurface(surface, box.closest("[data-file-ink]")?.dataset.fileInk);
+      if (!box.isConnected) return;
+      box.innerHTML = chart.chartSVG(rows, JSON.parse(box.dataset.chart), {width: box.clientWidth, height: box.clientHeight, dark, surface});
+    } catch {
+      box.textContent = "A grafikon nem tölthető be.";
+    }
+  }));
 }
 
 // Élő görgetés: a szerkesztőben a dobozt fogó résztvevő görgetését a megtekintő is követi.

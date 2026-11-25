@@ -57,8 +57,9 @@ swift_files[files]="ThinkNodesTests/AttachmentTests.swift ThinkNodesTests/Shared
 swift_files[web]="ThinkNodesTests/WebPresentationTests.swift"
 swift_files[package]="ThinkNodesTests/ProjectPackageTests.swift"
 js_files[package]="package-upload.mjs"
+js_files[chart]="chart.mjs"
 swift_files[link]="ThinkNodesTests/LinkPreviewTests.swift"
-all_topics="table markdown editor render worksheet collab access files web package link core"
+all_topics="table markdown editor render worksheet collab access files web package chart link core"
 
 # Módosított fájl (a server/ mappához képest) → témák. Üres eredmény: nincs hozzá teszt (dokumentáció, ikonok…).
 topics_for() {
@@ -68,6 +69,7 @@ topics_for() {
         Sources/*/CanvasMarkdown.swift|Public/canvas-markdown.js|Tests/Fixtures/canvas-markdown.json) echo "markdown editor" ;;
         Tests/Editor/canvas-markdown.mjs|Tests/ThinkNodesTests/CanvasMarkdownTests.swift|Tests/ThinkNodesTests/TextNoteTests.swift) echo markdown ;;
         Public/package.js|Tests/Editor/package-upload.mjs) echo "package editor" ;;
+        Public/chart.js|Public/lib/d3-chart.js|Tests/Editor/chart.mjs) echo "chart editor" ;;
         Tests/Editor/*|Public/*.js) echo editor ;;
         Sources/*/Rendering.swift|Sources/*/Theme.swift|Public/themes/*|docs/theme.schema.json) echo render ;;
         Tests/ThinkNodesTests/RenderingTests.swift|Tests/ThinkNodesTests/ThemeTests.swift) echo render ;;
