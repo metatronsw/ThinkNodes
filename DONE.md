@@ -6,6 +6,13 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **Bukó tesztek a vonalméret- és vonalanimáció-változás után (6 Swift, 2 JS)** (2026-11-26)
+  - Ok: a 2026-11-25-i változás (egyedi vastagság helyett három méret, gradiens helyett futó pötty) után a teszteket nem igazították hozzá; a `gestures.mjs` első hibája további, régebbi hibákat takart el.
+  - Javítás: `RenderingTests` (legnagyobb vastagság, íves vonal, animált vonal), `WorksheetTests` (`width` → `size`), a közös vonalminta (`Tests/Fixtures/wires.json`) újraírva a régi `w` esetekre és egy új `size` esettel; `gestures.mjs`: futó pötty, csoporton belüli gombkeresés (két „Vastag” gomb), a megszűnt vastagságmező helyett vonalméret, a szerkesztővel azonos `geometry.js`-példány (a verzió az `editor.js` importjából). Teljes készlet: 104 Swift-teszt és minden JS-teszt átmegy.
+
+- **A `test.sh` nem futott a macOS `/bin/bash` 3.2-vel** (2026-11-26)
+  - Javítás: régi bash alatt a szkript egy telepített 4+ bash-sel indul újra (MacPorts, Homebrew), ennek híján érthető hibaüzenettel áll le.
+
 - **Törölt témájú munkalap nem nyílt meg (422)** (2026-11-25)
   - Ok: a szerver betöltéskor és mentéskor is elutasította a katalógusban nem szereplő téma- vagy paletta-ID-t.
   - Javítás: a lap az alaptémát (illetve a téma első palettáját) kapja (`Worksheet.repairAppearance`); teszt: `missingThemeFallsBackToDefault`.

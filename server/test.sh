@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
 # Témakörönkénti tesztfuttatás: csak azokat a Swift- és JS-teszteket futtatja, amelyeket a módosítás érint.
+# A szkript bash 4+ elemeket használ (asszociatív tömb); a macOS /bin/bash 3.2-je helyett egy újabbal indul újra.
+if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
+    for candidate in /opt/local/bin/bash /opt/homebrew/bin/bash /usr/local/bin/bash; do
+        if [ -x "$candidate" ] && [ "$("$candidate" -c 'echo ${BASH_VERSINFO[0]}')" -ge 4 ]; then exec "$candidate" "$0" "$@"; fi
+    done
+    echo "A test.sh bash 4 vagy újabb verziót igényel (pl. MacPorts: port install bash; Homebrew: brew install bash)." >&2
+    exit 2
+fi
 set -uo pipefail
 
 usage() {

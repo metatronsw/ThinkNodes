@@ -72,15 +72,25 @@ import VaporTesting
     #expect(!boardSVG(Worksheet(title: "Keret", nodes: [box])).contains(#"stroke="none" stroke-width="1.6""#))
 }
 
+/// A vonal vastagsága a méretből (1–3) és a téma szorzójából jön; a pontozott és a lüktető (vastag, animált) vonal sem
+/// lehet 32-nél vastagabb (geometry.js edgePaint, maximumLineWidth).
 @Test func maximumWireThicknessIncludesDottedAndAnimatedStrokes() throws {
     var edge = Connection(id: "wide", sourcePoint: Point(x: 0, y: 0), target: ConnectionTarget(point: Point(x: 200, y: 0)),
-                          appearance: .dotted, animated: true, width: 32)
+                          appearance: .dotted, animated: true, size: 3)
     try Worksheet(title: "Vonal", edges: [edge]).validate()
-    #expect(edge.lineWidth == 32)
+    // Erős témaszorzóval a vastagság eléri a felső korlátot (10,5 × 2 × 2 = 42 → 32), a pontozott sem nő tovább.
+    let strong: [String: LineScale] = ["straight": .uniform(2)]
     edge.appearance = .thick
+    edge.width = edge.scaledWidth(strong)
     #expect(edge.lineWidth == 32 && edge.pulseWidth == 32)
-    #expect(boardSVG(Worksheet(title: "Vonal", edges: [edge])).contains(#"values="32.000;32.000;32.000""#))
-    edge.width = 33
+    edge.appearance = .dotted
+    edge.width = edge.scaledWidth(strong)
+    #expect(edge.width == 21 && edge.lineWidth == 32)
+    // Téma nélkül: vastag, 3-as méret = 21, lüktetés 1,45-szörösre.
+    edge.width = nil
+    edge.appearance = .thick
+    #expect(boardSVG(Worksheet(title: "Vonal", edges: [edge])).contains(#"values="21.000;30.450;21.000""#))
+    edge.size = 4
     #expect(throws: Abort.self) { try Worksheet(title: "Vonal", edges: [edge]).validate() }
 }
 
@@ -242,7 +252,7 @@ import VaporTesting
 @Test func arcWidthFollowsArrowDirectionsInSVG() throws {
     var edge = Connection(id: "arc", sourcePoint: Point(x: 0, y: 0),
                           target: ConnectionTarget(point: Point(x: 200, y: 0)),
-                          type: .arc, width: 8, startArrow: false, endArrow: true)
+                          type: .arc, size: 3, startArrow: false, endArrow: true)
     func render() -> String { boardSVG(Worksheet(title: "Íves vonal", edges: [edge])) }
     func widths(_ svg: String) throws -> [Int] {
         let suffix = try #require(svg.components(separatedBy: "data-wire-taper=\"\" d=\"M ").dropFirst().first)
@@ -253,12 +263,13 @@ import VaporTesting
             Int(hypot(points[i][0] - points[65 - i][0], points[i][1] - points[65 - i][1]).rounded())
         }
     }
-    #expect(try widths(render()) == [2, 5, 8])
-    #expect(render().contains("scale(25.500)"))
+    // 3-as méret (10,5): a vékony végtől (a vastagság negyede) a nyílig fokozatosan vastagodik; a nyílhegy ehhez méretezett.
+    #expect(try widths(render()) == [3, 7, 11])
+    #expect(render().contains("scale(30.500)"))
     edge.startArrow = true
-    #expect(try widths(render()) == [8, 2, 8])
+    #expect(try widths(render()) == [11, 3, 11])
     edge.endArrow = false
-    #expect(try widths(render()) == [8, 5, 2])
+    #expect(try widths(render()) == [11, 7, 3])
     edge.startArrow = false
     #expect(!render().contains("data-wire-taper"))
 }
@@ -270,11 +281,11 @@ import VaporTesting
     edge = try JSONDecoder().decode(Connection.self, from: JSONEncoder().encode(edge))
     #expect(edge.animated == true)
     func render() -> String { boardSVG(Worksheet(title: "Animáció", edges: [edge])) }
-    #expect(render().contains("stroke=\"url(#wire-gradient-animated)\""))
-    #expect(render().contains("dur=\"12s\" repeatCount=\"indefinite\""))
-    #expect(render().contains("<stop offset=\".25\" stop-color=\"currentColor\"/>"))
-    #expect(render().contains("<stop offset=\".5\" stop-color=\"currentColor\" stop-opacity=\".5\"/>"))
-    #expect(render().contains("<stop offset=\".75\" stop-color=\"currentColor\"/>"))
+    // Sima vonal: egy kis pötty fut végig az útvonalon; két nyílnál oda-vissza (a gradiens animáció megszűnt).
+    #expect(!render().contains("wire-gradient"))
+    #expect(render().contains(#"<circle class="wire-dot" r="3.000""#))
+    #expect(render().contains(#"keyPoints="0;1;0" keyTimes="0;0.5;1" repeatCount="indefinite""#))
+    #expect(render().contains(#"dur="3.000s""#))
     edge.appearance = .thick
     #expect(render().contains("attributeName=\"stroke-width\" values=\"4.000;5.800;4.000\""))
     #expect(render().contains("type=\"scale\" additive=\"sum\""))
@@ -292,9 +303,9 @@ import VaporTesting
     edge.appearance = .dashed
     #expect(render().contains(##"clip-path="url(#wire-gap-animated)""##))
     #expect(render().contains(#"font-size="14.000" font-weight="400""#))
-    edge.width = 5
+    edge.size = 2
     #expect(render().contains(#"font-size="17.000" font-weight="400""#))
-    edge.width = nil
+    edge.size = nil
     edge.labelInLine = nil
     #expect(!render().contains("clip-path="))
     #expect(render().contains("attributeName=\"stroke-dashoffset\" values=\"0;-12.000;0\""))

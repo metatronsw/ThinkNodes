@@ -177,6 +177,11 @@ async function properties(id) {
   await tick();
 }
 async function press(label) { button(label).props.onClick(); await tick(); }
+// Azonos nevű gomb több választócsoportban is lehet (pl. „Vastag” a Megjelenés és a Vonalméret csoportban):
+// a gomb a csoport (role="group", aria-label) alatt keresve.
+const groupButton = (group, label) => find(n => n.tag === "button" && (text(n) === label || n.props["aria-label"] === label),
+  find(n => n.props.role === "group" && n.props["aria-label"] === group, panel()));
+async function pressIn(group, label) { groupButton(group, label).props.onClick(); await tick(); }
 // A munkalap magától ment (editor.js scheduleSave: 70 ms, gépelés közben 0,5 mp); a „Mentés” gomb verziót ment.
 async function save() { await new Promise(resolve => setTimeout(resolve, 110)); await tick(); }
 const model = id => sheet.nodes.find(n => n.id === id);
@@ -1304,14 +1309,19 @@ assert.equal(button("Nyíl a vonal elején").props["aria-pressed"], false);
 assert.equal(button("Nyíl a vonal végén").props["aria-pressed"], true);
 await press("Animáció bekapcsolása");
 assert.equal(button("Animáció bekapcsolása").props["aria-pressed"], true);
-assert.equal(prop("attributeName", "gradientTransform", oneWire()).props.dur, "6s");
-const gradient = find(n => n.tag === "linearGradient", oneWire());
-const stops = gradient.children.filter(n => n.tag === "stop");
-assert.deepEqual(stops.map(n => n.props.offset), [0, .25, .5, .75, 1]);
-assert.deepEqual(stops.map(n => n.props["stop-opacity"]), [1, 1, .5, 1, 1]);
-assert.ok(stops.every(n => n.props["stop-color"] === stops[0].props["stop-color"] && n.props["stop-color"] !== "#0090ff"), "a selected wire keeps its own colour; only the glow uses the user colour");
+// Sima animált vonal: egy kis pötty fut végig a vonalon a nyíl irányában (a korábbi gradiens animáció megszűnt);
+// két nyílnál oda-vissza, kétszer annyi idő alatt (editor.js animatedWire, Rendering.swift wireAnimation).
+const wireDot = () => find(n => n.tag === "circle" && n.props.class === "wire-dot", oneWire());
+const wireMotion = () => find(n => n.tag === "animateMotion", oneWire());
+assert.ok(wireDot(), "az animált sima vonalon pötty fut");
+assert.ok(!find(n => n.tag === "linearGradient", oneWire()), "nincs gradiens animáció");
+assert.equal(wireMotion().props.keyPoints, "0;1");
+assert.ok(wireDot().props.fill !== "#0090ff", "a kijelölt vonal pöttye a vonal saját színét tartja; csak a glow kapja a felhasználó színét");
+const oneWay = parseFloat(wireMotion().props.dur);
 await press("Nyíl a vonal elején");
-assert.equal(prop("attributeName", "gradientTransform", oneWire()).props.dur, "12s");
+assert.equal(wireMotion().props.keyPoints, "0;1;0");
+assert.equal(wireMotion().props.keyTimes, "0;0.5;1");
+assert.equal(parseFloat(wireMotion().props.dur), 2 * oneWay);
 await press("Nyíl a vonal végén");
 await press("S-forma");
 await press("Pontozott");
@@ -1330,7 +1340,7 @@ await press("Nyíl a vonal végén");
 assert.equal(prop("attributeName", "stroke-dashoffset", oneWire()).props.values, "0;-16");
 await press("Szaggatott");
 assert.equal(prop("attributeName", "stroke-dashoffset", oneWire()).props.values, "0;-12");
-await press("Vastag");
+await pressIn("Megjelenés", "Vastag");
 const wireLabelInput = prop("data-object-label", "", panel());
 wireLabelInput.props.onInput({target: {value: "Középen"}});
 await tick();
@@ -1354,13 +1364,12 @@ await press("Szaggatott");
 assert.ok(prop("id", "editor-wire-gap-one", oneWire()));
 assert.equal(wireLabel().props["font-size"], 14);
 assert.equal(wireLabel().props["font-weight"], 400);
-assert.equal(prop("aria-label", "Alapvastagság", panel()).props.max, 32);
-prop("aria-label", "Alapvastagság", panel()).props.onInput({target: {value: "5"}});
-await tick();
+// Vonalméret: a „Közepes” (5) szaggatott vonal felirata 12 + 5; az egyedi vastagság mezője megszűnt.
+assert.equal(prop("aria-label", "Alapvastagság", panel()), undefined);
+await pressIn("Vonalméret", "Közepes");
 assert.equal(wireLabel().props["font-size"], 17);
-prop("aria-label", "Alapvastagság", panel()).props.onInput({target: {value: "2"}});
-await tick();
-await press("Vastag");
+await pressIn("Vonalméret", "Vékony");
+await pressIn("Megjelenés", "Vastag");
 await press("Felirat a vonalban");
 wireLabelInput.props.onInput({target: {value: ""}});
 await tick();
@@ -1495,7 +1504,10 @@ const chooseAppearance = async (label, value) => {
   control.props.onChange({target: {value}});
   await tick();
 };
-const {edgeGeometry: themedGeometry, shapeGeometry: themedShape, taperedArc, arrowLength} = await import("../../Public/geometry.js?v=33");
+// Ugyanazt a modulpéldányt kell betölteni, amelyet a szerkesztő használ (más ?v= más példány, téma nélkül): a verzió
+// az editor.js importjából.
+const geometryModule = readFileSync("Public/editor.js", "utf8").match(/from "\.\/(geometry\.js\?v=\d+)"/)[1];
+const {edgeGeometry: themedGeometry, shapeGeometry: themedShape, taperedArc, arrowLength} = await import("../../Public/" + geometryModule);
 await chooseAppearance("Téma", "3");
 assert.deepEqual(themedShape("rounded", 100, 80),
   ["polygon", {points: "-45,-40 45,-40 50,-35 50,35 45,40 -45,40 -50,35 -50,-35"}]);
@@ -1524,14 +1536,15 @@ assert.equal(shallowArc.path(from, to), "M 0 0 Q 100 -40 200 0");
 assert.ok(Math.abs(shallowArc.labelPosition.x - 100) < 1e-8);
 assert.ok(Math.abs(shallowArc.labelPosition.y + 20) < 1e-8);
 const widths = (startArrow, endArrow) => {
-  const outline = taperedArc(shallowArc, edgePaint({width: 8, startArrow, endArrow})).outline();
+  // 3-as méret (10,5): a vékony vég a vastagság negyede (Rendering.swift taperedWireArc párja).
+  const outline = taperedArc(shallowArc, edgePaint({size: 3, startArrow, endArrow})).outline();
   const points = outline.slice(2, -2).split(" L ").map(pair => pair.split(" ").map(Number));
   return [0, 16, 32].map(i => Math.hypot(points[i][0] - points[65 - i][0], points[i][1] - points[65 - i][1]))
     .map(Math.round);
 };
-assert.deepEqual(widths(false, true), [2, 5, 8]);
-assert.deepEqual(widths(true, false), [8, 5, 2]);
-assert.deepEqual(widths(true, true), [8, 2, 8]);
+assert.deepEqual(widths(false, true), [3, 7, 10]);
+assert.deepEqual(widths(true, false), [10, 7, 3]);
+assert.deepEqual(widths(true, true), [10, 3, 10]);
 assert.equal(taperedArc(shallowArc, edgePaint({startArrow: false, endArrow: false})), null);
 assert.equal(taperedArc(shallowArc, edgePaint({appearance: "dashed"})), null);
 assert.equal(arrowLength(2), 13.5);

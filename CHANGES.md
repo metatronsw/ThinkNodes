@@ -1,5 +1,13 @@
 # Változások
 
+## 2026-11-26 – Tesztek az új vonalméret-rendszerhez; test.sh a macOS bash-ével
+
+- **Tesztek hozzáigazítva** (kód nem változott): `RenderingTests` – a legnagyobb vastagság a méretből és a témaszorzóból, az íves vonal 3-as mérettel, az animált sima vonalon futó pötty (a gradiens helyett); `WorksheetTests` – `width` helyett `size`; `Tests/Fixtures/wires.json` újraírva (csak a régi `w` értékű esetek változtak), új eset a `size` mezővel; `gestures.mjs` – futó pötty, csoporton belüli gombkeresés, vonalméret a megszűnt vastagságmező helyett, a szerkesztővel azonos `geometry.js`-példány.
+- Ellenőrizve: a régi `w` mezőt a szerver és a szerkesztő ugyanúgy váltja át méretre (≤3,5 vékony, ≤7,5 közepes, fölötte vastag).
+- **`test.sh`:** a macOS `/bin/bash` 3.2-je alatt egy telepített 4+ bash-sel indul újra.
+- Eredmény: `./test.sh --all` – 104 Swift-teszt és minden JS-teszt átmegy.
+- Új nyitott tétel (BUGS.md): két „Vastag” nevű gomb a vonal paneljén (átnevezés döntésre vár).
+
 ## 2026-11-25 – ThinkDefault: Radix és Catppuccin paletta; esti színek nélküli téma is működik
 
 - **Radix paletta** (ThinkDefault, 3-as paletta, 37 szín): mind a 31 Radix Colors 3.0 színskála 9. fokozata világos és sötét változattal, plusz a lap, tinta, felület, grafit, finom árnyék, pasztell és köd szerepszín. Elöl a semlegesek (öt szürke családdal), utána színkör szerint.

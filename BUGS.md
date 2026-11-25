@@ -7,7 +7,6 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 - **WhiteBoard: nyitott és kézzel nézendő tételek** (2026-11-25)
   - Füzetlapon a markdown lista elemei között egy üres sor van (a sorvonalak tartása miatt); a nagy címsor egy sorvonalnyi magasságba szorul.
   - Kézzel nézendő: szabadkézi doboz kijelölése és átméretezése (a rajz méretváltáskor újraszámolódik), zárolt konténer, megtekintő és SVG-export a füzetlappal (beágyazott CSS, `lh` nélkül, `--rule` változóval), a cetli táblázatszerkesztése.
-  - A `test.sh` a macOS `/bin/bash` 3.2-vel nem fut (asszociatív tömb); `/opt/local/bin/bash ./test.sh` kell.
 
 - **Liquid Glass: kézzel nézendő és nyitott tételek** (2026-11-25)
   - Automatizált Safariban rendben (képernyőkép és mérés): világos / sötét mód, kijelölés fényudvara, ping, üvegpanel, megtekintő. Kézzel nézendő: a kattintásgyűrű és a rámutatás áttűnései szemre, más felhasználó kijelölésének glow-ja két böngészővel, a gyors eszközök és a helyi menü üveghatása, a többi négy paletta, mobil.
@@ -15,15 +14,11 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
   - Élénk kitöltésen a doboz szövegszíne nem igazodik magától: világos módban a halványabb élénk színeken (pl. zöld) a világos szöveg nehezen olvasható.
   - Csökkentett mozgás beállításnál (`prefers-reduced-motion`) a kattintásgyűrű és a ping animációja megmarad.
 
-- **Bukó tesztek, amelyek a 2026-11-25-i Liquid Glass munka előtt is buktak** (2026-11-25, mérve a módosítások nélkül is)
-  - Swift (`./test.sh --swift render`): `animatedConnectionsRoundTripAndRenderSVG`, `arcWidthFollowsArrowDirectionsInSVG`, `maximumWireThicknessIncludesDottedAndAnimatedStrokes`, `wirePathsMatchSharedFixtures`.
-  - JS: `Tests/Editor/wires.mjs` („vastag vonal, nyíllal”), `Tests/Editor/gestures.mjs` (1307. sor: a törölt gradiens animációt keresi).
-  - Ok: az előző commit vonalméret- és vonalanimáció-változása (lásd a következő tételt).
-  - Ugyanebből: `WorksheetTests` `compactWorksheetKeysRoundTrip` (415. sor: a `width` már nem tárolt mező) és `worksheetRoundTrip` (237. sor: a vonal vastagsága már nem 5). Mérve a módosítások nélkül is (2026-11-25).
-
-- **Tesztek nincsenek hozzáigazítva a 2026-11-25-i vonal- és gyorseszköz-változásokhoz; a változások nincsenek tesztelve** (2026-11-25)
-  - A tesztek nem futottak (tesztelés csak a felhasználó utasítására). Várhatóan eltörik: `gestures.mjs` („Alapvastagság” mező, vonalvastagság), a vonalas közös tesztek (`wires.mjs` / `Tests/Fixtures/wires.json`, ha `w` értéket használnak), a Swift `RenderingTests` vonalas részei (gradiens animáció, `width`), esetleg `ThemeTests`.
+- **A 2026-11-25-i vonal- és gyorseszköz-változások: kézzel, Safariban nézendő** (2026-11-25; a tesztek 2026-11-26-án hozzáigazítva, mind átmegy)
   - Kézzel nézendő Safariban: a futó pötty (szerkesztő, megjelenítő, export), a három vonalméret régi munkalapokon, a fájlnév helyben szerkesztése (ékezetek, Enter, Esc), a gyors eszközök az ablak négy sarkában.
+
+- **Két „Vastag” nevű gomb a vonal paneljén** (2026-11-26)
+  - A Vonalméret (Vékony / Közepes / Vastag) és a Megjelenés (Sima / Vastag / Szaggatott / Pontozott) csoportban is van „Vastag” gomb. A csoportnév (aria-label) megkülönbözteti őket, de a súgóban és képernyőolvasóval egyformának hangzanak. Döntés kell: átnevezés (pl. Megjelenés: „Kiemelt”, vagy Vonalméret: „Vékony / Közepes / Széles”).
 
 - **Gyors eszközök (próba): ismert hiányok** (2026-11-25)
   - A hagyományos menü „Szerkesztés” parancsa (panel megnyitása) nem került a gombok közé.

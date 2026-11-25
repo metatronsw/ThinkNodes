@@ -12,6 +12,8 @@ const box = (id, x, y, extra = {}) => ({id, type: "box", text: id, shape: "recta
   pos: {x, y}, w: 140, h: 80, ...extra});
 const wire = (id, source, target, extra = {}) => ({id, source, target: {node: target}, type: "straight", appearance: "plain", endArrow: true, ...extra});
 const row = [box("a", -300, 0), box("b", 300, 0)], slanted = [box("a", -300, -120), box("b", 280, 160)];
+// A `w` (régi egyedi vastagság) esetek a régi munkalapok átváltását is ellenőrzik: ≤3,5 vékony, ≤7,5 közepes, fölötte
+// vastag méret (geometry.js lineSize, Model.swift Connection.init(from:)); az új munkalapok `size` mezőt írnak.
 const setups = {
   "egy vonal, nyíllal": {nodes: row, edges: [wire("e1", "a", "b")]},
   "egy vonal, nyíl nélkül": {nodes: row, edges: [wire("e1", "a", "b", {endArrow: false})]},
@@ -24,6 +26,7 @@ const setups = {
   "oda-vissza pár, ellipszis és doboz": {nodes: [box("a", -300, 0, {shape: "ellipse", w: 120, h: 120}), box("b", 300, 60)], edges: [wire("e1", "a", "b"), wire("e2", "b", "a")]},
   "S-görbe, vastag": {nodes: slanted, edges: [wire("e1", "a", "b", {type: "sCurve", w: 12})]},
   "kötél, vastag": {nodes: slanted, edges: [wire("e1", "a", "b", {type: "rope", w: 12})]},
+  "közepes méret (size 2), pár": {nodes: slanted, edges: [wire("e1", "a", "b", {size: 2}), wire("e2", "b", "a", {size: 3, appearance: "thick"})]},
   "konténer és belső doboza (nincs eltolás)": {nodes: [box("a", 0, 0, {w: 600, h: 400, container: true}), box("b", 120, 60, {parent: "a"})],
     edges: [wire("e1", "a", "b"), wire("e2", "b", "a")]},
 };

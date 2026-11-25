@@ -75,7 +75,7 @@ import VaporTesting
             Connection(id: "szabad", source: "masodik", target: ConnectionTarget(point: Point(x: 810, y: 12)), appearance: .dashed),
             Connection(id: "szabad-kezdet", sourcePoint: Point(x: -410, y: -170),
                        target: ConnectionTarget(point: Point(x: -250, y: -70)), type: .rope,
-                       color: "@4", width: 5, startArrow: true, endArrow: false, label: "Szabad vonal")
+                       color: "@4", size: 2, startArrow: true, endArrow: false, label: "Szabad vonal")
         ]
         let noLogin = try await browser.sendRequest(.PUT, "/api/worksheet/\(path)")
         #expect(noLogin.status == .unauthorized)
@@ -409,7 +409,7 @@ import VaporTesting
     let node = Idea(id: "idea", text: "Ötlet", position: Point(x: 12, y: 34),
                     alignment: .left, verticalAlignment: .top)
     let edge = Connection(id: "wire", sourcePoint: Point(x: 0, y: 0),
-                          target: ConnectionTarget(node: node.id), width: 3)
+                          target: ConnectionTarget(node: node.id), size: 2)
     let sheet = Worksheet(title: "Teszt", gridSpacing: 25, nodes: [node], edges: [edge])
     let compact = try JSONEncoder().encode(sheet)
     #expect(try JSONDecoder().decode(Worksheet.self, from: compact) == sheet)
