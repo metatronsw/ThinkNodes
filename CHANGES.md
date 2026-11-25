@@ -1,5 +1,15 @@
 # Változások
 
+## 2026-11-25 – Vizuális módosítások: elmosott háttér törölve, vászonszín minden dobozon, szaggatott konténerkeret, dobozszöveg szerkesztése a dobozon
+
+- **Elmosott háttér megszűnt:** a mód, a gombja, az ikonja (`box-blur`) és az SVG-szűrő (`box-background-blur`) kikerült a szerkesztőből és a szerver rajzolójából (`BoxBackgroundMode.blurred`). Régi munkalap „blurred” doboza kitöltött háttérrel töltődik be (ismeretlen háttérmód nem hiba), a következő mentéskor a mező eltűnik.
+- **Vászonszín minden dobozon:** a korábban csak táblázatnál, CSV-nél és képnél elérhető mód (a háttér a munkalap háttérszíne, a rács nem látszik át) a Doboz csoport háttérgombjai között minden dobozon választható. A szerver rajzolója eddig is típustól függetlenül kezelte.
+- **Konténerré válás jelzése:** pontozott helyett szaggatott keret (`10 7`, 3 képpont), amely körbejár; a vastagság pulzálása megszűnt, glow nincs rajta.
+- **Doboz szövege a dobozon szerkeszthető, egy rétegben** (mint a `.txt` / `.md`): dupla kattintásra a megjelenített szöveg helyére a szerkeszthető szöveg kerül (nem fölé), ugyanazzal a betűvel, mérettel, igazítással és tördeléssel. A tördelést a `geometry.js editLabelLayout` adja: a `labelLayout` szabályai szerint tördel (AutoSize, körbefuttatás, függőleges igazítás, NAGYBETŰS), de minden karaktert megtart és nem csonkít. A fájlszerkesztő gépezete (`codeEdit`: saját bevitel, kijelölés, visszavonás) közös. Enter új sor, Esc vagy a doboz elengedése befejezi; belépéskor a teljes szöveg ki van jelölve; a gépelés egy visszavonási lépés. A markdown jelölés szerkesztéskor nyersen látszik, a sorkizárt szöveg balra zárt. Alt + dupla kattintás továbbra is a panel szövegmezőjét nyitja. A megjegyzés (fájl- és előnézetes doboz alatti szöveg), a csomópont és a vonal címkéje nem változott.
+- Tesztek: `test.sh` (97 Swift-teszt, JS-tesztek) rendben; a `gestures.mjs` és a `RenderingTests` a fentiekhez igazítva.
+- Safariban kipróbálva (ideiglenes próbalap): négy doboz (középre zárt, balra-felülre zárt régi „blurred” háttérrel, AutoSize ellipszis, konténer) szerkesztésbe lépve soronként ugyanúgy tördel, mint megjelenítéskor; gépelés, Enter, kattintás a kurzorhelyre, visszavonás, Esc működik; a `.txt` doboz szerkesztése változatlan; vászonszín közönséges dobozon; a szaggatott keret húzás közben megjelenik.
+- Szerverkód változott (`Model.swift`, `Rendering.swift`, `WorksheetFile.swift`, verziószámok): release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – Idegen doboz húzása nem tördeli át a konténerek szövegét
 
 - **Hiba:** bármelyik doboz húzásakor a körbefuttatott szövegű konténerek szövege átrendeződött, amíg a dobozt el nem engedték. Ok: a „ritkább újratördelés húzás közben” (12 képpontos kerekítés) minden konténer minden gyermekére vonatkozott, amíg bármilyen húzás tartott – a kerekített helyek miatt a szöveg kissé másképp tördelődött.

@@ -14,9 +14,9 @@ import {justifyRows, justifyShifts} from "./justify.js?v=7";
 import {canvasMarkdown, canvasMarkdownAvailable} from "./canvas-markdown.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, wireHeads, reverseWidth, wireRoutes, edgeInRectangle, edgePaint, labelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, taperedArc, wireGradientValues, wireLabelLayout} from "./geometry.js?v=32";
+import {useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, wireHeads, reverseWidth, wireRoutes, edgeInRectangle, edgePaint, labelLayout, editLabelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, taperedArc, wireGradientValues, wireLabelLayout} from "./geometry.js?v=33";
 
-import {ancestors, layerOrder, overlapFraction} from "./containers.js?v=12";
+import {ancestors, layerOrder, overlapFraction} from "./containers.js?v=13";
 import {glowFilter, glowId, glowReach, glowVNode} from "./glow.js";
 import {awaitWebPreview} from "./web-preview-refresh.js";
 import {cellName, columnName, decodeTable, encodeTable, limits as tableLimits} from "./table/table-document.js";
@@ -286,6 +286,14 @@ function boxShapeGeometry(node, width = node.width, height = node.height) {
 }
 const isImage = node => rootType(node?.type) === "image";
 const isTextFile = node => rootType(node?.type) === "text";
+// A doboz saját szövege a dobozon szerkeszthető (előnézettel kitöltött linkes doboznál nem: ott a szöveg nem látszik).
+const editsOnBox = node => node?.type === "box" && !(node.link && (node.link.kind === "web" || !node.staticPreview));
+// A doboz szövegének helye (címketerület) a doboz közepéhez mérve (geometry.js labelLayout / editLabelLayout).
+function boxEditArea(node) {
+  const [widthRatio, heightRatio] = shapeLabelRatios(node.shape);
+  const width = Math.max(12, node.width * widthRatio - 16), height = Math.max(0, node.height * heightRatio - 12);
+  return {x: -width / 2, y: -height / 2, width, height};
+}
 
 function animateBox(mode, contents) {
   const motion = Object.hasOwn(boxMotion, mode) ? boxMotion[mode] : null;
@@ -300,7 +308,8 @@ function animateBox(mode, contents) {
 }
 
 function backgroundMode(node) {
-  return node.backgroundMode ?? "solid";
+  // A megszűnt "blurred" (elmosott) mód kitöltött háttérként jelenik meg.
+  return node.backgroundMode && node.backgroundMode !== "blurred" ? node.backgroundMode : "solid";
 }
 // A doboz felületének színe: vászonszín módban a munkalap háttere, egyébként a doboz saját színe.
 function surfaceColor(node) {
@@ -341,31 +350,26 @@ function shape(node, linked, dropTarget = false) {
   const [tag, geometry] = boxShapeGeometry(node);
   const image = isImage(node) ? node.file : null;
   const mode = backgroundMode(node);
-  const blurred = mode === "blurred", empty = mode === "empty";
-  // Vászonszín: a doboz háttere a munkalap háttérszíne (a rács nem látszik át). Táblázatnál és (átlátszó) képnél.
+  const empty = mode === "empty";
+  // Vászonszín: a doboz háttere a munkalap háttérszíne (a rács nem látszik át). Bármelyik dobozon választható.
   const canvasTint = mode === "canvas";
   const free = mode === "free" || (!!image && !canvasTint);  // a kép egyébként háttér nélkül, a saját átlátszóságával jelenik meg
   if (dropTarget) return h(tag, {...geometry, class: "drop-target", "data-container-candidate": "",
     fill: empty || free ? "none" : paint(node.fill, 2), "pointer-events": "fill",
-    stroke: "#08796c", "stroke-width": 5, "stroke-dasharray": "0 8", "stroke-linecap": "round",
+    stroke: "#08796c", "stroke-width": 3, "stroke-dasharray": "10 7",
     "vector-effect": "non-scaling-stroke"});
   if (free) return h(tag, {...geometry, "data-editor-only": "", fill: "none", stroke: "none", "pointer-events": "fill"});
   if (canvasTint && image) return h(tag, {...geometry, class: "node-surface", fill: surfaceColor(node), stroke: "none"});
   const locked = isBox(node) && node.locked;
   const glass = graphics.value.glass && mode === "solid" && !image;
   const fill = surfaceColor(node);
-  // Üres doboz: csak a keret látszik, a keret színe a doboz színe. Elmosottnál a háttér elmosódik, a keret nem.
+  // Üres doboz: csak a keret látszik, a keret színe a doboz színe.
   const frame = node.type === "preview" || frameless(node) ? "none" : empty ? paint(node.fill, 2) : image && !empty ? "none" : glass ? "url(#glass-rim)" : automaticBorder(fill);
   const translucent = mode === "translucent";
   const style = {fill: empty ? "none" : fill, stroke: frame, "fill-opacity": translucent ? .75 : undefined,
     "pointer-events": empty ? "fill" : undefined, class: "node-surface",
     "stroke-width": locked ? 6.4 : boxFrameWidth,
-    "data-locked-outline": locked ? "" : undefined,
-    opacity: blurred ? .98 : undefined, filter: blurred ? "url(#box-background-blur)" : undefined};
-  if (blurred) return [
-    h(tag, {...geometry, fill, opacity: .98, filter: "url(#box-background-blur)", stroke: "none", class: "node-surface"}),
-    h(tag, {...geometry, fill: "none", stroke: frame, "stroke-width": boxFrameWidth, class: "node-frame", "pointer-events": "none"}),
-  ];
+    "data-locked-outline": locked ? "" : undefined};
   if (glass) return [
     h(tag, {...style, ...geometry, "fill-opacity": .66}),
     h(tag, {...geometry, fill: "url(#glass-sheen)", "pointer-events": "none", "aria-hidden": "true"}),
@@ -632,7 +636,7 @@ createApp({
     // újrarajzolódott. Most egy összesítő (syncUi) számolja ki elemenként a rájuk vonatkozó jelzőket, és csak annak a
     // kulcsnak szól, amelyiknek a jelzői tényleg megváltoztak; a rajzolás a saját kulcsára iratkozik fel.
     const nodeUi = reactive(new Map()), edgeUi = reactive(new Map());
-    const idleNodeUi = markRaw({claimed: false, peerColor: null, own: false, occupied: false, snap: false, candidate: false, editing: false,
+    const idleNodeUi = markRaw({claimed: false, peerColor: null, own: false, occupied: false, snap: false, candidate: false, editing: false, texting: false,
       container: false, drop: false, resize: false, textDrag: false, resizing: false, shifted: false});
     const idleEdgeUi = markRaw({mine: false, local: false, peerColor: null, candidate: false, editing: false, dragged: false});
     const nodeUiOf = id => nodeUi.get(id) ?? idleNodeUi;
@@ -2376,7 +2380,8 @@ createApp({
           lastClick = null;
           // Táblázat és CSV: a dupla kattintás a cellaszerkesztést nyitja (a doboz dblclick-kezelője); itt nem nyúlunk a
           // panelhez, különben a fájlnév mezője elvenné a fókuszt a megnyitott cellától.
-          if (kind === "node" && !event.altKey && isGrid(nodeMap.value.get(id))) { /* a dblclick kezeli */ }
+          // Doboz: a dupla kattintás a dobozon szerkesztést nyitja (szintén a dblclick-kezelő).
+          if (kind === "node" && !event.altKey && (isGrid(nodeMap.value.get(id)) || editsOnBox(nodeMap.value.get(id)))) { /* a dblclick kezeli */ }
           else editObject(kind,id,event.altKey && kind === "node" ? "text" : true);
         } else {
           lastClick = {id,kind,time,x,y};
@@ -3206,6 +3211,7 @@ createApp({
       hideTooltip();
       if (!(await selectNode(node.id))) return;
       const current = nodeMap.value.get(node.id);
+      if (editsOnBox(current)) { editingObject.value = null; textEdit.value = node.id; return; }
       if (!current?.file) return;
       if (isCommonFile(current.file)) { problem.value = "A közös könyvtár fájlja csak olvasható."; return; }
       const text = fileTexts.value.get(fileTextKey(current));
@@ -3222,9 +3228,13 @@ createApp({
       if (!id) return;
       textEdit.value = null;
       htmlTyping.value = false;
+      // Doboz szövege: a gépelés egyetlen visszavonási lépés, a szerkesztés végén rögzítve.
+      if (codeEdit.box && codeEdit.id === id) finishField();
       if (pendingFileSaves.has(id)) transfer(() => saveFileText(id));
     }
     watch(held, id => { if (textEdit.value && textEdit.value !== id) stopTextEdit(); });
+    // Doboz szövege ugyanígy szerkeszthető (`codeEdit.box`): a sorok a megjelenítéssel azonos tördelésben, betűvel és
+    // helyen állnak (geometry.js editLabelLayout), a markdown jelölés nyersen látszik; a szöveg a dobozba íródik (nem fájlba).
     // Szövegfájl (kód, .txt, .md) szerkesztése a dobozon: egyetlen réteg – maga a megjelenített szöveg szerkeszthető
     // (`contenteditable`), ugyanabban az elemben és ugyanazzal a tördeléssel, mint megjelenítéskor; nincs fölötte
     // szövegmező. Színezhető kódfájlnál a szöveget a böngésző színezi (Public/highlight – a szerveroldali ThinkHighlight
@@ -3235,7 +3245,7 @@ createApp({
     // összetett bevitel (holt billentyű, IME): az a DOM-ba ír, a végén onnan olvassuk vissza. A visszavonás saját
     // (a tartalom cseréje a böngésző visszavonási listáját törli).
     // `code`: kódfájl (`<code>` elemben, Tab és behúzás); `coloured`: van hozzá színező nyelv.
-    const codeEdit = {el: null, id: null, ext: "", code: false, coloured: false, text: "", nodes: null, undo: [], redo: [], kind: null, stamp: 0, composing: false};
+    const codeEdit = {el: null, id: null, ext: "", code: false, coloured: false, box: false, text: "", nodes: null, undo: [], redo: [], kind: null, stamp: 0, composing: false};
     const plainHTML = text => text.replace(/[&<>]/g, character => character === "&" ? "&amp;" : character === "<" ? "&lt;" : "&gt;");
     function codeOffset(container, offset) {
       const range = document.createRange();
@@ -3289,9 +3299,11 @@ createApp({
       if (!rect || (!rect.height && !rect.top)) return null;
       return {x: (rect.left - box.left) / scale, top: (rect.top - box.top) / scale, bottom: (rect.bottom - box.top) / scale};
     }
-    // A doboz (`.node-note`) görgetése úgy, hogy a kurzor sora látsszon.
+    // A szerkesztő görgethető kerete: fájlnál a `.node-note`, doboz szövegénél a `.box-edit-scroll`.
+    const codeScroller = () => codeEdit.el?.closest(".node-note, .box-edit-scroll");
+    // A keret görgetése úgy, hogy a kurzor sora látsszon.
     function revealCodeCaret(offset) {
-      const note = codeEdit.el.closest(".node-note"), caret = codeCaretRect(offset);
+      const note = codeScroller(), caret = codeCaretRect(offset);
       if (!note || !caret) return;
       const inset = parseFloat(getComputedStyle(note).paddingTop) || 0;
       const top = inset + caret.top, bottom = inset + caret.bottom;
@@ -3301,8 +3313,14 @@ createApp({
     // A mutató helye a szerkesztő saját képpontjaiban: a doboz vászonbeli helyéből számolva (mint a táblázat cellájánál,
     // clickedCell), nem találatvizsgálatból – az Safariban a foreignObject-en belül, görgetett dobozban téves.
     function codePoint(event) {
-      const node = nodeMap.value.get(codeEdit.id), note = codeEdit.el.closest(".node-note");
+      const node = nodeMap.value.get(codeEdit.id), note = codeScroller();
       if (!node || !note) return null;
+      const beyond = point => point.y < node.position.y - node.height / 2 ? -1 : point.y > node.position.y + node.height / 2 ? 1 : 0;
+      if (codeEdit.box) {
+        // Doboz szövege: a szerkesztő a címketerület bal felső sarkában kezdődik.
+        const area = boxEditArea(node), point = world(event);
+        return {x: point.x - node.position.x - area.x + note.scrollLeft, y: point.y - node.position.y - area.y + note.scrollTop, beyond: beyond(point)};
+      }
       const pixels = (element, key) => parseFloat(getComputedStyle(element)[key]) || 0;
       const frame = note.closest(".node-file"), point = world(event);
       return {
@@ -3380,7 +3398,7 @@ createApp({
       // A doboz szélén túl húzva a tartalom görög, amíg a mutató kint van.
       codeDrag.event = point.beyond ? {clientX: event.clientX, clientY: event.clientY} : null;
       if (point.beyond && !codeDrag.timer) codeDrag.timer = setInterval(() => {
-        const note = codeEdit.el?.closest(".node-note"), held = codeDrag.event && codePoint(codeDrag.event);
+        const note = codeScroller(), held = codeDrag.event && codePoint(codeDrag.event);
         if (!note || !held?.beyond || codeDrag.pointer == null) { clearInterval(codeDrag.timer); codeDrag.timer = null; return; }
         note.scrollTop += held.beyond * 24;
         const next = codeOffsetAt(codePoint(codeDrag.event));
@@ -3405,12 +3423,32 @@ createApp({
     // A szöveg ugyanúgy `<code>` elemben áll, mint megjelenítéskor (renderFileText): a betű és a sormagasság így a
     // szerkesztésbe lépve nem változik.
     const renderCodeEdit = () => {
+      if (codeEdit.box) {
+        // Doboz szövege: soronként egy blokk, a megjelenítéssel azonos tördelésben és helyen (editLabelLayout). A sorok
+        // szövege összefűzve a teljes szöveg, így a karakterpozíciók a fájlszerkesztővel azonos módon számolhatók.
+        const node = nodeMap.value.get(codeEdit.id), text = codeEdit.text, el = codeEdit.el;
+        if (!node) return;
+        const made = editLabelLayout(node, text, node.textFlow !== false ? flowObstacles.value.get(node.id) ?? [] : []);
+        el.style.fontSize = made.size + "px";
+        el.style.paddingTop = made.top + "px";
+        el.innerHTML = made.rows.map((row, index) => '<span class="box-edit-row" style="margin:' + row.gap + "px 0 0 " + row.x + "px;width:" + row.width + 'px">'
+          + plainHTML(text.slice(row.from, row.to)) + (index === made.rows.length - 1 ? "\n" : "") + "</span>").join("");
+        codeEdit.nodes = null;
+        return;
+      }
       const body = (codeEdit.coloured ? highlightHTML(codeEdit.text, codeEdit.ext) : plainHTML(codeEdit.text)) + "\n";
       codeEdit.el.innerHTML = codeEdit.code ? "<code>" + body + "</code>" : body;
       codeEdit.nodes = null;
     };
     function commitCodeEdit() {
       const current = nodeMap.value.get(codeEdit.id);
+      if (codeEdit.box) {
+        if (!current || held.value !== codeEdit.id || (current.text ?? "") === codeEdit.text) return;
+        editingField = true;
+        current.text = codeEdit.text;
+        modified();
+        return;
+      }
       if (current?.file && held.value === codeEdit.id) editFileText(current, codeEdit.text);
     }
     // A [start, end) rész cseréje; `kind`: az egymást követő azonos fajtájú (0,7 mp-en belüli) módosítások egy
@@ -3511,15 +3549,19 @@ createApp({
         replaceCode(start, end, "  ", "type");
       }
     }
-    function renderTextEditor(node, text) {
+    // `box`: a doboz saját szövege (nem fájl).
+    function renderTextEditor(node, text, box = false) {
       const stop = e => e.stopPropagation();
-      const ext = (node.file.filename ?? "").split(".").pop().toLowerCase();
-      const code = node.type === "code", coloured = code && supportsHighlight(ext);
+      const ext = box ? "" : (node.file.filename ?? "").split(".").pop().toLowerCase();
+      const code = !box && node.type === "code", coloured = code && supportsHighlight(ext);
       // Ugyanazok az osztályok, mint megjelenítéskor (renderFileText): a betű és a tördelés nem változik.
-      const look = code ? "node-code" : ["node-plain", {"justified-text": node.justified}];
+      const look = box ? "node-box-input" : code ? "node-code" : ["node-plain", {"justified-text": node.justified}];
+      // Doboz szövege: a megjelenítés betűje, színe és igazítása (sorkizárt szöveg szerkesztéskor balra zárt).
+      const style = box ? {fontFamily: fontFamily(node.font), color: paint(node.textColor, 1),
+        textAlign: node.justified ? "left" : node.alignment ?? "center", textTransform: node.uppercase ? "uppercase" : undefined} : undefined;
       // A tartalmat nem a Vue rajzolja (nincs gyermek és innerHTML tulajdonság): újrarajzoláskor a kurzor a helyén marad.
-      return h("pre", {key: "edit-text", class: [look, "node-code-input"], contenteditable: "plaintext-only", role: "textbox", "aria-multiline": "true",
-        "aria-label": "Fájl tartalma", spellcheck: !code, autocapitalize: "off", autocorrect: "off",
+      return h("pre", {key: "edit-text", class: [look, "node-code-input"], style, contenteditable: "plaintext-only", role: "textbox", "aria-multiline": "true",
+        "aria-label": box ? "Doboz szövege" : "Fájl tartalma", spellcheck: !code, autocapitalize: "off", autocorrect: "off",
         onBeforeinput: codeBeforeInput,
         onInput: () => { if (!codeEdit.composing) resyncCodeEdit(); },
         onCompositionstart: () => { codeEdit.composing = true; },
@@ -3548,13 +3590,20 @@ createApp({
         // A billentyűzettel mozgatott kurzor után a doboz görgetését is mi igazítjuk (a böngészőé itt nem megbízható).
         onKeyup: event => { if (/^(Arrow|Page|Home|End)/.test(event.key) && codeEdit.el) revealCodeCaret(codeSelectionEnds()[1]); },
         onVnodeMounted: ({el}) => {
-          Object.assign(codeEdit, {el, id: node.id, ext, code, coloured, text, nodes: null, undo: [], redo: [], kind: null, stamp: 0, composing: false});
+          Object.assign(codeEdit, {el, id: node.id, ext, code, coloured, box, text, nodes: null, undo: [], redo: [], kind: null, stamp: 0, composing: false});
           renderCodeEdit();
           el.focus({preventScroll: true});
-          setCodeSelection(0, 0, false);
+          // Doboz szövege: belépéskor a teljes szöveg kijelölve (a gépelés felülírja), fájlnál a kurzor az elején.
+          setCodeSelection(0, box ? text.length : 0, false);
         },
         onVnodeBeforeUnmount: () => { codeEdit.el = null; codeEdit.id = null; },
       });
+    }
+    // A doboz szövegének szerkesztője a szöveg helyén (a megjelenített `<text>` helyett, nem fölötte).
+    function renderBoxEditor(node) {
+      const area = boxEditArea(node);
+      return h("foreignObject", {key: "box-edit", class: "box-edit", x: area.x, y: area.y, width: area.width, height: Math.max(area.height, 20)},
+        [h("div", {class: "box-edit-scroll"}, [renderTextEditor(node, node.text ?? "", true)])]);
     }
     // Táblázat doboz (docs/EXCEL.md): olvasó nézet a fájl szövegéből, szerkesztési mód a TableEditor vezérlővel.
     // A mentés a szövegfájlokéval azonos (editFileText); a tárolt értéket a szerver számolja újra.
@@ -4195,7 +4244,7 @@ createApp({
       // <text> egy lépésben cserélődik. Soronkénti átírásnál a Safari minden beszúrt / törölt tspan után újraépítette a
       // teljes szöveg elrendezését (egy képkockában 200–290 módosítás, 200–300 ms). Ha csak a sorok helye változik, a
       // kulcs ugyanaz marad, és csak az x / y attribútumok frissülnek.
-      const labels = layout.lines.length ? h("text", {key: layout.lines.map(line => line.text).join("\n"),
+      const labels = ui.texting && editsOnBox(node) ? renderBoxEditor(node) : layout.lines.length ? h("text", {key: layout.lines.map(line => line.text).join("\n"),
           class: "node-text", "font-family": fontFamily(node.font), "pointer-events": "none"},
           layout.lines.map(line => h("tspan", {
             "data-body-row": "",
@@ -4286,6 +4335,8 @@ createApp({
           if (isGrid(node) || node.type === "chart") { editObject("node", node.id, true); return; }
           // Szövegfájl: dupla kattintás a dobozon szerkesztés; Alt-tal a tulajdonságpanel.
           if (isTextFile(node) && !event.altKey) { startTextEdit(node); return; }
+          // Doboz: a saját szövege is a dobozon szerkeszthető; Alt-tal a tulajdonságpanel szövegmezője.
+          if (editsOnBox(node) && !event.altKey) { startTextEdit(node); return; }
           editObject("node", node.id, event.altKey ? "text" : true);
         },
         onContextmenu: event => context(event, "node", node.id),
@@ -4701,8 +4752,6 @@ createApp({
         }, [
           h("defs", [
             ...glowDefinitions.value.map(spec => glowVNode(h, spec)),
-            sceneNodes.value.some(node => backgroundMode(node) === "blurred")
-              ? h("filter", {id: "box-background-blur", x: "-30%", y: "-30%", width: "160%", height: "160%"}, [h("feGaussianBlur", {stdDeviation: 2})]) : null,
             ...(glass ? [
               h("linearGradient", {id: "glass-rim", x2: "25%", y2: "100%"}, [
                 h("stop", {offset: "0%", "stop-color": "#f4eeff", "stop-opacity": .93}),
@@ -4845,7 +4894,11 @@ createApp({
 
     function sidebar(label, contents, canvasSettings = false) {
       return h("aside", {class: ["inspector", canvasSettings ? "canvas-inspector" : "object-inspector"], "aria-label": label,
-        onFocusin: event => { editingField = event.target.matches("textarea,input,select"); },
+        onFocusin: event => {
+          // A panel szövegmezőjébe lépve a doboz szövegének dobozon szerkesztése véget ér (egy helyen szerkeszthető).
+          if (codeEdit.box && textEdit.value && event.target.matches("[data-object-label]")) stopTextEdit();
+          editingField = event.target.matches("textarea,input,select");
+        },
         onFocusout: () => { editingObject.value = null; finishField(); },
         onKeydown: e => {
           if (editingObject.value && e.key === "Enter" && !e.isComposing && !e.shiftKey) {
@@ -5134,17 +5187,14 @@ createApp({
         nodes.some(isImage) ? null : colorPicker("Háttér", value("fill", 2),
           v => setBackground(mode === "free" ? "solid" : mode, v), nodes.map(n => n.id).join(",") + "/fill", false, true, 2,
           {transparent: mode === "free"}),
-        // Képnél a Free és az Üres értelmetlen; az Elmosott és az Áttetsző magára a képre hat.
+        // Képnél a Free és az Üres értelmetlen.
         nodes.some(isImage) ? null : iconToggle("Free", mode === "free", () => setBackground(mode === "free" ? "solid" : "free"), icon("box-free")),
         nodes.some(isImage) ? null : iconToggle("Üres", mode === "empty", () => setBackground(mode === "empty" ? "solid" : "empty"), icon("box-empty")),
-        // Táblázat nem kap elmosott hátteret.
-        nodes.some(n => n.type === "table") ? null : iconToggle("Elmosott", mode === "blurred", () => setBackground(mode === "blurred" ? "solid" : "blurred"), icon("box-blur")),
         iconToggle("Áttetsző", mode === "translucent", () => setBackground(mode === "translucent" ? "solid" : "translucent"), icon("box-background")),
         canvasTintTool(),
       ];
-      // Vászonszín: a háttér a munkalap háttérszíne, a vászon rácsa nélkül (táblázat, CSV, átlátszó kép / SVG).
-      const canvasTintTool = () => nodes.every(n => isImage(n) || isGrid(n))
-        ? iconToggle("Vászonszín (a rács nem látszik át)", mode === "canvas", () => setBackground(mode === "canvas" ? "solid" : "canvas"), icon("box-canvas")) : null;
+      // Vászonszín: a háttér a munkalap háttérszíne, a vászon rácsa nélkül (minden dobozon).
+      const canvasTintTool = () => iconToggle("Vászonszín (a rács nem látszik át)", mode === "canvas", () => setBackground(mode === "canvas" ? "solid" : "canvas"), icon("box-canvas"));
       const elevation = () => single ? elevationButton(single) : iconToggle("Kiemelés", nodes.every(n => n.elevated === true), () => {
         const raise = !nodes.every(n => n.elevated === true);
         change("elevated", node => { if (raise) node.parent = undefined; return raise ? true : undefined; });
@@ -5567,7 +5617,7 @@ createApp({
       const snap = preview.value?.target ?? junctionTarget.value;
       const found = candidates.value, editing = editingObject.value, containers = containerIDs.value;
       // Cellaszerkesztés közben a doboz nem kapja meg a saját kijelölés (lekerekített, vastag) keretét.
-      const gridEditing = tableEdit.value?.id;
+      const gridEditing = tableEdit.value?.id, texting = textEdit.value;
       const drops = containerDropTargets.value, resize = resizeTarget.value, moving = motions.value;
       const members = drag?.type === "batch" ? drag.members : null;
       const index = nodeIndex = nodeMap.value;
@@ -5581,7 +5631,7 @@ createApp({
           node: toRaw(node), claimed: !!owner, peerColor: peer?.color ?? null,
           own: id !== gridEditing && (selectors.some(p => p.mine) || !!group?.nodes.has(id) || !!hits?.nodes.has(id)),
           occupied: present.some(p => !p.mine && !p.viewing),
-          snap: snap === id, candidate: found.has("node/" + id), editing: editing === id,
+          snap: snap === id, candidate: found.has("node/" + id), editing: editing === id, texting: texting === id,
           container: containers.has(id), drop: drops.has(id), resize: resize === id,
           textDrag: drag?.type === "text" && drag.nodeID === id, resizing: drag?.type === "resize" && drag.nodeID === id,
           shifted: !!members?.has(id) || (moving.size > 0 && (moving.has(id) || (!!node.parent && ancestors(node, index).some(parent => moving.has(parent.id))))),

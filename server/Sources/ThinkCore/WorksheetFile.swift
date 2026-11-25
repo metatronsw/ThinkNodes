@@ -55,7 +55,6 @@ extension Worksheet {
         }
         if node["backgroundMode"] == nil {
             if old["backgroundEnabled"] as? Bool == false { node["backgroundMode"] = "free" }
-            else if old["backgroundBlur"] as? Bool == true { node["backgroundMode"] = "blurred" }
         }
         if let style = old["textStyle"] as? [String: Any] {
             for (source, destination) in [("size","fontSz"), ("color","textCol"), ("align","align"), ("vAlign","vAlign"),

@@ -797,6 +797,119 @@ export function labelLayout(node, blocks = [], obstacles = []) {
   return {width, height, extentX: width / 2, extentY: height / 2, overflow, lines: positioned, labelWidth, iconSpace, previewSpace};
 }
 
+// Doboz szövegének elrendezése a dobozon szerkesztéshez (editor.js renderCodeEdit): a nyers szöveg sorai ugyanazzal a
+// tördeléssel, betűmérettel, körbefuttatással és függőleges igazítással, mint megjelenítéskor (labelLayout), de
+// - minden karakter megmarad (a sor végi szóköz és a sortörés az előző sorhoz tartozik), így a sorok a forrás
+//   [from, to) szakaszai, és összefűzve a teljes szöveget adják;
+// - nincs csonkítás: a dobozból kilógó sorok is megvannak (szerkesztéskor a szöveg görgethető);
+// - a markdown jelölés nyersen látszik, minden sor az alapméretben.
+// Eredmény: {size, labelWidth, labelHeight, top, rows: [{from, to, x, width, gap}]}; `top`: az első sor távolsága a
+// címketerület tetejétől, `x` / `width`: a sor helye a címketerületen belül, `gap`: a sor fölötti térköz.
+export function editLabelLayout(node, text = "", obstacles = []) {
+  const [widthRatio, heightRatio] = shapeLabelRatios(node.shape);
+  const labelWidth = Math.max(12, node.width * widthRatio - 16);
+  const labelHeight = Math.max(0, node.height * heightRatio - 12);
+  const fonts = currentGraphics().fonts ?? defaultFonts;
+  const monospace = isMonospaceFont(fonts[Math.min(Math.max((node.font ?? 1) - 1, 0), fonts.length - 1)]);
+  const flow = obstacles.length > 0;
+  const margin = 8, sideMargin = 18;
+  const blocked = obstacles.map(o => ({
+    left: o.x - o.width / 2 - sideMargin + labelWidth / 2, right: o.x + o.width / 2 + sideMargin + labelWidth / 2,
+    top: o.y - o.height / 2 - margin + labelHeight / 2, bottom: o.y + o.height / 2 + margin + labelHeight / 2,
+  }));
+  const upper = letter => node.uppercase ? letter.toLocaleUpperCase("hu") : letter;
+
+  function makeRows(size, start = 0) {
+    const measure = letterMeasure(size, false, monospace), step = size * 1.25, space = measure(" ");
+    const letterSize = letter => { let total = 0; for (const part of upper(letter)) total += measure(part); return total; };
+    const rows = [];
+    let cursor = start, fits = true, from = 0;
+    for (const source of text.split("\n")) {
+      const end = from + source.length, last = end >= text.length;
+      const next = last ? end : end + 1;   // a sortörés a bekezdés utolsó sorához tartozik
+      if (!source.trim()) {
+        // Üres sor: helyet foglal, de nem kerül ki semmit (labelLayout: a blokk előtti üres sorok).
+        rows.push({from, to: next, x: 0, width: labelWidth, gap: 0, used: 0});
+        cursor += step;
+        from = next;
+        continue;
+      }
+      let row = from, used = 0, slot = null;
+      const place = () => {
+        if (!flow) return labelWidth;
+        if (!slot) { slot = textSlot(blocked, labelWidth, cursor, step, 0); cursor += slot.skip + step; }
+        return slot.width;
+      };
+      const endRow = to => {
+        const width = place();
+        if (used > width) fits = false;
+        rows.push({from: row, to, x: slot?.x ?? 0, width, gap: slot?.skip ?? 0, used});
+        if (!flow) cursor += step;
+        row = to; used = 0; slot = null;
+      };
+      // Szavanként, a wrapRuns szabályai szerint; `at`: a szó kezdete a forrásban.
+      let at = from, word = [], wordWidth = 0;
+      const endWord = () => {
+        if (!word.length) return;
+        if (used > 0) {
+          if (used + space + wordWidth > place()) endRow(at);
+          else used += space;
+        }
+        let index = at;
+        for (const [letter, size] of word) {
+          if (used > 0 && used + size > place()) endRow(index);
+          used += size;
+          index += letter.length;
+        }
+        word = []; wordWidth = 0;
+      };
+      let index = from;
+      for (const letter of source) {
+        if (/\s/.test(letter)) endWord();
+        else {
+          if (!word.length) at = index;
+          const size = letterSize(letter);
+          word.push([letter, size]);
+          wordWidth += size;
+        }
+        index += letter.length;
+      }
+      endWord();
+      endRow(next);
+      from = next;
+    }
+    return {rows, fits, height: rows.reduce((sum, line) => sum + step + line.gap, 0)};
+  }
+
+  let size = node.fitText ? 1 : Math.round(node.fontSize ?? 16), made;
+  if (node.fitText) {
+    let low = 1, high = Math.floor(labelHeight / 1.25);
+    made = makeRows(1);
+    while (low <= high) {
+      const middle = Math.floor((low + high) / 2), candidate = makeRows(middle);
+      if (candidate.height <= labelHeight && candidate.fits) { made = candidate; size = middle; low = middle + 1; }
+      else high = middle - 1;
+    }
+  } else made = makeRows(size);
+  const rank = {top: 0, bottom: 1}[node.verticalAlignment] ?? 0.5;
+  // Körbefuttatás függőleges igazítással: a kezdőpont közelítése, mint a labelLayoutban.
+  let flowStart = 0;
+  if (flow && rank > 0 && !node.fitText) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const next = Math.max(0, Math.round((labelHeight - made.height) * rank));
+      if (next === flowStart) break;
+      flowStart = next;
+      made = makeRows(size, flowStart);
+    }
+    for (let attempt = 0; attempt < 8 && flowStart > 0 && flowStart + made.height > labelHeight; attempt++) {
+      flowStart = Math.max(0, flowStart - Math.ceil(flowStart + made.height - labelHeight));
+      made = makeRows(size, flowStart);
+    }
+  }
+  return {size, labelWidth, labelHeight, top: flow ? flowStart : Math.max(0, (labelHeight - made.height) * rank),
+    rows: made.rows.map(({from, to, x, width, gap}) => ({from, to, x, width, gap}))};
+}
+
 // A link rövid felirata a dobozon (Rendering.swift linkCaption).
 export function linkCaption(link) {
   if (link.kind === "url") { try { return new URL(link.target).host; } catch { return link.target; } }

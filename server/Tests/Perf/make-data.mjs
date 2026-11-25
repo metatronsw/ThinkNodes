@@ -59,7 +59,7 @@ function project(name, boxes, {files = 0, tables = [], images = 0, containers = 
     const text = i % 7 === 0 ? "# " + sentence(2) + "\n\n" + sentence(8) : i % 3 === 0 ? sentence(6) : sentence(2);
     nodes.push({id: id("n", i), type: "box", text, shape: shapes[i % shapes.length], fill: 2 + i % 6, textCol: 1, fontSz: 16, align: "center",
       pos: {x: column * 260 + (random() - .5) * 60, y: row * 170 + (random() - .5) * 50}, w: 150 + Math.round(random() * 80), h: 70 + Math.round(random() * 50),
-      ...(i % 11 === 0 ? {elevated: true} : {}), ...(i % 13 === 0 ? {backgroundMode: "translucent"} : {}), ...(i % 29 === 0 ? {backgroundMode: "blurred"} : {})});
+      ...(i % 11 === 0 ? {elevated: true} : {}), ...(i % 13 === 0 ? {backgroundMode: "translucent"} : {}), ...(i % 29 === 0 ? {backgroundMode: "canvas"} : {})});
   }
   const types = ["straight", "sCurve", "arc"];
   for (let i = 0; i < boxes; i++) {

@@ -205,8 +205,8 @@ package enum BoxAnimation: String, Codable, Sendable {
 }
 
 package enum BoxBackgroundMode: String, Codable, Sendable {
-    /// canvas: a háttér a munkalap háttérszíne, a vászon rácsa nélkül (táblázat, CSV, átlátszó kép).
-    case solid, free, empty, blurred, translucent, canvas
+    /// canvas: a háttér a munkalap háttérszíne, a vászon rácsa nélkül (bármelyik dobozon).
+    case solid, free, empty, translucent, canvas
 }
 
 /// A grafikon (`chart` típusú objektum) beállítása (Public/chart.js). Az adat a vonallal bekötött táblázatból jön.
@@ -2650,7 +2650,8 @@ extension Idea {
         height = (try? fields.decode(Double.self, forKey: .height)) ?? (junction ? width : 80)
         shape = (try? fields.decode(Shape.self, forKey: .shape)) ?? .rounded
         fill = (try? fields.decode(StoredPaint.self, forKey: .fill).wrappedValue) ?? "#dce9ff"
-        backgroundMode = try fields.decodeIfPresent(BoxBackgroundMode.self, forKey: .backgroundMode)
+        // Ismeretlen mód (pl. a megszűnt "blurred") kitöltött háttérként töltődik be.
+        backgroundMode = (try? fields.decodeIfPresent(String.self, forKey: .backgroundMode)).flatMap { $0 }.flatMap(BoxBackgroundMode.init(rawValue:))
         animation = try? fields.decode(BoxAnimation.self, forKey: .animation)
         textColor = (try? fields.decode(StoredPaint.self, forKey: .textColor).wrappedValue) ?? "#182335"
         fitText = try? fields.decode(Bool.self, forKey: .fitText)

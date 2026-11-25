@@ -22,7 +22,7 @@ import VaporTesting
     #expect(svg.contains("font-weight=\"400\">Törzs</tspan>"))
 }
 
-@Test func transparentAndBlurredBoxSurfacesExportWithTheirContent() throws {
+@Test func transparentBoxSurfacesExportWithTheirContent() throws {
     let position = Point(x: 0, y: 0)
     let note = Idea(id: "note", type: "text", file: CanvasFile(asset: "file-note", filename: "jegyzet.txt"),
                     position: position, backgroundMode: .free)
@@ -35,18 +35,24 @@ import VaporTesting
     #expect(exported.contains("Tartalom") && exported.contains("<img"))
     #expect(!exported.contains("node-surface") && !exported.contains("pointer-events=\"fill\""))
     #expect(!exported.contains("background-color:") && !exported.contains("box-background-blur"))
-    var blurred = transparent
-    blurred.nodes[0].backgroundMode = .blurred
-    blurred = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(blurred))
-    #expect(blurred.nodes[0].backgroundMode == .blurred)
-    let svg = boardSVG(blurred)
-    #expect(svg.contains(#"opacity=".98" filter="url(#box-background-blur)""#))
-    #expect(svg.contains(#"<feGaussianBlur stdDeviation="2"/>"#))
+    // A megszűnt elmosott ("blurred") mód régi munkalapból kitöltött háttérként töltődik be.
+    let old = try JSONSerialization.jsonObject(with: JSONEncoder().encode(transparent)) as! [String: Any]
+    var nodes = old["nodes"] as! [[String: Any]]
+    nodes[0]["backgroundMode"] = "blurred"
+    var legacy = old
+    legacy["nodes"] = nodes
+    var solid = try JSONDecoder().decode(Worksheet.self, from: JSONSerialization.data(withJSONObject: legacy))
+    #expect(solid.nodes[0].backgroundMode == nil)
+    let svg = boardSVG(solid)
+    #expect(!svg.contains("box-background-blur") && !svg.contains("feGaussianBlur"))
     #expect(svg.components(separatedBy: "node-surface").count == 2)
-    blurred.nodes[0].backgroundMode = .empty
-    let outline = boardSVG(blurred)
-    #expect(outline.contains(##"class="node-surface" fill="none" stroke="\##(blurred.nodes[0].fill)""##))
-    #expect(!outline.contains("box-background-blur"))
+    solid.nodes[0].backgroundMode = .empty
+    let outline = boardSVG(solid)
+    #expect(outline.contains(##"class="node-surface" fill="none" stroke="\##(solid.nodes[0].fill)""##))
+    // Vászonszín: közönséges dobozon is a munkalap háttérszíne a felület.
+    var tinted = Worksheet(title: "Vászonszín", nodes: [Idea(id: "box", text: "Doboz", position: position, backgroundMode: .canvas)])
+    tinted.background = "#123456"
+    #expect(boardSVG(tinted).contains(##"class="node-surface" fill="#123456""##))
 }
 
 @Test func textFileBoxFrameCanBeSwitchedOffInEveryBackgroundMode() throws {
@@ -60,8 +66,6 @@ import VaporTesting
     board.nodes[0].backgroundMode = .translucent
     let translucent = boardSVG(board)
     #expect(translucent.contains(#"stroke="none" stroke-width="1.6" fill-opacity=".75""#))
-    board.nodes[0].backgroundMode = .blurred
-    #expect(boardSVG(board).contains(#"class="node-frame" fill="none" stroke="none""#))
     // Közönséges dobozra a kapcsoló nem hat.
     var box = Idea(id: "box", text: "Doboz", position: Point(x: 0, y: 0))
     box.frame = false

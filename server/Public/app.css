@@ -476,12 +476,9 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
    A más felhasználóé (.selection-glow, .wire-glow, .wire-selected) filter attribútumként érkezik. */
 .search-candidate { filter: var(--glow-search); }
 
-@keyframes container-drop-pulse {
-  50% { stroke-width: 10px; }
-}
-
+/* Konténerré válás jelzése: szaggatott keret, amely körbejár (egy lépés = egy vonás + egy köz, editor.js shape). */
 @keyframes container-drop-orbit {
-  to { stroke-dashoffset: -8px; }
+  to { stroke-dashoffset: -17px; }
 }
 
 @keyframes search-button-pulse {
@@ -492,10 +489,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
   50% { opacity: .45; }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .drop-target {
-    animation: container-drop-pulse 1.25s ease-in-out infinite,
-      container-drop-orbit 2s linear infinite;
-  }
+  .drop-target { animation: container-drop-orbit 1s linear infinite; }
   .search-row[data-candidate="true"] > :first-child { animation: search-button-pulse 2s ease-in-out infinite; }
   .selection-glow, .search-candidate { animation: selection-pulse 2s ease-in-out infinite; }
 }
@@ -730,6 +724,12 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 .node-code-input, .node-code-input * { -webkit-user-select: text; user-select: text; }
 .node-plain { white-space: pre-wrap; overflow-wrap: anywhere; }
 .node-note .node-code { overflow: visible; }
+/* Doboz szövegének szerkesztése a dobozon (editor.js renderBoxEditor): a szöveg helyén, a megjelenítéssel azonos
+   sorokban (soronként egy blokk; a tördelést a geometry.js editLabelLayout adja). */
+.box-edit-scroll { width: 100%; height: 100%; overflow: hidden auto; overscroll-behavior: contain; scrollbar-width: none; }
+.box-edit-scroll::-webkit-scrollbar { display: none; }
+.node-box-input { margin: 0; line-height: 1.25; white-space: pre-wrap; overflow-wrap: anywhere; font-weight: 400; }
+.box-edit-row { display: block; }
 /* Táblázat és CSV: a jobb oldalon nincs a görgetősávnak fenntartott sáv (a tartalomhoz igazított dobozban fölösleges
    üres hely volt); a görgetősáv, ha kell, a tartalom fölött jelenik meg. */
 .node-note:has(> :is(.node-csv, .tn-table-wrap)) { padding-right: 10px; }

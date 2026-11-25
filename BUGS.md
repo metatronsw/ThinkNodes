@@ -4,6 +4,11 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 ## Nyitott
 
+- **Doboz szövegének szerkesztése a dobozon: kézzel nézendő / nyitott tételek** (2026-11-25)
+  - Automatizált Safariban rendben: belépés, tördelés egyezése, gépelés, Enter, kattintás, visszavonás, Esc. Kézzel nézendő: holt billentyűs ékezetek, húzásos kijelölés, nagyított / kicsinyített vászon, körbefuttatott konténerszöveg szerkesztése, amikor a szöveg valóban kikerül egy gyermekdobozt.
+  - Ismert eltérések szerkesztés közben: a markdown jelölés nyersen látszik (címsor nem nagyobb, így formázott szövegnél a tördelés eltér); a sorkizárt szöveg balra zárt; AutoSize doboznál a záró üres sor is helyet kér (Enter után a betű kisebb lehet, amíg a sor üres).
+  - A panel Text mezője megmaradt a doboznál (a `.txt`-nél nincs ilyen): eldöntendő, kell-e.
+
 - **Szöveg- és kódfájl szerkesztése a dobozon: kézzel, Safariban nézendő tételek** (2026-11-25)
   - Automatizált Safariban, valódi egérmozgással rendben: gépelés, törlés, visszavonás, kattintás, dupla kattintás, húzásos kijelölés görgetve is, nyílbillentyűk. Kézzel nézendő (a vezérelt böngészőben nem próbálható): holt billentyűs / összetett bevitel, a jobb gombos menü, érintéses kijelölés, Shift+nyíl kijelölés közben a doboz görgetése.
 

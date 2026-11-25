@@ -53,12 +53,15 @@ function zoom() {
   behavior.transform = (_, transform) => { requestedZoom = transform; };
   return behavior;
 }
-globalThis.document = {documentElement: {dataset: {display: "light"}}, querySelector: () => root};
+globalThis.document = {documentElement: {dataset: {display: "light"}}, querySelector: () => root,
+  // A dobozon szerkesztés (editor.js codeEdit) a kurzort a szövegcsomópontok szerint állítja be; itt nincs valódi DOM.
+  createTreeWalker: () => ({nextNode: () => null})};
 const storage = new Map();
-globalThis.window = {localStorage: {getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value)},
+globalThis.window = {getSelection: () => ({rangeCount: 0, setBaseAndExtent() {}}), localStorage: {getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value)},
   Vue: {...Vue, createApp: renderer.createApp}, addEventListener(key, fn) { listeners[key] = fn; },
   d3: {...d3, zoom, pointer: e => [e.clientX, e.clientY],
     select: () => ({call(fn, ...args) { fn(this, ...args); return this; }, on() { return this; }})}};
+globalThis.NodeFilter = {SHOW_TEXT: 4};
 globalThis.ResizeObserver = class { observe() {} };
 globalThis.confirm = () => true;
 globalThis.getComputedStyle = () => ({lineHeight: "20px", fontSize: "14px", paddingTop: "0px", paddingBottom: "0px"});
@@ -319,7 +322,12 @@ for (const ctrlKey of [false, true]) {
     await tick();
   }
   assert.ok(!panel());
-  assert.ok(prop("class", "inline-edit", graphic("outer")), "closed inspector edits the title on the canvas");
+  // A doboz szövege a dobozon, a szöveg helyén szerkeszthető (nincs fölé tett szövegmező).
+  assert.equal(prop("class", "inline-edit", graphic("outer")), undefined);
+  graphic("outer").props.onDblclick({stopPropagation() {}, ctrlKey}); await tick(); await tick();
+  assert.ok(prop("class", "box-edit", graphic("outer")), "double-click edits the box text in place");
+  assert.equal(prop("class", "node-text", graphic("outer")), undefined, "the editor replaces the drawn text");
+  toggle("Escape", true); await tick();
   sidebarToggle().props.onClick(); await tick();
   toggle("Escape", true); await tick();
 }
@@ -464,7 +472,7 @@ const placeChild = event(graphic("child"), 10, 10);
 graphic("child").props.onPointerdown(placeChild);
 const childOverInner = event(canvas(), 20, 10);
 canvas().props.onPointermove(childOverInner); await tick();
-assert.equal(candidateBorder("inner").props["stroke-dasharray"], "0 8");
+assert.equal(candidateBorder("inner").props["stroke-dasharray"], "10 7");
 assert.equal(candidateBorder("outer"), undefined);
 assert.equal(isContainer("inner"), false);
 canvas().props.onPointercancel(childOverInner); await tick();
@@ -782,15 +790,18 @@ assert.equal(button("Free").props["aria-pressed"], false);
 const emptySurface = prop("class", "node-surface", graphic("outside"));
 assert.equal(emptySurface.props.fill, "none");
 assert.notEqual(emptySurface.props.stroke, "none");
-await press("Elmosott"); await save();
+// Az elmosott háttér megszűnt; a vászonszín (a munkalap háttérszíne, rács nélkül) minden dobozon választható.
+assert.equal(button("Elmosott"), undefined);
+assert.equal(prop("id", "box-background-blur"), undefined);
+await press("Vászonszín (a rács nem látszik át)"); await save();
 assert.equal(button("Üres").props["aria-pressed"], false);
-const blurredSurface = prop("class", "node-surface", graphic("outside"));
-assert.equal(blurredSurface.props.opacity, .98);
-assert.equal(blurredSurface.props.filter, "url(#box-background-blur)");
-assert.equal(prop("class", "node-frame", graphic("outside")).props.filter, undefined);
-assert.equal(prop("id", "box-background-blur").children[0].props.stdDeviation, 2);
-assert.equal(model("outside").backgroundMode, "blurred");
-await press("Elmosott");
+const canvasSurface = prop("class", "node-surface", graphic("outside"));
+assert.notEqual(canvasSurface.props.fill, "none");
+assert.notEqual(canvasSurface.props.fill, model("outside").fill);
+assert.equal(canvasSurface.props.filter, undefined);
+assert.equal(model("outside").backgroundMode, "canvas");
+await press("Vászonszín (a rács nem látszik át)"); await save();
+assert.equal(model("outside").backgroundMode, undefined);
 const backgroundPicker = () => prop("aria-label", "Háttér színválasztó");
 if (!backgroundPicker().props["aria-expanded"]) backgroundPicker().props.onClick();
 await tick();
@@ -1483,7 +1494,7 @@ const chooseAppearance = async (label, value) => {
   control.props.onChange({target: {value}});
   await tick();
 };
-const {edgeGeometry: themedGeometry, shapeGeometry: themedShape, taperedArc, arrowLength} = await import("../../Public/geometry.js?v=32");
+const {edgeGeometry: themedGeometry, shapeGeometry: themedShape, taperedArc, arrowLength} = await import("../../Public/geometry.js?v=33");
 await chooseAppearance("Téma", "3");
 assert.deepEqual(themedShape("rounded", 100, 80),
   ["polygon", {points: "-45,-40 45,-40 50,-35 50,35 45,40 -45,40 -50,35 -50,-35"}]);

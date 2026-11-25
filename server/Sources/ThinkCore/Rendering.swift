@@ -48,7 +48,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/lib/d3-zoom.js?v=1"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=71"></script>
+        <script type="module" src="/editor.js?v=72"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -59,7 +59,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=43">
+          <link rel="stylesheet" href="/app.css?v=44">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -720,7 +720,6 @@ private func boxSurface(_ node: Idea, geometry: String, graphics: VisualTheme.Gr
     guard mode != .free else {
         return interactive ? "<\(geometry) fill=\"none\" pointer-events=\"fill\"/>" : ""
     }
-    let blurred = mode == .blurred
     let empty = mode == .empty
     // A kép mindig háttér nélkül, a saját átlátszóságával jelenik meg (a régi alfa- és háttérbeállítások nem hatnak).
     // Vászonszín módban (canvas) a kép alatt a munkalap háttérszíne áll (a szín a `fill`-ben érkezik, lásd renderWorksheetCanvas).
@@ -729,7 +728,7 @@ private func boxSurface(_ node: Idea, geometry: String, graphics: VisualTheme.Gr
     let locked = node.isBox && node.locked == true
     let glass = graphics?.glass == true && mode == .solid && !image
     let fill = node.fill
-    // Üres doboz keretének színe a doboz színe; elmosottnál a háttér elmosódik, a keret nem.
+    // Üres doboz keretének színe a doboz színe.
     // Szövegfájl- és táblázatdoboz kerete kikapcsolható (frame: false), bármelyik háttérmód mellett.
     let frameless = node.type == "preview" || (node.isTextFile && node.frame == false)
     let stroke = frameless ? "none" : empty ? escaped(node.fill) : image ? "none" : glass ? "url(#glass-rim)" : escaped(node.border)
@@ -739,10 +738,6 @@ private func boxSurface(_ node: Idea, geometry: String, graphics: VisualTheme.Gr
     let closed = locked ? " data-locked-outline=\"\"" : ""
     let effect = glass ? " fill-opacity=\".66\"" : mode == .translucent ? " fill-opacity=\".75\"" : ""
     let pointer = empty && interactive ? " pointer-events=\"fill\"" : ""
-    if blurred {
-        return "<\(geometry) class=\"node-surface\" fill=\"\(escaped(fill))\" opacity=\".98\" filter=\"url(#box-background-blur)\" stroke=\"none\"/>"
-            + "<\(geometry) class=\"node-frame\" fill=\"none\" stroke=\"\(frameless ? "none" : escaped(node.border))\" stroke-width=\"\(width)\"\(closed)\(dash)/>"
-    }
     let surface = "<\(geometry) class=\"node-surface\" fill=\"\(empty ? "none" : escaped(fill))\" stroke=\"\(stroke)\" stroke-width=\"\(width)\"\(closed)\(dash)\(effect)\(pointer)/>"
     return surface + (glass ? "<\(geometry) fill=\"url(#glass-sheen)\" pointer-events=\"none\" aria-hidden=\"true\"/>" : "")
 }
@@ -1637,7 +1632,7 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
     let svg = """
         <svg xmlns="http://www.w3.org/2000/svg" class="canvas passive-canvas" role="\(noteBase == nil ? "img" : "group")" aria-label="\(escaped(board.title))" width="\(width)" height="\(height)" viewBox="\(number(originX)) \(number(originY)) \(width) \(height)">
           \(noteBase == nil ? "<title>\(escaped(board.title))</title>" : "")
-          <defs>\(codeStyle)\(definitions.joined())\(grid)\(glassDefinitions)\(board.nodes.contains { $0.resolvedBackgroundMode == .blurred } ? "<filter id=\"box-background-blur\" x=\"-30%\" y=\"-30%\" width=\"160%\" height=\"160%\"><feGaussianBlur stdDeviation=\"2\"/></filter>" : "")</defs>
+          <defs>\(codeStyle)\(definitions.joined())\(grid)\(glassDefinitions)</defs>
           \(backdrop(escaped(board.backgroundColor)))
           \(grid.isEmpty ? "" : backdrop("url(#draft-grid)"))
           \(scene.joined(separator: "\n"))
