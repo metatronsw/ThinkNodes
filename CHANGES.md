@@ -1,5 +1,13 @@
 # Változások
 
+## 2026-11-25 – Gyors eszközök: helyi menü vissza, gombok fölötte és mellette, rámutatás kiemelése, lenyíló választócsoportok
+
+- **Helyi menü visszakapcsolva** objektumokon. Jobb kattintásra az objektum kijelölődik, a menü bal felső sarka a mutatónál áll; **fölötte** az első csoport (jellemzően a Text), **mellette** a többi csoport egymás alatt, térközzel elválasztva (`renderQuickTools`, kapcsoló: `quickTools`). Ha az objektum nem jelölhető ki (más fogja), csak a menü jelenik meg.
+- **Rámutatás kiemelése:** a gyors eszközök minden gombja és a helyi menü minden eleme (a vászon menüjében is) kiemelt hátteret és keretet kap, amíg a mutató rajta áll.
+- **Választócsoportok jegyzéke (`editor.js choiceSets`):** egy helyen szabályozható, hogy az egy tulajdonság értékei közül választó gombcsoportok közül melyik jelenjen meg a gyors eszközökben egyetlen gombként, amely kattintásra nyitja ki a többit (`flyout: true / false`). Most lenyíló: Forma, Animáció, Háttér mód, Betűtípus, Vonaltípus, Vonal megjelenése. A lenyíló gomb az aktuális érték ikonját mutatja (sarkában kis jel), választás után a lista bezárul, a gyors eszközök nyitva maradnak. Új csoport: a forrásában megjelölni (`optionPicker` `set` paramétere vagy `choiceSet`), és felvenni a jegyzékbe. A tulajdonságpanelen minden csoport kiterítve maradt.
+- Safariban kipróbálva (próbalap): a menü a mutatónál, a gombok fölötte és mellette; Forma lenyitása, Rombusz választása hat, a lista bezárul, a gomb az új értéket mutatja; Háttér mód listája; a rámutatás kiemelése gombon és menüelemen. A `gestures.mjs` rendben.
+- Szerverkód: csak a szkript- és stíluslap-verzió változott; release build, a helyi szerver újraindítva.
+
 ## 2026-11-25 – Próba: gyors eszközök a mutatónál (a tulajdonságpanel alternatívája)
 
 - **Objektum fölötti helyi menü kikapcsolva** (nem törölve: `editor.js objectContextMenu = false`, a menü kódja megmaradt). A vászon üres részén a helyi menü változatlan.

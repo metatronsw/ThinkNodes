@@ -4,6 +4,11 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 ## Nyitott
 
+- **Gyors eszközök (próba): ismert hiányok** (2026-11-25)
+  - A lenyíló lista és a mellette álló csoportok a böngészőablak jobb szélén kilóghatnak (csak a teljes keret igazodik az ablakhoz).
+  - A Doboz csoportban a Forma és az Animáció gombja az effektsor alá kerül (a panelen fölötte van).
+  - Háttér nélküli gombok tarka tartalom fölött nehezebben olvashatók.
+
 - **Doboz szövegének szerkesztése a dobozon: kézzel nézendő / nyitott tételek** (2026-11-25)
   - Automatizált Safariban rendben: belépés, tördelés egyezése, gépelés, Enter, kattintás, visszavonás, Esc. Kézzel nézendő: holt billentyűs ékezetek, húzásos kijelölés, nagyított / kicsinyített vászon, körbefuttatott konténerszöveg szerkesztése, amikor a szöveg valóban kikerül egy gyermekdobozt.
   - Ismert eltérések szerkesztés közben: a markdown jelölés nyersen látszik (címsor nem nagyobb, így formázott szövegnél a tördelés eltér); a sorkizárt szöveg balra zárt; AutoSize doboznál a záró üres sor is helyet kér (Enter után a betű kisebb lehet, amíg a sor üres).

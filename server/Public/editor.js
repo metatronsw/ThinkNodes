@@ -38,7 +38,7 @@ const timed = (name, run) => window.__perf ? window.__perf.time(name, run) : run
 // Alapértékek: a mérések szerint legjobb beállítás; a kapcsolókkal a korábbi viselkedés visszaállítható és összemérhető.
 const perfOptions = {overscan: 1, moving: "gesture", shield: true, rest: true, grid: "draw", layer: "wrapper", coalesce: true, pause: true, sharp: true,
   ...(() => { try { return JSON.parse(localStorage.getItem("tnPerf") || "{}"); } catch { return {}; } })()};
-const {createApp, computed, getCurrentInstance, h, markRaw, nextTick, onMounted, onUnmounted, onUpdated, reactive, ref, shallowRef, toRaw, watch, watchEffect} = window.Vue;
+const {cloneVNode, createApp, computed, getCurrentInstance, h, markRaw, nextTick, onMounted, onUnmounted, onUpdated, reactive, ref, shallowRef, toRaw, watch, watchEffect} = window.Vue;
 
 // Az új munkalapállapotban a tartalmilag változatlan dobozok és vonalak a korábbi objektumot kapják vissza.
 // Az elrendezés- és vonalgeometria-gyorsítótárak objektumazonosság szerint működnek; enélkül minden mentés
@@ -136,8 +136,26 @@ function iconToggle(title, pressed, onClick, symbol, disabled = false) {
     "aria-pressed": pressed, onClick, disabled}, [symbol]);
 }
 
-function optionPicker(label, choices, current, change, preview) {
-  return h("div", {class: "property-options", role: "group", "aria-label": label},
+// Választócsoportok jegyzéke: olyan gombcsoportok, amelyek egyetlen tulajdonság értékei közül választanak (felsorolás).
+// Itt szabályozható, hogy a gyors eszközökben (renderQuickTools) melyik csoport jelenjen meg egyetlen gombként, amely
+// kattintásra nyitja ki a többit (`flyout: true`), és melyik maradjon kiterítve (`flyout: false`). A csoportot a
+// forrásában a `data-choice` jelöli (optionPicker `set` paramétere, illetve choiceSet); új csoporthoz elég ott megjelölni
+// és ide felvenni. A tulajdonságpanelen minden csoport kiterítve marad.
+const choiceSets = {
+  shape: {label: "Forma", flyout: true},
+  animation: {label: "Animáció", flyout: true},
+  background: {label: "Háttér mód", flyout: true},
+  font: {label: "Betűtípus", flyout: true},
+  lineType: {label: "Vonaltípus", flyout: true},
+  lineAppearance: {label: "Vonal megjelenése", flyout: true},
+};
+// Egy választócsoport tagjai a panel elrendezésének megbontása nélkül (app.css .choice-set: display: contents).
+function choiceSet(set, buttons) {
+  return h("div", {class: "choice-set", role: "group", "aria-label": choiceSets[set].label, "data-choice": set}, buttons);
+}
+
+function optionPicker(label, choices, current, change, preview, set) {
+  return h("div", {class: "property-options", role: "group", "aria-label": label, "data-choice": set},
     Object.entries(choices).map(([value, title]) =>
       iconToggle(title, current === value, () => change(value), preview(value))));
 }
@@ -2709,26 +2727,23 @@ createApp({
       if (!rightPress || event.ctrlKey || event.button !== 2 || gesture.value?.type === "cable") return;
       rightPress = false;
       lastClick = null;
-      // Objektum fölött a helyi menü ki van kapcsolva (objectContextMenu): helyette a tulajdonságpanel gombjai jelennek
-      // meg a mutatónál (renderQuickTools). A vászon üres részén a helyi menü megmaradt.
-      if (!objectContextMenu && kind !== "canvas") { openQuickTools(event, kind, itemID); return; }
+      // Objektum fölött a helyi menü mellett a tulajdonságpanel gombjai is megjelennek (quickTools, renderQuickTools).
+      if (quickTools && kind !== "canvas") { openQuickTools(event, kind, itemID); return; }
       menu.value = {
         kind, id: itemID, x: Math.max(8, Math.min(event.clientX, innerWidth - 244)),
         y: Math.max(8, Math.min(event.clientY, innerHeight - 195)), position: world(event),
       };
     }
 
-    // Gyors eszközök (próba, a tulajdonságpanel alternatívája): jobb kattintásra az objektum kijelölődik, és a panel
-    // gombjai a mutató mellett jelennek meg. Csoportos kijelölés tagjára kattintva a kijelölés megmarad.
-    const objectContextMenu = false;
+    // Gyors eszközök (próba, a tulajdonságpanel alternatívája): jobb kattintásra az objektum kijelölődik, és a helyi
+    // menü fölött és mellett megjelennek a panel gombjai. Csoportos kijelölés tagjára kattintva a kijelölés megmarad.
+    // Ha az objektum nem jelölhető ki (más fogja), csak a helyi menü jelenik meg.
+    const quickTools = true;
     async function openQuickTools(event, kind, itemID) {
-      const x = event.clientX, y = event.clientY;
+      const open = {kind, id: itemID, x: Math.max(8, event.clientX), y: Math.max(8, event.clientY), position: world(event)};
       const grouped = kind === "edge" ? batch.value?.edges.has(itemID) : batch.value?.nodes.has(itemID);
-      if (!grouped) {
-        await openProperties(kind, itemID);
-        if (selected.value?.id !== itemID) return;
-      }
-      menu.value = {kind, id: itemID, x: x + 14, y: y + 14, tools: true};
+      if (!grouped) await openProperties(kind, itemID);
+      menu.value = {...open, tools: grouped || selected.value?.id === itemID};
     }
 
     function updateItem(item, key, value) {
@@ -4861,7 +4876,6 @@ createApp({
     function renderMenu() {
       const open = menu.value;
       if (!open) return null;
-      if (open.tools) return renderQuickTools(open);
       const node = nodeMap.value.get(open.id);
       const edge = board.value?.edges.find(item => item.id === open.id);
       const type = open.kind;
@@ -4899,6 +4913,8 @@ createApp({
         el.style.left = Math.max(margin, Math.min(open.x, innerWidth - box.width - margin)) + "px";
         el.style.top = Math.max(margin, Math.min(open.y, innerHeight - box.height - margin)) + "px";
       };
+      // Objektumon a menü a gyors eszközök keretében áll (a keret pozicionál), egyébként önállóan.
+      if (open.tools) return renderQuickTools(open, h("div", {class: "context-menu panel", "aria-label": "Műveletek"}, entries));
       return h("div", {class: "context-menu panel", "aria-label": "Műveletek",
         style: {left: open.x + "px", top: open.y + "px"}, onVnodeMounted: fit, onVnodeUpdated: fit}, entries);
     }
@@ -4916,6 +4932,13 @@ createApp({
           if (!vnode || typeof vnode !== "object") return;
           if (vnode.type === ColorPicker || vnode.type === "button" || named(vnode, "alignment-picker")) { row.push(vnode); return; }
           if (typeof vnode.type !== "string" || skipped.has(vnode.type)) return;
+          // Lenyíló választócsoport (choiceSets): a tagjai egyetlen elemként kerülnek a sorba (renderFlyout rajzolja ki).
+          const set = vnode.props?.["data-choice"];
+          if (set && choiceSets[set]?.flyout) {
+            const buttons = [];
+            collect(vnode.children, buttons);
+            if (buttons.length > 1) { row.push({flyout: set, buttons}); return; }
+          }
           // A panel egy gombsora (property-options, link-row) itt is külön sor.
           const own = named(vnode, "property-options") || named(vnode, "link-row") ? [] : row;
           if (own !== row) rows.push(own);
@@ -4927,7 +4950,25 @@ createApp({
         return [...rows, loose].filter(row => row.length);
       }).filter(rows => rows.length);
     }
-    function renderQuickTools(open) {
+    // Lenyíló választócsoport: egy gomb az aktuális érték ikonjával; kattintásra alatta kinyílik a többi, választás után
+    // bezárul. Egyszerre egy lehet nyitva; a gyors eszközök bezárásakor ez is bezárul.
+    const openFlyout = ref(null);
+    watch(menu, () => { openFlyout.value = null; });
+    function renderFlyout({flyout: set, buttons}) {
+      const label = choiceSets[set].label, open = openFlyout.value === set;
+      const current = buttons.find(item => item.props?.["aria-pressed"] === true);
+      const face = [(current ?? buttons[0]).children].flat().map(child => child && typeof child === "object" ? cloneVNode(child) : child);
+      const name = label + (current ? ": " + (current.props.title ?? "") : "");
+      return h("div", {class: "quick-flyout", key: "flyout-" + set}, [
+        h("button", {type: "button", class: ["button option-icon quick-flyout-trigger", {idle: !current}], title: name, "aria-label": name,
+          "aria-haspopup": "true", "aria-expanded": open, onClick: () => { openFlyout.value = open ? null : set; }},
+          [...face, h("span", {class: "quick-flyout-mark", "aria-hidden": "true"})]),
+        open ? h("div", {class: "quick-flyout-list", role: "group", "aria-label": label, onClick: () => { openFlyout.value = null; }}, buttons) : null,
+      ]);
+    }
+    // `list`: a helyi menü. Elrendezés: a menü bal felső sarka a mutatónál; az első csoport (jellemzően a Text) a menü
+    // fölött, a többi csoport a menü mellett, egymás alatt, térközzel elválasztva.
+    function renderQuickTools(open, list) {
       let panels = [];
       if (batch.value) {
         const nodes = board.value.nodes.filter(n => batch.value.nodes.has(n.id) && !occupied(n.id));
@@ -4940,20 +4981,24 @@ createApp({
         const node = nodeMap.value.get(inspector.value.id);
         if (node && held.value === node.id && !occupied(node.id)) panels = nodePanels([node]);
       }
-      const rows = toolRows(panels);
-      if (!rows.length) return null;
-      // Az ablakon belül marad (jobbra / lent kilógás helyett eltolódik).
+      const groups = toolRows(panels);
+      // Az ablakon belül marad; ha elfér, a menü (nem a fölötte álló gombsor) sarka kerül a mutatóhoz.
       const fit = ({el}) => {
         if (!el?.getBoundingClientRect || typeof innerWidth !== "number") return;
-        const box = el.getBoundingClientRect(), margin = 8;
+        const box = el.getBoundingClientRect(), margin = 8, above = el.querySelector(".context-menu")?.offsetTop ?? 0;
         el.style.left = Math.max(margin, Math.min(open.x, innerWidth - box.width - margin)) + "px";
-        el.style.top = Math.max(margin, Math.min(open.y, innerHeight - box.height - margin)) + "px";
+        el.style.top = Math.max(margin, Math.min(open.y - above, innerHeight - box.height - margin)) + "px";
       };
       const stop = event => event.stopPropagation();
+      const group = rows => h("div", {class: "quick-tools-group"}, rows.map(row => h("div", {class: "property-options property-tools quick-tools-row"},
+        row.map(item => item.flyout ? renderFlyout(item) : item))));
       return h("div", {class: "quick-tools", role: "toolbar", "aria-label": "Gyors eszközök",
         style: {left: open.x + "px", top: open.y + "px"}, onVnodeMounted: fit, onVnodeUpdated: fit,
-        onPointerdown: stop, onDblclick: stop, onContextmenu: event => { event.preventDefault(); event.stopPropagation(); }},
-        rows.map(group => h("div", {class: "quick-tools-group"}, group.map(row => h("div", {class: "property-options property-tools quick-tools-row"}, row)))));
+        onPointerdown: stop, onDblclick: stop, onContextmenu: event => { event.preventDefault(); event.stopPropagation(); }}, [
+        groups.length ? h("div", {class: "quick-tools-above"}, [group(groups[0])]) : null,
+        list,
+        groups.length > 1 ? h("div", {class: "quick-tools-side"}, groups.slice(1).map(group)) : null,
+      ]);
     }
 
     // NAGYBETŰS kapcsoló minden Text-csoportban (doboz szövege, doboz alatti Text, szövegfájl).
@@ -5257,11 +5302,13 @@ createApp({
         nodes.some(isImage) ? null : colorPicker("Háttér", value("fill", 2),
           v => setBackground(mode === "free" ? "solid" : mode, v), nodes.map(n => n.id).join(",") + "/fill", false, true, 2,
           {transparent: mode === "free"}),
-        // Képnél a Free és az Üres értelmetlen.
-        nodes.some(isImage) ? null : iconToggle("Free", mode === "free", () => setBackground(mode === "free" ? "solid" : "free"), icon("box-free")),
-        nodes.some(isImage) ? null : iconToggle("Üres", mode === "empty", () => setBackground(mode === "empty" ? "solid" : "empty"), icon("box-empty")),
-        iconToggle("Áttetsző", mode === "translucent", () => setBackground(mode === "translucent" ? "solid" : "translucent"), icon("box-background")),
-        canvasTintTool(),
+        // Képnél a Free és az Üres értelmetlen. A háttérmódok egy választócsoport (choiceSets.background).
+        choiceSet("background", [
+          nodes.some(isImage) ? null : iconToggle("Free", mode === "free", () => setBackground(mode === "free" ? "solid" : "free"), icon("box-free")),
+          nodes.some(isImage) ? null : iconToggle("Üres", mode === "empty", () => setBackground(mode === "empty" ? "solid" : "empty"), icon("box-empty")),
+          iconToggle("Áttetsző", mode === "translucent", () => setBackground(mode === "translucent" ? "solid" : "translucent"), icon("box-background")),
+          canvasTintTool(),
+        ]),
       ];
       // Vászonszín: a háttér a munkalap háttérszíne, a vászon rácsa nélkül (minden dobozon).
       const canvasTintTool = () => iconToggle("Vászonszín (a rács nem látszik át)", mode === "canvas", () => setBackground(mode === "canvas" ? "solid" : "canvas"), icon("box-canvas"));
@@ -5313,7 +5360,7 @@ createApp({
               iconToggle("AutoSize", nodes.every(n => n.fitText), () => change("fitText", !nodes.every(n => n.fitText) || undefined),
                 optionSymbol("path", {d: "M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M8 16l4-8 4 8m-6.5-3h5"})),
               fontSize,
-              fontButton(1, "Alap betűtípus"), fontButton(2, "Második betűtípus"), fontButton(3, "Harmadik betűtípus"),
+              choiceSet("font", [fontButton(1, "Alap betűtípus"), fontButton(2, "Második betűtípus"), fontButton(3, "Harmadik betűtípus")]),
             ), propertyTools(
               color("Szövegszín", "textColor", 1),
               iconToggle("Sorkizárás", justified, () => change("justified", justified ? undefined : true), icon(justified ? "justify" : "text-" + value("alignment", "center"))),
@@ -5496,8 +5543,8 @@ createApp({
         ];
       };
       if (common.has("shape")) panels.push(group("Doboz", [
-        optionPicker("Forma", shapes, value("shape", null), v => change("shape", v), shapeSymbol),
-        optionPicker("Animáció", boxAnimations, value("animation", "none") ?? "none", v => change("animation", v === "none" ? undefined : v), v => icon("box-" + v)),
+        optionPicker("Forma", shapes, value("shape", null), v => change("shape", v), shapeSymbol, "shape"),
+        optionPicker("Animáció", boxAnimations, value("animation", "none") ?? "none", v => change("animation", v === "none" ? undefined : v), v => icon("box-" + v), "animation"),
         h("div", {class: "property-options property-tools box-effect-options"}, [
           ...backgroundTools(), elevation(),
           single && containerIDs.value.has(single.id) ? iconToggle("Tartalom rögzítése", !!single.locked,
@@ -5609,9 +5656,9 @@ createApp({
             numeric(value("width", 2), v => change("width", v), 0.5, maximumLineWidth, controlName("Alapvastagság")),
           ),
         ]),
-        group("Vonaltípus", [optionPicker("Vonaltípus", lineTypes, value("type", "straight"), v => change("type", v), lineTypeSymbol)]),
+        group("Vonaltípus", [optionPicker("Vonaltípus", lineTypes, value("type", "straight"), v => change("type", v), lineTypeSymbol, "lineType")]),
         group("Megjelenés", [h("div", {class: "property-options line-appearance-options"}, [
-          optionPicker("Megjelenés", lineAppearances, value("appearance", "plain"), v => change("appearance", v), lineAppearanceSymbol),
+          optionPicker("Megjelenés", lineAppearances, value("appearance", "plain"), v => change("appearance", v), lineAppearanceSymbol, "lineAppearance"),
           iconToggle("Felirat a vonalban", all("labelInLine", false), () => change("labelInLine", all("labelInLine", false) ? undefined : true), icon("wire-label")),
           iconToggle("Animáció bekapcsolása", all("animated", false), () => change("animated", !all("animated", false)), icon("play")),
         ])]),
