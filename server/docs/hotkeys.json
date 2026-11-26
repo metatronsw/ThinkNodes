@@ -15,7 +15,8 @@
       {"action": "Pontrács", "icon": "grid", "keys": [["Pontrács"]], "where": "Bal alsó eszköztár", "detail": "A láthatóságot a saját böngésződ menti."},
       {"action": "Rácsra igazítás", "icon": "snap", "keys": [["Rácsra igazítás"]], "where": "Bal alsó eszköztár", "detail": "Mozgatáskor a rácshoz igazít. Az alapértelmezett rácsköz 32."},
       {"action": "Kurzor megosztása", "icon": "hand", "keys": [["Saját egérmutató megosztása"]], "where": "Vászon", "detail": "Bekapcsolva a többi résztvevő is látja a kurzorodat."},
-      {"action": "Kurzorcímke váltása", "icon": "hand", "keys": [["Kurzorok mellett: név / avatar"]], "where": "Vászon", "detail": "A többiek kurzora mellett a nevük vagy az avatarjuk látszik; a választás ebben a böngészőben megmarad."}
+      {"action": "Kurzorcímke váltása", "icon": "hand", "keys": [["Kurzorok mellett: név / avatar"]], "where": "Vászon", "detail": "A többiek kurzora mellett a nevük vagy az avatarjuk látszik; a választás ebben a böngészőben megmarad."},
+      {"action": "Lézer pointer", "icon": "hand", "keys": [["Lézer pointer gomb"], ["Húzás a vásznon"]], "where": "Vászon", "detail": "Bekapcsolva a húzás a saját színeddel rajzol; a vonal mindenkinél látszik, és pár pillanat alatt elhalványul. Nem mentődik."}
     ]
   },
   {

@@ -349,6 +349,23 @@ final class Collaboration: @unchecked Sendable {
                 }
                 return
             }
+            // Lézer pointer: a vonás pontjai (x, y párok, munkalap-koordinátában) a küldő színével mennek a többieknek.
+            // Nem tárolódik; a nem aktív (más ablakot néző) résztvevőé nem megy tovább.
+            struct Laser: Decodable { let laser: Bool; let stroke: Int; let points: [Double]; let end: Bool? }
+            if let frame = try? JSONDecoder().decode(Laser.self, from: Data(text.utf8)) {
+                guard frame.laser, frame.points.count <= 64, frame.points.count % 2 == 0,
+                      frame.points.allSatisfy({ $0.isFinite && abs($0) <= 100_000 }) else { return }
+                self?.lock.withLock {
+                    guard let room = self?.rooms[path.url], let sender = room.peers[client], sender.name != nil,
+                          sender.socket === socket, !sender.away, sender.seen.duration(to: .now) < .seconds(45) else { return }
+                    struct Relay: Encodable { let laser: String; let color: String; let stroke: Int; let points: [Double]; let end: Bool? }
+                    guard let data = try? JSONEncoder().encode(Relay(laser: sender.cursorID, color: sender.color, stroke: frame.stroke,
+                                                                     points: frame.points, end: frame.end)) else { return }
+                    let message = String(decoding: data, as: UTF8.self)
+                    for (id, other) in room.peers where id != client { other.socket?.send(message) }
+                }
+                return
+            }
             struct Cells: Decodable { let cells: Bool; let node: String; let range: CellMark.Range? }
             if let frame = try? JSONDecoder().decode(Cells.self, from: Data(text.utf8)) {
                 guard frame.cells, frame.range?.isValid != false else { return }

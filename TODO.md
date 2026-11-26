@@ -134,7 +134,7 @@ Kitalálandó, ötletek (2026-11-26):
 - Kapcsolódások: chatüzenetből „Naplóba” gomb; dobozra hivatkozás a bejegyzésben.
 - Kérdések: projekt- vagy lapszintű legyen; ki jelölhet „elvégezve”-re (bárki vagy csak a szerző / admin); kell-e határidő.
 
-**Lézer pointer**
+**Lézer pointer** — kész (2026-11-26, csak eszköztár gombbal; lásd CHANGES.md). Hátra: érintésnél a d3 érintéses nagyítás nincs letiltva lézer közben.
 - Eszköz az eszköztáron (és gyorsbillentyű, pl. nyomva tartott L): húzás közben a vonal pontjai a WebSocketen mennek (mint a kurzor, ~30/mp, vonásonként legfeljebb néhány száz pont), soha nem mentődnek.
 - Rajz: a felhasználó színével, enyhe fényudvarral, a képernyőn állandó vastagsággal (a kurzorhoz hasonló ellen-nagyítással); minden pont kb. 1,5 mp alatt elhalványul (csóva), a saját vonás azonnal látszik.
 - Szerveroldali sebességkorlát; érintés / toll is. Prezentáció módban az előadó lézere a fő mutató; képernyőn kívüli lézerre a ping nyila használható.

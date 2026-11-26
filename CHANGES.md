@@ -1,5 +1,14 @@
 # Változások
 
+## 2026-11-26 – Lézer pointer
+
+- Új eszköztár gomb (`.laser-tool`, a szerkesztőben és a megtekintőben a tagoknak): bekapcsolva az egérrel húzott vonal a saját színeddel látszik mindenkinél, és kb. 1,2 mp alatt elhalványul (a vonal vége folyamatosan fogy, „csóva”). Fénylő szél + fehér közép, a nagyítástól független vastagság. Nem mentődik.
+- Bekapcsolt lézernél a húzás nem jelöl ki, nem mozgat és nem pásztáz (az eseményeket a vászon tárolója elfogja), a felengedés utáni kattintás sem nyit meg semmit; a kurzor célkereszt.
+- Átvitel a meglévő WebSocketen: `{laser, stroke, points: [x, y, …], end}`, üzenetenként legfeljebb 16 pont, ~30/mp; a szerver ellenőrzi (legfeljebb 32 pont, véges, ±100 000) és a küldő színével továbbadja; nem aktív (más ablakot néző) résztvevőé nem megy tovább. Új modul: `Public/laser.js`.
+- Javítva: a megtekintőben a kurzorcímke-gomb a lap minden frissítésekor megduplázódott volna (most a frissítés a lézer- és kurzorgombokat is újraépíti).
+- Súgó és felületnevek kiegészítve. Verziók: `editor.js?v=90`, `viewer.js?v=28`, `app.css?v=58`.
+- Ellenőrizve két valódi böngészővel (Chromium rajzol, Safari látja a küldő színével; a rajzoló oldalon nincs kijelölés és pásztázás; 2 mp után mindkét oldalon eltűnik). JS-tesztek átmennek. Szerverkód változott: a helyi tesztszerver (8888) újraindítva.
+
 ## 2026-11-26 – Ping: a nyíl a valóban látható vászonterülethez igazodik; a pingelő neve felvillan; ping hang
 
 - **Hiba: a képernyőn kívüli ping nyila sokszor nem jelent meg.** A vászon (`svg.editor-canvas`) a puffer miatt jóval nagyobb az ablaknál, ezért a teljes ablak számított látható területnek: a fejléc mögé, a nyitott tulajdonságpanel alá eső vagy a szélén épp csak belógó ping nem kapott nyilat. Most a vászonterület (`.canvas-area`) az ablakra vágva, a nyitott panelek nélkül számít (`visibleBounds`, `pingBounds`), és nyíl jár minden pinghez, amelynek a közepe nincs legalább 24 px-re a látható terület szélein belül.

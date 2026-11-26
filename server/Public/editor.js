@@ -7,6 +7,7 @@ import {chooseRemoval, openFileBrowser} from "./file-browser.js";
 import {chooseZip, exportPackage, importPackage, isPackageZip} from "./package.js";
 import {decodeWorksheet, encodeWorksheet} from "./worksheet-json.js";
 import {sharedMouse} from "./mouse.js";
+import {sharedLaser} from "./laser.js";
 import {worksheetChanges, replayChanges, sameValue} from "./editor-history.js?v=2";
 import {flashNode, flashPoint, pingOffscreen, playPingSound, visibleBounds} from "./ping.js?v=4";
 import {sketchSeed, sketchOutline, sketchPaths, sketchShift, stickyColor} from "./sketch.js?v=3";
@@ -1038,6 +1039,7 @@ createApp({
     }
 
     const mouse = sharedMouse(point => live.cursor(point));
+    const laser = sharedLaser(frame => live.laser(frame), () => peers.value.find(p => p.mine)?.color);
     watch(view, () => mouse?.rescale());
     // A ténylegesen látható vászonterület: a vászon puffere miatt nagyobb az ablaknál, ezért a vászonterület (.canvas-area)
     // számít, az ablakra vágva, a fölötte lévő, nyitott tulajdonságpanelek nélkül (az üres panel-oszlop nem takar).
@@ -1091,7 +1093,7 @@ createApp({
       if (gesture.value) finishPointer({pointerId: gesture.value.pointer}, true);
       if (inspector.value?.kind === "node") inspectNothing();
       problem.value = error.message;
-    }, {editing: true, onCursor: mouse?.receive, onMotion: receiveMotion, onCells: receiveCells, onScroll: receiveScroll, rate: Number(motionRate) || 33});
+    }, {editing: true, onCursor: mouse?.receive, onLaser: laser.receive, onMotion: receiveMotion, onCells: receiveCells, onScroll: receiveScroll, rate: Number(motionRate) || 33});
 
     // Mentés ütemezése. Mezőszerkesztés (gépelés) közben a mentés a szünetre vár (0,5 mp), de legfeljebb 2 mp-et,
     // így nem megy ki minden leütés után a teljes munkalap; egyébként (húzás, gomb) 70 ms után ment. docs/PLAN.md C5.
@@ -3331,6 +3333,8 @@ createApp({
         if (canvas.value.querySelector) {
           const controls = mount.querySelector(".canvas-controls");
           mouse.bind(canvas.value, canvas.value.querySelector("[data-mouse-layer]"), controls, controls?.querySelector("[data-canvas-fullscreen]"));
+          laser.bind(canvas.value, canvas.value.querySelector("[data-mouse-layer]"), canvas.value.closest(".canvas-area") ?? mount,
+            controls, controls?.querySelector("[data-canvas-fullscreen]"));
         }
       } catch (error) {
         problem.value = error.message;
@@ -3342,6 +3346,7 @@ createApp({
     onUnmounted(() => {
       audioControls?.abort();
       mouse?.stop();
+      laser.stop();
       live.stop();
       window.removeEventListener("pagehide", live.stop);
       window.removeEventListener("pageshow", restore);

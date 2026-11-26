@@ -70,7 +70,7 @@ export function rebaseWorksheet(base, local, remote) {
   return result;
 }
 
-export function liveConnection(path, csrf, onState, onError, {editing = false, onMotion, onCursor, onCells, onScroll, rate = 33} = {}) {
+export function liveConnection(path, csrf, onState, onError, {editing = false, onMotion, onCursor, onCells, onScroll, onLaser, rate = 33} = {}) {
   const client = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, "0")).join("");
   const headers = {"Content-Type": "application/json", "X-CSRF-Token": csrf, "X-Worksheet-Client": client};
   let controller;
@@ -113,11 +113,12 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
     opened.onmessage = event => { if (socket !== opened) return;
       const frame = JSON.parse(event.data);
       if (frame.cursor) onCursor?.(frame);
+      else if (frame.laser) onLaser?.(frame);
       else if (frame.cells) onCells?.(frame);
       else if (frame.scroll) onScroll?.(frame);
       else onMotion(frame); };
     opened.onclose = () => {
-      if (socket === opened) { socket = null; onMotion(null); onCursor?.(null); onCells?.(null); }
+      if (socket === opened) { socket = null; onMotion(null); onCursor?.(null); onCells?.(null); onLaser?.(null); }
     };
   }
   // Cellakijelölés a fogott táblázatban (csak a kijelölés; a gépelt szöveg nem megy át). `range`: null = nincs.
@@ -209,11 +210,16 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
     cursorPoint = null;
     onMotion?.(null);
     onCursor?.(null);
+    onLaser?.(null);
     socket?.close();
     socket = null;
     request("leave", {}, {keepalive: true}).catch(() => {});
   }
-  return {client, start, stop, cursor, cells, scroll, motion, flushMotion, endMotion, ping: target => request("ping", target), snapshot: () => request("poll", {editing, away}),
+  // Lézer pointer vonásának pontjai (laser.js); kapcsolat nélkül elvesznek, csak a helyi rajz látszik.
+  function laser(frame) {
+    if (socket?.readyState === 1) socket.send(JSON.stringify(frame));
+  }
+  return {client, start, stop, cursor, cells, scroll, laser, motion, flushMotion, endMotion, ping: target => request("ping", target), snapshot: () => request("poll", {editing, away}),
     checkpoint: (action, revision, checkpointRevision) => request(action, {revision, checkpointRevision}),
     viewSelect: node => request("view-select", {node}),
     select: (node, edge) => request("select", {node, edge})};
