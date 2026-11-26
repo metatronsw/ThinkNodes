@@ -30,16 +30,43 @@ package struct WebPresentationReference: Sendable {
     }
 }
 
+/// A .web oldalba injektált `<base>` alatti címek: `{scope}_tn-assets/{lease vagy public}/{a projekten belüli útvonal}`.
+/// Az útvonal a lemezt tükrözi (`mappa/név.web/...`), így a böngésző által feloldott `../` hivatkozás
+/// a projektmappán belül a megfelelő fájlra mutat; a projekt fölé lépő cím a jelölőt rontja el, és 404 lesz.
 package struct WebPresentationRequest: Sendable {
     let project: String
     package let reference: WebPresentationReference
     package let asset: [String]
     package let trailingSlash: Bool
     package let lease: UUID?
+    /// `_tn-assets/public/...`: bérlet nélküli (publikus) tükrözött cím.
+    package let shared: Bool
+    /// A .web mappán kívüli, de a projekten belüli fájl útvonala a projekt gyökeréhez képest (`../` hivatkozás).
+    package let outside: [String]?
+
+    init(project: String, reference: WebPresentationReference, asset: [String], trailingSlash: Bool,
+         lease: UUID? = nil, shared: Bool = false, outside: [String]? = nil) {
+        self.project = project
+        self.reference = reference
+        self.asset = asset
+        self.trailingSlash = trailingSlash
+        self.lease = lease
+        self.shared = shared
+        self.outside = outside
+    }
 
     package var scope: String { reference.url(in: project) }
 
-    package func assetScope(_ lease: UUID) -> String { scope + "_tn-assets/" + lease.uuidString + "/" }
+    /// Tükrözött (bérletes vagy publikus) címről érkezett-e a kérés.
+    package var mirrored: Bool { lease != nil || shared }
+
+    /// A tükrözött címtér gyökere: a projekt gyökerének felel meg.
+    package func assetScope(_ lease: UUID?) -> String { scope + "_tn-assets/" + (lease?.uuidString ?? "public") + "/" }
+
+    /// A `<base>` értéke: a tükrözött címtérben a .web mappa (és azon belül a `folders` almappa).
+    package func baseURL(_ lease: UUID?, folders: [String]) -> String {
+        assetScope(lease) + (reference.folders + [reference.name + ".web"] + folders).map(Self.encodeAsset).joined(separator: "/") + "/"
+    }
 
     package var url: String {
         let base = scope
@@ -70,14 +97,26 @@ package struct WebPresentationRequest: Sendable {
                   let project = path.parts.first,
                   let reference = try? WebPresentationReference((Array(path.parts.dropFirst()) + [decoded[index + 1] + ".web"]).joined(separator: "/"))
             else { return nil }
-            var asset = Array(decoded.dropFirst(index + 2))
-            var lease: UUID?
-            if asset.first == "_tn-assets" {
-                guard asset.count >= 2, let id = UUID(uuidString: asset[1]) else { return nil }
-                lease = id
-                asset.removeFirst(2)
+            let asset = Array(decoded.dropFirst(index + 2))
+            guard asset.first == "_tn-assets" else {
+                return Self(project: project, reference: reference, asset: asset, trailingSlash: trailingSlash)
             }
-            return Self(project: project, reference: reference, asset: asset, trailingSlash: trailingSlash, lease: lease)
+            guard asset.count >= 2 else { return nil }
+            var lease: UUID?
+            if asset[1] != "public" {
+                guard let id = UUID(uuidString: asset[1]) else { return nil }
+                lease = id
+            }
+            // A jelölő utáni rész a projekt gyökeréhez képesti útvonal (a lemezt tükrözi).
+            let mirrored = Array(asset.dropFirst(2))
+            let own = reference.folders + [reference.name + ".web"]
+            if mirrored.starts(with: own) {
+                return Self(project: project, reference: reference, asset: Array(mirrored.dropFirst(own.count)),
+                            trailingSlash: trailingSlash, lease: lease, shared: lease == nil)
+            }
+            guard !mirrored.isEmpty, !trailingSlash else { return nil }
+            return Self(project: project, reference: reference, asset: [], trailingSlash: false,
+                        lease: lease, shared: lease == nil, outside: mirrored)
         }
     }
 

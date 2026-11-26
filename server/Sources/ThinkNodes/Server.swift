@@ -1557,23 +1557,25 @@ private func serveWebPresentation(_ req: Request, candidates: [WebPresentationRe
             }
             let query = req.url.query.map { "?" + $0 } ?? ""
             if directory && !candidate.trailingSlash { return redirect(candidate.url + "/" + query) }
-            if asset.isHTML, candidate.lease != nil { return redirect(candidate.url + query) }
-            guard asset.isHTML, !publicRead, let cookie = req.cookies[sessions.configuration.cookieName] else {
-                return try await asset.response(to: req)
+            if asset.isHTML, candidate.mirrored { return redirect(candidate.url + query) }
+            guard asset.isHTML else { return try await asset.response(to: req) }
+            // Minden HTML oldal tükrözött <base>-t kap, hogy a `../` hivatkozás a projektmappán belül feloldható legyen.
+            // Bérlet akkor kell, ha a homokozó (cookie nélkül) magától nem olvashatná: zárt .web, vagy bejelentkezett néző
+            // (a projekt többi fájljához). Egyébként a publikus jelölő elég.
+            let folders = directory ? candidate.asset : Array(candidate.asset.dropLast())
+            guard !publicRead || identity.user != nil, let cookie = req.cookies[sessions.configuration.cookieName] else {
+                return try await asset.response(to: req, baseURL: candidate.baseURL(nil, folders: folders))
             }
             let grant = webSessions.issue(session: .init(string: cookie.string), scope: candidate.scope)
-            let scope = candidate.assetScope(grant.id)
-            let folders = directory ? candidate.asset : Array(candidate.asset.dropLast())
-            let base = scope + (folders.isEmpty ? "" : folders.map(WebPresentationRequest.encodeAsset).joined(separator: "/") + "/")
-            let result = try await asset.response(to: req, baseURL: base)
+            let result = try await asset.response(to: req, baseURL: candidate.baseURL(grant.id, folders: folders))
             if webSessions.requireCookie {
                 result.cookies[WebPresentationSessions.cookieName] = .init(string: grant.secret, expires: grant.expires,
-                    path: scope, isSecure: true, isHTTPOnly: true, sameSite: HTTPCookies.SameSitePolicy.none)
+                    path: candidate.assetScope(grant.id), isSecure: true, isHTTPOnly: true, sameSite: HTTPCookies.SameSitePolicy.none)
             }
             return result
-        } catch let error as Abort where error.status == .unauthorized && candidate.lease == nil {
+        } catch let error as Abort where error.status == .unauthorized && !candidate.mirrored {
             return redirect("/login?next=" + encodeQuery(candidate.url))
-        } catch let error as Abort where error.status == .locked && candidate.lease == nil {
+        } catch let error as Abort where error.status == .locked && !candidate.mirrored {
             let page = htmlPage(title: "Prezentáció feloldása", body: """
                 \(siteHeader(user: identity.user, csrf: identity.csrf))
                 <main class="shell narrow"><h1>Prezentáció feloldása</h1>

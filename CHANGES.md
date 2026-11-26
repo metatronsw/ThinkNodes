@@ -1,5 +1,12 @@
 # Változások
 
+## 2026-11-26 – .web oldal: `../` hivatkozás a projektmappán belül
+
+- A .web oldal eddig csak a saját mappájából tölthetett be fájlt (a `../kepek/x.png` 404 lett); a közös könyvtár abszolút címmel (`/common/...`) eddig is működött.
+- Minden kiszolgált HTML oldal tükrözött `<base>`-t kap: `{.web cím}_tn-assets/{bérlet | public}/{mappa}/{név}.web/…`. A jelölő utáni rész a projekt gyökeréhez képesti útvonal, így a böngésző által feloldott `../` a projekten belül a lemez szerinti fájlra mutat; a projekt gyökere fölé lépő cím 404 (`WebPresentationRequest.candidates`, `outside`).
+- Jog: a projekt fájljaira a projekt olvasási joga és jelszava vonatkozik (publikus .web zárt projektben a vendég csak a .web saját fájljait látja). Rejtett (`.`), `.thnode`, HTML fájl, mappa és szimbolikus link nem szolgálható ki. Bejelentkezett nézőnek publikus .web-nél is bérlet jár, hogy a homokozóból elérje a projekt fájljait.
+- Teszt: `presentationParentReferencesStayInsideProject`; valódi Chrome-ban (CDP, homokozóval) ellenőrizve. Próbalap: `projects/test-container/parent-proba.web`. Leírás: server/docs/node-types.md „.web mappa”.
+
 ## 2026-11-26 – WhiteBoard: pontos füzetvonalak, ismétlődő textúrák; VectorStudio téma törölve
 
 - **Füzetvonalak:** a címsor sávja a sormagasság egész többszöröse, az alapvonala a vonalra esik; a markdown kódblokk térköze csak oldalt, a vízszintes vonal egy sor, így az utánuk következő sorok sem csúsznak el (Chrome-ban mérve: az alapvonal kb. 2 px-lel a vonal fölött a dokumentum végéig). A füzetlap markdownja a doboz betűméretével íródik; a kódfájl (`type: "code"`) már nem füzetlap.

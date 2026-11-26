@@ -2864,6 +2864,9 @@ extension WorksheetStore {
         let projectOwner: Bool
         package var readable: Bool
         var publicRead: Bool
+        /// A projektet magát olvashatja-e (a .web publikus jelzése nélkül is): a `../` fájlokhoz kell.
+        var projectReadable = false
+        var projectHash: String?
         var hashes: [String] = []
 
         mutating func protect(_ hash: String?) {
@@ -2876,6 +2879,12 @@ extension WorksheetStore {
         func authorize(_ user: User?, unlocks: Set<String>) throws {
             guard readable else { throw Abort(user == nil ? .unauthorized : .forbidden) }
             guard hashes.allSatisfy(unlocks.contains) else { throw Abort(.locked) }
+        }
+
+        /// A .web mappán kívüli (projektbeli) fájlokra a projekt saját olvasási joga vonatkozik.
+        func authorizeProject(_ user: User?, unlocks: Set<String>) throws {
+            guard projectReadable else { throw Abort(user == nil ? .unauthorized : .forbidden) }
+            if let projectHash, !admin, !projectOwner, !unlocks.contains(projectHash) { throw Abort(.locked) }
         }
 
         func canManage(unlocks: Set<String>) -> Bool {
@@ -2926,6 +2935,8 @@ extension WorksheetStore {
         var access = WebAccess(admin: admin, projectMember: member, projectOwner: member && user?.name == rootRule.owner,
             readable: admin || member || publicProject || publicWeb,
             publicRead: publicWeb || (!requiresLogin && rootRule.guestReadable == true && rootRule.passwordHash == nil))
+        access.projectReadable = admin || member || publicProject
+        access.projectHash = rootRule.passwordHash
         if !publicWeb { access.protect(rootRule.passwordHash) }
         guard access.readable else { throw Abort(user == nil ? .unauthorized : .forbidden) }
         return WebContext(directory: presentation, policy: policy, access: access, manageable: admin || member)
@@ -2937,6 +2948,14 @@ extension WorksheetStore {
         let found: (asset: WebAsset?, directory: Bool, publicRead: Bool)? = try lock.withLock {
             guard let context = try webContext(project: request.project, reference: request.reference, user: user, unlocks: unlocks) else { return nil }
             try context.access.authorize(user, unlocks: unlocks)
+            if let outside = request.outside {
+                // `../` hivatkozás: csak a projektmappán belül, csak közönséges (nem HTML) fájl, linket nem követ.
+                try context.access.authorizeProject(user, unlocks: unlocks)
+                let (asset, directory) = try WebAsset.open(in: root, folders: [request.project] + outside.dropLast(),
+                                                           asset: [outside[outside.count - 1]], trailingSlash: false)
+                guard !directory, !asset.isHTML else { throw Abort(.notFound) }
+                return (asset, false, context.access.publicRead)
+            }
             let dirs = [request.project] + request.reference.folders + [request.reference.name + ".web"]
             if request.asset == ["_tn-preview"] {
                 guard !request.trailingSlash else { throw Abort(.notFound) }

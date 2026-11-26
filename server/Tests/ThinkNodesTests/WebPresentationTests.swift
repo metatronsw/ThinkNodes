@@ -149,3 +149,94 @@ import VaporTesting
         #expect(try await browser.sendRequest(.GET, "/lan/web/prezi/pic.png").status != .ok)
     }
 }
+
+/// `../` hivatkozás a .web oldalból: a projektmappán belül feloldódik, fölötte nem; a projekt saját joga érvényes.
+@Test func presentationParentReferencesStayInsideProject() async throws {
+    let directory = FileManager.default
+    let root = directory.temporaryDirectory.appendingPathComponent("thinknodes-web-parent-\(UUID())")
+    defer { try? directory.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    let hash = try Bcrypt.hash("owner-password", cost: 4)
+    try store.setUser(name: "owner", role: .admin, passwordHash: hash)
+    let owner = try #require(try store.user(named: "owner"))
+    let project = try WorksheetPath(["proj"])
+    _ = try store.open(project, user: owner)
+    let projectDir = root.appendingPathComponent("proj")
+    let prezi = projectDir.appendingPathComponent("anyag/prezi.web")
+    try directory.createDirectory(at: prezi.appendingPathComponent("sub"), withIntermediateDirectories: true)
+    try directory.createDirectory(at: projectDir.appendingPathComponent("kepek"), withIntermediateDirectories: true)
+    func write(_ text: String, _ path: String) throws { try Data(text.utf8).write(to: root.appendingPathComponent(path)) }
+    try write("<!doctype html><img src=\"../../kepek/logo.png\">", "proj/anyag/prezi.web/index.html")
+    try write("<title>Sub</title>", "proj/anyag/prezi.web/sub/index.html")
+    try write("own-pic", "proj/anyag/prezi.web/pic.png")
+    try write("sibling-pic", "proj/anyag/sibling.png")
+    try write("top-pic", "proj/top.png")
+    try write("logo-pic", "proj/kepek/logo.png")
+    try write("<script>steal()</script>", "proj/page.html")
+    try write("hidden", "proj/kepek/.secret.png")
+    try write("outside-secret", "outside.txt")
+    try directory.createSymbolicLink(at: projectDir.appendingPathComponent("kepek/link.png"), withDestinationURL: root.appendingPathComponent("outside.txt"))
+
+    /// A böngésző feloldása: relatív cím a `<base>`-hez képest.
+    func resolve(_ reference: String, against base: String) throws -> String {
+        let url = try #require(URL(string: reference, relativeTo: URL(string: "http://host" + base)))
+        return String(url.absoluteString.dropFirst("http://host".count))
+    }
+    func baseHref(_ body: String) throws -> String {
+        let part = try #require(body.components(separatedBy: #"<base href=""#).dropFirst().first)
+        return String(part.split(separator: "\"")[0])
+    }
+
+    try await withApp(configure: { app in configure(app, store: store, secureCookies: false) }) { app in
+        let browser = try app.testing()
+        let login = try await browser.sendRequest(.GET, "/login")
+        let cookie = try #require(login.headers.first(name: .setCookie)).split(separator: ";")[0]
+        let csrf = try #require(login.body.string.components(separatedBy: #"name="csrf" value=""#).last).split(separator: "\"")[0]
+        let signIn = try await browser.sendRequest(.POST, "/login", headers: ["Cookie": String(cookie)]) { request in
+            try request.content.encode(["csrf": String(csrf), "name": "owner", "password": "owner-password", "next": "/"], as: .urlEncodedForm)
+        }
+        let session = (signIn.headers.first(name: .setCookie)?.split(separator: ";")[0]).map(String.init) ?? String(cookie)
+        let page = try await browser.sendRequest(.GET, "/proj/anyag/web/prezi/", headers: ["Cookie": session])
+        #expect(page.status == .ok)
+        let base = try baseHref(page.body.string)
+        #expect(base.hasSuffix("/anyag/prezi.web/"))
+        // A homokozó cookie nélkül kér: a bérletes cím önmagában elég.
+        for (reference, body) in [("pic.png", "own-pic"), ("../sibling.png", "sibling-pic"), ("../../top.png", "top-pic"),
+                                  ("../../kepek/logo.png", "logo-pic"), ("../prezi.web/pic.png", "own-pic")] {
+            let response = try await browser.sendRequest(.GET, try resolve(reference, against: base))
+            #expect(response.status == .ok && response.body.string == body, "\(reference)")
+        }
+        for reference in ["../../../outside.txt", "../../../../outside.txt", "../../../../../x", "../../proj.thnode",
+                          "../../.settings.json", "../../kepek/.secret.png", "../../kepek/link.png", "../../page.html",
+                          "../../kepek/", "../../kepek", "../../%2E%2E/outside.txt"] {
+            let response = try await browser.sendRequest(.GET, try resolve(reference, against: base))
+            #expect(response.status != .ok, "\(reference)")
+            #expect(!response.body.string.contains("outside-secret") && !response.body.string.contains("steal"))
+        }
+        // Almappa oldala: a base az almappát tükrözi.
+        let sub = try await browser.sendRequest(.GET, "/proj/anyag/web/prezi/sub/", headers: ["Cookie": session])
+        let subBase = try baseHref(sub.body.string)
+        #expect(subBase.hasSuffix("/anyag/prezi.web/sub/"))
+        #expect(try await browser.sendRequest(.GET, try resolve("../../../top.png", against: subBase)).body.string == "top-pic")
+        // Bérletes HTML-cím visszairányít a természetes címre.
+        let mirroredPage = try await browser.sendRequest(.GET, try resolve("sub/index.html", against: base))
+        #expect(mirroredPage.status == .seeOther || mirroredPage.status == .found || mirroredPage.status == .temporaryRedirect)
+
+        // Zárt projekt: publikus jelölővel, bejelentkezés nélkül a projekt fájljai nem érhetők el.
+        #expect(try await browser.sendRequest(.GET, "/proj/anyag/web/prezi/_tn-assets/public/top.png").status != .ok)
+        #expect(try await browser.sendRequest(.GET, "/proj/anyag/web/prezi/_tn-assets/public/anyag/prezi.web/pic.png").status != .ok)
+
+        // Publikus .web zárt projektben: a saját fájljai igen, a projekt többi fájlja nem.
+        try write(#"{"guestReadable":true}"#, "proj/anyag/prezi.web/.settings.json")
+        let publicWeb = try await browser.sendRequest(.GET, "/proj/anyag/web/prezi/")
+        let publicBase = try baseHref(publicWeb.body.string)
+        #expect(publicBase.contains("/_tn-assets/public/"))
+        #expect(try await browser.sendRequest(.GET, try resolve("pic.png", against: publicBase)).body.string == "own-pic")
+        #expect(try await browser.sendRequest(.GET, try resolve("../../top.png", against: publicBase)).status != .ok)
+
+        // Publikus projekt: bárki számára feloldódik a `../`.
+        _ = try store.manage(project, operation: DocumentAction(scope: "project", action: "mode", value: "public"), user: owner, unlocks: [])
+        #expect(try await browser.sendRequest(.GET, try resolve("../../top.png", against: publicBase)).body.string == "top-pic")
+        #expect(try await browser.sendRequest(.GET, try resolve("../../../outside.txt", against: publicBase)).status != .ok)
+    }
+}

@@ -318,6 +318,16 @@ Minden hangfájl: .mp3, .wav, .ogg, .flac, .m4a, .aac, …
   alatta a Text. Kattintásra (megtekintőben) / hivatkozásjelre (szerkesztőben) megnyílik a prezentáció.
 - **Panel:** a Link csoportban a mappa kiválasztása (a mai Kiválasztás gomb).
 - **Munkalap linknél ugyanígy:** a dobozon a céllap előnézeti képe (a szerver már készít ilyet) – javaslat.
+- **Fájlhivatkozások a .web oldalból (2026-11-26):**
+  - saját fájl: relatív cím (`css/main.css`, `kepek/a.png`);
+  - a projektmappa többi fájlja: `../` hivatkozás, a lemez szerint (pl. `anyag/prezi.web` oldalából `../../kepek/logo.png`
+    = `projekt/kepek/logo.png`). A projekt gyökere fölé nem lehet lépni; rejtett (`.`), `.thnode`, HTML fájl és
+    szimbolikus link nem érhető el. Joga: a projekt olvasási joga (publikusnak jelölt .web zárt projektben a
+    vendég csak a .web saját fájljait látja);
+  - közös könyvtár: abszolút cím, `/common/...` (pl. `/common/icons/x.png`).
+  - Megvalósítás: a szerver minden HTML oldalba `<base href="{.web cím}_tn-assets/{bérlet | public}/{mappa}/{név}.web/…">`
+    elemet tesz; a `_tn-assets/…/` utáni rész a projekt gyökeréhez képesti útvonal, így a böngésző által
+    feloldott `../` a projekten belül a jó fájlra mutat, a projekt fölé lépő cím pedig 404.
 ### wire
 
 Vonal két doboz, csomópont vagy szabad pont között.

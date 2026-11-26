@@ -6,6 +6,10 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **.web oldal: `../` hivatkozás a projektmappán belül (2026-11-26)**
+  - Ok: a .web kiszolgáló csak a saját mappájából adott fájlt; a `../kepek/x.png` hivatkozás 404 lett. A közös könyvtár (`/common/...`) abszolút címmel eddig is működött.
+  - Javítás: minden HTML oldal tükrözött `<base>`-t kap (`_tn-assets/{bérlet|public}/{projektbeli útvonal}`), így a `../` a projekt gyökeréig feloldódik, fölötte 404. A projekt fájljaira a projekt olvasási joga vonatkozik; rejtett, `.thnode`, HTML fájl és link nem szolgálható ki. Teszt: `presentationParentReferencesStayInsideProject`; Chrome-ban (CDP, homokozóval) ellenőrizve. Részletek: server/docs/node-types.md „.web mappa”.
+
 - **WhiteBoard: elcsúszó füzetvonalak, vonalazott kódfájl, textúrák (2026-11-26)**
   - Ok: a nagyobb betűs címsor alapvonala nem a sáv vonalára esett (5 px-ig), a markdown kódblokk 12 px-es belső térköze és a vízszintes vonal kerete eltolta az utána következő összes sort (kb. 5 px).
   - Javítás: a címsor sávja a sormagasság egész többszöröse, a felső térköze az alapvonalat a vonalra teszi, a negatív alsó margó visszaveszi; a kódblokk térköze csak oldalt, a vízszintes vonal egy sor. Chrome-ban mérve: minden sor alapvonala 0,6–0,9 px-lel a vonal fölött (a dokumentum végéig). A kódfájl (`type: "code"`) már nem füzetlap. Új: ismétlődő webp textúrák a témában (`graphics.textures`), a „Díszítő háttér kikapcsolása” elrejti őket. Részletek: server/docs/themes.md „Textúrák”.
