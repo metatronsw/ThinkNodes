@@ -1,5 +1,47 @@
 # A vászonszerkesztő teljesítménye – mérések és változatok (2026-11-24)
 
+## Irányelvek a további fejlesztéshez (AI és ember) – kötelező
+
+Cél: a szerkesztő maximális teljesítménye. Olcsó témák maradjanak olcsók; drága látvány csak téma-függően, mért költséggel.
+
+**Szabályok – ezeket ne írd át mérés nélkül:**
+1. **Nyugalomban nincs munka.** Mozdulat nélkül nem futhat végtelen animáció, időzítő vagy rAF-ciklus, ami rajzoltat. Kivétel csak a tartalom-animáció (2.) és a saját kijelölés fénye.
+2. **Tartalom-animáció (doboz, vonal) a szerkesztőben csak CSS:** `app.css` „Tartalom-animációk”, `steps()`, minden szakasz 50 ms egész többszöröse, közös ütem (`editor.js queueMotionAlign`). SMIL a szerkesztőben tilos (Safariban animációnként 14–19% CPU). Csak `transform`, `opacity`, `stroke-width`, `stroke-dashoffset`, `offset-distance` animálható; CSS `d` tilos (Safari). Nincs elemenként eltérő ütem (pl. téma sebességszorzó).
+3. **A letölthető SVG önálló:** SMIL maradhat benne; a látvány egyezzen a szerkesztővel, az időzítés nem.
+4. **Kapcsolók:** minden új folyamatos animáció kerüljön a `[data-still]` („Animációk leállítása”), minden díszítő háttér / textúra a `[data-plain]` („Díszítő háttér kikapcsolása”) szabály alá. Díszítő háttér nem animált.
+5. **Nézet:** mozdulat közben csak a réteg CSS-transzformja változik; a `view` rögzítése halasztott (`wheelCommit`, `panCommit`). A vászon gyökerén mozdulat közben ne változzon stílus / attribútum; `transform: none ↔ matrix` váltás tilos (`restingTransform`).
+6. **Eseménykezelő (pointerdown stb.) kritikus útján nincs drága szinkron munka:** pl. `new AudioContext()` (290 ms volt), nagy fetch / parse, ciklusban kényszerített elrendezés (`getBoundingClientRect`, `getScreenCTM`), első modulbetöltés.
+7. **Célzott újrarajzolás:** doboz / vonal csak a saját állapotát olvassa (`nodeUi` / `edgeUi` / `syncUi`); globális állapot (`view`, `gesture`, kijelölés) olvasása rajzoláskor minden elemet újrarajzoltat.
+8. **CSP** (`style-src 'self'`): beszúrt `<style>` és inline `style` attribútum nem működik; dinamikus stílus Vue `style`-lal vagy CSSOM-mal.
+
+**Mérés – minden rajzolást, animációt, témát, effektet vagy eseménykezelőt érintő változás után:**
+- Böngésző: **valódi Chrome (elsődleges) és Safari.** Nem hiteles: a beépített böngészőpanel, a fej nélküli Chromium (szoftveres GPU), a takart ablak (a Safari ott a CSS-animációt leállítja, a SMIL-t nem).
+- Szerver: release build (`deploy/build.sh --no-pull`), `run.sh --port:8888 --test`.
+- Lapok: a legdrágább téma sok animációval (Liquid Glass lap), valamint egy nagy lap (`p300` / `p1000`: `node Tests/Perf/make-data.mjs`).
+- **Üresjárat:** betöltés, 4 mp várakozás, 8–10 mp CPU a böngésző teljes folyamatfáján (Chrome: renderer + GPU + böngésző; Safari: WebContent + WindowServer). Elvárás: animáció nélkül ~0–2%; Liquid Glass lap ≤ ~25%; „Animációk leállítása” mellett ~0%.
+- **Akadás:** frissen indított böngésző (hideg), majd újratöltés (meleg): első kijelölés, első mozgatás, **összetett pásztázás 100%-on** (az egész vászon bejárása oda-vissza, húzásonként rántás + lassú finomhúzás). Képkockaidő rAF-ből. Elvárás: 0 képkocka 50 ms fölött, lenyomás → képkocka < 50 ms.
+- **Ha nem teljesül:** kizárásos keresés. Változatonként kapcsolj ki egy forrást (animációk szüneteltetése, elem eltávolítása, CSS-szabály), és mérj újra; a fogyasztó az, amelyiknek a kikapcsolása visszaadja a nullát. Utána nyomkövetés (CDP Tracing / JS-profil) a hosszú feladatokra.
+- Buktatók: a beszúrt `<style>`-t a CSP tiltja (CSSOM / `Page.setBypassCSP`); a saját rAF-számláló maga is képkockát kér (CPU-mérésnél ne fusson); mérés közben ne fusson másik böngésző-teszt; a Safari WebDriverhez „Távoli automatizálás engedélyezése” kell.
+
+**Jelenlegi eszközök (`Tests/Perf`) – mire valók, mikor avulnak el:**
+
+| Eszköz | Mire | Elavul, ha |
+|---|---|---|
+| `chrome.mjs` | valódi Chrome külön profillal, CDP, CPU a folyamatfán | a Chrome helye (`TN_CHROME`) vagy a CDP változik |
+| `chrome-idle.mjs`, `safari-idle-wd.py` + `Public/bench-idle.js` | üresjárati CPU változatonként (`?bench=NÉV&list=NÉV&hold=1`) | a kikapcsolt elemek osztályai változnak (`.canvas-aurora`, `.node-motion`, `wire-motion-*`, `.canvas-grid-draw`) |
+| `chrome-pan.mjs`, `safari-pan.py` + `pan-plan.js` | összetett pásztázás 100%-on, hideg / meleg kör (`TN_TRACE=kör`: hosszú feladatok) | a pásztázás nem üres vászon húzása, vagy megszűnik a `.canvas-area.__zoom` (d3) |
+| `chrome-hitch.mjs`, `chrome-first.mjs` | első kijelölés / mozgatás / pásztázás; a legelső kattintás profilja és kérései | változik a `recorder.js` felülete (`__perf.nodes`, `emptyPoint`, `latencies`) |
+| `editor-anim-probe.js` | futnak-e a `tn-*` animációk, igazítva vannak-e, a pötty a vonalon van-e | változnak az animációk osztály- vagy kulcskockanevei |
+| `anim-probe.*` + `Public/bench-anim.svg` | CSS-animációs képességek böngészőnként | csak új animációtípus bevezetésekor kell |
+| `perf.py` (+ `summary.py`) | régi Safari-forgatókönyvek nagy lapon (`p300`) | a régi forgatókönyvek elemazonosítói változnak |
+| `idle.mjs`, `trace-idle.mjs`, `layers.mjs` | fej nélküli Chromium: csak trend és nyomkövetés, abszolút szám nem | – |
+| `safari-idle.py`, `safari-url-idle.py` | WebDriver nélkül (csak ha a Safari elöl van) / tetszőleges címek | – |
+
+Ha egy eszköz hibát ad, vagy egy változat `[0 animáció]`-t, hiányzó elemet vagy gyanúsan 0%-ot jelez, előbb az eszközt kell javítani, csak utána szabad a számokban megbízni.
+
+---
+
+
 A `perf` ágon készült, 2026-11-24-én beolvasztva a `main`-be az alapbeállításokkal. Mérés: Safari 18.6, release szerver, tesztmód, ideiglenes mérő-adatmappa
 (`server/.build/perf-data`, sosem a valódi `projects`). A mérőeszközök: `server/Tests/Perf/`.
 
