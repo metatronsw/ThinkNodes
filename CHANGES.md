@@ -7,6 +7,7 @@
 - **`server/deploy/build.sh`, `daemon.sh`:** magától csak a Swift 6.0.3-at veszik fel (`~/X-Code/RunTime/Swift/6.0.3`, `/opt/swift-6.0.3`, swiftly, PATH); más a `THINKNODES_SWIFT`-tel adható meg. A `build.sh` megjegyzi, melyik fordító építette a `.build`-et (`.build/.swift-version`), és váltáskor a lefordított részeket törli (a letöltött csomagforrások maradnak).
 - macOS + Swift 6.0.3 alatt kipróbálva (első futáskor teljes újrafordítás a jelző miatt); Fedorán a szerveren ellenőrizendő (BUGS.md).
 - Javítás (a szerveren az `install.sh` szó nélkül megállt): a swift.org kulcsainak importja a régi, lejárt kulcsok miatt hibakóddal térhet vissza, és a kimenete el volt nyelve, így a `set -e` üzenet nélkül kilépett. Most az import hibakódja nem állítja meg (a döntő az aláírás ellenőrzése, hiba esetén a `gpg` kimenete kiíródik), és a szkript minden váratlan kilépésnél kiírja a sort és a parancsot (`set -E`, `trap … ERR`). A rendszercsomag-ellenőrzés a helyettesítő csomagokat is elfogadja (`rpm -q --whatprovides`, pl. `zlib-devel` → `zlib-ng-compat-devel`).
+- Az aláírás-ellenőrzés a Swift 6.x release kulcsának rögzített ujjlenyomatával (`52BB7E3DE28A71BE22EC05FFEF80A866B47A981F`, https://swift.org/keys/active/): a `swift.org/keys/all-keys.asc` cím már nem kulcsot ad. A kulcs a swift.org `release-key-swift-6.x.asc` fájljából, ha onnan nem jön meg, a keyserver.ubuntu.com-ról; csak az ezzel az ujjlenyomattal érvényesen aláírt csomag települ.
 
 ## 2026-11-27 – daemon.sh: elárvult SwiftPM zárfájl
 

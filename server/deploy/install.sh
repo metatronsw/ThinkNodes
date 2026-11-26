@@ -77,17 +77,26 @@ install_linux_toolchain() {
     url="https://download.swift.org/swift-$swift_version-release/$platform/swift-$swift_version-RELEASE/$name.tar.gz"
     curl --fail --location --silent --show-error -o "$work/$name.tar.gz" "$url"
     curl --fail --location --silent --show-error -o "$work/$name.tar.gz.sig" "$url.sig"
-    curl --fail --location --silent --show-error -o "$work/keys.asc" https://swift.org/keys/all-keys.asc
-    # A kulcscsomagban régi, lejárt kulcsok is vannak: az import ilyenkor hibakódot adhat, a használható kulcsok
-    # mégis bekerülnek; a döntő az aláírás ellenőrzése.
+    # A Swift 6.x release kulcsa (https://swift.org/keys/active/): csak az ezzel az ujjlenyomattal aláírt csomag fogadható el.
+    # A kulcs a swift.org fájljából, ha onnan nem jön meg, kulcsszerverről; a hitelességet az ujjlenyomat adja.
+    local release_key=52BB7E3DE28A71BE22EC05FFEF80A866B47A981F keys_url
     mkdir -m 0700 "$work/gnupg"
-    GNUPGHOME="$work/gnupg" gpg --batch --import "$work/keys.asc" >"$work/import.log" 2>&1 || true
-    if ! GNUPGHOME="$work/gnupg" gpg --batch --verify "$work/$name.tar.gz.sig" "$work/$name.tar.gz" >"$work/verify.log" 2>&1; then
+    for keys_url in https://www.swift.org/keys/release-key-swift-6.x.asc https://swift.org/keys/release-key-swift-6.x.asc \
+                    https://swift.org/keys/all-keys.asc; do
+        curl --fail --location --silent -o "$work/keys.asc" "$keys_url" || continue
+        GNUPGHOME="$work/gnupg" gpg --batch --import "$work/keys.asc" >>"$work/import.log" 2>&1 || true
+        GNUPGHOME="$work/gnupg" gpg --batch --list-keys "$release_key" >/dev/null 2>&1 && break
+    done
+    if ! GNUPGHOME="$work/gnupg" gpg --batch --list-keys "$release_key" >/dev/null 2>&1; then
+        GNUPGHOME="$work/gnupg" gpg --batch --keyserver hkps://keyserver.ubuntu.com --recv-keys "$release_key" >>"$work/import.log" 2>&1 || true
+    fi
+    GNUPGHOME="$work/gnupg" gpg --batch --status-fd 1 --verify "$work/$name.tar.gz.sig" "$work/$name.tar.gz" >"$work/verify.log" 2>&1 || true
+    if ! grep -q "^\[GNUPG:\] VALIDSIG .*$release_key" "$work/verify.log"; then
         cat "$work/import.log" "$work/verify.log" >&2
-        printf 'The signature of %s could not be verified (%s).\n' "$name.tar.gz" "$url" >&2
+        printf 'The signature of %s could not be verified with the Swift 6.x release key %s (%s).\n' "$name.tar.gz" "$release_key" "$url" >&2
         exit 1
     fi
-    printf '  ok       signature: %s\n' "$(grep -m1 'Good signature' "$work/verify.log" || echo verified)"
+    printf '  ok       signature (Swift 6.x release key %s)\n' "$release_key"
     "${sudo_cmd[@]}" rm -rf "$linux_swift_dir"
     "${sudo_cmd[@]}" mkdir -p "$linux_swift_dir"
     "${sudo_cmd[@]}" tar -xzf "$work/$name.tar.gz" -C "$linux_swift_dir" --strip-components=1
