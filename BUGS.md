@@ -6,7 +6,6 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 - **Közös munka (színek, avatarok, kurzorcímke, ping nyila): kézzel nézendő és döntésre váró tételek** (2026-11-26)
   - Kézzel nézendő két valódi böngészővel / eszközzel: a kurzorcímke olvashatósága világos és sötét vásznon, a ping nyila az ablak sarkaiban és teljes képernyőn, a nyíl fölötti megállás és a kattintás, a megtekintő oldal görgetett állapotban. Az automatizált Safari ablaka nincs fókuszban, ezért ott a saját résztvevő mindig „nem aktív”.
-  - Döntésre vár: a saját gombod is elszürkül, ha a saját ablakod nincs fókuszban (most így működik; lehetne kivétel).
   - A kurzorcímke választása böngészőnként tárolódik (localStorage), nem a fiókhoz; ha fiókszintű kell, a `UserPreferences`-be tehető.
   - A sötét palettaszínek (pl. `#027864`, `#6550b9`) neve sötét módban a jelenlévők között halványabban olvasható.
 

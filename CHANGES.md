@@ -1,5 +1,10 @@
 # Változások
 
+## 2026-11-26 – A saját résztvevő-gomb nem szürkül el
+
+- Ha a saját ablakod nincs fókuszban, a többiek továbbra is szürkén látnak, de a saját jelenlévő-listádban a gombod színes marad (szerkesztő és megtekintő). Csak kliensoldali változás (`editor.js`, `viewer.js`); a szerver változatlan, nem kellett újraindítani.
+- Ellenőrizve Safariban (kényszerített fókuszvesztés + szimulált második résztvevő); a JS-tesztek átmennek.
+
 ## 2026-11-26 – Közös munka: felhasználói színek, 32 avatar, kurzorcímke, nem aktív résztvevő, ping a képernyőn kívül
 
 - **Felhasználói szín:** minden fióknak van színe (#rrggbb). Alapból automatikus egy 32 színű, globális, témától független alappalettából (`userPalette`, Radix-színek, világos és sötét háttéren is látszik); a fiókok név szerinti sorrendben, szétszórt sorrendben kapják a még szabad színeket, így az egymás utáni fiókok jól elkülönülnek. Az admin oldalon az „Avatar és szín” ablakban a palettából vagy egyedi színválasztóval adható meg, és visszaállítható automatikusra (`POST /admin/color`, `WorksheetStore.assignColor`, `SiteSettings.color(for:)`). A vendég (fiók nélkül) a szobában még nem használt palettaszínt kapja.

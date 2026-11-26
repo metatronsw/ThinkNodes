@@ -5051,9 +5051,9 @@ createApp({
           h("div", {class: "participants", "aria-label": "Jelenlévők"},
             !online.value && problem.value ? h("span", {class: "connection-lost", role: "status"}, "Kapcsolat megszakadt") : peers.value.map((p, index) =>
               // A jelenlévők gombok; egyelőre nem csinálnak semmit (később: chatüzenet küldése). A név és az avatar a
-              // felhasználó színével látszik; aki nem nézi a lapot, annak a gombja szürke.
-              h("button", {key: index, type: "button", class: "button tool-button participant", title: p.name + (p.away ? " · nem aktív" : ""),
-                "data-away": p.away ? "" : undefined, onPointerdown: event => event.stopPropagation()},
+              // felhasználó színével látszik; aki nem nézi a lapot, annak a gombja szürke (a sajátod soha).
+              h("button", {key: index, type: "button", class: "button tool-button participant", title: p.name + (p.away && !p.mine ? " · nem aktív" : ""),
+                "data-away": p.away && !p.mine ? "" : undefined, onPointerdown: event => event.stopPropagation()},
                 [p.avatar ? h("svg", {class: "peer-avatar", viewBox: "0 0 24 24", fill: p.color || "currentColor", "aria-hidden": "true"},
                   [h("use", {href: "/icons/avatar-" + p.avatar + ".svg#a"})]) : null,
                   h("span", {class: "participant-name", style: p.color ? {color: p.color} : undefined}, p.name)]))),

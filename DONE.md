@@ -6,6 +6,9 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **A saját résztvevő-gombod is elszürkült, ha a saját ablakod nem volt fókuszban** (2026-11-26)
+  - Döntés (felhasználó): a saját gomb kivétel. A szerver továbbra is jelzi a többieknek, hogy nem nézed a lapot (náluk szürke vagy), de a saját listádban a gombod mindig színes (`editor.js`, `viewer.js`: `away && !mine`). Safariban ellenőrizve kényszerített fókuszvesztéssel és egy második résztvevővel.
+
 - **Bukó tesztek a vonalméret- és vonalanimáció-változás után (6 Swift, 2 JS)** (2026-11-26)
   - Ok: a 2026-11-25-i változás (egyedi vastagság helyett három méret, gradiens helyett futó pötty) után a teszteket nem igazították hozzá; a `gestures.mjs` első hibája további, régebbi hibákat takart el.
   - Javítás: `RenderingTests` (legnagyobb vastagság, íves vonal, animált vonal), `WorksheetTests` (`width` → `size`), a közös vonalminta (`Tests/Fixtures/wires.json`) újraírva a régi `w` esetekre és egy új `size` esettel; `gestures.mjs`: futó pötty, csoporton belüli gombkeresés (két „Vastag” gomb), a megszűnt vastagságmező helyett vonalméret, a szerkesztővel azonos `geometry.js`-példány (a verzió az `editor.js` importjából). Teljes készlet: 104 Swift-teszt és minden JS-teszt átmegy.

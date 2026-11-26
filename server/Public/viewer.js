@@ -267,7 +267,7 @@ let rosterSignature;
 let paintedWireOwners = new Map();
 function paint(peers) {
   roster.classList.remove("connection-lost");
-  const signature = JSON.stringify(peers.map(({name, avatar, color, away}) => [name, avatar, color, away]));
+  const signature = JSON.stringify(peers.map(({name, avatar, color, away, mine}) => [name, avatar, color, away && !mine]));
   if (signature !== rosterSignature) {
     rosterSignature = signature;
     // A jelenlévők gombok; egyelőre nem csinálnak semmit (később: chatüzenet küldése).
@@ -275,9 +275,10 @@ function paint(peers) {
       const label = document.createElement("button");
       label.type = "button";
       label.className = "button tool-button participant";
-      label.title = peer.name + (peer.away ? " · nem aktív" : "");
-      // A név és az avatar a felhasználó színével; aki nem nézi a lapot, annak a gombja szürke.
-      if (peer.away) label.dataset.away = "";
+      // A név és az avatar a felhasználó színével; aki nem nézi a lapot, annak a gombja szürke (a sajátod soha).
+      const away = peer.away && !peer.mine;
+      label.title = peer.name + (away ? " · nem aktív" : "");
+      if (away) label.dataset.away = "";
       const name = document.createElement("span");
       name.className = "participant-name";
       name.textContent = peer.name;
