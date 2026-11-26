@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Check and install everything needed to develop, build and run ThinkNodes.
-set -euo pipefail
+set -Eeuo pipefail
+# Váratlan kilépésnél a hely kiírása (különben a set -e szó nélkül állna meg).
+trap 'printf "install.sh: stopped at line %s: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
 
 usage() {
     cat <<'EOF'
@@ -76,11 +78,16 @@ install_linux_toolchain() {
     curl --fail --location --silent --show-error -o "$work/$name.tar.gz" "$url"
     curl --fail --location --silent --show-error -o "$work/$name.tar.gz.sig" "$url.sig"
     curl --fail --location --silent --show-error -o "$work/keys.asc" https://swift.org/keys/all-keys.asc
-    GNUPGHOME="$work/gnupg" gpg --batch --quiet --import "$work/keys.asc" 2>/dev/null
-    if ! GNUPGHOME="$work/gnupg" gpg --batch --quiet --verify "$work/$name.tar.gz.sig" "$work/$name.tar.gz" 2>/dev/null; then
-        printf 'The signature of %s is not valid.\n' "$name.tar.gz" >&2
+    # A kulcscsomagban régi, lejárt kulcsok is vannak: az import ilyenkor hibakódot adhat, a használható kulcsok
+    # mégis bekerülnek; a döntő az aláírás ellenőrzése.
+    mkdir -m 0700 "$work/gnupg"
+    GNUPGHOME="$work/gnupg" gpg --batch --import "$work/keys.asc" >"$work/import.log" 2>&1 || true
+    if ! GNUPGHOME="$work/gnupg" gpg --batch --verify "$work/$name.tar.gz.sig" "$work/$name.tar.gz" >"$work/verify.log" 2>&1; then
+        cat "$work/import.log" "$work/verify.log" >&2
+        printf 'The signature of %s could not be verified (%s).\n' "$name.tar.gz" "$url" >&2
         exit 1
     fi
+    printf '  ok       signature: %s\n' "$(grep -m1 'Good signature' "$work/verify.log" || echo verified)"
     "${sudo_cmd[@]}" rm -rf "$linux_swift_dir"
     "${sudo_cmd[@]}" mkdir -p "$linux_swift_dir"
     "${sudo_cmd[@]}" tar -xzf "$work/$name.tar.gz" -C "$linux_swift_dir" --strip-components=1
@@ -122,7 +129,8 @@ elif [[ -f /etc/fedora-release ]]; then
               librsvg2-tools libwebp-tools)  # főoldali előnézeti képek: rsvg-convert, cwebp (PreviewRaster.swift)
     missing=()
     for package in "${packages[@]}"; do
-        rpm -q "$package" >/dev/null 2>&1 && [[ "$force" == false ]] || missing+=("$package")
+        # --whatprovides: a csomagot más is adhatja (pl. zlib-devel → zlib-ng-compat-devel).
+        rpm -q --whatprovides "$package" >/dev/null 2>&1 && [[ "$force" == false ]] || missing+=("$package")
     done
     if ((${#missing[@]} == 0)); then
         ok "system packages (${#packages[@]})"

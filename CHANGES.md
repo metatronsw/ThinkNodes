@@ -6,6 +6,7 @@
 - **`server/deploy/install.sh`:** Linuxon a swift.org hivatalos Swift 6.0.3 csomagját (fedora39 / fedora39-aarch64 építés) telepíti a `/opt/swift-6.0.3` mappába, a swift.org kulcsaival ellenőrzött aláírással (`gnupg2` a rendszercsomagok között); a dnf `swift-lang` nem kell, telepítve maradhat. macOS-en továbbra is swiftly.
 - **`server/deploy/build.sh`, `daemon.sh`:** magától csak a Swift 6.0.3-at veszik fel (`~/X-Code/RunTime/Swift/6.0.3`, `/opt/swift-6.0.3`, swiftly, PATH); más a `THINKNODES_SWIFT`-tel adható meg. A `build.sh` megjegyzi, melyik fordító építette a `.build`-et (`.build/.swift-version`), és váltáskor a lefordított részeket törli (a letöltött csomagforrások maradnak).
 - macOS + Swift 6.0.3 alatt kipróbálva (első futáskor teljes újrafordítás a jelző miatt); Fedorán a szerveren ellenőrizendő (BUGS.md).
+- Javítás (a szerveren az `install.sh` szó nélkül megállt): a swift.org kulcsainak importja a régi, lejárt kulcsok miatt hibakóddal térhet vissza, és a kimenete el volt nyelve, így a `set -e` üzenet nélkül kilépett. Most az import hibakódja nem állítja meg (a döntő az aláírás ellenőrzése, hiba esetén a `gpg` kimenete kiíródik), és a szkript minden váratlan kilépésnél kiírja a sort és a parancsot (`set -E`, `trap … ERR`). A rendszercsomag-ellenőrzés a helyettesítő csomagokat is elfogadja (`rpm -q --whatprovides`, pl. `zlib-devel` → `zlib-ng-compat-devel`).
 
 ## 2026-11-27 – daemon.sh: elárvult SwiftPM zárfájl
 
