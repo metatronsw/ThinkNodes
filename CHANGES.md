@@ -1,5 +1,12 @@
 # Változások
 
+## 2026-11-26 – Előadás: a keret az előadó látható vászna, menet közben módosítható
+
+- A felhasználó kérésére átdolgozva: az előadás területe **indításkor az előadó teljes látható vászna** (annak képaránya), nem rögzített 16:9. A követőknél pontosan kitölti a látható területet (96%-os ráhagyás nélkül): azonos felbontásnál és elrendezésnél (pl. mindkettő teljes képernyőn) a kép azonos. Két böngészővel ellenőrizve: azonos ablakméretnél a két nézet transzformációja egyezik.
+- **Menet közben módosítható:** az előadó sávján „Keret rajzolása” (húzással új keret; Esc: mégse), kisebb keretnél sarokfogók (méretezés) és középső fogó (mozgatás), „Teljes nézet” (vissza a teljes vászonra). A keret az előadó képernyőjéhez kötött, ezért pásztázáskor / nagyításkor vele mozog, a követők követik.
+- **Más képarány:** a kereten kívüli rész halványító maszkot kap, a keret szaggatott vonallal, az előadó színével látszik (követőnél és az előadónál is, ha kisebb keretet állított be). A maszk a vezérlők alatt van, a fogók fölöttük.
+- A levált követő a vásznon szaggatott keretként látja, hol tart az előadás. Verziók: `editor.js?v=94`, `app.css?v=61`.
+
 ## 2026-11-26 – Előadás (prezentáció mód)
 
 - Új eszköztár gomb a szerkesztőben (`.present-tool`, „lejátszás” ikon). Indításkor az előadó választ: **felkérés** (aki maga mozgatja / nagyítja a vásznat, leválik; a sávon „Vissza az előadáshoz” és „Leválás” gomb) vagy **kötelező követés** (a követő nem mozgathatja a nézetet).
