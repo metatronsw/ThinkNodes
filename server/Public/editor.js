@@ -646,7 +646,8 @@ function animatedWire(edge, paint, from, to, taper, shaftPath, route) {
   const dx = to.x - from.x, dy = to.y - from.y;
   if ((dx === 0 && dy === 0) || !route) return {};
   const seconds = Math.min(12, Math.max(1.5, Math.hypot(dx, dy) / 140)) * (roundTrip ? 2 : 1);
-  return {dot: h("circle", {key: "dot", class: "wire-dot", r: Math.max(3, paint.lineWidth * 1.3), fill: paint.color, stroke: "none", "pointer-events": "none"}, [
+  // A pálya a kulcsban: Safari a futó animateMotion pályájának változását nem követte (a pötty a régi úton maradt).
+  return {dot: h("circle", {key: "dot:" + route, class: "wire-dot", r: Math.max(3, paint.lineWidth * 1.3), fill: paint.color, stroke: "none", "pointer-events": "none"}, [
     h("animateMotion", {...loop, path: route, dur: seconds + "s", calcMode: "linear",
       keyPoints: roundTrip ? "0;1;0" : reverse ? "1;0" : "0;1", keyTimes: roundTrip ? "0;0.5;1" : "0;1"})])};
 }
@@ -964,6 +965,9 @@ createApp({
     });
     const preferences = JSON.parse(mount.dataset.preferences || "{}");
     const gridVisible = ref(preferences.showGrid ?? true);
+    // Teljes képernyő: az eszköztár gombja bekapcsoltként jelzi.
+    const fullscreen = ref(!!document.fullscreenElement);
+    document.addEventListener?.("fullscreenchange", () => { fullscreen.value = !!document.fullscreenElement; });
     const snapToGrid = ref(preferences.snap ?? false);
     const panLocked = ref(preferences.panLocked ?? false);
     const spacePan = ref(false);
@@ -1002,6 +1006,9 @@ createApp({
     const editingObject = ref(null);
     const objectPanelOpen = ref(true);
     const canvasPanelOpen = ref(false);
+    // A munkalap megjelenése (téma, paletta, háttér, rácsköz, előnézeti kép): a vászonpanel gombjára a vászon közepén
+    // felugró panelben (renderAppearancePopup).
+    const appearanceOpen = ref(false);
     const reconnect = ref(null);
     const menu = ref(null);
     const inspector = ref(null);
@@ -3307,11 +3314,6 @@ createApp({
 
     function pressCanvas(event) {
       flushView();
-      // Látványcsomag: kattintáskor gyűrű fut szét a mutató alól (app.css .fx-ripple).
-      if (liquid() && event.button === 0 && event.target?.closest?.("[data-node], [data-edge]")) {
-        const size = 26 / view.value.k;
-        flashPoint(canvas.value?.querySelector("[data-scene]"), world(event), size, size, "fx-ripple");
-      }
       // Szerkesztett táblázaton belül a táblázat kezeli a kattintást (cellakijelölés, Shift+kattintás tartomány).
       if (event.target?.closest?.("[data-table-editor]")) return;
       if (event.pointerType === "touch" && (!event.isPrimary || touchView)) {
@@ -3632,6 +3634,7 @@ createApp({
       modifiers(event);
       // Előadás: Esc megszakítja a keret rajzolását.
       if (event.key === "Escape" && drawingFrame.value) { drawingFrame.value = false; event.preventDefault(); return; }
+      if (event.key === "Escape" && appearanceOpen.value) { appearanceOpen.value = false; event.preventDefault?.(); return; }
       if (event.code === "Space" && !editingText(event.target) && (canvasPointer.value || !event.target?.closest?.("button, a"))) {
         event.preventDefault();
         spacePan.value = true;
@@ -5177,8 +5180,11 @@ createApp({
       // Transparent centers keep junctions reachable under the wires' wider hit areas.
       const handles = orderedNodes.value.filter(isJunction).map(node => {
         const drawn = drawnNode(node.id);
+        // Bő fogható terület: a kör körül nagyítástól független, 13 képpontos átlátszó sáv (a vonalvég fogantyúja fölött),
+        // így a csomópont könnyen kijelölhető; a vonalat távolabb, a hosszában is meg lehet fogni.
         return h("circle", {key: node.id, "data-node": node.id,
-          cx: drawn.position.x, cy: drawn.position.y, r: drawn.width/2, fill: "transparent",
+          cx: drawn.position.x, cy: drawn.position.y, r: drawn.width/2, fill: "transparent", stroke: "transparent",
+          "stroke-width": 26, "vector-effect": "non-scaling-stroke", "pointer-events": "all",
           class: "junction-handle", onPointerdown: event => pressNode(event,node),
           onContextmenu: event => context(event,"node",node.id),
           onDblclick: event => { event.stopPropagation(); editObject("node",node.id,true); }});
@@ -5188,7 +5194,9 @@ createApp({
 
     function renderArrow(head, color, animated = false) {
       if (!head.visible) return null;
-      return h("path", {class: "wire-arrow", transform: head.transform, stroke: "none", fill: color, "pointer-events": "none", d: "M0 0L-1 -.5V.5Z"},
+      // Lüktető nyílnál a hely a kulcsban: Safari a futó animateTransform mellett a transform változását nem rajzolta ki
+      // (a nyíl a régi helyén maradt), ezért helyváltozáskor új elem készül.
+      return h("path", {key: animated ? "arrow:" + head.transform : undefined, class: "wire-arrow", transform: head.transform, stroke: "none", fill: color, "pointer-events": "none", d: "M0 0L-1 -.5V.5Z"},
         animated ? [h("animateTransform", {attributeName: "transform", type: "scale", additive: "sum",
           values: "1;1.12;1", dur: "3s", repeatCount: "indefinite"})] : undefined);
     }
@@ -5234,13 +5242,17 @@ createApp({
       const clipPath = label?.clip ? "url(#" + clipId + ")" : undefined;
       const ui = edgeUiOf(original.id);
       const mine = ui.mine;
-      const animatedArrows = edge.animated && edge.appearance === "thick";
+      // Húzás közben (doboz, végpont, csoport, átméretezés) a vonal animációja szünetel: a futó animáció (pötty, lüktető
+      // nyíl) Safariban a régi helyén maradt és megállt. Csak az animált vonal figyeli a húzást.
+      const still = !!edge.animated && !!gesture.value?.moved && gesture.value.type !== "pan";
+      const animatedArrows = !still && edge.animated && edge.appearance === "thick";
       // Saját kijelölés: világosabb és vastagabb vonal; más felhasználó kijelölése: az ő színű glow.
       const local = mine || ui.local;
       const selectionColor = ui.peerColor;
       // Kijelöléskor a vonal és a nyilak megőrzik az eredeti színüket; a felhasználó színű glow az eredeti alakot követi.
       const color = paint.color;
-      const animation = animatedWire(edge, {...paint, color}, from, to, taper, stroke.d, d);
+      // A pötty a látható szár útján fut (a nyílhegyek tövétől); a csúcstól csúcsig tartó `d` S-vonalon más görbe.
+      const animation = still ? {} : animatedWire(edge, {...paint, color}, from, to, taper, stroke.d, taper ? d : stroke.d);
       const shaftColor = color;
       return h("g", {key: "edge/" + edge.id, class: "wire", "data-edge": edge.id, fill: "none", "stroke-linecap": "round",
         tabindex: 0, role: "button", "aria-label": edge.label || "Vonal",
@@ -5312,9 +5324,19 @@ createApp({
             return h("rect", {x: point.x - reach, y: point.y - reach, width: 2 * reach, height: 2 * reach,
               fill: "none", stroke: "none", "pointer-events": "none", "aria-hidden": "true"});
           }) : []),
-          local && !selectionColor ? h("path", {"data-editor-only": "", class: "wire-own-halo", d, fill: "none", stroke: paint.color,
-            "stroke-opacity": .4, "stroke-width": paint.lineWidth + 8, "stroke-linecap": "round", "stroke-linejoin": "round",
-            "pointer-events": "none", "clip-path": clipPath}) : null,
+          // A sáv a látható szárat követi, szögletes véggel (nem lóg a dobozba), a nyílhegyek saját körvonalat kapnak. Egy
+          // csoport, közös átlátszósággal: az átfedő részek (szár vége, nyíl töve) nem sötétebbek.
+          local && !selectionColor ? h("g", {"data-editor-only": "", class: "wire-own-halo", opacity: .4, fill: "none", stroke: paint.color,
+            "stroke-linejoin": "round", "pointer-events": "none", "clip-path": clipPath}, [
+            h("path", {d: taper ? d : stroke.d, "stroke-width": paint.lineWidth + 8, "stroke-linecap": taper ? "round" : "butt"}),
+            ...[[ends.source, from], [ends.target, to]].map(([head, tip]) => {
+              const length = Math.hypot(tip.x - head.base.x, tip.y - head.base.y);
+              // A sáv csúcsa a nyíl csúcsa (a dobozba nem lóg), hátrafelé 4 egységgel szélesebb.
+              const grow = 8 / length;
+              return head.visible && length ? h("path", {class: "wire-arrow-halo", transform: head.transform,
+                d: `M0 0L${-1 - grow} ${-.5 - grow}V${.5 + grow}Z`, fill: paint.color, stroke: "none"}) : null;
+            }),
+          ]) : null,
           h("path", {class: "wire-line", ...stroke, ...(taper ? {fill: shaftColor} : {stroke: shaftColor}), "pointer-events": "visiblePainted", "clip-path": clipPath}, animation.shaft ? [animation.shaft] : undefined),
           // Szabadkézi téma: a vonal második, kissé elcsúsztatott, halványabb húzása (sketch.js sketchShift).
           sketching() ? h("path", {class: "wire-sketch", ...stroke, ...(taper ? {fill: shaftColor, "fill-opacity": .4} : {stroke: shaftColor, "stroke-opacity": .5}),
@@ -5611,7 +5633,7 @@ createApp({
           button("", () => transfer(async () => {
             if (document.fullscreenElement) await document.exitFullscreen();
             else await document.documentElement.requestFullscreen();
-          }), {symbol: "fit", title: "Teljes képernyő", "aria-label": "Teljes képernyő", "data-canvas-fullscreen": ""}),
+          }), {symbol: "fit", title: "Teljes képernyő", "aria-label": "Teljes képernyő", "data-canvas-fullscreen": "", "aria-pressed": fullscreen.value}),
         ]),
         h(ZoomLabel),
         board.value && !board.value.nodes.length ? h("p", {class: "canvas-empty"}, "Új dobozhoz kattints duplán az üres vászonra.") : null,
@@ -6110,7 +6132,29 @@ createApp({
         h("input", {ref: attachmentInput, type: "file", multiple: true, hidden: true,
           onChange: uploadAttachments}),
         group("Cím", [input(sheet.title, value => updateItem(sheet, "title", value), {"aria-label": "Cím", maxlength: 120})]),
-        group("Leírás", [markdownEditor(sheet.text ?? "", value => updateItem(sheet, "text", value), 7, "Leírás", false, {empty: 4, max: 4})]),
+        // Üresen egysoros (mint a cím), a szöveghez igazodva legfeljebb 4 sorig nő; kézzel bármekkorára húzható.
+        group("Leírás", [markdownEditor(sheet.text ?? "", value => updateItem(sheet, "text", value), 7, "Leírás", false, {empty: 1, max: 4})]),
+        h("div", {class: "property-inline file-actions"}, [
+          button("Megjelenés", () => { appearanceOpen.value = !appearanceOpen.value; if (appearanceOpen.value) loadPreviewImages(); },
+            {symbol: "settings", "aria-pressed": appearanceOpen.value, title: "Téma, paletta, háttérszín, rácsköz, előnézeti kép"}),
+          h("a", {class: "button", href: "/_naplo/" + path.split("/")[0], title: "A projekt naplója"}, [icon("list"), "Napló"]),
+        ]),
+        versionGroup(),
+        canManage ? packageGroup() : null,
+        h("div", {class: "property-inline file-actions"}, [button("Beillesztés – Tallózás", insertFromBrowser,
+          {symbol: "folder", disabled: !online.value, title: "Már feltöltött fájl vagy weboldal beillesztése a projektből"})]),
+        h("div", {class: "property-inline file-actions"}, [button(uploading.value ? "Feltöltés…" : "Fájl feltöltése", event => {
+          const bounds = event.currentTarget.getBoundingClientRect();
+          uploadAnchor = {clientX: bounds.left + bounds.width / 2, clientY: bounds.bottom + 12};
+          attachmentInput.value?.click();
+        }, {symbol: "plus", disabled: uploading.value || !online.value, title: "Fájl feltöltése"})]),
+      ], true);
+    }
+
+    function renderAppearancePopup() {
+      const sheet = board.value;
+      if (!appearanceOpen.value || !sheet) return null;
+      return h("div", {class: "inspector-column appearance-popup-column", role: "dialog", "aria-label": "Megjelenés"}, [sidebar("Megjelenés", [
         themeSettings(sheet, [
           colorPicker("Munkalap háttérszíne", sheet.background ?? 0,
             value => updateItem(sheet, "background", value), "worksheet/background", false, false, 0),
@@ -6124,16 +6168,8 @@ createApp({
           h("img", {class: "canvas-preview-thumbnail", alt: "Előnézet", loading: "lazy",
             src: "/api/preview/" + path + "?v=" + sheet.revision + "&image=" + encodeURIComponent(sheet.previewImage ?? "")}),
         ]),
-        versionGroup(),
-        canManage ? packageGroup() : null,
-        h("div", {class: "property-inline file-actions"}, [button("Beillesztés – Tallózás", insertFromBrowser,
-          {symbol: "folder", disabled: !online.value, title: "Már feltöltött fájl vagy weboldal beillesztése a projektből"})]),
-        h("div", {class: "property-inline file-actions"}, [button(uploading.value ? "Feltöltés…" : "Fájl feltöltése", event => {
-          const bounds = event.currentTarget.getBoundingClientRect();
-          uploadAnchor = {clientX: bounds.left + bounds.width / 2, clientY: bounds.bottom + 12};
-          attachmentInput.value?.click();
-        }, {symbol: "plus", disabled: uploading.value || !online.value, title: "Fájl feltöltése"})]),
-      ], true);
+        h("div", {class: "property-inline file-actions"}, [button("Bezárás", () => { appearanceOpen.value = false; }, {symbol: "close", title: "Bezárás (Esc)"})]),
+      ], true)]);
     }
 
     // Markdown szerkesztő: formázógombok nélkül, a szöveg közvetlenül szerkeszthető.
@@ -6693,6 +6729,7 @@ createApp({
           problem.value || currentStatus ? h("p", {class: ["canvas-status", {error: problem.value}], role: "status"}, problem.value || currentStatus) : null,
           h("div", {class: "inspector-column"}, [renderInspector()]),
           canvasPanelOpen.value ? h("div", {class: "inspector-column canvas-inspector-column"}, [renderCanvasInspector()]) : null,
+          renderAppearancePopup(),
           renderSearch(),
           h(topRow ? window.Vue.Teleport : "div", topRow ? {to: topRow} : {}, [
           renderHeader(),

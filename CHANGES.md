@@ -1,5 +1,20 @@
 # Változások
 
+## 2026-11-26 – Egységes gombok, eszköztár-állapotok, vászonpanel, vonal- és Liquid Glass-javítások, táblázatkeret
+
+- **Egységes gombok:** minden gomb (eszköztár, panelek, gyors eszközök, helyi menü, jelenlévők, fejléc) ugyanazokból a változókból kapja a felületét, keretét, lekerekítését (`--btn-*`, app.css vége); a téma (sötét mód, üveg, Liquid Glass) csak a változókat állítja. Rámutatáskor minden gomb kiemelődik (háttér + kiemelőszínű keret + gyűrű, mint eddig csak a gyors eszközöknél).
+- **Eszköztár: a bekapcsolt funkciók látszanak** (rács, rácsra illesztés, vászonzár, előadás, egérmegosztás, kurzorfelirat, lézer, csevegés, teljes képernyő) minden témában. Ok: a sötét mód egy túl erős szabálya (`:is()` listában egy `input[type=number]:disabled` választó) felülírta az `aria-pressed` jelzését. A teljes képernyő gomb (szerkesztő, megtekintő) új állapotjelzést kapott. A jelenlévők gombjai ugyanolyanok, mint az eszköztáré, és a soruk nem vágja le a szélüket.
+- **Vászonpanel:** a Leírás üresen egysoros (pontosan a Cím mező magassága), a szöveggel legfeljebb 4 sorig nő, kézzel bármekkorára húzható. A „Megjelenés” gomb a vászon közepén felugró panelben nyitja meg a téma / paletta / háttérszín / rácsköz / előnézeti kép beállításait (Esc vagy Bezárás zárja). Új „Napló” gomb a projekt naplójára.
+- **Vonalak:**
+  - Vastag, animált vonal végpontjának húzásakor a nagy nyíl a dobozon maradt: Safari a futó `animateTransform` mellett nem rajzolta át a nyíl helyét. Húzás közben a vonal animációja (lüktetés, pötty) szünetel, és a lüktető nyíl / pötty helyváltozáskor új elemként készül (a távoli mozgatásnál is).
+  - Mozgatás közben az animációs pötty nem marad a régi helyén: húzás alatt eltűnik.
+  - Kijelölt vonal: a sáv a látható szárat követi, szögletes véggel (nem lóg a dobozba), a nyílhegyek is kapnak sávot (csúcsuk a nyíl csúcsa); a szár és a nyilak sávja közös, egyenletesen áttetsző csoport.
+  - S-vonalon a pötty a látható görbét követi (eddig a csúcstól csúcsig tartó, eltérő görbét).
+  - Csomópont: a kör körül 13 képpontos (nagyítástól független) fogható sáv a vonalvég fogantyúja fölött; Safariban 9–12 px-re a középponttól is kijelölődik.
+- **Liquid Glass:** megszűnt a kattintáskor szétfutó gyűrű; a csevegőablak a panelekkel azonos üveghatást kap; a kép rámutatáskor nem tűnik el (a képre tett CSS-szűrőt Safari a foreignObject-ben nem rajzolta ki, a szűrő kikerült); a jelenlévők gombjai egységesek.
+- **Táblázat:** a cellakeret átlátszatlan (a szövegszín a doboz felületével keverve, `--tn-paper`; a megtekintő is megkapja): félig átlátszó kerettel az összevont keretek a csomópontokban egymásra rajzolódtak, ott erősebbnek látszottak.
+- Teszt: `gestures.mjs` (Megjelenés felugró panel, Napló link, Esc, a nyíl kijelölés-sávja, a vonal szára). Swift- és JS-tesztek átmennek. Safariban ellenőrizve: végponthúzás és dobozhúzás közben (lenyomva tartott egérrel), kijelölt vonal, csomópont kattintás, eszköztár három témában világos / sötét módban, vászonpanel, Megjelenés panel, csevegőablak (Liquid Glass), táblázat keretszíne. Verziók: `editor.js?v=98`, `app.css?v=66`, `viewer.js?v=30`. Szerverkód változott: a helyi tesztszerver (8888) újraindítva.
+
 ## 2026-11-26 – Vászonszínű doboz textúrás vásznon: az alatta lévő elemeket is takarja
 
 - A felhasználó döntése alapján: textúrás vásznon (Liquid Glass, WhiteBoard) a vászonszínű doboz nem valódi átlátszóság, hanem „ablak a vászonra”: a vászon textúrája látszik benne, a rács, a saját árnyéka és az alatta álló dobozok, vonalak, árnyékok nem.

@@ -4,6 +4,13 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 ## Nyitott
 
+- **Táblázat: két egyeztetendő feladat** (2026-11-26)
+  - Gomb, amely a táblázat belső tartalmát a doboz külső keretéhez igazítja: a megoldás módja egyeztetésre vár (oszlopszélességek / sormagasságok arányos átállítása, vagy a tartalom nagyítása a dobozhoz, vagy a doboz igazítása a tartalomhoz).
+  - Cellaszerkesztésbe lépéskor megjelennek a fejlécsávok (oszlopbetűk, sorszámok, képletsor), és a tartalom elugrik: a megoldás egyeztetésre vár (javaslatok a CHANGES.md 2026-11-26-i bejegyzése utáni üzenetben).
+- **Egységes gombok, vonalak, Liquid Glass (2026-11-26): kézzel nézendő**
+  - Automatizált Safariban ellenőrizve (lásd CHANGES.md). Kézzel nézendő: a rámutatás kiemelése érintőképernyőn, a fejléc gombjai mindegyik témában, a megtekintő eszköztára, a kép rámutatása Liquid Glass témán (próbaképes doboz nem volt a próbalapon), a csevegőablak világos Liquid Glass módban, a felugró Megjelenés panel kis ablakban.
+  - A vonal animációja minden húzás alatt szünetel (a nem érintett vonalaké is); nagy lapon a húzás elején és végén az animált vonalak újrarajzolódnak.
+
 - **Igazítás, sarokfogó, vászonszín, színválasztó, .md szerkesztő: nyitott és kézzel nézendő tételek** (2026-11-26)
   - Vászonszínű doboz textúrás vásznon: az alatta álló elemek maszkolással takarva (2026-11-26, felhasználói döntés). Nincs mérve Safariban: sok vászonszínű doboz / sok átfedő elem költsége (maszkos csoportok), a fájldoboz (foreignObject) maszk alatt. A takarás a doboz alakját követi, a WhiteBoard szabadkézi körvonalát nem (a szabályos alak). Vászonszínű fájl- és grafikondoboz textúrás vásznon a vászon színét kapja (nem a textúrát).
   - Csoportos húzás közben a rács kivágása és a takarás a húzás eltolásával követi a dobozt; a pásztázás / nagyítás közbeni követés Safariban szemmel nézendő.

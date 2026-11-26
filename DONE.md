@@ -6,6 +6,9 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **Vonal és eszköztár: a 2026-11-26-i hibalista** (2026-11-26)
+  - Vastag, animált vonal végpontjának húzásakor a nyíl a dobozon maradt; mozgatáskor az animációs pötty a helyén maradt és megállt; a kijelölés sávja a dobozba lógott, a nyílhegy nem kapott sávot; S-vonalon a pötty nem a látható görbén futott; a csomópontot túl pontosan kellett eltalálni; az eszköztár nem jelezte a bekapcsolt funkciókat (sötét és üveg témákban); Liquid Glass: a kép rámutatáskor eltűnt, a jelenlévő-gomb sarka levágódott; a táblázat kerete a csomópontokban erősebb volt. Javítások: CHANGES.md 2026-11-26 „Egységes gombok…”.
+
 - **.md fájldoboz: megjelenítéskor minden sortörés dupla volt, szerkesztéskor a fel / le nyíl ugrált** (2026-11-26)
   - Ok: a `.node-file .formatted-text` `white-space: pre-wrap` szabálya a cmark `<br />` utáni sortörését is megjelenítette; a nyilaknál a böngésző saját függőleges léptetése a foreignObject-ben (Safari) téves sorhelyet mért.
   - Javítás: formázott szövegben `white-space: normal`; a .md doboz a forrás sorait pontosan követi (`markdownHTML(exactLines:)`, `.md-lines`), a szerkesztő ugyanazzal a betűvel és sormagassággal; fel / le nyíl saját kezeléssel (`moveCodeLine`). Safariban ellenőrizve.

@@ -387,6 +387,10 @@ document.addEventListener("click", async event => {
   }
 
 });
+// A teljes képernyő gombja bekapcsoltként jelzi az állapotot (app.css „Egységes gombok”).
+document.addEventListener("fullscreenchange", () => {
+  for (const button of document.querySelectorAll(".passive-frame .fullscreen")) button.setAttribute("aria-pressed", String(!!document.fullscreenElement));
+});
 document.addEventListener("click", event => {
   const download = event.target.closest(".node-download[data-download]");
   if (download && event.detail === 0) location.assign(download.dataset.download);

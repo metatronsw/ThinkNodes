@@ -234,6 +234,12 @@ root.querySelector = selector => {
   return title;
 };
 const canvasPanel = () => find(n => n.tag === "aside" && n.props["aria-label"] === "Munkalap");
+// A munkalap megjelenése a vászonpanel „Megjelenés” gombjára középen felugró panelben (editor.js renderAppearancePopup).
+const appearancePanel = () => find(n => n.tag === "aside" && n.props["aria-label"] === "Megjelenés");
+const openAppearance = async () => {
+  if (appearancePanel()) return;
+  find(n => n.tag === "button" && text(n) === "Megjelenés", canvasPanel()).props.onClick(); await tick();
+};
 const sidebarToggle = () => find(n => n.tag === "button" && n.props["aria-label"]?.startsWith("Oldalsáv "));
 const canvasToggle = () => find(n => n.tag === "button" && n.props["aria-label"]?.startsWith("Vászonbeállítások "));
 const headerHistory = prop("class", "worksheet-history");
@@ -713,7 +719,8 @@ assert.deepEqual(sheet.edges.at(-1).target.point, {x: -510, y: -315});
 assert.equal(sheet.edges.at(-1).endArrow, true);
 const freeWire = find(n => n.tag === "g" && n.props["data-edge"] === sheet.edges.at(-1).id);
 assert.ok(find(n => n.props.d === "M0 0L-1 -.5V.5Z" && n.props.transform.startsWith("translate(-510 -315)"),freeWire));
-const freeShaft = find(n => n.props["stroke-linecap"] === "butt" && !("data-editor-only" in n.props), freeWire);
+const freeShaft = find(n => n.props.class === "wire-line", freeWire);
+assert.equal(freeShaft.props["stroke-linecap"], "butt");
 const shaftEnd = freeShaft.props.d.split(" ").slice(-2).map(Number);
 assert.ok(Math.abs(Math.hypot(shaftEnd[0]+510,shaftEnd[1]+315)-6.75*freeShaft.props["stroke-width"]) < 1e-8);
 const freeHandle = endpoint(sheet.edges.at(-1).id, "source");
@@ -898,10 +905,15 @@ panel().props.onFocusout();
 await save();
 toggle("Escape", true); await tick();
 canvasToggle().props.onClick(); await tick();
-assert.ok(text(canvasPanel()).includes("Rácsköz"), "the grid spacing is part of the canvas appearance");
+assert.ok(!text(canvasPanel()).includes("Rácsköz"), "the appearance opens in its own popup");
+assert.ok(find(n => n.tag === "a" && n.props.href === "/_naplo/test", canvasPanel()), "the project log is linked from the canvas panel");
+await openAppearance();
+assert.ok(text(appearancePanel()).includes("Rácsköz"), "the grid spacing is part of the canvas appearance");
 for (const label of ["Rácspontok színe", "Pontrács megjelenítése", "Tulajdonos", "Rejtett a főoldalon", "Nyilvános munkalap", "Szerkesztők"]) {
-  assert.ok(!text(canvasPanel()).includes(label));
+  assert.ok(!text(canvasPanel()).includes(label) && !text(appearancePanel()).includes(label));
 }
+listeners.keydown({key: "Escape"}); await tick();
+assert.equal(appearancePanel(), undefined, "Escape closes the appearance popup");
 canvasToggle().props.onClick(); await tick();
 // A háttérrács vászonelemre (canvas) rajzolódik (editor.js drawGrid), a hamis DOM-ban nem vizsgálható.
 const {automaticGridColor} = await import("../../Public/geometry.js");
@@ -1400,7 +1412,9 @@ wireLabelInput.props.onInput({target: {value: ""}});
 await tick();
 assert.equal(prop("id", "editor-wire-gap-one", oneWire()), undefined);
 assert.equal(prop("attributeName", "stroke-width", oneWire()).props.values, "4;5.8;4");
-const arrow = find(n => n.props.d === "M0 0L-1 -.5V.5Z", oneWire());
+const arrow = find(n => n.props.d === "M0 0L-1 -.5V.5Z" && n.props.class === "wire-arrow", oneWire());
+// Kijelölve a nyílhegy is kap kijelölés-sávot (a szár sávjával közös, áttetsző csoportban).
+assert.ok(find(n => n.props.class === "wire-arrow-halo", oneWire()));
 assert.equal(prop("attributeName", "transform", arrow).props.type, "scale");
 // Saját kijelölés: glow nélkül, világosabb és vastagabb vonal (alátét); a nyíl megtartja az eredeti színét.
 assert.equal(prop("class", "wire-glow", oneWire()), undefined);
@@ -1523,8 +1537,9 @@ assert.equal(await isPackageZip(new Blob(["nem zip, csak szöveg, de elég hossz
 console.log("Passed document import, JSON precision and unsupported format checks.");
 
 if (!canvasPanel()) { canvasToggle().props.onClick(); await tick(); }
+await openAppearance();
 const chooseAppearance = async (label, value) => {
-  const control = prop("aria-label", label, canvasPanel());
+  const control = prop("aria-label", label, appearancePanel());
   assert.equal(control.props.disabled, false);
   control.props.onChange({target: {value}});
   await tick();
@@ -1536,7 +1551,7 @@ const {edgeGeometry: themedGeometry, shapeGeometry: themedShape, taperedArc, arr
 await chooseAppearance("Téma", "3");
 assert.deepEqual(themedShape("rounded", 100, 80),
   ["polygon", {points: "-45,-40 45,-40 50,-35 50,35 45,40 -45,40 -50,35 -50,-35"}]);
-assert.equal(prop("aria-label", "Mód", canvasPanel()), undefined);
+assert.equal(prop("aria-label", "Mód", appearancePanel()), undefined);
 document.documentElement.dataset.display = "dark";
 listeners["thinknodes-display"](); await tick();
 // A munkalap háttérszíne a vászonterület (canvas-area) háttere, a rács és az átlátszó vászonréteg alatt.
@@ -1584,15 +1599,15 @@ await chooseAppearance("Paletta", "1");
 document.documentElement.dataset.display = "light";
 listeners["thinknodes-display"](); await tick();
 assert.equal(prop("class", "canvas-area").props.style.background, "#f9f9fb");
-prop("aria-label", "Munkalap háttérszíne színválasztó", canvasPanel()).props.onClick();
+prop("aria-label", "Munkalap háttérszíne színválasztó", appearancePanel()).props.onClick();
 await tick();
-prop("aria-label", "Felület", canvasPanel()).props.onClick();
+prop("aria-label", "Felület", appearancePanel()).props.onClick();
 await tick();
 assert.equal(prop("class", "canvas-area").props.style.background, "#e6f4fe");
-prop("aria-label", "Alapértelmezett szín", canvasPanel()).props.onClick();
+prop("aria-label", "Alapértelmezett szín", appearancePanel()).props.onClick();
 await tick();
 assert.equal(prop("class", "canvas-area").props.style.background, "#f9f9fb");
-prop("aria-label", "Felület", canvasPanel()).props.onClick();
+prop("aria-label", "Felület", appearancePanel()).props.onClick();
 await save();
 assert.deepEqual(sheet.appearance, {theme:1, palette:1});
 assert.equal(sheet.background, 2);

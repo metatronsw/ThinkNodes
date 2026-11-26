@@ -77,7 +77,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/lib/d3-zoom.js?v=1"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=97"></script>
+        <script type="module" src="/editor.js?v=98"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -88,7 +88,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=65">
+          <link rel="stylesheet" href="/app.css?v=66">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -1336,7 +1336,9 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
     // A papíron a szöveg a téma tintája; a füzetlap sorvonalainak színe CSS-változóban (app.css .paper-notebook).
     let rule = (graphics?.paper?.rule).map { ";--paper-rule:" + escaped($0) } ?? ""
     let ruleHeight = ";--rule:" + String(Int((node.fontSize * 1.6 + 0.5).rounded(.down))) + "px"
-    let paperStyle = paper.isEmpty ? "" : ";color:" + escaped(node.paperInk ?? node.textColor) + rule + ruleHeight
+    // A táblázat kerete a doboz színéből kevert, átlátszatlan árnyalat (app.css .tn-table): --tn-paper a doboz felülete.
+    let tablePaper = node.fill.hasPrefix("#") ? ";--tn-paper:" + escaped(node.fill) : ""
+    let paperStyle = (paper.isEmpty ? "" : ";color:" + escaped(node.paperInk ?? node.textColor) + rule + ruleHeight) + tablePaper
     // Publikus fájl: pillangó ikon a fájlnév-sor fölött középen.
     let publicMark = node.webPublic == true
         ? "<svg class=\"ui-icon web-public-mark\" x=\"\(number(node.position.x - 10))\" y=\"\(number(top - 24))\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" color=\"\(escaped(node.textColor))\" pointer-events=\"none\"><use href=\"/icons.svg#butterfly\"/></svg>" : ""

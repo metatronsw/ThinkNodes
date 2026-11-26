@@ -40,7 +40,7 @@ export function flashNode(canvas, id, color) {
   flashPoint(node, {x: Number(node.dataset.x ?? 0), y: Number(node.dataset.y ?? 0)}, width+16, height+16, "node-ping", color);
 }
 
-// `kind`: az elem osztálya (node-ping: ping; fx-ripple: a látványcsomag kattintásgyűrűje); az animáció végén eltűnik.
+// `kind`: az elem osztálya (node-ping: ping); az animáció végén eltűnik.
 export function flashPoint(layer, point, width = 24, height = 24, kind = "node-ping", color = "#f58a16") {
   if (!layer) return;
   const frame = document.createElementNS("http://www.w3.org/2000/svg", "rect");

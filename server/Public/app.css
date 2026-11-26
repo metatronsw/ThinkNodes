@@ -192,6 +192,8 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 }
 .canvas-inspector-column { inset: 48px auto 68px 6px; width: min(342px, calc(100% - 12px)); }
 .canvas-inspector { width: 100%; min-width: 0; }
+/* Megjelenés: a vászon közepén felugró panel (editor.js renderAppearancePopup). */
+.appearance-popup-column { inset: auto; left: 50%; top: 50%; z-index: 6; transform: translate(-50%, -50%); width: min(360px, calc(100% - 24px)); max-height: calc(100% - 120px); }
 .inspector-content {
   width: 100%;
   min-width: 0;
@@ -262,14 +264,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .quick-flyout-list.open-column[data-y="up"] { flex-direction: column-reverse; }
 .quick-flyout-list.open-grid { display: grid; }
 .color-tools.color-presets.floating { display: grid; grid-template-columns: repeat(5, 32px); width: max-content; }
-/* Egérrámutatás: a gyors eszközök gombjai és a helyi menü elemei kiemelődnek. */
-.quick-tools :is(.button, .alignment-picker button, .color-sample):hover:not(:disabled),
-.context-menu .button:hover:not(:disabled) {
-  background-color: #dbe5ff; border-color: var(--accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
-}
-:root[data-display="dark"] .quick-tools :is(.button, .alignment-picker button):hover:not(:disabled),
-:root[data-display="dark"] .context-menu .button:hover:not(:disabled) { background-color: #3d5378; }
+/* Egérrámutatás és bekapcsolt állapot: az egységes gombszabályok (app.css vége, „Egységes gombok”). */
 
 @media (max-width: 680px) {
   .site-header { padding-inline: 12px; }
@@ -753,13 +748,13 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
   background-color: var(--panel-surface);
   color: var(--ink);
 }
-:root[data-display="dark"] :is(.button, input, textarea, select, .color-sample, .color-presets button, .alignment-picker button, .option-icon, .object-inspector input[type="number"]:disabled) {
+/* Sötét mód: mezők és színválasztó; a gombokat az egységes gombszabályok színezik (app.css vége). */
+:root[data-display="dark"] :is(input, textarea, select, .color-sample, .color-presets button, .object-inspector input[type="number"]:disabled) {
   background-color: var(--panel-surface);
   color: var(--ink);
   border-color: var(--line);
 }
-:root[data-display="dark"] :is(.button, .guide-nav a):hover { background-color: var(--control-hover); }
-:root[data-display="dark"] .inspector button[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: -2px; }
+:root[data-display="dark"] .guide-nav a:hover { background-color: var(--control-hover); }
 .color-sample, .color-presets button { width: 32px; height: 32px; padding: 3px; border-radius: 7px; }
 .palette-tile { display: block; width: 100%; height: 100%; border-radius: 4px; }
 .transparent-swatch { background: conic-gradient(#c3cbd7 25%, #fff 0 50%, #c3cbd7 0 75%, #fff 0) 0 0 / 10px 10px; }
@@ -788,7 +783,7 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
   --glass-highlight: #e0ccff24;
   --glass-shadow: #08060c80;
 }
-.editor-workspace[data-glass] :is(.inspector, .quick-search, .canvas-controls, .canvas-empty, .participants) {
+.editor-workspace[data-glass] :is(.inspector, .quick-search, .canvas-controls, .canvas-empty, .participants, .chat-panel) {
   color: var(--ink);
   background: var(--glass-surface);
   border: 1px solid var(--line);
@@ -798,12 +793,8 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
   backdrop-filter: blur(16px) saturate(125%);
 }
 .editor-workspace[data-glass] .canvas-controls { padding: 4px; border-radius: 13px; }
-.editor-workspace[data-glass] :is(.inspector-content > fieldset, .inspector-content > p, .inspector-content legend, .canvas-controls .button) {
+.editor-workspace[data-glass] :is(.inspector-content > fieldset, .inspector-content > p, .inspector-content legend) {
   background-color: var(--glass-field);
-}
-.editor-workspace[data-glass] .canvas-controls .button:is(:hover, [aria-pressed="true"]) {
-  color: var(--accent-ink);
-  background-color: color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
 .file-name-field > .muted { align-self: center; white-space: nowrap; }
@@ -900,12 +891,16 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 .chart-columns { display: flex; flex-direction: column; gap: 4px; max-height: 190px; overflow: auto; }
 .chart-columns > span { font-size: .85em; opacity: .75; }
 .node-csv { border-collapse: collapse; font-size: .9em; line-height: 1.3; }
-.node-csv :is(th, td) { padding: 2px 6px; border: 1px solid color-mix(in srgb, currentColor 25%, transparent); text-align: left; white-space: nowrap; }
+/* A cellakeret átlátszatlan (a szövegszín a doboz felületével keverve): félig átlátszó kerettel az összevont keretek a
+   csomópontokban egymásra rajzolódtak, ott erősebben (világosabban / sötétebben) látszottak. */
+.node-csv :is(th, td) { padding: 2px 6px; border: 1px solid color-mix(in srgb, currentColor 25%, var(--tn-paper, #fff)); text-align: left; white-space: nowrap; }
 .node-csv th { font-weight: 650; background: color-mix(in srgb, currentColor 8%, transparent); }
 .node-audio [data-audio-time] { flex: none; font-variant-numeric: tabular-nums; }
 .editor-canvas .node-link { cursor: pointer; }
 .editor-canvas .node-link:hover text, .passive-canvas a:hover .node-link text { text-decoration: underline; }
 .markdown-editor textarea { width: 100%; box-sizing: border-box; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+/* A munkalap leírása üresen ugyanolyan magas, mint a cím mezője (egy sor; editor.js renderCanvasInspector). */
+.canvas-inspector .markdown-editor textarea { line-height: 17px; }
 .markdown-tools { flex-wrap: wrap; }
 /* Nagy szövegfájl külön ablakos szerkesztője (text-editor.js). */
 .text-editor { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 12px; box-sizing: border-box; }
@@ -1136,7 +1131,7 @@ svg text { text-rendering: geometricPrecision; }
 /* Táblázat doboz (docs/EXCEL.md). A szerver (TableHTML.swift) és a szerkesztő (table/table-view.js) ugyanezt a szerkezetet adja. */
 .tn-table-wrap { min-width: max-content; }
 .tn-table { border-collapse: collapse; table-layout: fixed; font-size: .9em; line-height: 1.3; font-variant-numeric: tabular-nums; }
-.tn-table :is(th, td) { padding: 2px 6px; height: 24px; box-sizing: border-box; border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+.tn-table :is(th, td) { padding: 2px 6px; height: 24px; box-sizing: border-box; border: 1px solid color-mix(in srgb, currentColor 22%, var(--tn-paper, #fff));
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left; font-weight: inherit; }
 .tn-table.no-grid :is(th, td) { border-color: transparent; }
 .tn-table thead th { font-weight: 650; background: color-mix(in srgb, currentColor 9%, transparent); }
@@ -1160,7 +1155,7 @@ svg text { text-rendering: geometricPrecision; }
    (és minden leszármazottja) nagyított vásznon nem kattintható. */
 .tn-sink { flex: none; width: 1px; height: 1px; margin: 0 0 -1px; padding: 0; border: 0; opacity: 0; pointer-events: none; }
 .tn-table-editor { display: flex; flex-direction: column; height: 100%; min-height: 0; outline: none; color: inherit; background: transparent; font-size: 13px;
-  --tn-head: color-mix(in srgb, currentColor 10%, var(--tn-paper, #fff)); --tn-line: color-mix(in srgb, currentColor 24%, transparent);
+  --tn-head: color-mix(in srgb, currentColor 10%, var(--tn-paper, #fff)); --tn-line: color-mix(in srgb, currentColor 24%, var(--tn-paper, #fff));
   --tn-mark: color-mix(in srgb, var(--accent) 28%, var(--tn-paper, #fff)); }
 .tn-table-editor:focus-visible { outline: none; }
 .tn-cell-input:focus-visible, .tn-sink:focus-visible { outline-offset: -2px; }
@@ -1198,7 +1193,7 @@ svg text { text-rendering: geometricPrecision; }
 /* Szerkesztő: a fejlécek külön sávban állnak a görgethető rács mellett (table-view.js syncHeads), nem ragadó cellák:
    Safariban a foreignObject-beli ragadó fejléc görgetés után nem rajzolódott ki, és nem volt kattintható. */
 .tn-grid { flex: 1; min-height: 0; display: grid; grid-template: auto minmax(0, 1fr) / auto minmax(0, 1fr); }
-.tn-grid > .tn-corner { grid-area: 1 / 1; box-sizing: border-box; width: 36px; height: 24px; background: var(--tn-head); border: 1px solid color-mix(in srgb, currentColor 22%, transparent); cursor: cell; }
+.tn-grid > .tn-corner { grid-area: 1 / 1; box-sizing: border-box; width: 36px; height: 24px; background: var(--tn-head); border: 1px solid color-mix(in srgb, currentColor 22%, var(--tn-paper, #fff)); cursor: cell; }
 .tn-colstrip { grid-area: 1 / 2; min-width: 0; overflow: hidden; background: var(--tn-head); }
 .tn-rowstrip { grid-area: 2 / 1; min-height: 0; overflow: hidden; background: var(--tn-head); }
 .tn-grid > .tn-table-scroll-host { grid-area: 2 / 2; min-width: 0; }
@@ -1261,12 +1256,11 @@ svg text { text-rendering: geometricPrecision; }
 [data-effects="liquid"] [data-node]:hover .fx-sheen { opacity: 1; }
 [data-effects="liquid"] [data-node]:hover .fx-shadow { transform: translateY(5px) scale(1.07); opacity: 1; }
 [data-effects="liquid"] [data-node]:hover .node-surface:not([data-locked-outline]) { stroke-width: 2.6px; }
-[data-effects="liquid"] [data-node] .node-body img { transition: filter .28s ease; }
-[data-effects="liquid"] [data-node]:hover .node-body img { filter: brightness(1.06) saturate(1.12); }
+/* A kép rámutatáskor nem kap szűrőt: Safari a foreignObject-beli képet szűrővel nem rajzolta ki (eltűnt). */
 /* Csomópont: fénylő perem; rámutatáskor a fogója körül halvány udvar. */
 [data-effects="liquid"] .junction-surface { stroke: #fff; stroke-opacity: .75; stroke-width: 1.5px; }
-[data-effects="liquid"] .junction-handle { transition: fill .2s ease; stroke: transparent; stroke-width: 10px; }
-[data-effects="liquid"] .junction-handle:hover { fill: color-mix(in srgb, var(--fx-accent) 30%, transparent); stroke: color-mix(in srgb, var(--fx-accent) 16%, transparent); }
+[data-effects="liquid"] .junction-handle { transition: fill .2s ease; }
+[data-effects="liquid"] .junction-handle:hover { fill: color-mix(in srgb, var(--fx-accent) 30%, transparent); }
 /* Vonal: rámutatáskor a találati sávja halványan felfénylik. */
 [data-effects="liquid"] .wire-hit { transition: stroke .2s ease; }
 [data-effects="liquid"] .wire:hover .wire-hit { stroke: color-mix(in srgb, var(--fx-accent) 24%, transparent); }
@@ -1293,10 +1287,6 @@ svg text { text-rendering: geometricPrecision; }
   48% { transform: scale(1.03); fill-opacity: 0; opacity: 1; }
   100% { transform: scale(1.5); fill-opacity: 0; stroke-width: 1px; opacity: 0; }
 }
-/* Kattintás: a mutató alól szétfutó gyűrű (editor.js pressCanvas). */
-[data-effects="liquid"] .fx-ripple { fill: var(--fx-accent); fill-opacity: .22; stroke: #fff; stroke-opacity: .85; stroke-width: 1.5px;
-  vector-effect: non-scaling-stroke; transform-box: fill-box; transform-origin: center; animation: fx-ripple .55s ease-out forwards; }
-@keyframes fx-ripple { from { transform: scale(.4); opacity: .95; } to { transform: scale(3.4); opacity: 0; } }
 
 /* Mozgás közben (húzás, pásztázás, nagyítás) nincs áttűnés és lélegzés: csak a mozgó elemek festődnek újra. */
 .editor-workspace[data-moving][data-effects] .editor-canvas :is(.fx-sheen, .fx-shadow, .node-surface, .selection-own-tint, .selection-own, .wire-own-halo, .wire-hit) {
@@ -1317,14 +1307,14 @@ svg text { text-rendering: geometricPrecision; }
   --accent-ink: color-mix(in srgb, var(--fx-accent, #0a84ff) 62%, #fff);
   --glass-surface: #1c1c1e8f; --glass-field: #ffffff14; --glass-highlight: #ffffff38; --glass-shadow: #00000080;
 }
-.editor-workspace[data-effects="liquid"] :is(.inspector, .quick-search, .canvas-controls, .canvas-empty),
+.editor-workspace[data-effects="liquid"] :is(.inspector, .quick-search, .canvas-controls, .canvas-empty, .chat-panel),
 .context-menu[data-effects="liquid"] {
   color: var(--ink); background: var(--glass-surface); border: 1px solid var(--line); border-radius: 20px;
   box-shadow: inset 0 1px var(--glass-highlight), inset 0 -1px #ffffff1f, 0 12px 36px var(--glass-shadow);
   -webkit-backdrop-filter: blur(26px) saturate(185%); backdrop-filter: blur(26px) saturate(185%);
 }
 .editor-workspace[data-effects="liquid"] .canvas-controls { border-radius: 16px; }
-.editor-workspace[data-effects="liquid"] :is(.inspector, .canvas-controls) .button { border-radius: 11px; transition: transform .16s ease, background-color .16s ease; }
+.editor-workspace[data-effects="liquid"] :is(.inspector, .canvas-controls) .button { transition: transform .16s ease, background-color .16s ease; }
 .editor-workspace[data-effects="liquid"] :is(.inspector, .canvas-controls) .button:active { transform: scale(.94); }
 
 /* ===== Szabadkézi téma (graphics.sketch / graphics.paper; editor.js sketchSurface, paperSurface; Rendering.swift) =====
@@ -1378,3 +1368,42 @@ svg text { text-rendering: geometricPrecision; }
 .color-direct input[type=color] { flex: none; inline-size: 32px; block-size: 32px; padding: 2px; border: 1px solid #bbc8d8; border-radius: 7px; background: white; cursor: pointer; }
 .color-direct .color-hex { flex: 1; min-width: 0; inline-size: 7.5em; block-size: 32px; box-sizing: border-box; padding: 0 6px; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .color-presets button.canvas-swatch .palette-tile { box-shadow: inset 0 0 0 1px #8a94a680; }
+
+/* ===== Egységes gombok =====
+   Minden gomb (eszköztár, tulajdonságpanel, gyors eszközök, helyi menü, jelenlévők, fejléc) ugyanazokból a változókból
+   kapja a felületét, keretét, lekerekítését, a rámutatás kiemelését és a bekapcsolt állapot (aria-pressed) jelzését;
+   a téma (sötét mód, üveg, Liquid Glass) csak a változókat állítja. A kiemelt (primary) gomb kivétel. */
+:root {
+  --btn-surface: #fff; --btn-ink: var(--ink); --btn-line: var(--line); --btn-radius: 7px;
+  --btn-hover: #dbe5ff; --btn-hover-line: var(--accent);
+  --btn-on: #d6e0ff; --btn-on-ink: var(--accent-ink); --btn-on-line: var(--accent);
+}
+:root[data-display="dark"] {
+  --btn-surface: var(--panel-surface); --btn-hover: #3d5378;
+  --btn-on: color-mix(in srgb, var(--accent) 38%, var(--panel-surface)); --btn-on-ink: #fff;
+}
+.editor-workspace[data-glass], :is(.quick-tools, .context-menu, .chat-panel)[data-effects] {
+  --btn-surface: var(--glass-field, #ffffff50);
+  --btn-hover: color-mix(in srgb, var(--accent) 22%, transparent);
+  --btn-on: color-mix(in srgb, var(--accent) 34%, transparent); --btn-on-ink: var(--accent-ink);
+}
+.editor-workspace[data-effects="liquid"], :is(.quick-tools, .context-menu, .chat-panel)[data-effects="liquid"] { --btn-radius: 11px; }
+.site-header { --btn-surface: transparent; --btn-ink: #eef4ff; --btn-line: #526783; --btn-hover: #263953; --btn-hover-line: #8fa6c8; }
+:root :is(.button, .option-icon):not(.primary) {
+  background-color: var(--btn-surface); color: var(--btn-ink); border-color: var(--btn-line); border-radius: var(--btn-radius);
+  transition: background-color .12s ease, border-color .12s ease, box-shadow .12s ease;
+}
+:root .alignment-picker button { background-color: var(--btn-surface); color: var(--btn-ink); border-color: var(--btn-line); }
+:root :is(.button, .option-icon, .alignment-picker button, .color-sample, .color-presets button):not(.primary, :disabled):hover {
+  background-color: var(--btn-hover); border-color: var(--btn-hover-line);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--btn-hover-line) 40%, transparent);
+}
+:root :is(.button, .option-icon, .alignment-picker button)[aria-pressed="true"]:not(.primary) {
+  background-color: var(--btn-on); color: var(--btn-on-ink); border-color: var(--btn-on-line);
+}
+:root :is(.button, .option-icon, .alignment-picker button)[aria-pressed="true"]:not(.primary, :disabled):hover {
+  background-color: color-mix(in srgb, var(--btn-on) 78%, var(--btn-on-line));
+}
+.site-header .button.primary { color: white; background: var(--accent); }
+/* Jelenlévők: ugyanolyan gombok, mint az eszköztáré; a sor nem vágja le a gombok szélét és kiemelését. */
+.canvas-people > .participants, .passive-frame > .participants { padding: 3px; margin: -3px; }
