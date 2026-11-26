@@ -6,6 +6,8 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **daemon.sh: „invalid access to /tmp/_opt_ThinkNodes_server_.build.lock” (2026-11-27):** a root-ként futtatott install.sh zárfájlja a thinknodes felhasználónak nem elérhető; a daemon.sh a build előtt törli.
+
 - **Szerverfrissítés: „out-of-date resolved file” Fedorán, Swift 6.3.2-vel (2026-11-26)**
   - Ok: az async-http-client 1.33.1 a Swift 6.2+ alatt más csomagleírást használ, és a `swift-configuration` csomagot is kéri; a 6.0.3-mal készült `Package.resolved`-ban ez nincs, a build pedig tiltotta a feloldást. Egy korábbi feloldás emiatt helyben módosította a `Package.resolved`-ot, ami a `git pull`-t is megakasztotta.
   - Javítás: a `build.sh` a fordítás előtt feloldja a csomagokat (a rögzített verziók maradnak, csak a hiányzók kerülnek be), és pull előtt a `Package.resolved` helyi változását elveti (generált fájl); az `install.sh` is engedi a feloldást. macOS + Swift 6.0.3 alatt kipróbálva (a fájl nem változik).

@@ -83,6 +83,9 @@ if [[ ! -d "$install_dir/.git" ]]; then
     git clone "$(git -C "$source_dir" remote get-url origin)" "$install_dir"
 fi
 chown -R thinknodes:thinknodes "$install_dir"
+# SwiftPM zárfájlja a /tmp-ben (a .build útvonalából képzett névvel): ha egy root-ként futtatott install.sh / build
+# hagyta ott, a thinknodes felhasználó nem fér hozzá („invalid access to /tmp/…build.lock”).
+rm -f "/tmp/$(printf '%s' "$install_dir/server/.build" | tr '/' '_').lock"
 
 printf '== Build ==\n'
 runuser -u thinknodes -- env HOME="$data_dir" THINKNODES_SWIFT="$swift_bin" "$install_dir/server/deploy/build.sh"
