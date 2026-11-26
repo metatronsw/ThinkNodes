@@ -120,7 +120,7 @@ Kitalálandó, ötletek (2026-11-26):
 - Követő: ha maga mozgatja / nagyítja a vásznat, leválik („Leválva – vissza az előadáshoz” gomb). Kérdés: lehessen-e a követést kötelezővé tenni (pl. oktatásnál), vagy mindig csak felkérés legyen.
 - Az előadó kurzora és lézere ilyenkor mindig látszik, a néző beállításától függetlenül.
 
-**Chat**
+**Chat** — kész (2026-11-26, munkalaponként, csak bejelentkezve; lásd CHANGES.md). Hátra: üzenet szerkesztése, dobozra / pontra hivatkozás (ugrás), régebbi előzmények lapozása (most az utolsó 200), a csomag-exportba (ZIP) kerüljön-e bele.
 - A jelenlévők gombjai (már most is gombok) nyitják a csevegőpanelt; kattintás egy névre = annak megemlítése.
 - Tárolás munkalaponként, a munkalap fájlján kívül, hozzáfűzéses naplóként (pl. `<projekt>/.chat/<lap>.jsonl`: id, szerző, idő, szöveg, opcionális hivatkozás dobozra / pontra), így nem ütközik a lap mentéseivel és verzióival. Kézbesítés a meglévő hosszú lekérdezéssel vagy WebSocket-üzenettel; az előzmények lapozva (utolsó 100).
 - Olvasatlan-jelzés a csevegő gombján; `@név` megemlítés kiemelve, a címzettnél ping-szerű jelzéssel. A hivatkozott dobozra kattintva a nézet odaugrik (a ping nyilának ugrása újrahasznosítható).

@@ -496,6 +496,13 @@ final class Collaboration: @unchecked Sendable {
         }
     }
 
+    /// Csevegés: az új vagy törölt üzenet azonnal megy a szoba bejelentkezett résztvevőinek (a vendég nem kapja).
+    func broadcastChat(_ path: WorksheetPath, message: String) {
+        lock.withLock {
+            for peer in (rooms[path.url]?.peers ?? [:]).values where peer.name != nil { peer.socket?.send(message) }
+        }
+    }
+
     func accountChanged() {
         lock.withLock {
             for key in Array(rooms.keys) { rooms[key]?.changed() }

@@ -639,6 +639,45 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         return result
     }
 
+    // Csevegés munkalaponként (csak bejelentkezve): GET az előzmények, POST {text} új üzenet, POST {delete} törlés.
+    // A dátumok ISO 8601 alakban mennek; az új / törölt üzenet a WebSocketen is megy a szobának.
+    @Sendable func chatResponse<T: Encodable>(_ value: T) throws -> Response {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let result = Response(headers: ["Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store"])
+        result.body = .init(data: try encoder.encode(value))
+        return result
+    }
+    app.get("api", "chat", "**") { req async throws -> Response in
+        let identity = try session(req, store: store)
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        let messages = try await req.application.threadPool.runIfActive {
+            try store.chat(path, user: identity.user, unlocks: identity.unlocks)
+        }
+        return try chatResponse(messages)
+    }
+    app.post("api", "chat", "**") { req async throws -> Response in
+        struct Form: Content { var text: String?; var delete: String? }
+        let identity = try session(req, store: store)
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        let path = try WorksheetPath(req.parameters.getCatchall())
+        let form = try req.content.decode(Form.self)
+        struct Deleted: Encodable { let id: String; let deleted = true }
+        struct Frame<T: Encodable>: Encodable { let chat: T }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        if let id = form.delete {
+            try await req.application.threadPool.runIfActive { try store.deleteChat(path, id: id, user: identity.user, unlocks: identity.unlocks) }
+            live.broadcastChat(path, message: String(decoding: try encoder.encode(Frame(chat: Deleted(id: id))), as: UTF8.self))
+            return try chatResponse(Deleted(id: id))
+        }
+        let message = try await req.application.threadPool.runIfActive {
+            try store.postChat(path, text: form.text ?? "", user: identity.user, unlocks: identity.unlocks)
+        }
+        live.broadcastChat(path, message: String(decoding: try encoder.encode(Frame(chat: message)), as: UTF8.self))
+        return try chatResponse(message)
+    }
+
     app.post("api", "subworksheet", "**") { req async throws -> Response in
         let identity = try session(req, store: store)
         let user = identity.user
@@ -1662,7 +1701,7 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
         ? "<a class=\"button small\" aria-label=\"Szülő munkalap\" title=\"Szülő munkalap\" href=\"/\(path.url.split(separator: "/").dropLast().joined(separator: "/"))\">\(uiIcon("parent-up"))</a>" : ""
     return htmlPage(title: worksheet.title, body: """
         \(siteHeader(path: path.url, project: worksheet.title, user: session.user, csrf: session.csrf, canEdit: access.editable))
-        <script type="module" src="/viewer.js?v=28"></script>
+        <script type="module" src="/viewer.js?v=29"></script>
         <main class="shell" id="worksheet-view" data-graphics="\(escaped(graphicsJSON))" data-selection="\(selectionColor)" data-site-mode="\(siteMode(req) ?? "light")" data-path="\(path.url)" data-csrf="\(token(req))" data-revision="\(worksheet.revision)" data-editable="\(access.editable)" data-member="\(session.user != nil)">
           <a hidden data-current-document data-scope="\(path.parts.count == 1 ? "project" : "sheet")" \(editorMembership(access)) \(menuState(access.sheetRule)) data-manage="\(access.manageable)" href="\(base)">Munkalap</a>
           <div class="viewer-heading">\(parent)<h1><span aria-hidden="true">• </span>\(escaped(worksheet.title))</h1><div class="viewer-heading-credits">\(credits(worksheet, access))</div></div>

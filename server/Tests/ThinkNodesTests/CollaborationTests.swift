@@ -278,3 +278,32 @@ import VaporTesting
     _ = try act(admin, "leave")
     #expect(try act(bela, "poll").presentation == nil)
 }
+
+// Csevegés: csak bejelentkezve; az üzenet a munkalap mappájában tárolódik (vele mozog), a szerző színével / avatarjával
+// olvasható; törölni a szerző vagy admin tud; üres és túl hosszú üzenet nem megy.
+@Test func worksheetChat() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-chat-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    try store.setUser(name: "admin", role: .admin, passwordHash: "x")
+    for name in ["anna", "bela"] { try store.setUser(name: name, role: .editor, passwordHash: "x") }
+    let anna = try #require(try store.user(named: "anna")), bela = try #require(try store.user(named: "bela"))
+    let admin = try #require(try store.user(named: "admin"))
+    let path = try WorksheetPath(["main", "beszelgetes"])
+    _ = try store.open(path, user: admin)
+    _ = try store.manage(WorksheetPath(["main"]), operation: DocumentAction(scope: "project", action: "mode", value: "public"), user: admin, unlocks: [])
+    #expect(throws: Abort.self) { try store.chat(path, user: nil) }
+    #expect(throws: Abort.self) { try store.postChat(path, text: "szia", user: nil) }
+    #expect(throws: Abort.self) { try store.postChat(path, text: "   ", user: anna) }
+    #expect(throws: Abort.self) { try store.postChat(path, text: String(repeating: "a", count: chatMessageLimit + 1), user: anna) }
+    let first = try store.postChat(path, text: "  Szia @bela!\nMásodik sor  ", user: anna)
+    #expect(first.text == "Szia @bela!\nMásodik sor" && first.author == "anna" && first.color == anna.color)
+    let second = try store.postChat(path, text: "Helló", user: bela)
+    #expect(try store.chat(path, user: bela).map(\.id) == [first.id, second.id])
+    #expect(throws: Abort.self) { try store.deleteChat(path, id: first.id, user: bela) }
+    try store.deleteChat(path, id: second.id, user: bela)
+    try store.deleteChat(path, id: first.id, user: admin)
+    #expect(try store.chat(path, user: anna).isEmpty)
+    _ = try store.postChat(path, text: "Marad", user: anna)
+    #expect(FileManager.default.fileExists(atPath: try store.folder(path).appendingPathComponent(".chat.jsonl").path))
+}

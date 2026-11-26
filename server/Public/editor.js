@@ -8,6 +8,7 @@ import {chooseZip, exportPackage, importPackage, isPackageZip} from "./package.j
 import {decodeWorksheet, encodeWorksheet} from "./worksheet-json.js";
 import {sharedMouse} from "./mouse.js";
 import {sharedLaser} from "./laser.js";
+import {sharedChat} from "./chat.js";
 import {worksheetChanges, replayChanges, sameValue} from "./editor-history.js?v=2";
 import {flashNode, flashPoint, pingOffscreen, playPingSound, visibleBounds} from "./ping.js?v=4";
 import {sketchSeed, sketchOutline, sketchPaths, sketchShift, stickyColor} from "./sketch.js?v=3";
@@ -1040,6 +1041,8 @@ createApp({
 
     const mouse = sharedMouse(point => live.cursor(point));
     const laser = sharedLaser(frame => live.laser(frame), () => peers.value.find(p => p.mine)?.color);
+    // Csevegés: csak bejelentkezett felhasználónak (chat.js).
+    const chat = user ? sharedChat({path, csrf, me: () => user, admin: () => pageRole === "admin"}) : null;
     watch(view, () => mouse?.rescale());
     // A ténylegesen látható vászonterület: a vászon puffere miatt nagyobb az ablaknál, ezért a vászonterület (.canvas-area)
     // számít, az ablakra vágva, a fölötte lévő, nyitott tulajdonságpanelek nélkül (az üres panel-oszlop nem takar).
@@ -1310,7 +1313,7 @@ createApp({
       if (gesture.value) finishPointer({pointerId: gesture.value.pointer}, true);
       if (inspector.value?.kind === "node") inspectNothing();
       problem.value = error.message;
-    }, {editing: true, onCursor: mouse?.receive, onLaser: laser.receive, onPresent: receivePresentFrame, onMotion: receiveMotion, onCells: receiveCells, onScroll: receiveScroll, rate: Number(motionRate) || 33});
+    }, {editing: true, onCursor: mouse?.receive, onLaser: laser.receive, onPresent: receivePresentFrame, onChat: chat?.receive, onMotion: receiveMotion, onCells: receiveCells, onScroll: receiveScroll, rate: Number(motionRate) || 33});
 
     // Mentés ütemezése. Mezőszerkesztés (gépelés) közben a mentés a szünetre vár (0,5 mp), de legfeljebb 2 mp-et,
     // így nem megy ki minden leütés után a teljes munkalap; egyébként (húzás, gomb) 70 ms után ment. docs/PLAN.md C5.
@@ -3563,6 +3566,7 @@ createApp({
           mouse.bind(canvas.value, canvas.value.querySelector("[data-mouse-layer]"), controls, controls?.querySelector("[data-canvas-fullscreen]"));
           laser.bind(canvas.value, canvas.value.querySelector("[data-mouse-layer]"), canvas.value.closest(".canvas-area") ?? mount,
             controls, controls?.querySelector("[data-canvas-fullscreen]"));
+          chat?.bind(canvas.value.closest(".canvas-area") ?? mount, controls, controls?.querySelector("[data-canvas-fullscreen]"));
         }
       } catch (error) {
         problem.value = error.message;
@@ -3575,6 +3579,7 @@ createApp({
       audioControls?.abort();
       mouse?.stop();
       laser.stop();
+      chat?.stop();
       live.stop();
       window.removeEventListener("pagehide", live.stop);
       window.removeEventListener("pageshow", restore);
@@ -5304,7 +5309,9 @@ createApp({
               h("button", {key: (p.id ?? index) + ":" + (pingFlashes.value.get(p.id) ?? 0), type: "button",
                 class: ["button tool-button participant", pingFlashes.value.has(p.id) && "pinging"], title: p.name + (p.away && !p.mine ? " · nem aktív" : ""),
                 style: p.color ? {"--peer-color": p.color} : undefined,
-                "data-away": p.away && !p.mine ? "" : undefined, onPointerdown: event => event.stopPropagation()},
+                "data-away": p.away && !p.mine ? "" : undefined, onPointerdown: event => event.stopPropagation(),
+                // Kattintás: a csevegés megnyílik (másik résztvevőnél a nevét megemlítve).
+                onClick: () => chat?.open(p.mine ? undefined : p.name)},
                 [p.avatar ? h("svg", {class: "peer-avatar", viewBox: "0 0 24 24", fill: p.color || "currentColor", "aria-hidden": "true"},
                   [h("use", {href: "/icons/avatar-" + p.avatar + ".svg#a"})]) : null,
                   h("span", {class: "participant-name", style: p.color ? {color: p.color} : undefined}, p.name)]))),

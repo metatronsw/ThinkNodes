@@ -70,7 +70,7 @@ export function rebaseWorksheet(base, local, remote) {
   return result;
 }
 
-export function liveConnection(path, csrf, onState, onError, {editing = false, onMotion, onCursor, onCells, onScroll, onLaser, onPresent, rate = 33} = {}) {
+export function liveConnection(path, csrf, onState, onError, {editing = false, onMotion, onCursor, onCells, onScroll, onLaser, onPresent, onChat, rate = 33} = {}) {
   const client = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, "0")).join("");
   const headers = {"Content-Type": "application/json", "X-CSRF-Token": csrf, "X-Worksheet-Client": client};
   let controller;
@@ -115,11 +115,12 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
       if (frame.cursor) onCursor?.(frame);
       else if (frame.laser) onLaser?.(frame);
       else if (frame.present) onPresent?.(frame);
+      else if (frame.chat) onChat?.(frame.chat);
       else if (frame.cells) onCells?.(frame);
       else if (frame.scroll) onScroll?.(frame);
       else onMotion(frame); };
     opened.onclose = () => {
-      if (socket === opened) { socket = null; onMotion(null); onCursor?.(null); onCells?.(null); onLaser?.(null); }
+      if (socket === opened) { socket = null; onMotion(null); onCursor?.(null); onCells?.(null); onLaser?.(null); onChat?.(null); }
     };
   }
   // Cellakijelölés a fogott táblázatban (csak a kijelölés; a gépelt szöveg nem megy át). `range`: null = nincs.

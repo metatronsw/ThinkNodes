@@ -6,6 +6,7 @@ import {objectURL, writeText} from "./canvas-files.js";
 import {decodeConnection} from "./worksheet-json.js";
 import {sharedMouse} from "./mouse.js";
 import {sharedLaser} from "./laser.js";
+import {sharedChat} from "./chat.js";
 import {contextMenu, documentEntries} from "./cards.js";
 import {openExternalLink} from "./links.js";
 import {flashNode, flashPoint, pingOffscreen, playPingSound, visibleBounds} from "./ping.js?v=4";
@@ -30,15 +31,17 @@ const ns = "http://www.w3.org/2000/svg";
 const roster = main.querySelector(".participants");
 const mouse = sharedMouse(point => live.cursor(point));
 const laser = sharedLaser(frame => live.laser(frame), () => peers.find(peer => peer.mine)?.color);
+const chat = main.dataset.member === "true" ? sharedChat({path, csrf, me: () => peers.find(peer => peer.mine)?.name}) : null;
 function bindCanvas() {
   // A háttérben renderelt .web előnézetek elkészültükkor újratöltődnek.
   refreshWebPreviews(document);
   const svg = main.querySelector(".passive-canvas");
   svg.style.setProperty("--sheet-glow", (graphics.glow ?? 3) + "px");
-  for (const button of main.querySelectorAll(".passive-frame > :is(.mouse-share, .cursor-label, .laser-tool)")) button.remove();
+  for (const button of main.querySelectorAll(".passive-frame > :is(.mouse-share, .cursor-label, .laser-tool, .chat-tool)")) button.remove();
   const frame = main.querySelector(".passive-frame"), member = main.dataset.member === "true";
   mouse?.bind(svg, svg, member ? frame : null);
   laser.bind(svg, svg, frame, member ? frame : null);
+  chat?.bind(frame, frame);
   // A szerver által a fájldobozokba írt stílusok (a doboz magassága, a táblázat oszlopszélességei és cellaformázása):
   // az oldal tartalombiztonsági szabálya (style-src 'self') a style attribútumot nem engedi érvényesülni, ezért innen
   // állítjuk be. Enélkül a szövegfájl-, CSV- és táblázatdoboz tartalma kilógott a dobozból.
@@ -302,6 +305,8 @@ function paint(peers) {
       if (peer.color) name.style.color = peer.color;
       label.append(name);
       if (peer.avatar) label.prepend(avatarSymbol(peer.avatar, peer.color || "currentColor"));
+      // Kattintás: a csevegés megnyílik (másik résztvevőnél a nevét megemlítve).
+      label.addEventListener("click", event => { event.stopPropagation(); chat?.open(peer.mine ? undefined : peer.name); });
       return label;
     }));
   }
@@ -532,7 +537,7 @@ const live = liveConnection(path, csrf, async state => {
   rosterSignature = undefined;
   peers = [];
   if (!roster.isConnected) main.prepend(roster);
-}, {onMotion: receiveMotion, onCursor: mouse?.receive, onLaser: laser.receive, onScroll: receiveScroll});
+}, {onMotion: receiveMotion, onCursor: mouse?.receive, onLaser: laser.receive, onChat: chat?.receive, onScroll: receiveScroll});
 window.addEventListener("pagehide", live.stop);
 window.addEventListener("pageshow", event => { if (event.persisted) live.start(); });
 live.start();

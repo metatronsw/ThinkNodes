@@ -1,5 +1,14 @@
 # Változások
 
+## 2026-11-26 – Csevegés munkalaponként
+
+- Új eszköztár gomb (`.chat-tool`, szerkesztőben és megtekintőben, csak bejelentkezett felhasználónak) olvasatlan-számlálóval; a panel a vászon jobb alsó részén. Enter: küldés, Shift+Enter: új sor, Esc: bezárás. A jelenlévők gombjára kattintva a csevegés megnyílik, és a másik résztvevő neve megemlítésként (@név) a mezőbe kerül. A téged említő üzenet kiemelt, és hangjelzés szól. A saját üzenet törölhető (admin bármelyiket).
+- Tárolás: a munkalap mappájában `.chat.jsonl` (soronként egy üzenet: id, szerző, idő, szöveg), így a munkalappal együtt mozog (átnevezés, áthelyezés, lomtár), és nem ütközik a lap mentéseivel. A szerző színe és avatarja olvasáskor kerül hozzá. Legfeljebb 2000 karakter / üzenet, a lekérdezés a legutóbbi 200-at adja. Új fájl: `Sources/ThinkCore/Chat.swift`, `Public/chat.js`.
+- API: `GET /api/chat/<lap>` (előzmények), `POST /api/chat/<lap>` `{text}` / `{delete}`; az új és törölt üzenet a WebSocketen azonnal megy a szoba bejelentkezett résztvevőinek. Az olvasottság böngészőnként tárolódik (localStorage).
+- Javítva: a prezentációs commit (`128ec08`) elrontotta a `ui-names.json`-t (a „Ping nyila” sor eleje elveszett), így a felületnév-súgó nem töltődött be; helyreállítva.
+- Teszt: új `worksheetChat` (Swift: jogosultság, üres / túl hosszú üzenet, törlés szerzőként és adminként, tárolási hely). Két valódi böngészővel ellenőrizve (küldés Enterrel, olvasatlan-jelző, megemlítés kiemelése és színe, válasz, törlés). Verziók: `editor.js?v=95`, `viewer.js?v=29`, `app.css?v=62`. Szerverkód változott: a helyi tesztszerver (8888) újraindítva.
+- A próba a helyi `projects/a` mappában egy üres `.chat.jsonl` fájlt hagyott (az üzenetek törölve); a fájl törlése engedélyre vár.
+
 ## 2026-11-26 – Előadás: a keret az előadó látható vászna, menet közben módosítható
 
 - A felhasználó kérésére átdolgozva: az előadás területe **indításkor az előadó teljes látható vászna** (annak képaránya), nem rögzített 16:9. A követőknél pontosan kitölti a látható területet (96%-os ráhagyás nélkül): azonos felbontásnál és elrendezésnél (pl. mindkettő teljes képernyőn) a kép azonos. Két böngészővel ellenőrizve: azonos ablakméretnél a két nézet transzformációja egyezik.

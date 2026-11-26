@@ -497,8 +497,35 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .presentation-handle[data-corner="sw"], .presentation-handle[data-corner="se"] { margin-bottom: 2px; }
 .presentation-move { position: absolute; left: 50%; top: 50%; width: 48px; height: 10px; margin-left: -24px; border: 2px solid white; border-radius: 6px; background: var(--presentation-color); box-shadow: 0 1px 4px #0006; cursor: move; pointer-events: auto; touch-action: none; }
 .present-tool[aria-pressed="true"] { background: var(--accent); color: white; }
+/* Csevegés: gomb olvasatlan-számlálóval, panel a vászon jobb alsó részén. */
+.chat-tool { position: relative; }
+.chat-tool[aria-pressed="true"] { background: var(--accent); color: white; }
+.chat-badge { position: absolute; top: -5px; right: -5px; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: 8px;
+  background: #e5484d; color: white; font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; pointer-events: none; }
+.chat-badge[hidden] { display: none; }
+.chat-panel { position: absolute; right: 8px; bottom: 52px; z-index: 9; display: flex; flex-direction: column; width: min(340px, calc(100% - 16px));
+  height: min(460px, calc(100% - 120px)); padding: 0; overflow: hidden; color: var(--ink); }
+.chat-panel[hidden] { display: none; }
+.chat-panel > header { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.chat-close, .chat-delete { border: 0; background: none; color: inherit; font-size: 18px; line-height: 1; cursor: pointer; padding: 0 4px; opacity: .7; }
+.chat-close:hover, .chat-delete:hover { opacity: 1; }
+.chat-list { flex: 1; margin: 0; padding: 8px 10px; overflow-y: auto; list-style: none; display: grid; align-content: start; gap: 8px; }
+.chat-message { display: grid; gap: 2px; padding: 4px 6px; border-radius: 6px; }
+.chat-message[data-mention] { background: #ffc53d33; box-shadow: inset 3px 0 0 #ffc53d; }
+.chat-head { display: flex; align-items: center; gap: 6px; font-size: .82rem; }
+.chat-head .peer-avatar { width: 16px; height: 16px; }
+.chat-head time { margin-left: auto; opacity: .6; font-size: .75rem; }
+.chat-delete { font-size: 15px; visibility: hidden; }
+.chat-message:hover .chat-delete { visibility: visible; }
+.chat-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .9rem; }
+.chat-empty { opacity: .6; font-size: .85rem; }
+.chat-form { display: flex; gap: 6px; align-items: flex-end; padding: 8px; border-top: 1px solid var(--line); }
+.chat-form textarea { flex: 1; resize: none; min-height: 40px; max-height: 120px; font: inherit; font-size: .9rem; }
+.passive-frame > .chat-tool { position: absolute; bottom: 6px; left: 126px; z-index: 2; min-height: var(--tool-button-size, 32px); height: var(--tool-button-size, 32px); padding: 4px 9px; }
+.passive-frame:has(> .chat-tool) > .fullscreen { left: 166px; }
+.participant { cursor: pointer; }
 .passive-frame > .laser-tool { position: absolute; bottom: 6px; left: 86px; z-index: 2; min-height: var(--tool-button-size, 32px); height: var(--tool-button-size, 32px); padding: 4px 9px; }
-.passive-frame:has(> .laser-tool) > .fullscreen { left: 126px; }
+.passive-frame:has(> .laser-tool):not(:has(> .chat-tool)) > .fullscreen { left: 126px; }
 .laser-tool[aria-pressed="true"] { background: var(--accent); color: white; }
 :is(.canvas-area, .passive-frame)[data-laser] :is(svg.editor-canvas, .passive-canvas) { cursor: crosshair; }
 .passive-frame > .cursor-label { position: absolute; bottom: 6px; left: 46px; z-index: 2; min-height: var(--tool-button-size, 32px); height: var(--tool-button-size, 32px); padding: 4px 9px; }
