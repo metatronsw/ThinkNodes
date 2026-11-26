@@ -1,7 +1,3 @@
-# Hibák
-
-Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni kell (AGENTS.md).
-
 ## Nyitott
 
 - **Főoldali .webp előnézetek: nyitott / kézzel nézendő** (2026-11-26)

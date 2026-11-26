@@ -1,21 +1,9 @@
 
 # project migráció
-
-+ Kész (docs/migration.md „Megvalósítás”): ZIP-export (projekt / részfa / lap, .version, külső fájlok, titkosítás), import főoldalon és allapként.
-+ Kész (2026-11-24): a vászonra húzott ThinkNodes-csomag ZIP-et a szerkesztő felismeri, és felajánlja az importot allapként.
-
-+ Kész (2026-11-25): csomag-mérethatár 4 GiB (kibontva 8 GiB, 20 000 fájl); darabolt, megszakadás után folytatható feltöltés folyamatjelzővel; a letöltést a böngésző közvetlenül lemezre végzi.
 + Hátra: a darabolt feltöltés kipróbálása valódi, több GB-os csomaggal és megszakított hálózattal (eddig tesztek és kis csomag); a `.web` ZIP (100 MiB) és a `.thnode` (12 MiB) feltöltése továbbra is egyben megy.
 
 
-
-
-
-
 # FILE KEZELÉS
-
-+ Kész (2026-11-25): 256 KB fölötti szövegfájl külön ablakban szerkeszthető (`/edit/<lap>?text=<doboz>`, `text-editor.js`). Hátra: a nagy fájl a vászonhoz is egészben töltődik le (elég lenne az eleje); a külön ablak kinézete szemmel nézendő.
-
 Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 + Kipróbálni két szerkesztővel: törlés („lomtárba, a többi doboz törlődik / üres lesz”) és .web átnevezés, miközben a másik lapot valaki szerkeszti (kijelölt dobozt kihagy, és szól).
 + Visszavonás lomtárba tétel után: a fájl visszaáll (2026-11-24), de a többi lapon a törölt / üres dobozzá alakított dobozok nem állnak vissza. Ehhez a lomtárba tételkor fel kellene jegyezni a többi lap érintett dobozait.
@@ -23,21 +11,13 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 + Törölt projekt visszaállítása más néven (most csak az eredeti néven, ha szabad).
 
 
-
-
-
 # Kódszínezés (server/Sources/ThinkHighlight) és dobozon szerkesztés
-
 
 - Ismert egyszerűsítések: JS-ben a `)` / `]` / `}` utáni `/` mindig osztás, az objektumkulcsok és a JSX nem kapnak külön színt; Swiftben a `/…/` reguláris kifejezés nincs felismerve; HTML-ben a `style="…"` attribútum és az eseménykezelők tartalma sima szöveg.
 - További nyelvek igény szerint (`.ts`, `.py`, `.xml` / `.svg` – az utóbbi a HTML elemzővel).
-+ Kész (2026-11-25): szerkesztés közbeni színezés a böngészőben (`Public/highlight`, a Swift-modul pontos mása, közös tesztkészlettel).
-+ Kész (2026-11-25): a kódfájl szerkesztése egy rétegben (szerkeszthető színezett szöveg, saját visszavonással).
 - Szerkesztés közben minden leütés a teljes szöveget újraszínezi és újraépíti a doboz tartalmát; nagyobb (100 KB körüli) fájlnál mérendő, kell-e csak az érintett sorokat frissíteni.
 - A kódszerkesztőben nincs Shift+Tab (behúzás csökkentése) és több sor együttes behúzása.
-+ Kész (2026-11-25): a `.txt` és `.md` is az egyrétegű szerkesztőt használja; a szövegmező megszűnt.
 - A `.md` doboz szerkesztéskor nyers szövegre vált (más betű, más magasság): ez a formázott megjelenítésből adódik.
-+ Kész (2026-11-25): a letölthető SVG-ben a kód színes (beágyazott színszabályok).
 - A letölthető SVG-ben a fájldobozok tartalma egyébként formázatlan (nincs belső térköz, a doboz betűmérete, a túlnyúló szöveg levágása; a `.txt` / `.md` doboz is ilyen): az exportba a fájldobozok alapstílusát is be kellene ágyazni.
 - Nincs ellenőrizve: az előnézeti rajz (`/api/preview`) képként (`<img>`) megjelenítve is színes-e – a válasz `style-src 'self'` szabálya a beágyazott stílust tilthatja.
 - A közös könyvtár (`@common`) kódfájljai a szerkesztőben színezetlenek (statikus címről töltődnek); a megtekintőben színesek.
@@ -46,9 +26,7 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 
 # Google-bejelentkezés
 
-+ Kész: belépés Google-fiókkal az admin által hozzárendelt e-mail-cím alapján (README „Google-bejelentkezés”).
 + Hátra: kipróbálás valódi Google OAuth-klienssel (Cloud Console: kliens létrehozása, visszatérési cím felvétele), helyben `http://localhost:8888`-on és élesben.
-+ Kész: hozzáférés-kérés admin jóváhagyással, jelvény a fejléc Admin gombján (AdminMessages), README és server/deploy/GOOGLE.md.
 + Döntés (2026-11-25): a kérelmező nem kap levelet a döntésről; visszatéréskor látja az állapotot.
 + Lehetőség: további adminisztrátori jelzések (AdminMessage.Kind), pl. lemezhely, hibás mentés.
 + Lehetőség: a felhasználó maga kösse össze / válassza le a Google-fiókját (most csak az admin teheti); a Google `sub` azonosítójának rögzítése az e-mail-cím mellé.
@@ -68,7 +46,6 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 
 # Konténer – szöveg körbefuttatása
 
-+ Kész (2026-11-25): a konténer saját szövege kikerüli a benne lévő dobozokat (CHANGES.md).
 - Automatikus teszt a körbefuttatásra (JS–Swift egyezés: `textSlot`, körbefuttatott `labelLayout`).
 - A sor a doboz mellett a legszélesebb szabad szakaszt használja; egy rövid sorvég így a doboz túloldalára kerülhet. Lehetőség: a megkezdett bekezdés maradjon ugyanazon az oldalon.
 - Csak a közvetlen gyermekeket kerüli ki, a befoglaló téglalapjuk szerint (nem téglalap alakú gyermeknél is).
@@ -92,50 +69,3 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 + A „kinyíló rész semmit nem tol el” szabály bevezetése a tulajdonságpanelen is: a színválasztó listája ott még eltolja a többi gombot (a gyors eszközökben már rögzített réteg: `ColorPicker floating`, `placePopup`).
 + A többi típus (fájldobozok, kép, vonal, csomópont) elrendezése a `quick-tools.json`-ban; a tulajdonságpanel kiváltása (szöveg- és számmezők helye).
 
-+ Igazítás / elosztás (2026-11-26): lehetőség a vonalak szabad végpontjainak és a csomópontoknak a bevonására, illetve „rácsra igazítás” gombra a kijelölésen; billentyűparancsok.
-
-# TÉMÁK
-
-+ Kész (2026-11-25): dobozkeret a témából (`graphics.frame`: vastagság, szín, felület-átlátszatlanság, fényudvar). Hátra: élénk kitöltésű doboz szövegszíne nem igazodik magától; a keretszín csak „auto” vagy a doboz színe lehet.
-+ NeonGlow: a Tokió és az Outrun paletta, a megtekintő és az SVG-export szemmel még nincs megnézve.
-
-# KLIENS-TECHNOLÓGIA (server/docs/FUTURE.md „Felmérések”)
-
-- Döntés: WebGL-hibrid vagy natív iOS/macOS kliens (vagy mindkettő, közös Swift-maggal).
-- WebGL: próba csak dobozokkal, vonalakkal és ráccsal, mérés a `p1000` lapon a mostani SVG-hez képest.
-- WASM: előbb mérni, mennyi idő megy JS-számításra (táblázat, kódszínezés) a `tabla` és a `p1000` lapon.
-- Natív: a fejlesztőgép frissíthetősége (macOS 13.7.8 / Xcode 15.2, Intel); `GET /api/session` végpont; Google-átadás az apphoz.
-
-
-# Közös munka (online felhasználók)
-
-+ Kész (2026-11-26): felhasználói szín (32 színű alappaletta + admin #hex), 32 fekete, színezett avatar, név / avatar a kurzor mellett (néző választja, eszköztár), jelenlévők a saját színükkel, nem aktív (rejtett fül / nincs fókusz) résztvevő szürke és kurzor nélkül, ping a küldő színével, képernyőn kívüli ping nyila (kattintásra odaugrik). Részletek: CHANGES.md.
-
-Kitalálandó, ötletek (2026-11-26):
-
-**Fókusz kérése / prezentáció mód** — kész (2026-11-26, az előadó választja a módot; lásd CHANGES.md). Hátra: a megtekintő oldalon (nincs nagyítás) nincs követés; a keret aránya most rögzített 16:9 (választható arány később).
-- Az előadó egy *keretet* oszt meg: a vászon egy téglalapját (világkoordinátában), alapból a saját látható területét, vagy rögzített 16:9 / 4:3 arányt. Minden követő kliens maga számolja a nagyítást (`k = min(saját szélesség / keret szélessége, saját magasság / keret magassága)`) és középre teszi a keretet, így eltérő képernyőn is ugyanaz a tartalom látszik; az eltérő képarány csak a keret körüli sávot változtatja.
-- A keret vékony (az előadó színű, szaggatott) vonalként látszik mindenkinél, útmutatásként; a tartalom kilóghat belőle.
-- Átvitel: a meglévő WebSocketen, mint a kurzor (`{present: {rect}}`, legfeljebb ~10/mp, a köztes állapotokat a kliens 150–200 ms-os áttűnéssel simítja). A szoba megjegyzi az utolsó keretet, így a később belépő is azonnal követ.
-- Egyszerre egy előadó szobánként (a doboz kijelöléséhez hasonló zárral); az admin átveheti. Ha az előadó elmegy vagy nem aktív, a követőknél ez kiírva látszik („Az előadó nem aktív”), kilépésekor a mód véget ér.
-- Követő: ha maga mozgatja / nagyítja a vásznat, leválik („Leválva – vissza az előadáshoz” gomb). Kérdés: lehessen-e a követést kötelezővé tenni (pl. oktatásnál), vagy mindig csak felkérés legyen.
-- Az előadó kurzora és lézere ilyenkor mindig látszik, a néző beállításától függetlenül.
-
-**Chat** — kész (2026-11-26, munkalaponként, csak bejelentkezve; lásd CHANGES.md). Hátra: üzenet szerkesztése, dobozra / pontra hivatkozás (ugrás), régebbi előzmények lapozása (most az utolsó 200), a csomag-exportba (ZIP) kerüljön-e bele.
-- A jelenlévők gombjai (már most is gombok) nyitják a csevegőpanelt; kattintás egy névre = annak megemlítése.
-- Tárolás munkalaponként, a munkalap fájlján kívül, hozzáfűzéses naplóként (pl. `<projekt>/.chat/<lap>.jsonl`: id, szerző, idő, szöveg, opcionális hivatkozás dobozra / pontra), így nem ütközik a lap mentéseivel és verzióival. Kézbesítés a meglévő hosszú lekérdezéssel vagy WebSocket-üzenettel; az előzmények lapozva (utolsó 100).
-- Olvasatlan-jelzés a csevegő gombján; `@név` megemlítés kiemelve, a címzettnél ping-szerű jelzéssel. A hivatkozott dobozra kattintva a nézet odaugrik (a ping nyilának ugrása újrahasznosítható).
-- Saját üzenet szerkesztése / törlése rövid ideig, admin bármikor törölhet; egyszerű markdown (a `canvas-markdown.js` részhalmaza).
-- Kérdések: lapra vagy projektre szóljon-e a chat; olvashatja-e a vendég; kell-e a kurzor mellett rövid ideig felvillanó buborék (táblás programokban szokásos).
-
-**Napló** — kész (2026-11-26, projektenként saját oldalon, minden szerkesztő írhat és jelölhet; lásd CHANGES.md). Hátra: nem önálló dokumentum a fában (nincs export / import / lomtár), nincs bejegyzés-törlés (az „inaktív” jelző helyettesíti), chatüzenetből „Naplóba” gomb, dobozra hivatkozás, határidő.
-- Projektenként egy közös napló, saját dokumentumtípusként a fában (mint a munkalap), így exportálható / importálható és lomtárba tehető. Bejegyzés: id, szerző, létrehozás és utolsó módosítás ideje (ki, mikor), szöveg, jelzők: fontos, elvégezve, inaktív (+ később szabad címkék).
-- Megjelenítés idő szerint (újak felül vagy alul, választható), szűrők: elvégzettek / inaktívak elrejtése, csak a fontosak. Szerkesztő ír és jelöl, a vendég csak olvas.
-- Bejegyzésenkénti műveletek (hozzáadás, jelző váltása, szöveg módosítása) a teljes dokumentum mentése helyett, így két ember egyszerre is dolgozhat rajta ütközés nélkül.
-- Kapcsolódások: chatüzenetből „Naplóba” gomb; dobozra hivatkozás a bejegyzésben.
-- Kérdések: projekt- vagy lapszintű legyen; ki jelölhet „elvégezve”-re (bárki vagy csak a szerző / admin); kell-e határidő.
-
-**Lézer pointer** — kész (2026-11-26, csak eszköztár gombbal; lásd CHANGES.md). Hátra: érintésnél a d3 érintéses nagyítás nincs letiltva lézer közben.
-- Eszköz az eszköztáron (és gyorsbillentyű, pl. nyomva tartott L): húzás közben a vonal pontjai a WebSocketen mennek (mint a kurzor, ~30/mp, vonásonként legfeljebb néhány száz pont), soha nem mentődnek.
-- Rajz: a felhasználó színével, enyhe fényudvarral, a képernyőn állandó vastagsággal (a kurzorhoz hasonló ellen-nagyítással); minden pont kb. 1,5 mp alatt elhalványul (csóva), a saját vonás azonnal látszik.
-- Szerveroldali sebességkorlát; érintés / toll is. Prezentáció módban az előadó lézere a fő mutató; képernyőn kívüli lézerre a ping nyila használható.
