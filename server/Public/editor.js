@@ -5867,9 +5867,23 @@ createApp({
     }
     // Lenyíló csoport: egy gomb az aktuális érték ikonjával (vagy a leíróban megadott ikonnal); kattintásra kinyílik a
     // lista sorban, oszlopban vagy rácsban (`open`, `columns`), rögzített rétegként (placePopup): sem a megnyomott gombot,
-    // sem a többit nem mozdítja el. Választás után bezárul. Egyszerre egy lehet nyitva.
+    // sem a többit nem mozdítja el. Választás után, a listán kívüli kattintásra és Esc-re bezárul (az Esc ilyenkor csak
+    // a listát zárja, a gyors eszközöket nem). Egyszerre egy lehet nyitva.
     const openFlyout = ref(null);
     watch(menu, () => { openFlyout.value = null; });
+    const flyoutOutside = event => { if (!event.target?.closest?.(".quick-flyout")) openFlyout.value = null; };
+    const flyoutEscape = event => {
+      if (event.key !== "Escape") return;
+      openFlyout.value = null;
+      event.preventDefault(); event.stopImmediatePropagation();
+    };
+    watch(openFlyout, (open, before) => {
+      if (!open === !before) return;
+      const listen = open ? "addEventListener" : "removeEventListener";
+      window[listen]("pointerdown", flyoutOutside, true);
+      window[listen]("keydown", flyoutEscape, true);
+    });
+    onUnmounted(() => { window.removeEventListener("pointerdown", flyoutOutside, true); window.removeEventListener("keydown", flyoutEscape, true); });
     function renderFlyout({group: name, buttons}) {
       const group = quickLayout.groups[name], label = group.label ?? name, open = openFlyout.value === name;
       const current = buttons.find(item => item.props?.["aria-pressed"] === true);
@@ -5919,6 +5933,7 @@ createApp({
         const edge = board.value.edges.find(item => item.id === inspector.value.id);
         if (edge) {
           panels = edgePanels([edge]); type = "edge";
+          action("properties", "Szerkesztés", "property-panel", () => { menu.value = null; objectPanelOpen.value = true; openProperties("edge", edge.id); });
           action("delete", "Kapcsolat törlése", "trash", () => { menu.value = null; removeEdge(edge); }, {class: "danger"});
           action("ping", "Ping", "center", () => ping({point: clampPoint(open.position)}), {disabled: !online.value});
           action("edit-name", "Címke szerkesztése", "edit", () => editInline("edge", edge.id));
@@ -5928,6 +5943,7 @@ createApp({
         if (node && held.value === node.id && !occupied(node.id)) {
           panels = nodePanels([node]); type = node.type;
           // A hagyományos menü műveletei gombként (a menü kikapcsolása miatt itt érhetők el).
+          action("properties", "Szerkesztés", "property-panel", () => { menu.value = null; objectPanelOpen.value = true; openProperties("node", node.id); });
           action("delete", "Törlés", "trash", () => { menu.value = null; deleteNode(node); }, {class: "danger"});
           action("ping", "Ping", "center", () => ping({node: node.id}), {disabled: !online.value});
           // Név / megjegyzés szerkesztése a vásznon, a meglévő módon: doboz szövege a dobozon, fájlnév a doboz fölötti

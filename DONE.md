@@ -6,6 +6,12 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **BUGS.md átnézése, 2026-11-26: javítva és döntéssel lezárva**
+  - Lap átnevezésekor a régi nevű előnézeti gyorsítótár (`.<lap>.preview[-dark].svg/.webp`) a mappában maradt. Javítás: az átnevezés a gyorsítótár-fájlokat is az új névre viszi (a módosítás ideje megmarad, így érvényesek maradnak), `Model.swift moveDocument`; teszt: `uploadedWorksheetsUseTheirOwnFolder`. Törléskor nem volt hiba (a teljes mappa a lomtárba kerül).
+  - Gyors eszközök: a kinyitott lenyíló lista máshová kattintva nyitva maradt. Javítás: a listán kívüli kattintás és az Esc bezárja (az Esc ilyenkor csak a listát, a gyors eszközöket nem), `editor.js openFlyout`.
+  - Gyors eszközök: hiányzott a „Szerkesztés” (tulajdonságpanel megnyitása). Új `properties` gomb dobozon, csomóponton és vonalon, a Törlés előtt; a panelt ki is nyitja (`quick-tools.json`, `editor.js renderQuickTools`). Fej nélküli Chromiumban ellenőrizve.
+  - Döntéssel lezárva (felhasználó, 2026-11-26): csökkentett mozgás beállításnál a ping animációja marad (a kijelölés-gyűrű már addig is leállt); az új doboz nem kap automatikusan eltérő színt (ötlet a TODO.md-ben).
+
 - **Előnézeti képek (főoldali kártyák háttere) táblázatos lapokon: régóta fennálló hiba** (2026-11-26)
   - Ok: a táblázat lezáratlan `<col>` eleme az önálló SVG-ben (XML) érvénytelen, a böngésző a képet nem töltötte be. Javítás: önlezáró elem, előnézet-gyorsítótár v12; minden helyi lapon és előnézet-változaton ellenőrizve; védőteszt: `standaloneSVGIsWellFormedXMLForEveryBoxType`.
 

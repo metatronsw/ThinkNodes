@@ -1531,6 +1531,15 @@ package final class WorksheetStore: @unchecked Sendable {
             try files.moveItem(at: destination, to: source)
             throw error
         }
+        // Az előnézet gyorsítótára (`.<lap>.preview[-dark].svg/.webp`) az új névvel megy tovább; a módosítás ideje
+        // megmarad, így érvényes marad (sikertelen áthelyezésnél az új névre a következő kéréskor újrakészül).
+        if let renamed {
+            for suffix in [".preview.svg", ".preview-dark.svg", ".preview.webp", ".preview-dark.webp"] {
+                let old = destination.appendingPathComponent("." + path.name + suffix)
+                guard files.fileExists(atPath: old.path) else { continue }
+                try? files.moveItem(at: old, to: destination.appendingPathComponent("." + renamed.name + suffix))
+            }
+        }
         return renamed
     }
 

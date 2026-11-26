@@ -146,6 +146,7 @@
      "link-remove"
     ],
     [
+     "properties",
      "delete"
     ]
    ],
@@ -185,6 +186,7 @@
      "endpoint-target"
     ],
     [
+     "properties",
      "delete"
     ]
    ],
@@ -210,6 +212,7 @@
      "new-chart"
     ],
     [
+     "properties",
      "delete"
     ]
    ],
@@ -245,6 +248,7 @@
   "link-add": "Link hozzáadása (ha még nincs link)",
   "link-preview, link-public, link-open, link-remove": "Link: előnézet, publikus, megnyitás, törlés (ha van link)",
   "lineType-<típus>, lineAppearance-<megjelenés>": "Vonal típusa és megjelenése",
+  "properties": "Szerkesztés: a tulajdonságpanel megnyitása (dobozon, csomóponton és vonalon)",
   "delete": "Törlés (minden objektumon)",
   "ping": "Ping (minden objektumon; vonalnál a kattintás pontja)",
   "copy-link, edit-cells, new-chart": "Fájldoboz: link másolása; táblázat: cellák szerkesztése, grafikon létrehozása",

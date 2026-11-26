@@ -462,8 +462,13 @@ import VaporTesting
     #expect(try store.load(project, user: owner).nodes.isEmpty)
     #expect(try store.list(user: owner, childrenOf: project).map(\.path.url) == [imported.url])
     #expect(try store.contents(imported, user: owner, unlocks: [], named: attachment).first?.lastPathComponent == "note.txt")
+    _ = try store.preview(imported, user: owner)
+    #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("project/lap/.lap.preview.svg").path))
     let renamed = try #require(try store.manage(imported, operation: DocumentAction(scope: "sheet", action: "rename", value: "uj"), user: owner, unlocks: []))
     #expect(try store.load(renamed, user: owner).title == "Importált")
+    // Az előnézet gyorsítótára az új névvel megy tovább, a régi nevű nem marad a mappában.
+    #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("project/uj/.uj.preview.svg").path))
+    #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("project/uj/.lap.preview.svg").path))
     #expect(try store.load(project, user: owner).nodes.isEmpty)
     try store.archive(renamed, expected: 1)
     #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("project/.trash/uj/uj.thnode").path))

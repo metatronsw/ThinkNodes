@@ -64,6 +64,11 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 - A `gestures.mjs`-ből kimaradt a „csomópont tartalmas konténerre ejtve a tartalma lesz” eset (Safariban kézi szkripttel ellenőrizve); pótolandó.
 
 
+# ÚJ DOBOZ SZÍNE
+
++ Megbeszélendő: az új doboz színe az utoljára létrehozott doboz színe legyen (most mindig a 2-es szín, így alapértelmezett konténerben csak a keretéről látszik). Az automatikus eltérő szín elvetve (2026-11-26).
+
+
 # GYORS ESZKÖZÖK / TULAJDONSÁGPANEL
 
 + A „kinyíló rész semmit nem tol el” szabály bevezetése a tulajdonságpanelen is: a színválasztó listája ott még eltolja a többi gombot (a gyors eszközökben már rögzített réteg: `ColorPicker floating`, `placePopup`).

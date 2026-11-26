@@ -4,7 +4,7 @@
   - A librsvg a dobozokba ágyazott HTML-t (táblázat, szövegfájl, .md tartalma) nem rajzolja ki: a háttérképen ezek a dobozok üresek. Ha zavaró, a szerver a raszteres változathoz egyszerű helyettesítő vonalakat rajzolhat a szöveg helyére.
   - Élesben (Fedora) a `librsvg2-tools` és `libwebp-tools` csomag kell (az install.sh telepíti); a meglévő szerveren kézzel: `dnf install librsvg2-tools libwebp-tools`, utána szerver-újraindítás. Nélkülük a régi SVG-előnézet megy.
   - Ha egy lap képe nem készíthető el (pl. sérült egyedi előnézeti kép), arra a lapra SVG jön, de a kártya már elmosás nélkül mutatja.
-  - A lap átnevezésekor / törlésekor a `.preview*.webp` (mint eddig az SVG-gyorsítótár) a régi néven a mappában marad.
+  - Ellenőrizve 2026-11-26: a lap törlésekor a teljes mappa (a gyorsítótárral) a lomtárba kerül, ott nem marad régi nevű fájl; az átnevezés javítva (DONE.md).
   - Kézzel nézendő: a rámutatás-effekt világos módban és érintőképernyőn; Safariban, hogy a kivilágosodás kivétele után a többi kártya már nem villan fel (a vezérelt Safariban a villanás képernyőképen nem mérhető).
   - A sötét módú, megerősített kiemelkedés-árnyék képernyőképen nincs megnézve (a vezérelt Safari mérése időtúllépéssel megszakadt); a CSS kint van.
   - A régi gyorsítótár-fájlok (`projects/**/.*.preview-v12*.svg`, 12 db) a verziószám nélküli nevek bevezetése óta nem használtak; törlésük engedélyre vár.
@@ -44,16 +44,14 @@
   - Automatizált Safariban rendben (képernyőkép és mérés): világos / sötét mód, kijelölés fényudvara, ping, üvegpanel, megtekintő. Kézzel nézendő: a kattintásgyűrű és a rámutatás áttűnései szemre, más felhasználó kijelölésének glow-ja két böngészővel, a gyors eszközök és a helyi menü üveghatása, a többi négy paletta, mobil.
   - A fejléc gombjai nem kapnak üveghatást (a szerkesztő munkaterületén kívül vannak).
   - Élénk kitöltésen a doboz szövegszíne nem igazodik magától: világos módban a halványabb élénk színeken (pl. zöld) a világos szöveg nehezen olvasható.
-  - Csökkentett mozgás beállításnál (`prefers-reduced-motion`) a kattintásgyűrű és a ping animációja megmarad.
 
 - **A 2026-11-25-i vonal- és gyorseszköz-változások: kézzel, Safariban nézendő** (2026-11-25; a tesztek 2026-11-26-án hozzáigazítva, mind átmegy)
   - Kézzel nézendő Safariban: a futó pötty (szerkesztő, megjelenítő, export), a három vonalméret régi munkalapokon, a fájlnév helyben szerkesztése (ékezetek, Enter, Esc), a gyors eszközök az ablak négy sarkában.
 
 - **Gyors eszközök (próba): ismert hiányok** (2026-11-25)
-  - A hagyományos menü „Szerkesztés” parancsa (panel megnyitása) nem került a gombok közé.
   - Ahol egy feliratos gombnak nincs saját ikonja (pl. táblázat egyes gombjai), az alapértelmezett fájl-ikon látszik, több gomb egyforma lehet.
-  - A kinyitott lista csak a saját gombjára vagy választásra zárul; máshová kattintva nyitva marad, amíg a gyors eszközök látszanak.
   - Háttér nélküli gombok tarka tartalom fölött nehezebben olvashatók.
+  - Az új „Szerkesztés” gomb és a lenyíló lista zárása (kívül kattintás, Esc) 2026-11-26-án csak fej nélküli Chromiumban próbálva (a Safari távoli automatizálása ki volt kapcsolva): Safariban kézzel nézendő.
 
 - **Doboz szövegének szerkesztése a dobozon: kézzel nézendő / nyitott tételek** (2026-11-25)
   - Automatizált Safariban rendben: belépés, tördelés egyezése, gépelés, Enter, kattintás, visszavonás, Esc. Kézzel nézendő: holt billentyűs ékezetek, húzásos kijelölés, nagyított / kicsinyített vászon, körbefuttatott konténerszöveg szerkesztése, amikor a szöveg valóban kikerül egy gyermekdobozt.
@@ -96,6 +94,3 @@
 
 - **Külön ablakos szövegszerkesztő és csomag-párbeszéd: a kinézet nincs szemmel ellenőrizve** (2026-11-25)
   - Automatizált Safariban a szövegszerkesztő oldal betölt és működik (a mező mérete, állapotsor, mentés gomb), a darabolt feltöltés a böngészőből végigment; képernyőkép nem készült (a kijelző aludt). A folyamatjelző és a „Folytatás” gomb megjelenése kézzel nézendő.
-
-- **Az új doboz ugyanolyan színű, mint a konténer, amibe kerül** (2026-11-25)
-  - Az új doboz mindig a 2-es színt kapja; ha a konténer is 2-es színű (alapértelmezett doboz), a belehelyezett doboz csak a keretéről látszik, amíg más színt nem kap (`projects/b`). Döntés kell: kapjon-e az új / belehúzott doboz automatikusan eltérő színt.
