@@ -287,6 +287,9 @@ package struct Idea: Codable, Equatable, Sendable {
     package var contentFit: Bool?
     /// Papírfelület (téma `paper`) szövegszíne; nem tárolt mező, a `Worksheet.painted` tölti ki (Rendering.swift fileBox).
     var paperInk: String? = nil
+    /// A doboz szövegének olvasható színe, ha a beállított szín a felületen nem elég kontrasztos; nem tárolt mező,
+    /// a `Worksheet.painted` tölti ki (Rendering.swift labelInk).
+    var labelInk: String? = nil
     /// Kiemelt szabadkézi doboz alapszíne (a tábla színe); nem tárolt mező, a renderWorksheetCanvas tölti ki.
     var sketchBase: String? = nil
     /// Vászonszínű felület textúrás vásznon: a keret színe a vászonszínből (a kitöltés ilyenkor mintára mutat);

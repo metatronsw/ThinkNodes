@@ -77,7 +77,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/lib/d3-zoom.js?v=1"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=101"></script>
+        <script type="module" src="/editor.js?v=102"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -544,7 +544,7 @@ private func ideaDrawing(_ idea: Idea, graphics: VisualTheme.Graphics? = nil, ob
                 // Ahány üres sor van a forrásban, annyi üres sor marad a dobozon is.
                 let gap = (row == 0 ? blank : 0) + (wrappedLine.slot?.skip ?? 0)
                 lines.append(IdeaLabelLine(text: pieces.map(\.text).joined(), size: size, weight: weight,
-                                           color: node.textColor, runs: pieces, gap: gap,
+                                           color: node.labelInk ?? node.textColor, runs: pieces, gap: gap,
                                            justify: node.justified == true && !code && !heading,
                                            wrapped: wrappedLine.wrapped, indent: indent, code: code, width: wrappedLine.width,
                                            slotX: wrappedLine.slot?.x, slotWidth: wrappedLine.slot?.width))
@@ -552,7 +552,7 @@ private func ideaDrawing(_ idea: Idea, graphics: VisualTheme.Graphics? = nil, ob
         }
         if node.hideText == true, lines.count > 1 {
             // Összecsukott állapot: az első sor marad, alatta egy sorközzel az ellipszis.
-            let ellipsis = IdeaLabelLine(text: "…", size: lines[0].size, weight: lines[0].weight, color: node.textColor,
+            let ellipsis = IdeaLabelLine(text: "…", size: lines[0].size, weight: lines[0].weight, color: node.labelInk ?? node.textColor,
                                          runs: [MarkdownRun(text: "…")], gap: 0, justify: false, wrapped: false, indent: 0,
                                          code: lines[0].code, width: measure(for: lines[0])("…", nil))
             return [lines[0], ellipsis]
@@ -833,6 +833,61 @@ private func boxSketch(_ node: Idea, _ graphics: VisualTheme.Graphics?) -> (fill
 }
 private func sketchedBox(_ node: Idea, _ graphics: VisualTheme.Graphics?) -> Bool {
     graphics?.sketch != nil && !node.isJunction && !node.isImage && node.type != "preview" && paperKind(node, graphics) == nil
+}
+
+/// A legkisebb elfogadott kontraszt (WCAG-arány) a doboz szövege és a felülete között; alatta a szöveg a téma
+/// tintájának jobban olvasható változatát kapja (editor.js boxInk).
+let minimumTextContrast = 3.0
+
+/// `#rrggbb` relatív fénysűrűsége (WCAG); más alakú színnél nil.
+func relativeLuminance(_ color: String) -> Double? {
+    guard color.count == 7, color.hasPrefix("#"), let value = Int(color.dropFirst(), radix: 16) else { return nil }
+    return [(value >> 16) & 255, (value >> 8) & 255, value & 255].enumerated().reduce(0.0) { sum, item in
+        let srgb = Double(item.element) / 255
+        let linear = srgb <= 0.04045 ? srgb / 12.92 : pow((srgb + 0.055) / 1.055, 2.4)
+        return sum + linear * [0.2126, 0.7152, 0.0722][item.offset]
+    }
+}
+
+func contrastRatio(_ first: String, _ second: String) -> Double? {
+    guard let a = relativeLuminance(first), let b = relativeLuminance(second) else { return nil }
+    return (max(a, b) + 0.05) / (min(a, b) + 0.05)
+}
+
+/// `top` szín `alpha` átlátszatlansággal `bottom` fölött (mindkettő `#rrggbb`).
+func blendedColor(_ top: String, over bottom: String, alpha: Double) -> String? {
+    guard top.count == 7, bottom.count == 7, let a = Int(top.dropFirst(), radix: 16), let b = Int(bottom.dropFirst(), radix: 16) else { return nil }
+    return "#" + [16, 8, 0].map { shift in
+        let channel = Double((a >> shift) & 255) * alpha + Double((b >> shift) & 255) * (1 - alpha)
+        return String(format: "%02x", Int(channel.rounded()))
+    }.joined()
+}
+
+/// A doboz kitöltésének átlátszatlansága a téma szerint (boxSurface, sketchSurface; editor.js boxFillOpacity).
+func boxFillOpacity(_ node: Idea, _ graphics: VisualTheme.Graphics?) -> Double {
+    let mode = node.resolvedBackgroundMode
+    if mode == .canvas { return 1 }
+    if sketchedBox(node, graphics) {
+        let tint = graphics?.frame?.fillOpacity ?? 0.18
+        return mode == .translucent ? tint / 2 : tint
+    }
+    if let opacity = graphics?.frame?.fillOpacity { return mode == .translucent ? opacity / 2 : opacity }
+    if graphics?.effects == "liquid" { return mode == .translucent ? 0.4 : 0.64 }
+    if graphics?.glass == true && mode == .solid { return 0.66 }
+    return mode == .translucent ? 0.75 : 1
+}
+
+/// Olvasható szövegszín a doboz felületén (editor.js boxInk): ha a beállított szín kontrasztja a felülettel (a kitöltés
+/// a vászon fölött, a téma átlátszatlanságával) `minimumTextContrast` alatt van, a jelöltek (a téma tintájának nappali
+/// és esti változata) közül a jobban olvasható. Csak a dobozon álló szövegre: sima doboz, előnézeti kép nélkül,
+/// kitöltött háttérrel. A konténerbe tett doboz alatt is a vászon színével számol. nil: nem kell változtatni.
+func labelInk(_ node: Idea, background: String, graphics: VisualTheme.Graphics?, candidates: [String]) -> String? {
+    guard node.type == "box", !node.fillsWithPreview, [.solid, .translucent, .canvas].contains(node.resolvedBackgroundMode) else { return nil }
+    let surface = node.resolvedBackgroundMode == .canvas ? background
+        : blendedColor(node.fill, over: background, alpha: boxFillOpacity(node, graphics)) ?? node.fill
+    guard let current = contrastRatio(node.textColor, surface), current < minimumTextContrast else { return nil }
+    let best = candidates.compactMap { color in contrastRatio(color, surface).map { (color, $0) } }.max { $0.1 < $1.1 }
+    return best.flatMap { $0.1 > current ? $0.0 : nil }
 }
 
 /// Cetli és füzetlap (editor.js paperSurface). A cetli színe a `fill`-ben érkezik (Worksheet.painted).
@@ -1120,11 +1175,14 @@ private func wireAnimation(_ edge: Connection, from: Point, to: Point, path: Str
     return (color, "", dot)
 }
 
-/// Egyszerű CSV/TSV feldolgozás a táblázatnézethez (idézőjeles mezők, legfeljebb 200 sor × 30 oszlop).
+/// A CSV olvasó nézetének korlátja (sor × oszlop); a szerkesztő ugyanennyit mutat (editor.js parseCSV).
+package let csvPreviewRows = 1000, csvPreviewColumns = 60
+
+/// Egyszerű CSV/TSV feldolgozás a táblázatnézethez (idézőjeles mezők, legfeljebb csvPreviewRows × csvPreviewColumns).
 func parseCSV(_ source: String, separator: Character = ",") -> [[String]] {
     var rows: [[String]] = [], row: [String] = [], field = "", quoted = false
     var iterator = source.makeIterator()
-    while let character = iterator.next(), rows.count < 200 {
+    while let character = iterator.next(), rows.count < csvPreviewRows {
         if quoted {
             if character == "\"" {
                 if let next = iterator.next() {
@@ -1132,7 +1190,7 @@ func parseCSV(_ source: String, separator: Character = ",") -> [[String]] {
                     else {
                         quoted = false
                         if next == separator { row.append(field); field = "" }
-                        else if next.isNewline { row.append(field); field = ""; rows.append(Array(row.prefix(30))); row = [] }
+                        else if next.isNewline { row.append(field); field = ""; rows.append(Array(row.prefix(csvPreviewColumns))); row = [] }
                         else { field.append(next) }
                     }
                 } else { quoted = false }
@@ -1143,10 +1201,10 @@ func parseCSV(_ source: String, separator: Character = ",") -> [[String]] {
             row.append(field); field = ""
         } else if character.isNewline {
             row.append(field); field = ""
-            rows.append(Array(row.prefix(30))); row = []
+            rows.append(Array(row.prefix(csvPreviewColumns))); row = []
         } else { field.append(character) }
     }
-    if !field.isEmpty || !row.isEmpty { row.append(field); rows.append(Array(row.prefix(30))) }
+    if !field.isEmpty || !row.isEmpty { row.append(field); rows.append(Array(row.prefix(csvPreviewColumns))) }
     return rows.filter { !($0.count == 1 && $0[0].isEmpty) }
 }
 

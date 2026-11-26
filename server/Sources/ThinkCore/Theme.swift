@@ -306,6 +306,8 @@ extension Worksheet {
               let resolve = theme.paintResolver(paletteID: appearance.palette, mode: mode) else { return self }
         var sheet = self
         sheet.background = resolve(background, 0)
+        // A téma tintájának két változata: ezek közül kap a doboz szövege, ha a beállított szín nem olvasható (labelInk).
+        let inks = ["light", "dark"].compactMap { theme.paintResolver(paletteID: appearance.palette, mode: $0)?("@1", 1) }
         for i in sheet.nodes.indices {
             let node = nodes[i]
             if node.isJunction { sheet.nodes[i].shape = theme.graphics?.junction ?? .ellipse }
@@ -322,6 +324,7 @@ extension Worksheet {
                 if kind == "sticky" { sheet.nodes[i].fill = stickyColor(node.fill == "@2" ? day("@6", 6) : day(node.fill, 2)) }
                 sheet.nodes[i].paperInk = node.textColor == "@1" ? theme.graphics?.paper?.ink ?? "#25314d" : day(node.textColor, 1)
             }
+            sheet.nodes[i].labelInk = labelInk(sheet.nodes[i], background: sheet.background ?? resolve(nil, 0), graphics: theme.graphics, candidates: inks)
         }
         for i in sheet.edges.indices {
             sheet.edges[i].color = resolve(edges[i].color, 3)

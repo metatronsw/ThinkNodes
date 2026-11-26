@@ -6,6 +6,11 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **BUGS.md átnézése, 2. kör (2026-11-26)**
+  - Élénk kitöltésen a beállított szövegszín nem igazodott (pl. fehér szöveg a világos módú, 64%-os üveg zöldjén). Javítás: ha a szöveg és a felület (kitöltés a vászon fölött, a téma átlátszatlanságával) kontrasztja 3 alatt van, a téma tintájának jobban olvasható változata jön; szerver: `Rendering.swift labelInk`, `Idea.labelInk`, `Worksheet.painted`; szerkesztő: `editor.js boxInk`. Teszt: `unreadableBoxTextGetsThemeInk`.
+  - A CSV olvasó nézet 200 sor × 30 oszlopnál megállt: a korlát 1000 × 60 (`csvPreviewRows`, `csvPreviewColumns`; editor.js `parseCSV`). Teszt a `WorksheetTests`-ben.
+  - Engedéllyel törölve: a 12 régi `.preview-v12*.svg` gyorsítótár-fájl és az üres `projects/a/.chat.jsonl`.
+
 - **BUGS.md átnézése, 2026-11-26: javítva és döntéssel lezárva**
   - Lap átnevezésekor a régi nevű előnézeti gyorsítótár (`.<lap>.preview[-dark].svg/.webp`) a mappában maradt. Javítás: az átnevezés a gyorsítótár-fájlokat is az új névre viszi (a módosítás ideje megmarad, így érvényesek maradnak), `Model.swift moveDocument`; teszt: `uploadedWorksheetsUseTheirOwnFolder`. Törléskor nem volt hiba (a teljes mappa a lomtárba kerül).
   - Gyors eszközök: a kinyitott lenyíló lista máshová kattintva nyitva maradt. Javítás: a listán kívüli kattintás és az Esc bezárja (az Esc ilyenkor csak a listát, a gyors eszközöket nem), `editor.js openFlyout`.

@@ -151,6 +151,29 @@ import VaporTesting
     #expect(!boardSVG(sheet, mode: "dark").contains("fx-"))
 }
 
+/// Olvasható szöveg (Rendering.swift labelInk, editor.js boxInk): ha a beállított szövegszín a doboz felületén (a
+/// kitöltés a vászon fölött, a téma átlátszatlanságával) nem elég kontrasztos, a téma tintájának jobb változata jön.
+@Test func unreadableBoxTextGetsThemeInk() throws {
+    let theme = try #require(Themes.catalog.first { $0.name == "Liquid Glass" })
+    let palette = try #require(theme.palettes.first)
+    var sheet = Worksheet(title: "Kontraszt")
+    sheet.background = "@0"
+    sheet.appearance = Appearance(theme: theme.id, palette: palette.id)
+    let ink = { (id: Int, mode: String) in palette.colors.first { $0.id == id }.flatMap { mode == "dark" ? $0.dark : $0.light } }
+    // Világos módban fehér szöveg a zöld (64%-os üveg) kitöltésen: a téma sötét tintája.
+    sheet.nodes = [Idea(id: "green", text: "Zöld", position: Point(x: 0, y: 0), fill: "@13", textColor: "#ffffff"),
+                   Idea(id: "plain", text: "Alap", position: Point(x: 300, y: 0), fill: "@2", textColor: "@1"),
+                   Idea(id: "empty", text: "Üres", position: Point(x: 600, y: 0), fill: "@13", backgroundMode: .empty, textColor: "#ffffff")]
+    let light = sheet.painted(mode: "light")
+    #expect(light.nodes[0].labelInk == ink(1, "light"))
+    #expect(light.nodes[1].labelInk == nil && light.nodes[2].labelInk == nil)
+    #expect(boardSVG(sheet, mode: "light").contains(##"fill="\##(ink(1, "light") ?? "")""##))
+    // Sötét módban sötét szöveg a sötét kitöltésen: a téma világos tintája.
+    sheet.nodes = [Idea(id: "dark", text: "Sötét", position: Point(x: 0, y: 0), fill: "@2", textColor: "#15202d")]
+    #expect(sheet.painted(mode: "dark").nodes[0].labelInk == ink(1, "dark"))
+    #expect(contrastRatio("#ffffff", "#000000").map { abs($0 - 21) < 0.001 } == true)
+}
+
 @Test func themedBoxFrame() throws {
     let theme = try #require(Themes.catalog.first { $0.name == "NeonGlow" })
     #expect(theme.valid && theme.graphics?.frame?.width == 4)

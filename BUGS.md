@@ -7,7 +7,6 @@
   - Ellenőrizve 2026-11-26: a lap törlésekor a teljes mappa (a gyorsítótárral) a lomtárba kerül, ott nem marad régi nevű fájl; az átnevezés javítva (DONE.md).
   - Kézzel nézendő: a rámutatás-effekt világos módban és érintőképernyőn; Safariban, hogy a kivilágosodás kivétele után a többi kártya már nem villan fel (a vezérelt Safariban a villanás képernyőképen nem mérhető).
   - A sötét módú, megerősített kiemelkedés-árnyék képernyőképen nincs megnézve (a vezérelt Safari mérése időtúllépéssel megszakadt); a CSS kint van.
-  - A régi gyorsítótár-fájlok (`projects/**/.*.preview-v12*.svg`, 12 db) a verziószám nélküli nevek bevezetése óta nem használtak; törlésük engedélyre vár.
   - Ötlet: a „További munkalapok” kártyái és a linkes dobozok képe is kaphatna `.webp` változatot (most a teljes SVG-t töltik).
 
 - **Táblázat-szerkesztés, „Tartalom a dobozhoz”, kurzorcsoport: kézzel nézendő / nyitott** (2026-11-26)
@@ -33,7 +32,6 @@
   - A ping hangja: nincs némító kapcsoló; ha zavaró, a kurzorcímke mellé tehető egy hang ki/be gomb. A hang csak az oldalon tett első kattintás / billentyű után szól (böngészőszabály).
   - Kézzel nézendő két valódi böngészővel: lézer pointer érintéssel (a d3 érintéses nagyítás lézer közben nincs letiltva), előadás teljes képernyőn azonos és eltérő felbontással, a keret rajzolása / méretezése, csevegés és napló a megtekintő oldalon.
   - Előadás: a megtekintő oldal (nincs nagyítás) nem követ; nagyon nagy lapon a folyamatos követés teljesítménye mérendő.
-  - A chat-próba a helyi `projects/a` mappában üres `.chat.jsonl` fájlt hagyott; törlése engedélyre vár.
   - A sötét palettaszínek (pl. `#027864`, `#6550b9`) neve sötét módban a jelenlévők között halványabban olvasható.
 
 - **WhiteBoard: nyitott és kézzel nézendő tételek** (2026-11-25)
@@ -43,7 +41,6 @@
 - **Liquid Glass: kézzel nézendő és nyitott tételek** (2026-11-25)
   - Automatizált Safariban rendben (képernyőkép és mérés): világos / sötét mód, kijelölés fényudvara, ping, üvegpanel, megtekintő. Kézzel nézendő: a kattintásgyűrű és a rámutatás áttűnései szemre, más felhasználó kijelölésének glow-ja két böngészővel, a gyors eszközök és a helyi menü üveghatása, a többi négy paletta, mobil.
   - A fejléc gombjai nem kapnak üveghatást (a szerkesztő munkaterületén kívül vannak).
-  - Élénk kitöltésen a doboz szövegszíne nem igazodik magától: világos módban a halványabb élénk színeken (pl. zöld) a világos szöveg nehezen olvasható.
 
 - **A 2026-11-25-i vonal- és gyorseszköz-változások: kézzel, Safariban nézendő** (2026-11-25; a tesztek 2026-11-26-án hozzáigazítva, mind átmegy)
   - Kézzel nézendő Safariban: a futó pötty (szerkesztő, megjelenítő, export), a három vonalméret régi munkalapokon, a fájlnév helyben szerkesztése (ékezetek, Enter, Esc), a gyors eszközök az ablak négy sarkában.
@@ -82,8 +79,14 @@
   - Példa: `0.0020293361140076467` → `0.0020293361140076476`. A `.tntable` értékei a szerveren az utolsó bináris jegyben elcsúszhatnak (a kiírt 15 jegyre nincs hatással).
   - Teszt: `platformJSONDecoderDoublePrecision` (figyelmeztet). Teendő: ellenőrizni élesben (Fedora, swift-foundation); ha ott is pontatlan, saját számolvasó a `.tntable`-höz. Részletek: server/docs/EXCEL.md 12. fejezet.
 
-- **A CSV olvasó nézet legfeljebb 200 sort / 30 oszlopot mutat; a megtekintőben a cellakijelölés nem látszik** (2026-11-24)
-  - Az ezen kívüli cellára eső társ-kijelölés nem jelenik meg az olvasó nézetben. (Az üres sorok miatti elcsúszás javítva.)
+- **A CSV olvasó nézet legfeljebb 1000 sort / 60 oszlopot mutat (2026-11-26-ig 200 / 30)** (2026-11-24)
+  - Az ezen kívüli cellára eső társ-kijelölés nem jelenik meg az olvasó nézetben. A fájlnak csak az első 200 000 karaktere kerül a nézetbe (`filePreviewLimit`), így széles soroknál 1000 sor előtt is vége lehet.
+  - Nincs mérve: egy 1000 × 60-as CSV kirajzolásának és görgetésének ideje (Safari, megtekintő és szerkesztő).
+
+- **Olvasható szövegszín a dobozon (2026-11-26): kézzel nézendő / ismert korlátok**
+  - Fej nélküli Chromiumban ellenőrizve (szerkesztő és megtekintő egyezik, világos és sötét mód; próbalap: `server/.build/perf-data/kontraszt`, törölhető). Safariban kézzel nézendő, a többi témában és palettán is.
+  - A felületet a kitöltés és a vászon színéből számolja: konténerbe tett, átlátszó kitöltésű dobozon (Liquid Glass, áttetsző mód) a konténer színe nem számít, és a vászon textúrája / háttérfényei sem.
+  - Csak a sima doboz szövegére hat (kitöltött, áttetsző vagy vászonszínű háttérnél); az üres és szabad háttérmódú doboz, a fájldobozok, a vonalcímkék és a dobozon kívüli megjegyzés szövege változatlan.
 
 - **Táblázatszerkesztő új fejlécsávjai: Chromiumban és CSV-n nincs kipróbálva** (2026-11-25)
   - A ragadó fejlécek helyett külön fejlécsávok vannak (lásd DONE.md). Automatizált Safari 18.6-ban táblázaton ellenőrizve (megjelenés, oszlopszélesség húzása); Chromiumban, CSV-szerkesztésnél, egyedi sormagasságnál és a „méretre igazítás” gombbal még nézendő. A görgetés sebessége az új szerkezettel nincs mérve (2026-11-25-én a `perf.py` nem futott le: az automatizált Safari időzítői álltak).

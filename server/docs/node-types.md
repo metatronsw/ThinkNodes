@@ -105,6 +105,9 @@ Alap doboz; ha belehúznak valamit, konténer lesz (`has-children`).
 háttér: kitöltött / Free / Üres / Áttetsző, vászonszín a paletta 0. színével; automatikus keretszín; árnyék kiemeléskor; animáció
 (pulse, blink, rock, hop); cím lehet a dobozon kívül; szöveg elrejthető vagy automatikusan méretezett;
 linkes doboznál szaggatott keret és hivatkozásjel (új helye: alul középen).
+Olvasható szöveg: ha a beállított szövegszín kontrasztja a felülettel (kitöltött, áttetsző vagy vászonszínű háttér; a
+kitöltés a vászon fölött, a téma átlátszatlanságával) 3 alatt van, kirajzoláskor a téma tintájának jobban olvasható
+változata jön (`Rendering.swift labelInk`, `editor.js boxInk`); a tárolt szín nem változik.
 
 **Döntések:**
 - **A Cím megszűnik**, csak a Text marad (lásd: Text képesség). A külön cím egysoros, nem formázható, és a kettő együtt nehézkes.
@@ -181,7 +184,7 @@ Importált szöveges fájl: minden nem bináris fájl (UTF-8, NUL bájt nélkül
    - `text` (alap): egyszerű szöveg; `.md` formázva jelenik meg.
    - `code` (`base: text`): `.json`, `.js`, `.mjs`, `.swift`, `.css` … egyenközű betű, nem tördel, vízszintesen görgethető;
      `.json` importkor formázva. Szintaxiskiemelés később.
-   - `csv` (`base: text`): táblázatként jelenik meg.
+   - `csv` (`base: text`): táblázatként jelenik meg (olvasó nézetben legfeljebb 1000 sor × 60 oszlop).
 3. **Fejléc és megjegyzés:** felül a fájlnév (elrejthető), nincs külön cím. Alul megjegyzés: markdown,
    balra / középre / jobbra igazítható, elrejthető.
 4. **Egy forrás, mentés:** egy dobozt egyszerre csak egy felhasználó foghat és szerkeszthet (a kijelölés zárol),

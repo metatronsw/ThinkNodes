@@ -280,11 +280,13 @@ const largeTextLimit = 256 * 1024;
 // Egyszerű CSV/TSV feldolgozás a táblázatnézethez (Rendering.swift parseCSV).
 // A nézet kihagyja az üres sorokat; minden megmaradó sor `index` mezője a fájlbeli sorszáma (0-tól), mert a
 // cellakijelölés és a szerkesztő a fájl sorai szerint számol.
+// A CSV olvasó nézetének korlátja: legfeljebb 1000 sor × 60 oszlop (Rendering.swift csvPreviewRows / csvPreviewColumns).
+const csvPreviewRows = 1000, csvPreviewColumns = 60;
 function parseCSV(source, separator = ",") {
   const rows = [];
   let row = [], field = "", quoted = false;
-  const keep = cells => { const kept = cells.slice(0, 30); kept.index = rows.length; rows.push(kept); };
-  for (let i = 0; i < source.length && rows.length < 200; i++) {
+  const keep = cells => { const kept = cells.slice(0, csvPreviewColumns); kept.index = rows.length; rows.push(kept); };
+  for (let i = 0; i < source.length && rows.length < csvPreviewRows; i++) {
     const c = source[i];
     if (quoted) {
       if (c === '"') { if (source[i + 1] === '"') { field += '"'; i++; } else quoted = false; }
@@ -472,6 +474,49 @@ function paperInk(node) {
   return node.textColor == null || node.textColor === 1 || node.textColor === "@1" ? graphics.value.paper?.ink ?? "#25314d" : paint(node.textColor, 1, "light");
 }
 const sketchedBox = node => !!sketching() && !isJunction(node) && !isImage(node) && node.type !== "preview" && !paperKind(node);
+
+// Olvasható szöveg a doboz felületén (Rendering.swift labelInk, minimumTextContrast): ha a beállított szövegszín
+// kontrasztja (WCAG-arány) a felülettel 3 alatt van, a téma tintájának nappali vagy esti változata közül a jobban
+// olvasható. A felület a kitöltés a vászon fölött, a téma átlátszatlanságával (boxFillOpacity); konténerbe tett doboznál
+// is a vászonnal számol. Csak a dobozon álló szövegre (sima doboz előnézeti kép nélkül, kitöltött háttérrel).
+const minimumTextContrast = 3;
+function colorLuminance(color) {
+  if (!/^#[0-9a-f]{6}$/i.test(color ?? "")) return null;
+  const value = parseInt(color.slice(1), 16);
+  return [value >> 16 & 255, value >> 8 & 255, value & 255].reduce((sum, channel, index) => {
+    const srgb = channel / 255;
+    return sum + (srgb <= .04045 ? srgb / 12.92 : ((srgb + .055) / 1.055) ** 2.4) * [.2126, .7152, .0722][index];
+  }, 0);
+}
+function contrastRatio(first, second) {
+  const a = colorLuminance(first), b = colorLuminance(second);
+  return a == null || b == null ? null : (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
+}
+function blendedColor(top, bottom, alpha) {
+  if (colorLuminance(top) == null || colorLuminance(bottom) == null) return null;
+  const a = parseInt(top.slice(1), 16), b = parseInt(bottom.slice(1), 16);
+  return "#" + [16, 8, 0].map(shift => Math.round((a >> shift & 255) * alpha + (b >> shift & 255) * (1 - alpha)).toString(16).padStart(2, "0")).join("");
+}
+// A doboz kitöltésének átlátszatlansága a téma szerint (shape, sketchSurface; Rendering.swift boxFillOpacity).
+function boxFillOpacity(node) {
+  const mode = backgroundMode(node), themed = graphics.value.frame ?? {};
+  if (canvasSurface(node)) return 1;
+  if (sketchedBox(node)) { const tint = themed.fillOpacity ?? .18; return mode === "translucent" ? tint / 2 : tint; }
+  if (themed.fillOpacity != null) return mode === "translucent" ? themed.fillOpacity / 2 : themed.fillOpacity;
+  if (liquid()) return mode === "translucent" ? .4 : .64;
+  if (graphics.value.glass && mode === "solid") return .66;
+  return mode === "translucent" ? .75 : 1;
+}
+function boxInk(node) {
+  const ink = paint(node.textColor, 1);
+  if (!activePalette.value || !editsOnBox(node) || !["solid", "translucent", "canvas"].includes(backgroundMode(node))) return ink;
+  const back = paint(currentBoard.value?.background, 0);
+  const surface = canvasSurface(node) ? back : blendedColor(paint(node.fill, 2), back, boxFillOpacity(node)) ?? paint(node.fill, 2);
+  const current = contrastRatio(ink, surface);
+  if (current == null || current >= minimumTextContrast) return ink;
+  const best = [paint(1, 1, "light"), paint(1, 1, "dark")].map(color => [color, contrastRatio(color, surface) ?? 0]).sort((a, b) => b[1] - a[1])[0];
+  return best[1] > current ? best[0] : ink;
+}
 function boxSketch(node) {
   const sketch = graphics.value.sketch;
   const outline = sketchOutline(displayShape(node.shape), node.width, node.height, polygonVertices(node.shape, node.width / 2, node.height / 2));
@@ -4306,7 +4351,7 @@ createApp({
       const markdown = ext === "md" || ext === "markdown";
       const look = box ? "node-box-input" : code ? "node-code" : [markdown ? "md-lines md-input" : "node-plain", {"justified-text": node.justified}];
       // Doboz szövege: a megjelenítés betűje, színe és igazítása (sorkizárt szöveg szerkesztéskor balra zárt).
-      const style = box ? {fontFamily: fontFamily(node.font), color: paint(node.textColor, 1),
+      const style = box ? {fontFamily: fontFamily(node.font), color: boxInk(node),
         textAlign: node.justified ? "left" : node.alignment ?? "center", textTransform: node.uppercase ? "uppercase" : undefined} : undefined;
       // A tartalmat nem a Vue rajzolja (nincs gyermek és innerHTML tulajdonság): újrarajzoláskor a kurzor a helyén marad.
       return h("pre", {key: "edit-text", class: [look, "node-code-input"], style, contenteditable: "plaintext-only", role: "textbox", "aria-multiline": "true",
@@ -5070,6 +5115,8 @@ createApp({
       // <text> egy lépésben cserélődik. Soronkénti átírásnál a Safari minden beszúrt / törölt tspan után újraépítette a
       // teljes szöveg elrendezését (egy képkockában 200–290 módosítás, 200–300 ms). Ha csak a sorok helye változik, a
       // kulcs ugyanaz marad, és csak az x / y attribútumok frissülnek.
+      // A szöveg színe: a beállított szín, vagy ha a felületen nem olvasható, a téma tintájának jobb változata (boxInk).
+      const labelFill = boxInk(node);
       const labels = ui.texting && editsOnBox(node) ? renderBoxEditor(node) : layout.lines.length ? h("text", {key: layout.lines.map(line => line.text).join("\n"),
           class: "node-text", "font-family": fontFamily(node.font), "pointer-events": "none"},
           layout.lines.map(line => h("tspan", {
@@ -5087,7 +5134,7 @@ createApp({
             },
             x: line.x + (textDrag ? textDrag.delta.x : 0),
             y: line.y + (textDrag ? textDrag.delta.y : 0), "text-anchor": line.anchor,
-            "data-justify": line.justifyWidth, fill: paint(line.color, 1), "font-size": line.size, "font-weight": line.weight,
+            "data-justify": line.justifyWidth, fill: labelFill, "font-size": line.size, "font-weight": line.weight,
             // Sorkizárás: a szóközök tágítása `dx` listával, a rajzolás előtt kiszámolva (Public/justify.js justifyShifts).
             ...justified(line, node),
           }, line.runs.map(run => {

@@ -501,5 +501,9 @@ import VaporTesting
     #expect(NodeTypes.root("code") == "text" && NodeTypes.has("code", "fileText") && !NodeTypes.has("text", "link"))
     #expect(NodeTypes.has("image", "link") && NodeTypes.has("box", "children"))
     #expect(parseCSV("a,\"b,c\"\n1,\"x\"\"y\"") == [["a", "b,c"], ["1", "x\"y"]])
+    // Az olvasó nézet korlátja: legfeljebb csvPreviewRows sor és csvPreviewColumns oszlop.
+    let wide = (0..<70).map(String.init).joined(separator: ",")
+    let big = parseCSV(Array(repeating: wide, count: 1500).joined(separator: "\n"))
+    #expect(big.count == csvPreviewRows && big.allSatisfy { $0.count == csvPreviewColumns })
     #expect(plainFirstLine("\n# **Cím** [link](https://x)\nmásodik") == "Cím link")
 }
