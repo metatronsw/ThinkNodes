@@ -1,5 +1,16 @@
 # Változások
 
+## 2026-11-26 – Szerkesztő: üresjárati terhelés és akadások javítva; „Animációk leállítása”, „Díszítő háttér kikapcsolása”
+
+- **Animációk a szerkesztőben CSS-ből** (app.css „Tartalom-animációk”): doboz (pulzálás, villogás, ringás, ugrálás) és vonal (szaggatott minta, vastag lüktetés, kúpos vastag vonal, futó pötty `offset-path`-szal, lüktető nyílhegy). 20 lépés/mp (`steps()`, minden szakasz 50 ms többszöröse), a közös idővonal nullpontjához igazítva (`editor.js queueMotionAlign`). A téma sebességszorzóját a szerkesztő nem alkalmazza (az eltérő ütem kétszer annyi képkockát kért).
+- **Letölthető SVG:** SMIL marad (önállóan működik), ugyanazokkal a mértékekkel; a kúpos vastag vonal a szerkesztővel azonosan a kitöltés köré rajzolt, vastagodó körvonallal lüktet (a `d`-animáció kikerült).
+- **Háttérfények állók** (Liquid Glass): a végtelen animáció Chrome-ban üresjáratban ~17% CPU-t vitt, a mozgás nem is látszott.
+- **Ping hangja:** előre generált `Public/ping.wav` `<audio>` elemmel (a Web Audio-környezet létrehozása az első lenyomáskor 250–290 ms-ig blokkolt).
+- **Pásztázás vége:** a nézet 400 ms nyugalom után rögzül (`perfOptions.panCommit`), egymás utáni húzások között nincs teljes újrarajzolás.
+- **Vezérlősáv:** „Animációk leállítása” (`data-still`) és „Díszítő háttér kikapcsolása” (`data-plain`; fények, filcnyomok, később textúrák); localStorage `tnMotionOff`, `tnPlainBackground`. Útmutató, hotkeys.json, README frissítve.
+- **Mérőeszközök** (Tests/Perf): valódi Chrome (CDP) és Safari (WebDriver) üresjárati, pásztázási és első-kattintás mérések; leírás: server/docs/PERF.md „Üresjárat”.
+- Eredmény (Liquid Glass, üresjárat): Chrome 94–98% → 17–21%, Safari 71% → 25% WebContent. Minden teszt átmegy; release build; a helyi tesztszerver (8888) az új builddel fut.
+
 ## 2026-11-26 – „Tartalom a dobozhoz” CSV-dobozon is
 
 - A CSV panelén (és a gyors eszközökben) is ott a „Tartalom a dobozhoz” kapcsoló: a teljes táblázat arányosan, torzítás nélkül a doboz méretéhez skálázódik, mint a táblázatdoboznál. Illesztve a CSV a szerkesztés táblázatnézetével jelenik meg (a szerkesztő ugyanazt a dokumentumot használja, így szerkesztésbe lépve semmi nem ugrik); dupla kattintással a skálázott rétegben szerkeszthető.

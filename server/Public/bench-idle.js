@@ -12,6 +12,9 @@ const keep = test => { css(".canvas-aurora > i{animation:none!important}"); docu
 const stopSmil = () => document.querySelectorAll(".editor-canvas :is(animate, animateMotion, animateTransform)").forEach(a => a.remove());
 const variants = {
   alap: () => {},
+  // A vezérlősáv kapcsolói (localStorage; egyszeri újratöltéssel). Csak ideiglenes böngészőprofilban használd.
+  animaciok_ki: () => { if (localStorage.getItem("tnMotionOff") !== "1") { localStorage.setItem("tnMotionOff", "1"); location.reload(); } },
+  hatter_ki: () => { if (localStorage.getItem("tnPlainBackground") !== "1") { localStorage.setItem("tnPlainBackground", "1"); location.reload(); } },
   aurora_torol: () => document.querySelector(".canvas-aurora")?.remove(),
   aurora_all: () => css(".canvas-aurora > i{animation:none!important}"),
   css_szunet: () => css(P),

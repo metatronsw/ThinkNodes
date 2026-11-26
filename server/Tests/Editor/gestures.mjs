@@ -779,13 +779,12 @@ const animationPicker = prop("aria-label", "Animáció", section("Doboz"));
 assert.equal(animationPicker.children.length, 5);
 assert.ok(animationPicker.children.every(option => text(option) === ""));
 assert.equal(button("Nincs animáció").props["aria-pressed"], true);
-for (const [option, mode, tracks] of [
-  ["Pulzálás", "pulse", ["scale"]], ["Villogás", "blink", ["opacity"]],
-  ["Ringatózás", "rock", ["rotate"]], ["Ugrálás", "hop", ["translate", "scale"]],
-]) {
+// A szerkesztőben CSS-animáció (app.css „Tartalom-animációk”): a csoport jelzi a módot, SMIL-elem nincs benne.
+for (const [option, mode] of [["Pulzálás", "pulse"], ["Villogás", "blink"], ["Ringatózás", "rock"], ["Ugrálás", "hop"]]) {
   await press(option);
   const animated = prop("data-box-animation", mode, graphic("outside"));
-  assert.deepEqual(animated.children.filter(n => n.tag.startsWith("animate")).map(n => n.props.type ?? n.props.attributeName), tracks);
+  assert.equal(animated.props.class, "node-motion");
+  assert.deepEqual(animated.children.filter(n => n.tag.startsWith("animate")), []);
 }
 await save();
 assert.equal(model("outside").animation, "hop");
@@ -1347,25 +1346,26 @@ assert.equal(button("Nyíl a vonal végén").props["aria-pressed"], true);
 await press("Animáció bekapcsolása");
 assert.equal(button("Animáció bekapcsolása").props["aria-pressed"], true);
 // Sima animált vonal: egy kis pötty fut végig a vonalon a nyíl irányában (a korábbi gradiens animáció megszűnt);
-// két nyílnál oda-vissza, kétszer annyi idő alatt (editor.js animatedWire, Rendering.swift wireAnimation).
+// két nyílnál oda-vissza (editor.js animatedWire: CSS offset-path, 20 lépés/mp; Rendering.swift wireAnimation: SMIL).
 const wireDot = () => find(n => n.tag === "circle" && n.props.class === "wire-dot", oneWire());
-const wireMotion = () => find(n => n.tag === "animateMotion", oneWire());
+const wireMotion = () => wireDot().props.style.animation;
 assert.ok(wireDot(), "az animált sima vonalon pötty fut");
 assert.ok(!find(n => n.tag === "linearGradient", oneWire()), "nincs gradiens animáció");
-assert.equal(wireMotion().props.keyPoints, "0;1");
+assert.ok(!find(n => n.tag?.startsWith("animate"), oneWire()), "a szerkesztőben nincs SMIL");
+assert.match(wireDot().props.style.offsetPath, /^path\('M /);
+assert.match(wireMotion(), /^tn-dot [\d.]+s steps\(\d+\) infinite$/);
 assert.ok(wireDot().props.fill !== "#0090ff", "a kijelölt vonal pöttye a vonal saját színét tartja; csak a glow kapja a felhasználó színét");
-const oneWay = parseFloat(wireMotion().props.dur);
+const oneWay = parseFloat(wireMotion().split(" ")[1]);
 await press("Nyíl a vonal elején");
-assert.equal(wireMotion().props.keyPoints, "0;1;0");
-assert.equal(wireMotion().props.keyTimes, "0;0.5;1");
-assert.equal(parseFloat(wireMotion().props.dur), 2 * oneWay);
+assert.match(wireMotion(), / alternate$/);
+assert.equal(parseFloat(wireMotion().split(" ")[1]), oneWay);
 await press("Nyíl a vonal végén");
 await press("S-forma");
 await press("Pontozott");
 assert.equal(button("S-forma").props["aria-pressed"], true);
 assert.equal(button("Pontozott").props["aria-pressed"], true);
 assert.ok(find(n => n.props.d?.includes(" C ") && n.props["stroke-dasharray"] === "0 16", oneWire()));
-assert.equal(prop("attributeName", "stroke-dashoffset", oneWire()).props.values, "0;16");
+assert.equal(find(n => n.props?.style?.["--tn-shift"], oneWire()).props.style["--tn-shift"], "16px");
 await save();
 assert.equal(edge("one").animated, true);
 assert.equal(edge("one").type, "sCurve");
@@ -1374,9 +1374,9 @@ assert.equal(edge("one").startArrow, true);
 assert.equal(edge("one").endArrow, false);
 await press("Nyíl a vonal elején");
 await press("Nyíl a vonal végén");
-assert.equal(prop("attributeName", "stroke-dashoffset", oneWire()).props.values, "0;-16");
+assert.equal(find(n => n.props?.style?.["--tn-shift"], oneWire()).props.style["--tn-shift"], "-16px");
 await press("Szaggatott");
-assert.equal(prop("attributeName", "stroke-dashoffset", oneWire()).props.values, "0;-12");
+assert.equal(find(n => n.props?.style?.["--tn-shift"], oneWire()).props.style["--tn-shift"], "-12px");
 await pressIn("Megjelenés", "Vastag");
 const wireLabelInput = prop("data-object-label", "", panel());
 wireLabelInput.props.onInput({target: {value: "Középen"}});
@@ -1411,11 +1411,13 @@ await press("Felirat a vonalban");
 wireLabelInput.props.onInput({target: {value: ""}});
 await tick();
 assert.equal(prop("id", "editor-wire-gap-one", oneWire()), undefined);
-assert.equal(prop("attributeName", "stroke-width", oneWire()).props.values, "4;5.8;4");
-const arrow = find(n => n.props.d === "M0 0L-1 -.5V.5Z" && n.props.class === "wire-arrow", oneWire());
+// Vastag animált vonal: a szár lüktet (CSS, --tn-pulse = 1,45 × vastagság), a nyílhegy a csúcsa körül pulzál.
+const thickShaft = () => find(n => classList(n.props.class).includes("wire-motion-thick"), oneWire());
+assert.equal(thickShaft().props.style["--tn-pulse"], "5.8px");
+const arrow = find(n => n.props.d === "M0 0L-1 -.5V.5Z" && classList(n.props.class).includes("wire-arrow"), oneWire());
 // Kijelölve a nyílhegy is kap kijelölés-sávot (a szár sávjával közös, áttetsző csoportban).
 assert.ok(find(n => n.props.class === "wire-arrow-halo", oneWire()));
-assert.equal(prop("attributeName", "transform", arrow).props.type, "scale");
+assert.ok(classList(arrow.props.class).includes("wire-arrow-pulse"), "a lüktető nyílhegy");
 // Saját kijelölés: glow nélkül, világosabb és vastagabb vonal (alátét); a nyíl megtartja az eredeti színét.
 assert.equal(prop("class", "wire-glow", oneWire()), undefined);
 // A saját kijelölést a vonal csoportjának "wire-own" osztálya jelzi (app.css), külön alátét-elem nincs.
@@ -1424,13 +1426,14 @@ assert.notEqual(arrow.props.fill, "#0090ff");
 assert.equal(prop("class", "wire-selected", oneWire()), undefined);
 assert.equal(prop("class", "selection-glow", oneWire()), undefined);
 await press("Íves");
-const arcPulse = prop("attributeName", "d", oneWire());
-assert.notEqual(arcPulse.parent.props.fill, "#0090ff");
-assert.equal(arcPulse.parent.props.stroke, "none");
-assert.equal(arcPulse.props.values.split(";").length, 3);
-assert.equal(prop("attributeName", "transform", oneWire()).props.values, "1;1.12;1");
+// Kúpos vastag vonal: a kitöltés köré rajzolt, azonos színű körvonal vastagodik (Safari a CSS `d`-t nem tudja).
+const arcPulse = find(n => classList(n.props.class).includes("wire-motion-taper"), oneWire());
+assert.notEqual(arcPulse.props.fill, "#0090ff");
+assert.equal(arcPulse.props.stroke, arcPulse.props.fill);
+assert.ok(parseFloat(arcPulse.props.style["--tn-pulse"]) > 0);
+assert.ok(find(n => classList(n.props.class).includes("wire-arrow-pulse"), oneWire()));
 await press("Animáció bekapcsolása");
-assert.equal(prop("attributeName", "d", oneWire()), undefined);
+assert.equal(find(n => classList(n.props.class).includes("wire-motion-taper"), oneWire()), undefined);
 await press("Egyenes");
 await press("Sima");
 await save();

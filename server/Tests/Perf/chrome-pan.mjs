@@ -44,7 +44,7 @@ try {
     await sleep(1500);
     const plan = await js(planner + "; window.__panPlan");
     // TN_TRACE=1: nyomkövetés, JS-profil és hálózati napló a hideg körben (a hosszú feladatok oka).
-    const trace = process.env.TN_TRACE && round === 1, events = [], requests = [];
+    const trace = process.env.TN_TRACE && round === Number(process.env.TN_TRACE), events = [], requests = [];
     let traced;
     if (trace) {
       chrome.listeners.push(m => {

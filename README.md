@@ -149,6 +149,8 @@ Az **Új munkalap** a megtekintőből és a vászon helyi menüjéből is elérh
 
 A főoldali **Útmutató** az eszközöket, a gyorsbillentyűket és az egérgesztusokat példákkal mutatja be. A megtekintő a mentett munkalapot rács nélküli SVG-ként, .thnode fájlként vagy szövegként tudja exportálni.
 
+A szerkesztő bal alsó eszköztárán az **Animációk leállítása** minden folyamatos animációt megállít a vásznon (minimális terhelés), a **Díszítő háttér kikapcsolása** a téma díszítő háttereit (Liquid Glass fényei, a tábla filcnyomai, később a textúrák) rejti el. Mindkettőt a saját böngésző menti, a munkalapot nem érinti. A szerkesztőben a doboz- és vonalanimációk CSS-ből futnak, 20 lépés/mp-re korlátozva; a letölthető SVG önállóan működik, és ugyanezeket SMIL-lel tartalmazza (az időzítés nem kulcskocka-pontos, a látvány egyezik). Mérések és háttér: [server/docs/PERF.md](server/docs/PERF.md) „Üresjárat”.
+
 Az útmutató oldal a [server/Public/utmutato.html](server/Public/utmutato.html). Gyorsbillentyű vagy gesztus változásakor ezt kell frissíteni, a [központi táblázattal](server/docs/hotkeys.json) együtt. A példaábrák forrása a [HTML-sablon](server/docs/guide.template.html), az oldal elrendezése a [stíluslapon](server/Public/guide.css) található.
 
 A `Patches/` két apró javítást tartalmaz a `swift-nio` és az `async-http-client` csomaghoz. A `deploy/build.sh` csak macOS-en, 15-nél régebbi SDK esetén teszi rá őket a letöltött csomagokra (Swift 6.0.3 + macOS 14 SDK).

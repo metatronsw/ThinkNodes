@@ -6,6 +6,12 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **Liquid Glass szerkesztő: üresjáratban 130–200% CPU, akadások első kijelöléskor és pásztázáskor (2026-11-26)** (server/docs/PERF.md „Üresjárat”)
+  - Okok: a doboz- és vonalanimációk SMIL-esek voltak (Safariban animációnként 14–19% CPU, Chrome-ban minden 60 Hz-es animáció a teljes vásznat rajzoltatta); a háttérfények végtelen animációja; az első lenyomáskor szinkron létrejövő Web Audio-környezet (250–290 ms); a pásztázás végén azonnali teljes újrarajzolás.
+  - Javítás: a szerkesztőben CSS-animációk 20 lépés/mp-re korlátozva, a közös idővonalhoz igazítva; álló háttérfény; a ping hangja `ping.wav`; a pásztázás 400 ms nyugalom után rögzül. Az SVG-export SMIL-es maradt (önállóan működik).
+  - Eredmény (Liquid Glass, üresjárat): Chrome 94–98% → 17–21%, Safari 71% (+17% WindowServer) → 25% (+5%). Első kijelölés: 564 ms → 8–27 ms késés. Összetett pásztázás 100%-on: Safari 16–31 képkocka 25 ms fölött → 0, Chrome hidegen is 0.
+  - Új: „Animációk leállítása” és „Díszítő háttér kikapcsolása” a vezérlősávon (böngészőnként tárolva).
+
 - **„Tartalom a dobozhoz” CSV-n is (2026-11-26)**
   - Eddig csak táblázatdobozon volt. A CSV illesztve a szerkesztő táblázatdokumentumaként (csvDocument) skálázódik, a szerver ugyanezt rajzolja (`csvGridDocument`, `csvEditorRows` – a szerkesztő CSV-elemzőjének pontos párja). Teszt: `contentFitCSVUsesTheEditorTable`.
 

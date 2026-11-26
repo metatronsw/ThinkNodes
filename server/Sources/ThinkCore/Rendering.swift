@@ -1772,10 +1772,14 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
         func wirePath(gap: Bool = false) -> String {
             let clip = gap ? " clip-path=\"url(#\(gapID))\"" : ""
             if let taper {
-                let animation = taper.expanded.map {
-                    "><animate attributeName=\"d\" values=\"\(taper.outline);\($0);\(taper.outline)\" dur=\"3s\" repeatCount=\"indefinite\"/></path>"
-                } ?? "/>"
-                let fill = "<path class=\"wire-line\"\(wire) data-wire-taper=\"\" d=\"\(taper.outline)\" fill=\"\(motion.stroke)\" stroke=\"none\"\(clip)\(animation)"
+                // Lüktető kúpos vonal: a kitöltés köré rajzolt, azonos színű körvonal vastagodik (a szerkesztő CSS-animációjával
+                // azonos látvány, editor.js animatedWire; a korábbi `d`-animációt a Safari CSS-ben nem tudja).
+                let grow = edge.pulseWidth - edge.lineWidth
+                let pulsing = taper.expanded != nil && grow > 0
+                let animation = pulsing
+                    ? " stroke=\"\(motion.stroke)\" stroke-width=\"0\" stroke-linejoin=\"round\"><animate attributeName=\"stroke-width\" values=\"0;\(number(grow));0\" dur=\"3s\" repeatCount=\"indefinite\"/></path>"
+                    : " stroke=\"none\"/>"
+                let fill = "<path class=\"wire-line\"\(wire) data-wire-taper=\"\" d=\"\(taper.outline)\" fill=\"\(motion.stroke)\"\(clip)\(animation)"
                 return "<g class=\"wire\" fill=\"none\">\(fill)\(secondPass(taper.outline, clip: clip, filled: true))\(heads)\(motion.dot)</g>"
             }
             let stroke = "<path class=\"wire-line\"\(wire) d=\"\(drawing)\" stroke=\"\(motion.stroke)\" stroke-width=\"\(number(lineWidth))\"\(markers)\(clip)\(shaft)"

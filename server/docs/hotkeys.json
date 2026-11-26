@@ -13,6 +13,8 @@
       {"action": "Hozzáadás téglalappal", "keys": [["Alt", "Shift", "Húzás"]], "where": "Üres vászon", "detail": "Hozzáadja az elemeket a meglévő kijelöléshez."},
       {"id": "touching", "action": "Érintés alapján kijelölés", "keys": [["Ctrl", "Alt", "Húzás"]], "where": "Üres vászon", "detail": "A részben átfedő objektumokat és az áthaladó vonalakat is kijelöli. Shift nyomva tartásával hozzáad a meglévő kijelöléshez."},
       {"action": "Pontrács", "icon": "grid", "keys": [["Pontrács"]], "where": "Bal alsó eszköztár", "detail": "A láthatóságot a saját böngésződ menti."},
+      {"action": "Animációk leállítása", "icon": "pause", "keys": [["Animációk"]], "where": "Bal alsó eszköztár", "detail": "Minden folyamatos animáció leáll a vásznon (minimális terhelés). A beállítást a saját böngésződ menti."},
+      {"action": "Díszítő háttér kikapcsolása", "icon": "box-background", "keys": [["Háttér"]], "where": "Bal alsó eszköztár", "detail": "A téma díszítő hátterei (fények, filcnyomok, textúrák) nem jelennek meg; a vászon színe és a rács marad. A saját böngésződ menti."},
       {"action": "Rácsra igazítás", "icon": "snap", "keys": [["Rácsra igazítás"]], "where": "Bal alsó eszköztár", "detail": "Mozgatáskor a rácshoz igazít. Az alapértelmezett rácsköz 32."},
       {"action": "Kurzor megosztása", "icon": "hand", "keys": [["Saját egérmutató megosztása"]], "where": "Vászon", "detail": "Bekapcsolva a többi résztvevő is látja a kurzorodat."},
       {"action": "Kurzorcímke váltása", "icon": "hand", "keys": [["Kurzorok mellett: név / avatar"]], "where": "Vászon", "detail": "A többiek kurzora mellett a nevük vagy az avatarjuk látszik; a választás ebben a böngészőben megmarad."},

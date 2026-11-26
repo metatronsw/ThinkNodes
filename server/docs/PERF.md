@@ -180,3 +180,51 @@ Kliens:
 - **`commonmark.js` halasztva** (99 KB): csak markdown-szöveg megjelenítésekor kell.
 - A korábbi nyitott tételek változatlanok („Ami nem javult vagy nyitva maradt”); az új táblázat-fejlécsávok görgetési
   sebessége nincs mérve.
+
+## Üresjárat és első-alkalmas akadások – 2026-11-26 (Liquid Glass lap, Chrome 158 + Safari 18.6)
+
+Probléma: a megnyitott Liquid Glass munkalap a szerkesztőben mozdulat nélkül 130–200% CPU-t vitt; pásztázáskor, az első
+kijelöléskor és mozgatáskor „véletlenszerű” akadások.
+
+### Mérőeszközök (Tests/Perf)
+
+- `chrome.mjs`: valódi Google Chrome külön, ideiglenes profillal (a felhasználóét nem érinti), valódi GPU-val, CDP-n;
+  CPU a példány folyamatfáján (renderer / GPU / böngésző). `TN_CHROME` a Chrome helye.
+- `chrome-idle.mjs LAP [mp] [változatok]`, `safari-idle-wd.py LAP --list …`: üresjárati CPU változatonként. A változatokat a
+  `Public/bench-idle.js` kapcsolja (a szerkesztő `?bench=NÉV&list=NÉV&hold=1` címre tölti be). Stílust CSSOM-mal
+  (`adoptedStyleSheets`) szúr be: a CSP (`style-src 'self'`) a beszúrt `<style>` elemet tiltja.
+- `chrome-pan.mjs`, `safari-pan.py`: összetett pásztázás 100%-on (`pan-plan.js`: a teljes vászon bejárása oda-vissza,
+  húzásonként rántás – a táv 60%-a 4 képkocka alatt – majd lassú finomhúzás), hideg és meleg körben; `TN_TRACE=1`: a hideg
+  kör hosszú főszál-feladatai.
+- `chrome-hitch.mjs` (első kijelölés / mozgatás / pásztázás), `chrome-first.mjs` (a legelső kattintás JS-profilja, kérései).
+- Buktató: takart (nem látható) ablakban a Safari a CSS-animációkat leállítja, a SMIL-t nem; a vezérelt ablak legyen elöl.
+
+### Okok és eredmények
+
+| Ok | Chrome | Safari (WebContent) |
+|---|---|---|
+| SMIL-animációk (4 animált doboz, 4 animált vonal): Safariban animációnként 14–19% CPU (akkor is, ha semmi nem látszik); Chrome-ban minden 60 Hz-es animáció képkockánként a teljes vásznat rajzoltatja (egy futó pötty ~15%) | ~80% | ~66% |
+| A háttérfények végtelen CSS-animációja (csak a szerkesztőben volt; a mozgás nem is látszott) | ~17% (GPU) | ~3% + WindowServer 5–10% |
+| **Összesen, régi kód** | **94–98%** | **69–71%** (+ WindowServer 17%) |
+| CSS-animáció 60 Hz-en | 50% | 45% |
+| CSS-animáció, 20 lépés/mp, igazítás nélkül | 29% | 20% |
+| **CSS-animáció, 20 lépés/mp, közös ütemre igazítva (új)** | **15%** | **17%** |
+| Minden animáció áll („Animációk ki”) | ~1% | ~0% |
+
+- A lépések igazítása a lényeg: ha az animációk lépései nem ugyanarra a pillanatra esnek, együtt megint szinte minden
+  képkockára jut változás. Minden szakasz 50 ms egész többszöröse, és a szerkesztő az animációkat a közös idővonal
+  nullpontjához állítja (`editor.js queueMotionAlign`); a Chrome a `steps()` lépései között nem rajzol képkockát.
+- A letölthető SVG SMIL-t használ (önállóan működik), ugyanazokkal a mértékekkel; az időzítés nem kulcskocka-pontos.
+- A kúpos vastag vonal lüktetése a szerkesztőben és az SVG-ben is a kitöltés köré rajzolt, vastagodó körvonal (a Safari a
+  CSS `d` tulajdonságot nem animálja).
+
+### Akadások
+
+- **Első lenyomás (kijelölés / pásztázás):** a ping hangjának Web Audio-környezete (`new AudioContext()`) Chrome-ban
+  250–290 ms-ig szinkron blokkolt. Most előre generált `Public/ping.wav` szól `<audio>` elemmel (a CSP `media-src 'self'`
+  miatt nem futás közben előállított blob). Első kijelölés: 564 ms helyett 27 ms késés, a leghosszabb képkocka 650 helyett
+  18,6 ms.
+- **Pásztázás vége:** a felengedéskor a nézet azonnal rögzült (`commitView`: teljes újrarajzolás, kényszerített
+  elrendezés) – Safariban minden betöltés után az első húzások végén 55–72 ms, Chrome-ban hidegen 83–118 ms. Most a görgős
+  nagyításhoz hasonlóan 400 ms nyugalom után rögzül (`perfOptions.panCommit`); egymás utáni húzások között nincs rögzítés.
+- Összetett pásztázás 100%-on (34 húzás): Chrome meleg körben hibátlan (60 fps, max 17,9 ms).
