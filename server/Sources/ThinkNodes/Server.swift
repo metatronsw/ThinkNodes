@@ -364,11 +364,20 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
 
     app.get("health") { _ in "ok" }
 
+    /// Hosszú lekérdezés várt „lejárt” esete (410): a kliens közben elhagyta a lapot, vagy a csatornája lejárt (pl. szerver-
+    /// újraindítás után). Nem hiba, ezért nem dobjuk: a Vapor hibakezelője minden dobott hibát figyelmeztetésként naplózott
+    /// (lapbezárásonként egy sor). A kliens ugyanúgy kezeli (jelenlét: újracsatlakozik, lapváltozás: újratölti az oldalt).
+    @Sendable func goneResponse() -> Response { Response(status: .gone, headers: ["Cache-Control": "no-store"]) }
+    @Sendable func quietGone(_ body: () async throws -> Response) async throws -> Response {
+        do { return try await body() } catch let error as Abort where error.status == .gone { return goneResponse() }
+    }
     application.get("api", "page-changes", ":id") { req async throws -> Response in
         guard let id = req.parameters.get("id").flatMap(UUID.init(uuidString:)),
               let since = req.query[String.self, at: "since"].flatMap(UUID.init(uuidString:)) else { throw Abort(.badRequest) }
-        let version = try await live.pages.wait(id, since: since, on: req.eventLoop)
-        return response(version.uuidString, type: "text/plain; charset=utf-8")
+        return try await quietGone {
+            let version = try await live.pages.wait(id, since: since, on: req.eventLoop)
+            return response(version.uuidString, type: "text/plain; charset=utf-8")
+        }
     }
 
     // Nincs-e még egyetlen fiók sem az adatmappában (tesztmódban nem számít: ott mindenki admin).
@@ -635,7 +644,9 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         var (snapshot, wait) = try await state(form.action, since: form.since)
         if let wait {
             try await wait.get()
-            snapshot = try await state("snapshot", since: nil).0
+            // A várakozás alatt a kliens elhagyta a lapot (leave, újratöltés) vagy a szobája lejárt: csendes 410 (goneResponse).
+            do { snapshot = try await state("snapshot", since: nil).0 }
+            catch let error as Abort where error.status == .gone { return goneResponse() }
         }
         let result = Response()
         try result.content.encode(snapshot)

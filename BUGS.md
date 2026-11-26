@@ -12,7 +12,6 @@
 - **Megtekintő (megszűnik): ismert eltérések a szerkesztőtől** (2026-11-26)
   - A megtekintőben az animációk SMIL-esek maradtak (Safariban ~44–48% üresjáratban); a szerkesztő CSS-animációi ott nem működnének, mert a CSP (`style-src 'self'`) az elemenkénti stílust tiltja.
   - Minden betöltéskor ~122 CSP-hiba („Applying inline style violates…”): a szerver által írt `style` attribútumokat a böngésző eldobja, amit kell, a `viewer.js` állítja be utólag.
-  - A jelenlét-jelzés (`/api/presence`) a már bezárt lapoktól tömegesen 410-es választ naplóz a szerveren.
 
 - **Főoldali .webp előnézetek: nyitott / kézzel nézendő** (2026-11-26)
   - A librsvg a dobozokba ágyazott HTML-t (táblázat, szövegfájl, .md tartalma) nem rajzolja ki: a háttérképen ezek a dobozok üresek. Ha zavaró, a szerver a raszteres változathoz egyszerű helyettesítő vonalakat rajzolhat a szöveg helyére.

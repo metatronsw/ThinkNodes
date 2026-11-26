@@ -6,6 +6,10 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **Napló-zaj: lapbezárásonként egy „Abort.410: Gone” figyelmeztetés a szerver naplójában (2026-11-26)**
+  - Ok: a jelenlét hosszú lekérdezése (`/api/presence`) a várakozás végén már nem találta a közben távozott (leave, újratöltés) vagy lejárt résztvevőt; a lapváltozás-lekérdezés (`/api/page-changes`) lejárt csatornánál (pl. szerver-újraindítás után) ugyanígy. A dobott 410-et a Vapor hibakezelője figyelmeztetésként naplózta.
+  - Javítás: várt esetként csendes 410-es válasz, dobás nélkül (`Server.swift goneResponse`, `quietGone`); a kliens viselkedése változatlan. Chrome-ban 5 újratöltés és bezárás után a napló tiszta.
+
 - **Liquid Glass szerkesztő: üresjáratban 130–200% CPU, akadások első kijelöléskor és pásztázáskor (2026-11-26)** (server/docs/PERF.md „Üresjárat”)
   - Okok: a doboz- és vonalanimációk SMIL-esek voltak (Safariban animációnként 14–19% CPU, Chrome-ban minden 60 Hz-es animáció a teljes vásznat rajzoltatta); a háttérfények végtelen animációja; az első lenyomáskor szinkron létrejövő Web Audio-környezet (250–290 ms); a pásztázás végén azonnali teljes újrarajzolás.
   - Javítás: a szerkesztőben CSS-animációk 20 lépés/mp-re korlátozva, a közös idővonalhoz igazítva; álló háttérfény; a ping hangja `ping.wav`; a pásztázás 400 ms nyugalom után rögzül. Az SVG-export SMIL-es maradt (önállóan működik).

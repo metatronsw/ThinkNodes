@@ -1,5 +1,10 @@
 # Változások
 
+## 2026-11-26 – Szerver: napló-zaj megszüntetése a hosszú lekérdezéseknél
+
+- A jelenlét (`/api/presence`) és a lapváltozás (`/api/page-changes`) hosszú lekérdezése a várt „lejárt” esetben (a kliens elhagyta a lapot, a csatorna lejárt) csendes 410-es választ ad dobás nélkül; korábban minden lapbezárás egy „Abort.410: Gone” figyelmeztetést írt a naplóba. A kliens viselkedése nem változott (jelenlét: újracsatlakozás, lapváltozás: az oldal újratöltése).
+- A PERF.md elejére kötelező irányelvek kerültek (szabályok, mérési módszer, mérőeszközök és elavulásuk).
+
 ## 2026-11-26 – Szerkesztő: üresjárati terhelés és akadások javítva; „Animációk leállítása”, „Díszítő háttér kikapcsolása”
 
 - **Animációk a szerkesztőben CSS-ből** (app.css „Tartalom-animációk”): doboz (pulzálás, villogás, ringás, ugrálás) és vonal (szaggatott minta, vastag lüktetés, kúpos vastag vonal, futó pötty `offset-path`-szal, lüktető nyílhegy). 20 lépés/mp (`steps()`, minden szakasz 50 ms többszöröse), a közös idővonal nullpontjához igazítva (`editor.js queueMotionAlign`). A téma sebességszorzóját a szerkesztő nem alkalmazza (az eltérő ütem kétszer annyi képkockát kért).
