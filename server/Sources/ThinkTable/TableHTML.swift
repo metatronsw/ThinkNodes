@@ -64,6 +64,15 @@ public enum TableHTML {
         }
     }
 
+    /// A kirajzolt táblázat mérete képpontban (a `render` oszlopszélességei és sormagasságai, a „… további sor” sorral);
+    /// a „Tartalom a dobozhoz” skálájához (Rendering.swift fileBox, editor.js tableFitZoom párja).
+    public static func size(_ document: TableDocument, maxRows: Int = maxPreviewRows) -> (width: Double, height: Double) {
+        let rows = min(document.size.rows, maxRows)
+        let width = (0..<document.size.cols).reduce(0.0) { $0 + Double(Int(max(16, min(document.cols?[CellAddress.columnName($1)]?.w ?? defaultColumnWidth, 2000)))) }
+        let height = (0..<rows).reduce(0.0) { $0 + max(12, min(document.rows?[String($1 + 1)]?.h ?? defaultRowHeight, 2000)) }
+        return (width, height + (document.size.rows > rows ? 24 : 0))
+    }
+
     public static func render(_ document: TableDocument, maxRows: Int = maxPreviewRows) -> String {
         let rows = min(document.size.rows, maxRows), cols = document.size.cols
         let headerRows = min(document.header?.rows ?? 0, rows)
@@ -71,7 +80,9 @@ public enum TableHTML {
         // a tartalomhoz igazít (pl. a félkövér betű szélesíti az oszlopot). A szerkesztő `tableWidth`-jének párja.
         let widths = (0..<cols).map { Int(max(16, min(document.cols?[CellAddress.columnName($0)]?.w ?? defaultColumnWidth, 2000))) }
         var html = "<table class=\"tn-table\(document.grid == false ? " no-grid" : "")\" style=\"width:\(widths.reduce(0, +))px\"><colgroup>"
-        for width in widths { html += "<col style=\"width:\(width)px\">" }
+        // Önlezáró elem: a táblázat a munkalap SVG-jébe (XML) is bekerül – lezáratlan <col> mellett az előnézeti kép
+        // betölthetetlen volt (a főoldali kártyák háttere üres maradt).
+        for width in widths { html += "<col style=\"width:\(width)px\"/>" }
         html += "</colgroup>"
         func row(_ r: Int, cell tag: String) -> String {
             let height = document.rows?[String(r + 1)]?.h ?? defaultRowHeight

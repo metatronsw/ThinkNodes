@@ -37,7 +37,13 @@ export function cellStyle(style) {
 
 const kind = value => typeof value === "number" ? "num" : typeof value === "boolean" ? "bool" : value && typeof value === "object" ? "err" : "txt";
 const columnWidth = (doc, c) => Math.max(16, Math.min(doc.cols?.[columnName(c)]?.w ?? defaultColumnWidth, 2000));
-const rowHeight = (doc, r) => Math.max(12, Math.min(doc.rows?.[String(r + 1)]?.h ?? defaultRowHeight, 2000));
+export const rowHeight = (doc, r) => Math.max(12, Math.min(doc.rows?.[String(r + 1)]?.h ?? defaultRowHeight, 2000));
+// A táblázat teljes magassága (legfeljebb `maxRows` sor); a „Tartalom a dobozhoz” skálájához (editor.js tableFitZoom).
+export function tableHeight(doc, maxRows = Infinity) {
+  let height = 0;
+  for (let r = 0; r < Math.min(doc.size.rows, maxRows); r++) height += rowHeight(doc, r);
+  return height;
+}
 
 // A táblázat teljes szélessége: rögzített oszlopszélességekhez (table-layout: fixed) kell a kifejezett szélesség,
 // különben a böngésző a tartalomhoz igazít, és pl. a félkövér betű szélesíti az oszlopot.

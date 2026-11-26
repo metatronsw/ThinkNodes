@@ -17,7 +17,8 @@ export function avatarSymbol(avatar, color, className = "peer-avatar") {
 // A kurzorok mellett a név vagy az avatar látszik; ezt mindenki maga választja (eszköztár), a böngészőben tárolva.
 const labelKey = "thinknodes:cursor-label";
 export function cursorLabelMode() {
-  try { return localStorage.getItem(labelKey) === "avatar" ? "avatar" : "name"; } catch { return "name"; }
+  // "name": nyíl + név, "avatar": nyíl + avatar, "avatar-only": csak az avatar (az a mutató).
+  try { const mode = localStorage.getItem(labelKey); return ["avatar", "avatar-only"].includes(mode) ? mode : "name"; } catch { return "name"; }
 }
 export function setCursorLabelMode(mode) {
   try { localStorage.setItem(labelKey, mode); } catch {}

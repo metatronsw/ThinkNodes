@@ -906,7 +906,7 @@ await save();
 toggle("Escape", true); await tick();
 canvasToggle().props.onClick(); await tick();
 assert.ok(!text(canvasPanel()).includes("Rácsköz"), "the appearance opens in its own popup");
-assert.ok(find(n => n.tag === "a" && n.props.href === "/_naplo/test", canvasPanel()), "the project log is linked from the canvas panel");
+assert.ok(find(n => n.tag === "a" && n.props.href === "/_naplo/test?from=%2Fedit%2Ftest", canvasPanel()), "the project log is linked from the canvas panel");
 await openAppearance();
 assert.ok(text(appearancePanel()).includes("Rácsköz"), "the grid spacing is part of the canvas appearance");
 for (const label of ["Rácspontok színe", "Pontrács megjelenítése", "Tulajdonos", "Rejtett a főoldalon", "Nyilvános munkalap", "Szerkesztők"]) {

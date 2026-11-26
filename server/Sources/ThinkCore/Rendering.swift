@@ -77,7 +77,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/lib/d3-zoom.js?v=1"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=98"></script>
+        <script type="module" src="/editor.js?v=100"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -88,7 +88,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=66">
+          <link rel="stylesheet" href="/app.css?v=69">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -189,7 +189,9 @@ package func siteHeader(path: String? = nil, project: String? = nil, user: User?
         """
     let navigationClass = path == nil ? "site-header" : "worksheet-nav"
     // Projektnapló: minden munkalap fejlécében, a projekt naplójára mutat.
-    let log = parts.first.map { "<a class=\"\(headerButtonClass) log-link\" href=\"/_naplo/\(escaped($0))\" title=\"A projekt naplója\" aria-label=\"Napló\">\(uiIcon("list"))</a>" } ?? ""
+    // A `from` a napló „Vissza” gombjáé: oda tér vissza (szerkesztő vagy megtekintő, az aktuális munkalap).
+    let from = path.map { "?from=" + encodeQuery(base + $0) } ?? ""
+    let log = parts.first.map { "<a class=\"\(headerButtonClass) log-link\" href=\"/_naplo/\(escaped($0))\(from)\" title=\"A projekt naplója\" aria-label=\"Napló\">\(uiIcon("list"))</a>" } ?? ""
     return """
         <\(tag) class="\(navigationClass)"><div class="header-left"><nav aria-label="Fő navigáció" class="breadcrumbs">
           <a class="\(headerButtonClass) brand" href="/"><span class="brand-icon" aria-hidden="true"><span></span><span></span><span></span></span>ThinkNodes</a>
@@ -1280,6 +1282,17 @@ private func plugMarkup(_ end: String, node: Idea, tip: Point, width: Double, co
 }
 
 /// Fájlt tároló objektum (szöveg, kép, hang, dokumentum) a vásznon: felül fájlnév, középen tartalom, alul megjegyzés.
+/// „Tartalom a dobozhoz” táblázat (editor.js renderTableFit párja): saját foreignObject SVG-szintű scale()-lel, a doboz
+/// bal felső sarkától 20 / 18 px-re (a .node-file és a .node-note belső margója); a táblázat itt skálázatlanul rendeződik.
+private func fittedTable(_ node: Idea, text: String?) -> String? {
+    guard node.type == "table", node.contentFit == true, let text, let document = try? TableDocument.decode(Data(text.utf8)) else { return nil }
+    let size = TableHTML.size(document), width = size.width + 1, height = size.height + 1
+    let scale = max(0.05, min(8, (node.width - 50) / width, (node.height - 36) / height))
+    let x = node.position.x - node.width / 2 + 20, y = node.position.y - node.height / 2 + 18
+    let paper = node.fill.hasPrefix("#") ? ";--tn-paper:" + escaped(node.fill) : ""
+    return "<g class=\"table-fit\" transform=\"translate(\(number(x)) \(number(y))) scale(\(number(scale)))\"><foreignObject class=\"node-file-frame\" width=\"\(number(width + 16))\" height=\"\(number(height + 16))\"><div xmlns=\"http://www.w3.org/1999/xhtml\" class=\"table-fit-body\" style=\"font-size:\(number(node.fontSize))px;color:\(escaped(node.paperInk ?? node.textColor))\(paper)\"><div class=\"table-fit-note\" style=\"width:\(number(width))px;height:\(number(height))px\">\(fileTextHTML(node, text: text))</div></div></foreignObject></g>"
+}
+
 private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: Bool, exported: Bool, text: String?,
                      graphics: VisualTheme.Graphics?, siteHost: String?) -> String {
     let url = escaped(attachmentAddress(file, base: base))
@@ -1287,6 +1300,7 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
     let download = escaped(file.commonURL ?? "/api/box-file" + base + "?id=" + encodeQuery(node.id))
     let packageIcon = uiIcon("package")
     let ext = escaped(((file.filename ?? file.asset) as NSString).pathExtension.uppercased())
+    let fitted = fittedTable(node, text: text)
     func downloadControl(_ label: String, classes: String = "node-download") -> String {
         if interactive {
             return "<button type=\"button\" class=\"\(classes)\" title=\"\(filename)\" aria-label=\"Letöltés · \(filename)\" data-download=\"\(download)\">\(packageIcon)\(label)</button>"
@@ -1311,7 +1325,8 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
     case "text":
         // A mentett görgetési helyzetet a megtekintő szkriptje állítja be (viewer.js).
         let scroll = node.scroll.map { " data-scroll-x=\"\(number($0.x))\" data-scroll-y=\"\(number($0.y))\"" } ?? ""
-        content = "<div class=\"node-note\" data-font-size=\"\(number(node.fontSize))\"\(scroll)>\(fileTextHTML(node, text: text))</div>"
+        // „Tartalom a dobozhoz” táblázat: a tartalom a skálázott rétegben (fittedTable), a jegyzet üres.
+        content = "<div class=\"node-note\" data-font-size=\"\(number(node.fontSize))\"\(scroll)>\(fitted == nil ? fileTextHTML(node, text: text) : "")</div>"
     default:
         content = "<div class=\"node-document\"><span class=\"node-document-icon\">\(packageIcon)<b>\(ext)</b></span>\(downloadControl("Letöltés", classes: "node-download button small"))</div>"
     }
@@ -1326,7 +1341,7 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
         boxSurface(node, geometry: geometry, graphics: graphics, interactive: interactive)
     let translated = chrome.isEmpty ? "" : "<g transform=\"translate(\(number(node.position.x)) \(number(node.position.y)))\">\(chrome)</g>"
     let outline = frameOutline(node)
-    let framed = outline.isEmpty ? "" : "<g transform=\"translate(\(number(node.position.x)) \(number(node.position.y)))\">\(outline)</g>"
+    let framed = (outline.isEmpty ? "" : "<g transform=\"translate(\(number(node.position.x)) \(number(node.position.y)))\">\(outline)</g>") + (fitted ?? "")
     // A fájlnév a doboz felett, a link és a megjegyzés alatta, egyetlen foreignObjectben normál
     // (nem abszolút) elrendezéssel: a Safari így is jó helyre rajzolja, és nagyításkor kevesebb a munka.
     let top = node.position.y - node.height / 2 - 30

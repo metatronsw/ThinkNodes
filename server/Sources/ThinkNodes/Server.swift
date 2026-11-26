@@ -680,6 +680,17 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         return try chatResponse(message)
     }
 
+    /// A napló „Vissza” gombjának célja: a hívó munkalap (szerkesztő vagy megtekintő) a `from` paraméterből, ha a
+    /// projekten belüli, helyi cím; egyébként a projekt megtekintője.
+    func logReturn(_ from: String?, project: String) -> String {
+        let encoded = project.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? project
+        let fallback = "/" + encoded
+        guard let from, !from.contains("//"), !from.contains(":"), !from.contains("\\"), !from.contains("?"), !from.contains("#") else { return fallback }
+        let owned = [project, encoded].contains { name in
+            ["/", "/edit/"].contains { prefix in from == prefix + name || from.hasPrefix(prefix + name + "/") }
+        }
+        return owned ? from : fallback
+    }
     // Projektnapló: oldal (`/_naplo/<projekt>`; az aláhúzás miatt nem ütközhet projektnévvel) és API (`/api/log/<projekt>`).
     app.get("_naplo", ":project") { req async throws -> Response in
         let identity = try session(req, store: store)
@@ -688,6 +699,7 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         return htmlPage(title: "Napló · \(project)", body: """
             \(siteHeader(path: project, project: project, user: identity.user, csrf: identity.csrf))
             <main class="shell log-page" id="project-log" data-project="\(escaped(project))" data-csrf="\(identity.csrf ?? "")" data-user="\(escaped(identity.user?.name ?? ""))">
+              <p class="log-back"><a class="button" href="\(escaped(logReturn(req.query[String.self, at: "from"], project: project)))">\(uiIcon("left"))Vissza</a></p>
               <h1>Napló · \(escaped(project))</h1>
               <p class="muted">A projekt közös naplója: a bejegyzések idő szerint. Írni és jelölni a projekt szerkesztői tudnak.</p>
               <noscript>A naplóhoz JavaScript szükséges.</noscript>
@@ -1737,7 +1749,7 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
         ? "<a class=\"button small\" aria-label=\"Szülő munkalap\" title=\"Szülő munkalap\" href=\"/\(path.url.split(separator: "/").dropLast().joined(separator: "/"))\">\(uiIcon("parent-up"))</a>" : ""
     return htmlPage(title: worksheet.title, body: """
         \(siteHeader(path: path.url, project: worksheet.title, user: session.user, csrf: session.csrf, canEdit: access.editable))
-        <script type="module" src="/viewer.js?v=30"></script>
+        <script type="module" src="/viewer.js?v=32"></script>
         <main class="shell" id="worksheet-view" data-graphics="\(escaped(graphicsJSON))" data-selection="\(selectionColor)" data-site-mode="\(siteMode(req) ?? "light")" data-path="\(path.url)" data-csrf="\(token(req))" data-revision="\(worksheet.revision)" data-editable="\(access.editable)" data-member="\(session.user != nil)">
           <a hidden data-current-document data-scope="\(path.parts.count == 1 ? "project" : "sheet")" \(editorMembership(access)) \(menuState(access.sheetRule)) data-manage="\(access.manageable)" href="\(base)">Munkalap</a>
           <div class="viewer-heading">\(parent)<h1><span aria-hidden="true">• </span>\(escaped(worksheet.title))</h1><div class="viewer-heading-credits">\(credits(worksheet, access))</div></div>

@@ -180,7 +180,7 @@ import VaporTesting
         #expect(throws: Abort.self) { try withArchive.validate() }
         let preview = try await browser.sendRequest(.GET, "/api/preview/" + path + "/terv")
         #expect(preview.status == .ok && preview.body.string.contains("<svg"))
-        #expect(FileManager.default.fileExists(atPath: file.deletingLastPathComponent().appendingPathComponent("terv/.terv.preview-v11.svg").path))
+        #expect(FileManager.default.fileExists(atPath: file.deletingLastPathComponent().appendingPathComponent("terv/.terv.preview-v12.svg").path))
         try await checkPreviewAndPreferences(browser, path: path + "/terv", sheet: child, session: shared, png: png)
         let parent = try await browser.sendRequest(.GET, "/" + path)
         #expect(parent.body.string.contains("További munkalapok") && parent.body.string.contains("Létrehozó: shared"))

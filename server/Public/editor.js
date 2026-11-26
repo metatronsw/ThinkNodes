@@ -24,7 +24,7 @@ import {glowFilter, glowId, glowReach, glowVNode} from "./glow.js";
 import {awaitWebPreview} from "./web-preview-refresh.js";
 import {cellName, columnName, decodeTable, encodeTable, limits as tableLimits} from "./table/table-document.js";
 import {TableEditor} from "./table/table-edit.js";
-import {gridOffset, peerMark, renderTable, renderTableEditor, revealActive, tableToolbar} from "./table/table-view.js";
+import {peerMark, previewRows, renderTable, renderTableEditor, revealActive, tableHeight, tableToolbar, tableWidth} from "./table/table-view.js";
 import {askNewTable, askReimport, createEmptyTable, createTableFromTSV, exportURL, extensionOf, importableExtensions, tableBoxProperties, tableFromSource, tableFromUpload} from "./table/table-files.js";
 import {looksTabular} from "./table/table-clipboard.js";
 import {detectSeparator, parseCSVRows, writeCSVRows} from "./table/table-csv.js";
@@ -4414,12 +4414,23 @@ createApp({
     // a doboz vászonbeli helyéből és a táblázat elrendezéséből számoljuk, nem találatvizsgálatból: a mutatót a doboz
     // fogja el (az esemény célpontja nem a cella), és Safariban a foreignObject-beli találatvizsgálat sem megbízható.
     function clickedCell(event, node) {
-      const note = fileNote(node.id), table = note?.querySelector("table");
+      const note = fileNote(node.id), point = world(event);
+      // „Tartalom a dobozhoz”: a táblázat a skálázott rétegben (renderTableFit), a doboz bal felső sarkától 20 / 18 px-re.
+      if (fittedTable(node)) {
+        const table = note?.closest("[data-node]")?.querySelector(".table-fit-note table");
+        if (!table) return null;
+        const scale = tableFitZoom(node, tableOf(node));
+        return cellIn(table, (point.x - (node.position.x - node.width / 2) - 20) / scale, (point.y - (node.position.y - node.height / 2) - 18) / scale);
+      }
+      const table = note?.querySelector("table");
       if (!table || note.querySelector("[data-table-editor]")) return null;
       const pixels = (element, key) => parseFloat(getComputedStyle(element)[key]) || 0;
-      const frame = note.closest(".node-file"), point = world(event);
+      const frame = note.closest(".node-file");
       const x = point.x - (node.position.x - node.width / 2) - pixels(frame, "paddingLeft") - pixels(note, "paddingLeft") + note.scrollLeft;
       const y = point.y - (node.position.y - node.height / 2) - pixels(frame, "paddingTop") - pixels(note, "paddingTop") + note.scrollTop;
+      return cellIn(table, x, y);
+    }
+    function cellIn(table, x, y) {
       const row = [...table.rows].find(item => y >= item.offsetTop && y < item.offsetTop + item.offsetHeight);
       const cell = row && [...row.cells].find(item => x >= item.offsetLeft && x < item.offsetLeft + item.offsetWidth);
       // CSV: a nézet kihagyja az üres sorokat, a sor fájlbeli száma a data-row attribútumban van.
@@ -4460,16 +4471,14 @@ createApp({
         const r = Math.min(at.r, doc.size.rows - 1), c = Math.min(at.c, doc.size.cols - 1);
         editor.active = {r, c};
         editor.anchor = {r, c};
-        // A szerkesztőben a rács a képletsor alatt kezdődik, az olvasó nézetnek belső térköze van: ezekkel igazítva a
-        // cella ott marad, ahol a kattintás érte.
-        const target = gridOffset(doc, r, c);
-        editor.scrollTop = Math.max(0, Math.round(target.top + 20 - (at.top - scroll.top)));
-        editor.scrollLeft = Math.max(0, Math.round(target.left - 2 - (at.left - scroll.left)));
         editor.startDraft();
-      } else {
-        editor.scrollTop = scroll.top;
-        editor.scrollLeft = scroll.left;
       }
+      // A szerkesztő rácsa pontosan az olvasó nézet helyén áll (ugyanaz a belső térköz, betű és görgetés; a fejlécsávok
+      // és a képletsor a dobozon kívül, app.css „Táblázat szerkesztése”): a görgetés változatlanul átvehető, semmi sem ugrik.
+      // „Tartalom a dobozhoz”: a teljes táblázat befér, nincs görgetés.
+      const fitted = current?.type === "table" && current.contentFit;
+      editor.scrollTop = fitted ? 0 : scroll.top;
+      editor.scrollLeft = fitted ? 0 : scroll.left;
       revealedCell = null;
       tableFocus.value = true;
       tableEdit.value = {id: node.id, editor};
@@ -4761,6 +4770,15 @@ createApp({
     // nem változik. A doboz húzásakor (képkockánként új rajzolás a helyzet miatt) így nem épül újra és nem hasonlítódik
     // össze a több ezer cella: ugyanazt a fát a Vue egy lépésben átugorja.
     const gridViews = new Map();
+    // „Tartalom a dobozhoz” (node.contentFit): a táblázat egyenletes nagyítása, hogy a doboz belsejébe (a .node-note
+    // térközén belül: 10 + 10 px oldalt, 8 + 20 px a görgetősávnak, 10 + 8 px fent és lent) pontosan beférjen, torzítás nélkül.
+    // Olvasó és szerkesztő nézet ugyanezt a nagyítást kapja (renderTableFit); a szerveroldali pár: Rendering.swift fileBox.
+    const fittedTable = node => node?.type === "table" && node.contentFit === true;
+    function tableFitZoom(node, doc) {
+      if (!node.contentFit || !doc) return 1;
+      const height = tableHeight(doc, previewRows), width = tableWidth(doc) + 1, room = {x: node.width - 20 - 30, y: node.height - 20 - 16};
+      return Math.max(.05, Math.min(8, room.x / width, room.y / (height + 1)));
+    }
     function cachedGrid(id, content, marks, build) {
       const cached = gridViews.get(id);
       if (cached && cached.content === content && cached.marks === marks) return cached.view;
@@ -4851,6 +4869,8 @@ createApp({
       if (textEdit.value === node.id) return renderTextEditor(node, text);
       if (isGrid(node)) {
         tableTick.value;
+        // „Tartalom a dobozhoz”: a táblázat (és a szerkesztője) külön, skálázott rétegben áll (renderTableFit).
+        if (fittedTable(node)) return null;
         if (tableEdit.value?.id === node.id) return renderTableEditor(h, tableEdit.value.editor, {onExit: stopTableEdit, focusGrid: tableFocus.value, onScroll: element => shareScroll(node, element)});
       }
       if (node.type === "table") {
@@ -4921,18 +4941,44 @@ createApp({
       // Egyetlen foreignObject, normál (nem abszolút) elrendezéssel: a Safari így is jó helyre rajzolja,
       // és dobozonként csak egy HTML-réteget kell újraelrendezni nagyításkor.
       const below = marker || comment;
-      return h("foreignObject", {class: "node-file-frame", x: -node.width / 2, y: -node.height / 2 - fileNameSpace, width: node.width,
-        height: fileNameSpace + node.height + (below ? belowSpace : 0)}, [
-        h("div", {class: "node-file-stack", style: {color: paint(node.textColor, 1)}}, [
+      // Táblázat szerkesztése: a sorszámok sávja a doboztól balra, az oszlopbetűk és a képletsor fölötte állnak, ezért a
+      // foreignObject balra és fölfelé megnő (Safari a foreignObject-en kívülre eső részt nem rajzolja és nem kattintható).
+      const tableOutside = tableEdit.value?.id === node.id && !fittedTable(node), outLeft = tableOutside ? 40 : 0, outTop = tableOutside ? 26 : 0;
+      return [h("foreignObject", {key: "file", class: "node-file-frame", x: -node.width / 2 - outLeft, y: -node.height / 2 - fileNameSpace - outTop, width: node.width + outLeft,
+        height: fileNameSpace + node.height + outTop + (below ? belowSpace : 0)}, [
+        h("div", {class: "node-file-stack", style: {color: paint(node.textColor, 1), paddingLeft: outLeft ? outLeft + "px" : undefined, paddingTop: outTop ? outTop + "px" : undefined}}, [
           h("div", {class: "node-above", style: {height: fileNameSpace + "px"}},
             nameEdit.value === node.id ? [h("header", {class: "node-file-name"}, [renderFileNameEdit(node)])]
               : file.showFilename !== false ? [h("header", {class: "node-file-name"}, [renderFileDownload(node)])] : []),
           // A tartalom szövegszíne a dobozé (a megjelenítőben: data-file-ink, viewer.js); --tn-paper: a táblázatszerkesztő háttere.
-          h("div", {class: ["node-file", "node-" + root, paperKind(node) && "paper-" + paperKind(node)], style: {height: node.height + "px",
+          h("div", {class: ["node-file", "node-" + root, paperKind(node) && "paper-" + paperKind(node), tableOutside && "table-editing"], style: {height: node.height + "px",
             color: paperKind(node) ? paperInk(node) : paint(node.textColor, 1), "--tn-paper": paperKind(node) ? paperColor(node, paperKind(node)) : surfaceColor(node),
             "--paper-rule": graphics.value.paper?.rule, "--rule": Math.round((node.fontSize ?? 13) * 1.6) + "px"}},
             [h("div", {class: "node-body"}, [content])]),
           below ? h("div", {class: "node-below"}, [marker, comment]) : null,
+        ]),
+      ]), fittedTable(node) ? renderTableFit(node) : null];
+    }
+
+    // „Tartalom a dobozhoz”: a táblázat saját foreignObject-ben, SVG-szintű scale()-lel (mint a vászon nagyítása). A CSS
+    // transform / zoom a foreignObject-en belül Safariban nem jó (nem rajzolódik ki, illetve a legkisebb betűméret
+    // visszanöveli a betűt); az SVG-transzform alatt a táblázat skálázatlanul rendeződik, és kattintható marad.
+    // Szerkesztéskor a sorszámok és az oszlopbetűk közvetlenül a táblázat mellett, a képletsor fölötte áll (szintén skálázva).
+    function renderTableFit(node) {
+      const editing = tableEdit.value?.id === node.id, doc = editing ? tableEdit.value.editor.doc : tableOf(node);
+      if (!doc) return null;
+      const scale = tableFitZoom(node, doc), width = tableWidth(doc) + 1;
+      const height = (editing ? tableHeight(doc) : tableHeight(doc, previewRows)) + 1 + (!editing && doc.size.rows > previewRows ? 24 : 0);
+      const out = editing ? {left: 40, top: 56} : {left: 0, top: 0}, slack = 16;
+      const paper = paperKind(node);
+      return h("g", {key: "table-fit", class: "table-fit", transform: "translate(" + (-node.width / 2 + 20) + " " + (-node.height / 2 + 18) + ") scale(" + scale + ")"}, [
+        h("foreignObject", {class: "node-file-frame", x: -out.left, y: -out.top, width: width + out.left + slack, height: height + out.top + slack}, [
+          h("div", {class: ["table-fit-body", {"table-editing": editing}], style: {paddingLeft: out.left + "px", paddingTop: out.top + "px",
+            fontSize: (node.fontSize ?? 13) + "px", color: paper ? paperInk(node) : paint(node.textColor, 1), "--tn-paper": paper ? paperColor(node, paper) : surfaceColor(node)}}, [
+            h("div", {class: "table-fit-note", style: {width: width + "px", height: height + "px"}}, [editing
+              ? renderTableEditor(h, tableEdit.value.editor, {onExit: stopTableEdit, focusGrid: tableFocus.value})
+              : cachedGrid(node.id, doc, peerCells.get(node.id), marks => renderTable(h, doc, {marks}))]),
+          ]),
         ]),
       ]);
     }
@@ -5154,26 +5200,33 @@ createApp({
               h("footer", {class: "node-comment align-" + (node.alignment ?? "center")}, [h(FormattedText, {source: visibleComment(node)})])])]) : null,
         ]),
         ...(ui.resize && gesture.value?.type !== "rectangle" && !ui.occupied && !ancestors(node, nodeMap.value).some(n => n.locked)
-          ? [[-1,-1], [1,-1], [1,1], [-1,1]].map(([sx, sy]) => {
-            const r = 5 / zoomScale.value;
-            return h("rect", {"data-editor-only": "", class: "node-handle", x: sx*drawn.width/2-r, y: sy*drawn.height/2-r,
-              width: 2*r, height: 2*r, fill: "#ffffff", stroke: "#4168e9", "stroke-width": 1 / zoomScale.value,
-              cursor: sx === sy ? "nwse-resize" : "nesw-resize", onPointerdown: e => pressCorner(e, node, sx, sy)});
-          }) : []),
+          ? [[-1,-1], [1,-1], [1,1], [-1,1]].map(([sx, sy]) => resizeHandle(sx*drawn.width/2, sy*drawn.height/2, {
+              cursor: sx === sy ? "nwse-resize" : "nesw-resize", onPointerdown: e => pressCorner(e, node, sx, sy)})) : []),
         // Egyedül kijelölt doboz: a jobb alsó sarka billentyű nélkül is fogható (átméretezés, mint Alt+húzással); a fogó
         // látszik, a fogható terület a jelnél nagyobb.
         // Alt lenyomva az Alt+húzásos fogók látszanak (a mutató alatti dobozon), ez a fogó nem.
         ...(ui.single && !ui.resize && !alt.value && !junction && !ui.occupied && !ui.texting && !ui.editing && gesture.value?.type !== "rectangle"
           && !(gesture.value?.type === "move" && gesture.value.moved) && !ancestors(node, nodeMap.value).some(n => n.locked) ? (() => {
-            const k = zoomScale.value, r = 5 / k, reach = 11 / k, x = drawn.width / 2, y = drawn.height / 2;
+            // A fogó csak akkor látszik, ha a mutató a sarok közelében van (app.css .node-grip-hit:hover + .node-grip).
+            const k = zoomScale.value, reach = 14 / k, x = drawn.width / 2, y = drawn.height / 2;
             return [
               h("rect", {key: "grip-hit", "data-editor-only": "", class: "node-grip-hit", x: x - reach, y: y - reach, width: 2 * reach, height: 2 * reach,
                 fill: "transparent", cursor: "nwse-resize", onPointerdown: e => pressCorner(e, node, 1, 1, true)}),
-              h("rect", {key: "grip", "data-editor-only": "", class: "node-handle node-grip", x: x - r, y: y - r, width: 2 * r, height: 2 * r,
-                rx: 1.5 / k, fill: "#ffffff", stroke: "#4168e9", "stroke-width": 1.4 / k, "pointer-events": "none"}),
+              resizeHandle(x, y, {key: "grip", class: "node-grip", "pointer-events": "none"}),
             ];
           })() : []),
       ]);
+    }
+
+    // Átméretező fogó a téma szerint (graphics.handle, ennek híján: Liquid Glass – kör, szabadkézi – telt pötty,
+    // tervrajz – rombusz, üveg – lekerekített négyzet, alap – négyzet). Nagyítástól független méretű; a színét az app.css adja.
+    function resizeHandle(x, y, attributes) {
+      const k = zoomScale.value, r = 5 / k, {glass, grid} = graphics.value;
+      const kind = graphics.value.handle ?? (liquid() ? "circle" : sketching() ? "dot" : grid === "drafting" ? "diamond" : glass ? "rounded" : "square");
+      const common = {"data-editor-only": "", ...attributes, class: ["node-handle", "handle-" + kind, attributes.class], "stroke-width": 1.4 / k};
+      if (kind === "circle" || kind === "dot") return h("circle", {...common, cx: x, cy: y, r: r * 1.1});
+      if (kind === "diamond") return h("path", {...common, d: `M${x} ${y - r * 1.3}L${x + r * 1.3} ${y}L${x} ${y + r * 1.3}L${x - r * 1.3} ${y}Z`});
+      return h("rect", {...common, x: x - r, y: y - r, width: 2 * r, height: 2 * r, rx: kind === "rounded" ? 2.5 / k : 0});
     }
 
     function renderJunctionHandles() {
@@ -5324,19 +5377,28 @@ createApp({
             return h("rect", {x: point.x - reach, y: point.y - reach, width: 2 * reach, height: 2 * reach,
               fill: "none", stroke: "none", "pointer-events": "none", "aria-hidden": "true"});
           }) : []),
-          // A sáv a látható szárat követi, szögletes véggel (nem lóg a dobozba), a nyílhegyek saját körvonalat kapnak. Egy
-          // csoport, közös átlátszósággal: az átfedő részek (szár vége, nyíl töve) nem sötétebbek.
-          local && !selectionColor ? h("g", {"data-editor-only": "", class: "wire-own-halo", opacity: .4, fill: "none", stroke: paint.color,
-            "stroke-linejoin": "round", "pointer-events": "none", "clip-path": clipPath}, [
-            h("path", {d: taper ? d : stroke.d, "stroke-width": paint.lineWidth + 8, "stroke-linecap": taper ? "round" : "butt"}),
-            ...[[ends.source, from], [ends.target, to]].map(([head, tip]) => {
-              const length = Math.hypot(tip.x - head.base.x, tip.y - head.base.y);
-              // A sáv csúcsa a nyíl csúcsa (a dobozba nem lóg), hátrafelé 4 egységgel szélesebb.
-              const grow = 8 / length;
-              return head.visible && length ? h("path", {class: "wire-arrow-halo", transform: head.transform,
-                d: `M0 0L${-1 - grow} ${-.5 - grow}V${.5 + grow}Z`, fill: paint.color, stroke: "none"}) : null;
-            }),
-          ]) : null,
+          // Kijelölés-sáv: egyenletes körvonal a szár és a nyílhegyek körül (kerek illesztés); ami a csatlakozó dobozokba
+          // esne, azt a maszk levágja (a sáv nem lóg a dobozba). Egy csoport, közös átlátszósággal: az átfedések nem sötétebbek.
+          local && !selectionColor ? (() => {
+            const maskID = "wire-halo-" + edge.id, reach = 200000;
+            const holes = [edgeEndpoint(edge, "source").node, edgeEndpoint(edge, "target").node].map(id => id && drawnNode(id))
+              .filter(box => box && !isJunction(box)).map(box => {
+                const [tag, attrs] = boxShapeGeometry(box);
+                return h(tag, {...attrs, fill: "#000", transform: "translate(" + box.position.x + " " + box.position.y + ")"});
+              });
+            return h("g", {"data-editor-only": "", class: "wire-own-halo", opacity: .4, "pointer-events": "none", "clip-path": clipPath}, [
+              holes.length ? h("mask", {id: maskID, maskUnits: "userSpaceOnUse", x: -reach, y: -reach, width: 2 * reach, height: 2 * reach}, [
+                h("rect", {x: -reach, y: -reach, width: 2 * reach, height: 2 * reach, fill: "#fff"}), ...holes]) : null,
+              h("g", {mask: holes.length ? "url(#" + maskID + ")" : undefined, fill: "none", stroke: paint.color, "stroke-linejoin": "round", "stroke-linecap": "round"}, [
+                h("path", {d: taper ? d : stroke.d, "stroke-width": paint.lineWidth + 8}),
+                ...[ends.source, ends.target].map(head => {
+                  const scale = Number(/scale\(([^)]+)\)/.exec(head.transform)?.[1]) || 1;
+                  return head.visible ? h("path", {class: "wire-arrow-halo", transform: head.transform, d: "M0 0L-1 -.5V.5Z",
+                    fill: paint.color, "stroke-width": 8 / scale}) : null;
+                }),
+              ]),
+            ]);
+          })() : null,
           h("path", {class: "wire-line", ...stroke, ...(taper ? {fill: shaftColor} : {stroke: shaftColor}), "pointer-events": "visiblePainted", "clip-path": clipPath}, animation.shaft ? [animation.shaft] : undefined),
           // Szabadkézi téma: a vonal második, kissé elcsúsztatott, halványabb húzása (sketch.js sketchShift).
           sketching() ? h("path", {class: "wire-sketch", ...stroke, ...(taper ? {fill: shaftColor, "fill-opacity": .4} : {stroke: shaftColor, "stroke-opacity": .5}),
@@ -6137,7 +6199,7 @@ createApp({
         h("div", {class: "property-inline file-actions"}, [
           button("Megjelenés", () => { appearanceOpen.value = !appearanceOpen.value; if (appearanceOpen.value) loadPreviewImages(); },
             {symbol: "settings", "aria-pressed": appearanceOpen.value, title: "Téma, paletta, háttérszín, rácsköz, előnézeti kép"}),
-          h("a", {class: "button", href: "/_naplo/" + path.split("/")[0], title: "A projekt naplója"}, [icon("list"), "Napló"]),
+          h("a", {class: "button", href: "/_naplo/" + path.split("/")[0] + "?from=" + encodeURIComponent("/edit/" + path), title: "A projekt naplója"}, [icon("list"), "Napló"]),
         ]),
         versionGroup(),
         canManage ? packageGroup() : null,
@@ -6360,6 +6422,8 @@ createApp({
               () => modifyTable(single, next => { next.header = (next.header?.rows ?? 0) > 0 ? undefined : {rows: 1, cols: 0}; }), icon("heading")),
             iconToggle("Alaprács", doc?.grid !== false, () => modifyTable(single, next => { next.grid = next.grid === false; }), icon("table-grid")),
             fitContentButton(single),
+            tool("content-fit", iconToggle("Tartalom a dobozhoz (arányos nagyítás, torzítás nélkül)", single.contentFit === true,
+              () => change("contentFit", single.contentFit ? undefined : true), icon("aspect"))),
           ),
           editing ? tableToolbar(h, tableEdit.value.editor, {icon}) : h("p", {class: "muted"}, "Cellák szerkesztése: dupla kattintás a táblázaton."),
           propertyTools(button("Grafikon létrehozása", () => addChartBox(single), {symbol: "chart", disabled: !online.value})),

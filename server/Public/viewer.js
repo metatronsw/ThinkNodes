@@ -37,7 +37,7 @@ function bindCanvas() {
   refreshWebPreviews(document);
   const svg = main.querySelector(".passive-canvas");
   svg.style.setProperty("--sheet-glow", (graphics.glow ?? 3) + "px");
-  for (const button of main.querySelectorAll(".passive-frame > :is(.mouse-share, .cursor-label, .laser-tool, .chat-tool)")) button.remove();
+  for (const button of main.querySelectorAll(".passive-frame > :is(.mouse-share, .laser-tool, .chat-tool)")) button.remove();
   const frame = main.querySelector(".passive-frame"), member = main.dataset.member === "true";
   mouse?.bind(svg, svg, member ? frame : null);
   laser.bind(svg, svg, frame, member ? frame : null);

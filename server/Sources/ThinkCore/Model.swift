@@ -282,6 +282,9 @@ package struct Idea: Codable, Equatable, Sendable {
     var frame: Bool?
     /// A keret vastagsága (nil = 1,6, mint minden doboz kerete).
     var frameWidth: Double?
+    /// Táblázatdoboz: a tartalom arányos (torzítás nélküli) nagyítással a dobozhoz igazodik (editor.js tableFitZoom,
+    /// viewer.js); a tárolt oszlopszélességek és sormagasságok nem változnak.
+    package var contentFit: Bool?
     /// Papírfelület (téma `paper`) szövegszíne; nem tárolt mező, a `Worksheet.painted` tölti ki (Rendering.swift fileBox).
     var paperInk: String? = nil
     /// Kiemelt szabadkézi doboz alapszíne (a tábla színe); nem tárolt mező, a renderWorksheetCanvas tölti ki.
@@ -298,7 +301,7 @@ package struct Idea: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, type, text, file, hideText, fitText, shape, fill, backgroundMode, animation, bold, italic, underline, font, justified, link
-        case angle, parent, container, locked, textFlow, elevated, staticPreview, webPublic, uppercase, frame, frameWidth, scroll, chart
+        case angle, parent, container, locked, textFlow, elevated, staticPreview, webPublic, uppercase, frame, frameWidth, scroll, chart, contentFit
         case position = "pos", width = "w", height = "h", textColor = "textCol"
         case fontSize = "fontSz", alignment = "align", verticalAlignment = "vAlign"
     }
@@ -1190,7 +1193,7 @@ package final class WorksheetStore: @unchecked Sendable {
             if let name = sheet.previewImage,
                let file = try attachments(at: url, named: name, metadata: ctx.local).first,
                let mime = previewType(file) { return .image(file, mime) }
-            let suffix = mode == "dark" ? ".preview-v11-dark.svg" : ".preview-v11.svg"
+            let suffix = mode == "dark" ? ".preview-v12-dark.svg" : ".preview-v12.svg"
             let cache = url.deletingLastPathComponent().appendingPathComponent("." + path.name + suffix)
             try rejectLink(cache)
             let modified = try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
@@ -2765,6 +2768,7 @@ extension Idea {
         uppercase = try? fields.decode(Bool.self, forKey: .uppercase)
         frame = try? fields.decode(Bool.self, forKey: .frame)
         frameWidth = try? fields.decode(Double.self, forKey: .frameWidth)
+        contentFit = (try? fields.decode(Bool.self, forKey: .contentFit)) == true ? true : nil
         scroll = try? fields.decode(Point.self, forKey: .scroll)
         chart = try? fields.decode(ChartSettings.self, forKey: .chart)
         normalizePreview()

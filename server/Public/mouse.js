@@ -5,7 +5,7 @@ import {avatarSymbol, cursorLabelMode, setCursorLabelMode} from "./presence.js";
 export function sharedMouse(send) {
   const ns = "http://www.w3.org/2000/svg";
   const cursors = new Map();
-  let layer, enabled = false, pending, timer, listeners, labelButton;
+  let layer, enabled = false, pending, timer, listeners, modeList = null;
   let labelMode = cursorLabelMode();
   function hide() {
     clearTimeout(timer);
@@ -21,16 +21,19 @@ export function sharedMouse(send) {
     const {x, y} = marker.point;
     marker.setAttribute("transform", "translate(" + x + " " + y + ") scale(" + scale + ")");
   }
-  // A kurzor melletti címke: a néző választása szerint a név (színes címkében) vagy az avatar (a felhasználó színével).
+  // A kurzor melletti címke: a néző választása szerint a név (színes címkében), az avatar (a felhasználó színével), vagy
+  // csak az avatar, nyíl nélkül (ilyenkor az avatar maga a mutató).
   function label(marker) {
     const {name, avatar, color} = marker.peer;
     marker.querySelector(".peer-cursor-label")?.remove();
+    const only = labelMode === "avatar-only";
+    marker.firstChild.style.display = only ? "none" : "";
     const group = document.createElementNS(ns, "g");
     group.setAttribute("class", "peer-cursor-label");
-    if (labelMode === "avatar") {
+    if (labelMode === "avatar" || only) {
       const icon = avatarSymbol(avatar || 1, color, "peer-cursor-avatar");
-      for (const [key, value] of Object.entries({x: 11, y: 13, width: 20, height: 20, stroke: "white", "stroke-width": 3,
-        "paint-order": "stroke", "stroke-linejoin": "round"})) icon.setAttribute(key, value);
+      for (const [key, value] of Object.entries({x: only ? -3 : 11, y: only ? -3 : 13, width: only ? 24 : 20, height: only ? 24 : 20,
+        stroke: "white", "stroke-width": 3, "paint-order": "stroke", "stroke-linejoin": "round"})) icon.setAttribute(key, value);
       group.append(icon);
     } else {
       const pill = document.createElementNS(ns, "rect");
@@ -83,14 +86,45 @@ export function sharedMouse(send) {
     const scale = screenScale();
     for (const marker of cursors.values()) place(marker, scale);
   }
-  function showLabelMode() {
-    if (!labelButton) return;
-    const avatar = labelMode === "avatar";
-    labelButton.title = avatar ? "Kurzorok mellett: avatar (váltás névre)" : "Kurzorok mellett: név (váltás avatarra)";
-    labelButton.setAttribute("aria-label", labelButton.title);
-    labelButton.innerHTML = avatar
-      ? '<svg class="ui-icon" aria-hidden="true" viewBox="0 0 24 24"><use href="/icons/avatar-1.svg#a" fill="currentColor"/></svg>'
-      : '<svg class="ui-icon" aria-hidden="true" viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h16v3.4h-6.3V20h-3.4V7.4H4z"/></svg>';
+  // A többiek kurzorának megjelenése: a kurzorgomb csoportja (hosszú nyomás vagy jobb kattintás nyitja).
+  const arrowIcon = '<path fill="currentColor" d="M4 2l4 19 4-7 8-3z"/>';
+  const modes = [
+    ["avatar-only", "Kurzorok: csak avatar", '<svg class="ui-icon" aria-hidden="true" viewBox="0 0 24 24"><use href="/icons/avatar-1.svg#a" fill="currentColor"/></svg>'],
+    ["avatar", "Kurzorok: nyíl + avatar", '<svg class="ui-icon" aria-hidden="true" viewBox="0 0 24 24"><path fill="currentColor" d="M2 1l3 13 3-4.6 5.4-2z"/><svg x="9" y="9" width="15" height="15" viewBox="0 0 24 24"><use href="/icons/avatar-1.svg#a" fill="currentColor"/></svg></svg>'],
+    ["name", "Kurzorok: nyíl + név", '<svg class="ui-icon" aria-hidden="true" viewBox="0 0 24 24"><path fill="currentColor" d="M2 1l3 13 3-4.6 5.4-2z"/><path fill="currentColor" d="M11 12h11v2.6h-4.2V23h-2.6v-8.4H11z"/></svg>'],
+  ];
+  function closeModes() {
+    modeList?.remove();
+    modeList = null;
+  }
+  function openModes(button) {
+    closeModes();
+    const list = modeList = document.createElement("div");
+    list.className = "quick-flyout-list open-column cursor-modes";
+    list.setAttribute("role", "group");
+    list.setAttribute("aria-label", "A többiek kurzorának megjelenése");
+    for (const [mode, title, svg] of modes) {
+      const option = document.createElement("button");
+      option.type = "button";
+      option.className = "button option-icon";
+      option.title = title;
+      option.setAttribute("aria-label", title);
+      option.setAttribute("aria-pressed", String(labelMode === mode));
+      option.innerHTML = svg;
+      option.addEventListener("click", () => {
+        labelMode = mode;
+        setCursorLabelMode(mode);
+        for (const marker of cursors.values()) label(marker);
+        closeModes();
+      });
+      list.append(option);
+    }
+    // A vászon területén (nem az eszköztárban: annak görgethető sávja levágná), a gomb fölött.
+    (button.closest(".canvas-area, .passive-frame") ?? document.body).append(list);
+    const box = button.getBoundingClientRect();
+    list.style.left = box.left + "px";
+    list.style.top = Math.max(8, box.top - list.offsetHeight - 6) + "px";
+    list.querySelector('[aria-pressed="true"]')?.focus({preventScroll: true});
   }
   function bind(svg, parent, controls, before = null) {
     listeners?.abort();
@@ -109,28 +143,34 @@ export function sharedMouse(send) {
     if (!controls) return;
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "button mouse-share";
-    button.title = "Saját egérmutató megosztása";
-    button.setAttribute("aria-label", button.title);
+    button.className = "button mouse-share quick-flyout-trigger";
+    button.title = "Saját egérmutató megosztása (nyomva tartva vagy jobb kattintásra: a többiek kurzorának megjelenése)";
+    button.setAttribute("aria-label", "Saját egérmutató megosztása");
+    button.setAttribute("aria-haspopup", "true");
     button.setAttribute("aria-pressed", String(enabled));
-    button.innerHTML = '<svg class="ui-icon" aria-hidden="true" viewBox="0 0 24 24"><path fill="currentColor" d="M4 2l4 19 4-7 8-3z"/></svg>';
+    button.innerHTML = '<svg class="ui-icon" aria-hidden="true" viewBox="0 0 24 24">' + arrowIcon + '</svg><span class="quick-flyout-mark" aria-hidden="true"></span>';
     controls.insertBefore(button, before);
-    labelButton = document.createElement("button");
-    labelButton.type = "button";
-    labelButton.className = "button cursor-label";
-    showLabelMode();
-    controls.insertBefore(labelButton, before);
-    labelButton.addEventListener("click", () => {
-      labelMode = labelMode === "avatar" ? "name" : "avatar";
-      setCursorLabelMode(labelMode);
-      showLabelMode();
-      for (const marker of cursors.values()) label(marker);
+    // Hosszú nyomás (0,45 mp) vagy jobb kattintás: a megjelenési módok listája; ilyenkor a kattintás nem kapcsol.
+    let press = null, opened = false;
+    button.addEventListener("pointerdown", event => {
+      if (event.button !== 0) return;
+      opened = false;
+      clearTimeout(press);
+      press = setTimeout(() => { opened = true; openModes(button); }, 450);
     }, options);
+    for (const type of ["pointerup", "pointerleave", "pointercancel"]) button.addEventListener(type, () => clearTimeout(press), options);
+    button.addEventListener("contextmenu", event => { event.preventDefault(); event.stopPropagation(); openModes(button); }, options);
     button.addEventListener("click", () => {
+      if (opened) { opened = false; return; }
+      closeModes();
       enabled = !enabled;
       button.setAttribute("aria-pressed", String(enabled));
       if (!enabled) hide();
     }, options);
+    document.addEventListener("pointerdown", event => {
+      if (modeList && !modeList.contains(event.target) && event.target !== button && !button.contains(event.target)) closeModes();
+    }, {...options, capture: true});
+    document.addEventListener("keydown", event => { if (event.key === "Escape" && modeList) closeModes(); }, options);
     svg.addEventListener("pointermove", event => {
       // Nem aktív ablak fölött is jön pointermove (macOS): ilyenkor a kurzor nem látszik a többieknél.
       if (!enabled || event.pointerType === "touch" || document.hidden || !document.hasFocus()) return;
@@ -145,5 +185,5 @@ export function sharedMouse(send) {
     document.addEventListener("visibilitychange", () => { if (document.hidden) hide(); }, options);
     window.addEventListener("pagehide", hide, options);
   }
-  return {bind, receive, rescale, stop() { hide(); listeners?.abort(); receive(null); }};
+  return {bind, receive, rescale, stop() { hide(); closeModes(); listeners?.abort(); receive(null); }};
 }

@@ -255,6 +255,7 @@
   "lineSize-<1|2|3>": "Vonalméret (vékony, közepes, vastag; a vastagság a téma szorzóitól függ: themes/*.json graphics.lineScale)",
   "arrange-<left|center|right|top|middle|bottom>": "Csoportos kijelölés: dobozok igazítása oszlopba (bal / közép / jobb) vagy sorba (felső / közép / alsó); csak több kijelölt doboznál",
   "distribute-<x|y>": "Csoportos kijelölés: egyenlő elosztás vízszintesen / függőlegesen a két legszélső doboz között; legalább három doboznál",
-  "background-<free|empty|translucent>": "Háttér mód"
+  "background-<free|empty|translucent>": "Háttér mód",
+  "content-fit": "Táblázat: a tartalom a dobozhoz igazítva (arányos nagyítás, torzítás nélkül)"
  }
 }

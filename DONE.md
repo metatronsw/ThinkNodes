@@ -6,6 +6,11 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **Jelenlévők a bal alsó sarokban; kijelölt nyíl „árnyék-nyila”; előnézeti képek táblázatos lapokon** (2026-11-26)
+  - A jelenlévők sorát a levágás elleni negatív margó tolta balra; a nyílhegy kijelölés-sávja hátrafelé nagyobb háromszög volt; a táblázat lezáratlan `<col>` eleme miatt az SVG-előnézet érvénytelen XML volt. Javítások: CHANGES.md 2026-11-26 „Táblázat: fejlécek a dobozon kívül…”.
+- **Táblázat: szerkesztésbe lépéskor elugrott a tartalom; nem volt mód a tartalmat a dobozhoz igazítani** (2026-11-26)
+  - Megoldva a felhasználó választása szerint (fejlécek a dobozon kívül; „Tartalom a dobozhoz” torzítás nélküli nagyítással).
+
 - **Vonal és eszköztár: a 2026-11-26-i hibalista** (2026-11-26)
   - Vastag, animált vonal végpontjának húzásakor a nyíl a dobozon maradt; mozgatáskor az animációs pötty a helyén maradt és megállt; a kijelölés sávja a dobozba lógott, a nyílhegy nem kapott sávot; S-vonalon a pötty nem a látható görbén futott; a csomópontot túl pontosan kellett eltalálni; az eszköztár nem jelezte a bekapcsolt funkciókat (sötét és üveg témákban); Liquid Glass: a kép rámutatáskor eltűnt, a jelenlévő-gomb sarka levágódott; a táblázat kerete a csomópontokban erősebb volt. Javítások: CHANGES.md 2026-11-26 „Egységes gombok…”.
 

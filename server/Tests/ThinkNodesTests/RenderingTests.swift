@@ -601,3 +601,24 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     plain.nodes[0].file?.filename = "adat.py"
     #expect(!boardSVG(plain, fileText: text).contains("<style>"))
 }
+
+/// „Tartalom a dobozhoz” táblázat: saját, SVG-vel skálázott foreignObject (torzítás nélkül), a jegyzet üres; a beállítás
+/// mentés után is megmarad.
+@Test func contentFitTableIsScaledAsAWhole() throws {
+    let text = #"{"cells":{},"format":"thinknodes-table","grid":true,"id":"tbl-fit","size":{"cols":5,"rows":20},"styles":[{}],"version":1}"#
+    var node = Idea(id: "tb", type: "table", file: CanvasFile(asset: "file-tb", filename: "t.tntable"), position: Point(x: 0, y: 0))
+    node.width = 420
+    node.height = 260
+    node.contentFit = true
+    let saved = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(Worksheet(title: "Táblázat", nodes: [node])))
+    #expect(saved.nodes[0].contentFit == true)
+    let svg = boardSVG(saved, fileText: { _ in text })
+    // 20 sor × 24 px + 1 = 481 magas; (260 - 36) / 481 = 0,4657 (a szélesség: 370 / 401 = 0,92 – a kisebb számít).
+    #expect(svg.contains(#"<g class="table-fit" transform="translate(-190.000 -112.000) scale(0.466)">"#))
+    #expect(svg.contains(#"class="table-fit-note" style="width:401.000px;height:481.000px""#))
+    #expect(svg.contains(#"<div class="node-note" data-font-size="16.000"></div>"#))
+    // A táblázat HTML-je az SVG-ben (XML) is érvényes: a <col> önlezáró (különben az előnézeti kép betölthetetlen).
+    #expect(svg.contains(#"<col style="width:80px"/>"#) && !svg.contains(#"<col style="width:80px">"#))
+    node.contentFit = nil
+    #expect(!boardSVG(Worksheet(title: "Táblázat", nodes: [node]), fileText: { _ in text }).contains("table-fit"))
+}

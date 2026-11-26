@@ -93,7 +93,9 @@ h2 { letter-spacing: -.02em; }
 .project-actions { margin-top: 28px; padding-top: 28px; border-top: 1px solid var(--line); }
 .guest-notice { display: flex; align-items: flex-start; gap: 10px; margin: 0 0 22px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 9px; background: color-mix(in srgb, var(--accent, #4168e9) 8%, transparent); color: var(--ink); }
 .guest-notice .ui-icon { flex: none; width: 20px; height: 20px; margin-top: 1px; }
-.project-card { display: flex; min-height: 102px; align-items: center; padding: 20px; gap: 16px; color: var(--ink); }
+/* A főoldali projektkártyák 16:9 arányúak. */
+.project-card { display: flex; min-height: 102px; aspect-ratio: 16 / 9; align-items: center; padding: 20px; gap: 16px; color: var(--ink); }
+.log-back { margin: 0 0 8px; }
 .project-card:hover { border-color: #8c9adc; text-decoration: none; }
 .project-card h2 { margin: 0 0 5px; font-size: 1.16rem; }
 .project-glyph { display: grid; place-items: center; height: 46px; width: 46px; flex-shrink: 0; border-radius: 9px; background: #e7ecff; color: #334fc6; font-size: 1.9rem; }
@@ -468,7 +470,7 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .connection-lost, .participants.connection-lost { background: #a62739; color: white; border-radius: 5px; padding: 4px 7px; }
 /* Viewer canvas controls match the editor: 6px inset, 4px gap, compact buttons; users in the lower right corner. */
 .passive-frame > :is(.fullscreen, .mouse-share) { position: absolute; bottom: 6px; left: 6px; right: auto; z-index: 2; min-height: var(--tool-button-size, 32px); height: var(--tool-button-size, 32px); padding: 4px 9px; }
-.passive-frame:has(> .mouse-share) > .fullscreen { left: 86px; }
+.passive-frame:has(> .mouse-share) > .fullscreen { left: 46px; }
 /* Előadás (prezentáció mód): sáv a vászon tetején, indító választó az eszköztár fölött. */
 .presentation-bar { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 9; display: flex; align-items: center; gap: 8px;
   max-width: calc(100% - 140px); padding: 4px 6px 4px 10px; border-radius: 8px; background: #fffffff2; box-shadow: 0 1px 6px #0003; white-space: nowrap; font-size: .9rem; }
@@ -542,14 +544,13 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .chat-empty { opacity: .6; font-size: .85rem; }
 .chat-form { display: flex; gap: 6px; align-items: flex-end; padding: 8px; border-top: 1px solid var(--line); }
 .chat-form textarea { flex: 1; resize: none; min-height: 40px; max-height: 120px; font: inherit; font-size: .9rem; }
-.passive-frame > .chat-tool { position: absolute; bottom: 6px; left: 126px; z-index: 2; min-height: var(--tool-button-size, 32px); height: var(--tool-button-size, 32px); padding: 4px 9px; }
-.passive-frame:has(> .chat-tool) > .fullscreen { left: 166px; }
+.passive-frame > .chat-tool { position: absolute; bottom: 6px; left: 86px; z-index: 2; min-height: var(--tool-button-size, 32px); height: var(--tool-button-size, 32px); padding: 4px 9px; }
+.passive-frame:has(> .chat-tool) > .fullscreen { left: 126px; }
 .participant { cursor: pointer; }
-.passive-frame > .laser-tool { position: absolute; bottom: 6px; left: 86px; z-index: 2; min-height: var(--tool-button-size, 32px); height: var(--tool-button-size, 32px); padding: 4px 9px; }
-.passive-frame:has(> .laser-tool):not(:has(> .chat-tool)) > .fullscreen { left: 126px; }
+.passive-frame > .laser-tool { position: absolute; bottom: 6px; left: 46px; z-index: 2; min-height: var(--tool-button-size, 32px); height: var(--tool-button-size, 32px); padding: 4px 9px; }
+.passive-frame:has(> .laser-tool):not(:has(> .chat-tool)) > .fullscreen { left: 86px; }
 .laser-tool[aria-pressed="true"] { background: var(--accent); color: white; }
 :is(.canvas-area, .passive-frame)[data-laser] :is(svg.editor-canvas, .passive-canvas) { cursor: crosshair; }
-.passive-frame > .cursor-label { position: absolute; bottom: 6px; left: 46px; z-index: 2; min-height: var(--tool-button-size, 32px); height: var(--tool-button-size, 32px); padding: 4px 9px; }
 .passive-frame > .participants { position: absolute; right: 12px; bottom: 8px; z-index: 2; max-width: min(47%, calc(100% - 110px)); padding: 4px 7px; border-radius: 5px; background: #fffffff0; white-space: nowrap; }
 .passive-frame > .participants:empty { display: none; }
 .mouse-share[aria-pressed="true"] { background: var(--accent); color: white; }
@@ -1147,14 +1148,14 @@ svg text { text-rendering: geometricPrecision; }
 :is(.tn-table, .node-csv) .tn-peer-editing { outline-style: dashed; box-shadow: inset 0 0 0 999px color-mix(in srgb, var(--tn-peer) 38%, transparent); }
 
 /* Szerkesztési mód */
-.node-note:has(.tn-table-editor) { overflow: hidden; padding: 0; }
+.node-note:has(.tn-table-editor) { overflow: visible; padding: 0; }
 /* A szerkesztő a doboz hátterét és szövegszínét követi (--tn-paper: a doboz kitöltése, editor.js renderFileBox);
    a ragadó fejlécek és a beviteli mezők ebből kevert, átlátszatlan árnyalatot kapnak. */
 .tn-table-editor .tn-table thead th { background: var(--tn-head); }
 /* Nincs pozicionálás a szerkesztő gyökerén és a billentyűzet-nyelőn: Safariban a foreignObject-beli pozicionált elem
    (és minden leszármazottja) nagyított vásznon nem kattintható. */
 .tn-sink { flex: none; width: 1px; height: 1px; margin: 0 0 -1px; padding: 0; border: 0; opacity: 0; pointer-events: none; }
-.tn-table-editor { display: flex; flex-direction: column; height: 100%; min-height: 0; outline: none; color: inherit; background: transparent; font-size: 13px;
+.tn-table-editor { display: flex; flex-direction: column; height: 100%; min-height: 0; outline: none; color: inherit; background: transparent;
   --tn-head: color-mix(in srgb, currentColor 10%, var(--tn-paper, #fff)); --tn-line: color-mix(in srgb, currentColor 24%, var(--tn-paper, #fff));
   --tn-mark: color-mix(in srgb, var(--accent) 28%, var(--tn-paper, #fff)); }
 .tn-table-editor:focus-visible { outline: none; }
@@ -1188,7 +1189,7 @@ svg text { text-rendering: geometricPrecision; }
 .tn-sb-y .tn-sb-thumb { width: 100%; }
 .tn-sb-x .tn-sb-thumb { height: 100%; }
 .tn-sb:hover .tn-sb-thumb, .tn-sb:active .tn-sb-thumb { background: color-mix(in srgb, currentColor 65%, transparent); }
-.tn-table.tn-editing { font-size: 13px; }
+.tn-table.tn-editing { font-size: .9em; }
 .tn-table.tn-editing td { cursor: cell; user-select: none; }
 /* Szerkesztő: a fejlécek külön sávban állnak a görgethető rács mellett (table-view.js syncHeads), nem ragadó cellák:
    Safariban a foreignObject-beli ragadó fejléc görgetés után nem rajzolódott ki, és nem volt kattintható. */
@@ -1406,4 +1407,51 @@ svg text { text-rendering: geometricPrecision; }
 }
 .site-header .button.primary { color: white; background: var(--accent); }
 /* Jelenlévők: ugyanolyan gombok, mint az eszköztáré; a sor nem vágja le a gombok szélét és kiemelését. */
-.canvas-people > .participants, .passive-frame > .participants { padding: 3px; margin: -3px; }
+/* Csak függőlegesen és jobbra: a bal margó (auto) tartja a sort a jobb alsó sarokban. */
+.canvas-people > .participants, .passive-frame > .participants { padding: 3px; margin-block: -3px; margin-inline-end: -3px; }
+
+/* Átméretező fogók (editor.js resizeHandle): alak a téma szerint, szín itt. Az egyedül kijelölt doboz jobb alsó fogója
+   csak akkor látszik, ha a mutató a sarok közelében van. */
+.node-handle { fill: #fff; stroke: var(--accent, #4168e9); }
+.node-handle.handle-dot { fill: var(--sketch-select, #4168e9); stroke: #fff; }
+[data-effects="liquid"] .node-handle { fill: #ffffffe6; stroke: var(--fx-accent, #0a84ff); }
+.editor-workspace[data-glass] .node-handle:not(.handle-dot) { fill: var(--glass-surface, #fff); stroke: var(--accent); }
+.node-grip { opacity: 0; transition: opacity .12s ease; }
+.node-grip-hit:hover + .node-grip { opacity: 1; }
+
+/* A kurzorgomb csoportja (mouse.js openModes): rögzített réteg a gomb fölött. */
+.cursor-modes { z-index: 30; }
+
+/* ===== Táblázat szerkesztése: fejlécsávok és képletsor a dobozon kívül =====
+   A görgethető rács pontosan az olvasó nézet helyén áll (a .node-note belső térközével, azonos betűvel és görgetéssel),
+   így szerkesztésbe lépéskor a tartalom nem mozdul. A sorszámok sávja a doboztól balra, az oszlopbetűk és a képletsor
+   fölötte; a foreignObject ehhez megnő (editor.js renderFileBox: 40 px balra, 26 px fölfelé). Pozicionálás nélkül
+   (negatív margó, rács): Safariban a foreignObject-beli pozicionált elem nagyított vásznon nem kattintható.
+   Bal kinyúlás: 36 (sorszámok) + 14 (4 rés + 10 a doboz belső margója); felső: 28 (képletsor) + 24 (oszlopbetűk) + 14. */
+.node-file.table-editing, .node-file.table-editing .node-body { overflow: visible; }
+.node-file-stack:has(> .table-editing) > .node-above { visibility: hidden; }
+.tn-table-editor { --tn-out-left: 50px; --tn-out-top: 66px; box-sizing: border-box; margin: calc(-1 * var(--tn-out-top)) 0 0 calc(-1 * var(--tn-out-left));
+  width: calc(100% + var(--tn-out-left)); height: calc(100% + var(--tn-out-top)); }
+.tn-table-editor > .tn-formula-bar { flex: none; box-sizing: border-box; height: 28px; border: 1px solid var(--tn-line); border-radius: 6px; }
+.tn-table-editor > .tn-problem { order: 3; }
+.tn-table-editor > .tn-grid { grid-template: 24px 14px minmax(0, 1fr) / 36px 14px minmax(0, 1fr); }
+.tn-grid > .tn-corner { grid-area: 1 / 1; border-radius: 5px 0 0 0; }
+.tn-colstrip { grid-area: 1 / 3; border-radius: 5px 5px 0 0; }
+.tn-rowstrip { grid-area: 3 / 1; border-radius: 0 0 0 5px; }
+.tn-grid > .tn-table-scroll-host { grid-area: 3 / 3; }
+/* Az olvasó nézet belső térköze (.node-note: 8 / 20 / 8 / 10 px) a rácsban és a fejlécsávokban is: a cellák és a
+   fejlécek ugyanott állnak, mint olvasáskor. */
+.tn-table-scroll { box-sizing: border-box; padding: 8px 20px 8px 10px; }
+.tn-colstrip { padding-left: 10px; }
+.tn-rowstrip { padding-top: 8px; }
+/* „Tartalom a dobozhoz” (editor.js renderTableFit, Rendering.swift fileBox): a táblázat saját foreignObject-ben, SVG-szintű
+   scale()-lel; itt skálázatlanul rendeződik. Szerkesztéskor a sorszámok és az oszlopbetűk 4 px-re a táblázattól. */
+.table-fit-body { box-sizing: border-box; width: max-content; font-family: system-ui, sans-serif; line-height: 1.4; pointer-events: auto; }
+.table-fit-body:not(.table-editing) .table-fit-note { overflow: clip; }
+.table-fit-note .tn-table-editor { --tn-out-left: 40px; --tn-out-top: 56px; }
+.table-fit-note .tn-table-editor > .tn-grid { grid-template: 24px 4px minmax(0, 1fr) / 36px 4px minmax(0, 1fr); }
+.table-fit-note .tn-table-scroll { padding: 0; overflow: clip; }
+.table-fit-note .tn-sb { display: none; }
+.table-fit-note .tn-colstrip { padding-left: 0; }
+.table-fit-note .tn-rowstrip { padding-top: 0; }
+.tn-table.tn-editing td.header { background: color-mix(in srgb, currentColor 9%, transparent); }
