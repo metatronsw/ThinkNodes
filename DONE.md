@@ -6,6 +6,9 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **Előnézeti képek (főoldali kártyák háttere) táblázatos lapokon: régóta fennálló hiba** (2026-11-26)
+  - Ok: a táblázat lezáratlan `<col>` eleme az önálló SVG-ben (XML) érvénytelen, a böngésző a képet nem töltötte be. Javítás: önlezáró elem, előnézet-gyorsítótár v12; minden helyi lapon és előnézet-változaton ellenőrizve; védőteszt: `standaloneSVGIsWellFormedXMLForEveryBoxType`.
+
 - **Jelenlévők a bal alsó sarokban; kijelölt nyíl „árnyék-nyila”; előnézeti képek táblázatos lapokon** (2026-11-26)
   - A jelenlévők sorát a levágás elleni negatív margó tolta balra; a nyílhegy kijelölés-sávja hátrafelé nagyobb háromszög volt; a táblázat lezáratlan `<col>` eleme miatt az SVG-előnézet érvénytelen XML volt. Javítások: CHANGES.md 2026-11-26 „Táblázat: fejlécek a dobozon kívül…”.
 - **Táblázat: szerkesztésbe lépéskor elugrott a tartalom; nem volt mód a tartalmat a dobozhoz igazítani** (2026-11-26)

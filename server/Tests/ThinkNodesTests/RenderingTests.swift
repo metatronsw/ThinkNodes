@@ -622,3 +622,30 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     node.contentFit = nil
     #expect(!boardSVG(Worksheet(title: "Táblázat", nodes: [node]), fileText: { _ in text }).contains("table-fit"))
 }
+
+/// Az önálló SVG (letöltés, előnézeti kép) szigorú XML: ha bármelyik doboz HTML-je nem XHTML (pl. lezáratlan <col>),
+/// a böngésző az előnézetet képként nem tölti be, és a főoldali kártyák háttere üres marad. Minden doboztípus egy lapon.
+@Test func standaloneSVGIsWellFormedXMLForEveryBoxType() throws {
+    let at = Point(x: 0, y: 0)
+    var nodes = [
+        Idea(id: "box", text: "# Cím\n\n- egy\n- kettő\n\n---\n\nsor  \ntörés & <jel>", position: at),
+        Idea(id: "md", type: "text", file: CanvasFile(asset: "file-md", filename: "j.md"), position: Point(x: 300, y: 0)),
+        Idea(id: "txt", type: "text", file: CanvasFile(asset: "file-txt", filename: "j.txt"), position: Point(x: 600, y: 0)),
+        Idea(id: "code", type: "code", file: CanvasFile(asset: "file-js", filename: "a.js"), position: Point(x: 900, y: 0)),
+        Idea(id: "csv", type: "csv", file: CanvasFile(asset: "file-csv", filename: "a.csv"), position: Point(x: 0, y: 300)),
+        Idea(id: "table", type: "table", file: CanvasFile(asset: "file-tb", filename: "t.tntable"), position: Point(x: 300, y: 300)),
+        Idea(id: "fit", type: "table", file: CanvasFile(asset: "file-tb2", filename: "u.tntable"), position: Point(x: 600, y: 300)),
+        Idea(id: "image", type: "image", file: CanvasFile(asset: "kep.png", filename: "kep.png"), position: Point(x: 900, y: 300)),
+        Idea(id: "audio", type: "audio", file: CanvasFile(asset: "hang.mp3", filename: "hang.mp3"), position: Point(x: 0, y: 600)),
+        Idea(id: "doc", type: "document", file: CanvasFile(asset: "leiras.pdf", filename: "leiras.pdf"), position: Point(x: 300, y: 600)),
+    ]
+    nodes[6].contentFit = true
+    nodes[0].text += "\n\n[link](https://example.com)"
+    let table = #"{"cells":{"A1":{"v":"<b>&</b>"},"B2":{"v":1500}},"format":"thinknodes-table","grid":true,"id":"tbl-xml","size":{"cols":3,"rows":4},"styles":[{}],"version":1}"#
+    let texts = ["md": "# Cím\nsor<br>\n\n- a\n- b\n\n---\n\n&nbsp; <i>x</i>", "txt": "a < b & c", "code": "if (a < b) { x = \"&\"; }",
+                 "csv": "a,b\n1,<2>\n&,x", "table": table, "fit": table]
+    let svg = boardSVG(Worksheet(title: "XML & <próba>", nodes: nodes), fileText: { texts[$0.id] })
+    let parser = XMLParser(data: Data(svg.utf8))
+    let parsed = parser.parse()
+    #expect(parsed, "Az önálló SVG nem érvényes XML: \(parser.parserError.map(String.init(describing:)) ?? "?") (sor \(parser.lineNumber))")
+}

@@ -1,5 +1,11 @@
 # Változások
 
+## 2026-11-26 – Előnézeti képek: teljes ellenőrzés és védőteszt
+
+- A felhasználó jelezte: az előnézeti képek hibája nem a mai változtatásoktól volt, régóta fennállt. Az ok a táblázat lezáratlan `<col>` eleme volt (az önálló SVG, amiből az előnézet készül, szigorú XML); a javítás (önlezáró `<col/>`, előnézet-gyorsítótár v12) az előző commitban van.
+- Ellenőrizve minden helyi munkalapon (7 lap): az előnézet (világos / sötét), a munkalapra mutató linkes doboz képe (`fill=1`), a vászonpanel bélyegképe és az SVG-letöltés mind érvényes XML (xmllint); Safariban a főoldal mind a 6 kártyája, a projektoldal allapkártyája és a Megjelenés panel bélyegképe betölt. A böngésző nem tartja meg a régi, hibás képet (az előnézet válasza `no-store`).
+- Új védőteszt: `standaloneSVGIsWellFormedXMLForEveryBoxType` – egy lap minden doboztípussal (markdown listával, vonallal, sortöréssel, linkkel; .md, .txt, kód, CSV, táblázat, „Tartalom a dobozhoz” táblázat, kép, hang, dokumentum), a különleges karakterekkel (`<`, `&`), és az önálló SVG-t XML-elemzővel ellenőrzi. A régi hibát elkapja (lezáratlan `<col>` mellett elbukik).
+
 ## 2026-11-26 – Táblázat: fejlécek a dobozon kívül, „Tartalom a dobozhoz”; kurzorcsoport, témafüggő fogók, napló, 16:9 kártyák
 
 - **Javítva (az előző kör hibája):** a jelenlévők gombjai a bal alsó sarokba kerültek – a levágás elleni `margin: -3px` felülírta a jobbra toló `margin-inline-start: auto`-t. Újra jobb alul vannak.
