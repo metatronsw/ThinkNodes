@@ -22,6 +22,7 @@
     {"page": "all", "name": "Vászon › Egérmutató megosztása gomb", "selector": ".mouse-share", "description": "Saját egérmutató mutatása a többieknek."},
     {"page": "all", "name": "Vászon › Kurzorcímke gomb", "selector": ".cursor-label", "description": "A többiek kurzora mellett a név vagy az avatar látszik."},
     {"page": "all", "name": "Vászon › Lézer pointer gomb", "selector": ".laser-tool", "description": "Bekapcsolva a húzás elhalványuló lézervonalat rajzol, a saját színeddel, mindenkinek."},
+    {"page": "all", "name": "Fejléc › Napló", "selector": ".log-link", "description": "A projekt közös naplója (/_naplo/<projekt>)."},
     {"page": "all", "name": "Vászon › Csevegés gomb", "selector": ".chat-tool", "description": "A lap csevegése; a szám az olvasatlan üzenetek száma."},
     {"page": "all", "name": "Vászon › Csevegés panel", "selector": ".chat-panel", "description": "Üzenetek a lapon (csak bejelentkezve); Enter: küldés."},
     {"page": "editor", "name": "Vászon › Előadás gomb", "selector": ".present-tool", "description": "Előadás indítása / befejezése: a többiek a te nézetedet követik."},

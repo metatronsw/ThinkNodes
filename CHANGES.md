@@ -1,5 +1,12 @@
 # Változások
 
+## 2026-11-26 – Projektnapló
+
+- Projektenként egy közös napló, saját oldalon: `/_naplo/<projekt>` (az aláhúzás miatt nem ütközhet projektnévvel); minden munkalap fejlécében „Napló” gomb (lista ikon) vezet ide. Bejegyzés: szerző (avatar, név a saját színével), idő, szöveg, jelzők: **Fontos**, **Elvégezve** (áthúzva), **Inaktív** (halvány); a módosítás rögzíti, ki és mikor módosított.
+- Írni és jelölni minden szerkesztő tud (bejelentkezve, a projekt szerkesztője vagy admin, vendég szerepkör nélkül); olvasni bárki, aki a projektet látja. Szűrők (a böngészőben megjegyezve): újak felül, csak a fontosak, elvégzettek / inaktívak elrejtése. Új bejegyzés és szerkesztés: Ctrl/⌘+Enter. A lap 8 mp-enként frissül (szerkesztés közben nem).
+- Tárolás: a projekt mappájában `.naplo.json`; bejegyzésenkénti műveletek (`POST /api/log/<projekt>`: `add` / `text` / `flag`), így ketten egyszerre is írhatnak ütközés nélkül. Új fájlok: `Sources/ThinkCore/ProjectLog.swift`, `Public/naplo.js`.
+- Teszt: új `projectLogEntries` (Swift). Két valódi böngészővel ellenőrizve a helyi adatok másolatán (a próbabejegyzések nem kerültek a `projects` mappába): hozzáadás fontos jelzővel, a másik felhasználó a frissítés után látja, elvégzettre jelöli, szerkeszti, és ez visszalátszik. `./test.sh`: 108 Swift-teszt és minden JS-teszt átmegy. Szerverkód változott: a helyi tesztszerver (8888) újraindítva.
+
 ## 2026-11-26 – Csevegés munkalaponként
 
 - Új eszköztár gomb (`.chat-tool`, szerkesztőben és megtekintőben, csak bejelentkezett felhasználónak) olvasatlan-számlálóval; a panel a vászon jobb alsó részén. Enter: küldés, Shift+Enter: új sor, Esc: bezárás. A jelenlévők gombjára kattintva a csevegés megnyílik, és a másik résztvevő neve megemlítésként (@név) a mezőbe kerül. A téged említő üzenet kiemelt, és hangjelzés szól. A saját üzenet törölhető (admin bármelyiket).

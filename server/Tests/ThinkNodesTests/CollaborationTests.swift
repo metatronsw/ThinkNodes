@@ -307,3 +307,26 @@ import VaporTesting
     _ = try store.postChat(path, text: "Marad", user: anna)
     #expect(FileManager.default.fileExists(atPath: try store.folder(path).appendingPathComponent(".chat.jsonl").path))
 }
+
+// Projektnapló: a szerkesztő ír és jelöl, a vendég (nyilvános projektben) csak olvas; üres bejegyzés nem megy;
+// a módosítás rögzíti, ki és mikor módosított.
+@Test func projectLogEntries() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-log-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    try store.setUser(name: "admin", role: .admin, passwordHash: "x")
+    let admin = try #require(try store.user(named: "admin"))
+    _ = try store.open(WorksheetPath(["main"]), user: admin)
+    _ = try store.manage(WorksheetPath(["main"]), operation: DocumentAction(scope: "project", action: "mode", value: "public"), user: admin, unlocks: [])
+    #expect(try store.projectLog("main", user: nil).writable == false)
+    #expect(throws: Abort.self) { try store.changeLog("main", action: "add", id: nil, text: "x", flag: nil, value: nil, user: nil) }
+    #expect(throws: Abort.self) { try store.changeLog("main", action: "add", id: nil, text: "  ", flag: nil, value: nil, user: admin) }
+    var log = try store.changeLog("main", action: "add", id: nil, text: "Első bejegyzés", flag: nil, value: true, user: admin)
+    let id = try #require(log.entries.first?.id)
+    #expect(log.writable && log.entries.first?.important == true && log.entries.first?.color == admin.color)
+    log = try store.changeLog("main", action: "flag", id: id, text: nil, flag: "done", value: true, user: admin)
+    log = try store.changeLog("main", action: "text", id: id, text: "Javított", flag: nil, value: nil, user: admin)
+    #expect(log.entries.first?.done == true && log.entries.first?.text == "Javított" && log.entries.first?.editedBy == "admin")
+    #expect(throws: Abort.self) { try store.changeLog("main", action: "flag", id: id, text: nil, flag: "rossz", value: true, user: admin) }
+    #expect(try store.projectLog("main", user: nil).entries.map(\.text) == ["Javított"])
+}

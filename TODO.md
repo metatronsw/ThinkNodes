@@ -127,7 +127,7 @@ Kitalálandó, ötletek (2026-11-26):
 - Saját üzenet szerkesztése / törlése rövid ideig, admin bármikor törölhet; egyszerű markdown (a `canvas-markdown.js` részhalmaza).
 - Kérdések: lapra vagy projektre szóljon-e a chat; olvashatja-e a vendég; kell-e a kurzor mellett rövid ideig felvillanó buborék (táblás programokban szokásos).
 
-**Napló**
+**Napló** — kész (2026-11-26, projektenként saját oldalon, minden szerkesztő írhat és jelölhet; lásd CHANGES.md). Hátra: nem önálló dokumentum a fában (nincs export / import / lomtár), nincs bejegyzés-törlés (az „inaktív” jelző helyettesíti), chatüzenetből „Naplóba” gomb, dobozra hivatkozás, határidő.
 - Projektenként egy közös napló, saját dokumentumtípusként a fában (mint a munkalap), így exportálható / importálható és lomtárba tehető. Bejegyzés: id, szerző, létrehozás és utolsó módosítás ideje (ki, mikor), szöveg, jelzők: fontos, elvégezve, inaktív (+ később szabad címkék).
 - Megjelenítés idő szerint (újak felül vagy alul, választható), szűrők: elvégzettek / inaktívak elrejtése, csak a fontosak. Szerkesztő ír és jelöl, a vendég csak olvas.
 - Bejegyzésenkénti műveletek (hozzáadás, jelző váltása, szöveg módosítása) a teljes dokumentum mentése helyett, így két ember egyszerre is dolgozhat rajta ütközés nélkül.

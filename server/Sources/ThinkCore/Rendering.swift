@@ -59,7 +59,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=62">
+          <link rel="stylesheet" href="/app.css?v=64">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -159,11 +159,13 @@ package func siteHeader(path: String? = nil, project: String? = nil, user: User?
         </div>
         """
     let navigationClass = path == nil ? "site-header" : "worksheet-nav"
+    // Projektnapló: minden munkalap fejlécében, a projekt naplójára mutat.
+    let log = parts.first.map { "<a class=\"\(headerButtonClass) log-link\" href=\"/_naplo/\(escaped($0))\" title=\"A projekt naplója\" aria-label=\"Napló\">\(uiIcon("list"))</a>" } ?? ""
     return """
         <\(tag) class="\(navigationClass)"><div class="header-left"><nav aria-label="Fő navigáció" class="breadcrumbs">
           <a class="\(headerButtonClass) brand" href="/"><span class="brand-icon" aria-hidden="true"><span></span><span></span><span></span></span>ThinkNodes</a>
           \(crumb)\(parent)
-        </nav></div><div class="header-parent">\(centerAction)</div><div class="header-actions">\(actions)<div class="header-user">\(session)</div>\(editing ? "" : appearanceActions)</div>\(editing ? appearanceActions : "")</\(tag)><script defer src="/header-fit.js?v=2"></script>
+        </nav></div><div class="header-parent">\(centerAction)</div><div class="header-actions">\(log)\(actions)<div class="header-user">\(session)</div>\(editing ? "" : appearanceActions)</div>\(editing ? appearanceActions : "")</\(tag)><script defer src="/header-fit.js?v=2"></script>
         """
 }
 

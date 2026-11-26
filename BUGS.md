@@ -8,6 +8,9 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
   - Kézzel nézendő két valódi böngészővel / eszközzel: a kurzorcímke olvashatósága világos és sötét vásznon, a ping nyila az ablak sarkaiban és teljes képernyőn, a nyíl fölötti megállás és a kattintás, a megtekintő oldal görgetett állapotban. Az automatizált Safari ablaka nincs fókuszban, ezért ott a saját résztvevő mindig „nem aktív”.
   - A kurzorcímke választása böngészőnként tárolódik (localStorage), nem a fiókhoz; ha fiókszintű kell, a `UserPreferences`-be tehető.
   - A ping hangja: nincs némító kapcsoló; ha zavaró, a kurzorcímke mellé tehető egy hang ki/be gomb. A hang csak az oldalon tett első kattintás / billentyű után szól (böngészőszabály).
+  - Kézzel nézendő két valódi böngészővel: lézer pointer érintéssel (a d3 érintéses nagyítás lézer közben nincs letiltva), előadás teljes képernyőn azonos és eltérő felbontással, a keret rajzolása / méretezése, csevegés és napló a megtekintő oldalon.
+  - Előadás: a megtekintő oldal (nincs nagyítás) nem követ; nagyon nagy lapon a folyamatos követés teljesítménye mérendő.
+  - A chat-próba a helyi `projects/a` mappában üres `.chat.jsonl` fájlt hagyott; törlése engedélyre vár.
   - A sötét palettaszínek (pl. `#027864`, `#6550b9`) neve sötét módban a jelenlévők között halványabban olvasható.
 
 - **WhiteBoard: nyitott és kézzel nézendő tételek** (2026-11-25)

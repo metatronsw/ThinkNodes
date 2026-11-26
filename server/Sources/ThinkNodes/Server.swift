@@ -678,6 +678,40 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         return try chatResponse(message)
     }
 
+    // Projektnapló: oldal (`/_naplo/<projekt>`; az aláhúzás miatt nem ütközhet projektnévvel) és API (`/api/log/<projekt>`).
+    app.get("_naplo", ":project") { req async throws -> Response in
+        let identity = try session(req, store: store)
+        guard let project = req.parameters.get("project") else { throw Abort(.badRequest) }
+        _ = try await req.application.threadPool.runIfActive { try store.projectLog(project, user: identity.user, unlocks: identity.unlocks) }
+        return htmlPage(title: "Napló · \(project)", body: """
+            \(siteHeader(path: project, project: project, user: identity.user, csrf: identity.csrf))
+            <main class="shell log-page" id="project-log" data-project="\(escaped(project))" data-csrf="\(identity.csrf ?? "")" data-user="\(escaped(identity.user?.name ?? ""))">
+              <h1>Napló · \(escaped(project))</h1>
+              <p class="muted">A projekt közös naplója: a bejegyzések idő szerint. Írni és jelölni a projekt szerkesztői tudnak.</p>
+              <noscript>A naplóhoz JavaScript szükséges.</noscript>
+            </main>
+            <script type="module" src="/naplo.js?v=1"></script>
+            """)
+    }
+    app.get("api", "log", ":project") { req async throws -> Response in
+        let identity = try session(req, store: store)
+        guard let project = req.parameters.get("project") else { throw Abort(.badRequest) }
+        let log = try await req.application.threadPool.runIfActive { try store.projectLog(project, user: identity.user, unlocks: identity.unlocks) }
+        return try chatResponse(log)
+    }
+    app.post("api", "log", ":project") { req async throws -> Response in
+        struct Form: Content { var action: String; var id: String?; var text: String?; var flag: String?; var value: Bool? }
+        let identity = try session(req, store: store)
+        try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
+        guard let project = req.parameters.get("project") else { throw Abort(.badRequest) }
+        let form = try req.content.decode(Form.self)
+        let log = try await req.application.threadPool.runIfActive {
+            try store.changeLog(project, action: form.action, id: form.id, text: form.text, flag: form.flag, value: form.value,
+                                user: identity.user, unlocks: identity.unlocks)
+        }
+        return try chatResponse(log)
+    }
+
     app.post("api", "subworksheet", "**") { req async throws -> Response in
         let identity = try session(req, store: store)
         let user = identity.user
