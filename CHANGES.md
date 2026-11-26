@@ -1,5 +1,12 @@
 # Változások
 
+## 2026-11-27 – Szerver: ugyanaz a Swift (6.0.3), mint a fejlesztőgépen
+
+- A Fedora `swift-lang` 6.3.2 (6.3.2-7.fc45) fordítója a tiszta buildben a `swift-service-context` függőségen összeomlott (LLVM-ellenőrzés: `createUniquePath: Model must contain at least one '%'`, IRGen; egyszálú fordítással is).
+- **`server/deploy/install.sh`:** Linuxon a swift.org hivatalos Swift 6.0.3 csomagját (fedora39 / fedora39-aarch64 építés) telepíti a `/opt/swift-6.0.3` mappába, a swift.org kulcsaival ellenőrzött aláírással (`gnupg2` a rendszercsomagok között); a dnf `swift-lang` nem kell, telepítve maradhat. macOS-en továbbra is swiftly.
+- **`server/deploy/build.sh`, `daemon.sh`:** magától csak a Swift 6.0.3-at veszik fel (`~/X-Code/RunTime/Swift/6.0.3`, `/opt/swift-6.0.3`, swiftly, PATH); más a `THINKNODES_SWIFT`-tel adható meg. A `build.sh` megjegyzi, melyik fordító építette a `.build`-et (`.build/.swift-version`), és váltáskor a lefordított részeket törli (a letöltött csomagforrások maradnak).
+- macOS + Swift 6.0.3 alatt kipróbálva (első futáskor teljes újrafordítás a jelző miatt); Fedorán a szerveren ellenőrizendő (BUGS.md).
+
 ## 2026-11-27 – daemon.sh: elárvult SwiftPM zárfájl
 
 - A root-ként futtatott `install.sh` a `/tmp`-ben hagyta a SwiftPM zárfájljait (`/tmp/_opt_ThinkNodes_server_.build*.lock`: a build, a `Package.resolved`, a munkaterület-állapot és a manifest-gyorsítótár zárja), a `thinknodes` felhasználóként futó build ezért „invalid access” hibával leállt (a `Package.resolved`-ot „corrupted”-nek jelezte). A `server/deploy/daemon.sh` a fordítás előtt mindet törli, az `install.sh` root-ként futtatva maga után is (az előtag a `.build` útvonalából képezve).

@@ -47,12 +47,18 @@ data_dir=/var/lib/thinknodes
 unit=/etc/systemd/system/thinknodes.service
 env_file="$data_dir/thinknodes.env"
 
+# A szerver ugyanazzal a Swifttel fordul, mint a fejlesztői gép (6.0.3, install.sh: /opt/swift-6.0.3); a Fedora
+# swift-lang csomagja (pl. 6.3.2) nem használható. THINKNODES_SWIFT-tel más is megadható.
+swift_version=6.0.3
 swift_bin="${THINKNODES_SWIFT:-}"
-for candidate in /usr/local/bin/swift "$(command -v swift || true)"; do
-    [[ -z "$swift_bin" && -n "$candidate" && -x "$candidate" ]] && swift_bin="$candidate"
+for candidate in "/opt/swift-$swift_version/usr/bin/swift" /usr/local/bin/swift "$(command -v swift || true)"; do
+    if [[ -z "$swift_bin" && -n "$candidate" && -x "$candidate" ]] &&
+        "$candidate" --version 2>/dev/null | grep -q "Swift version $swift_version "; then
+        swift_bin="$candidate"
+    fi
 done
 if [[ -z "$swift_bin" ]]; then
-    printf 'Swift 6 not found for all users. Run server/deploy/install.sh first.\n' >&2
+    printf 'Swift %s not found for all users. Run server/deploy/install.sh first.\n' "$swift_version" >&2
     exit 1
 fi
 

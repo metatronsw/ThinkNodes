@@ -25,7 +25,8 @@ Options:
   --help      Show this help.
 
 Environment:
-  THINKNODES_SWIFT   Swift 6 executable (default: ~/X-Code/RunTime/Swift/6.0.3, swiftly, or swift in PATH).
+  THINKNODES_SWIFT   Swift executable to use as it is (default: Swift 6.0.3 from ~/X-Code/RunTime/Swift/6.0.3,
+                     /opt/swift-6.0.3, swiftly or the PATH; another version is not picked up automatically).
 EOF
 }
 
@@ -88,19 +89,34 @@ if [[ "$pull" == true ]] && git rev-parse --git-dir >/dev/null 2>&1; then
 fi
 
 # --- Swift toolchain ---------------------------------------------------------------------
+# Mindenhol ugyanaz a Swift (6.0.3), mint a fejlesztői gépen: a Package.resolved, a csomagleírások és a fordító így
+# egyezik (a Fedora swift-lang 6.3.2-je pl. egy függőség fordításakor összeomlott). THINKNODES_SWIFT-tel más is megadható.
+swift_version=6.0.3
 swift_bin="${THINKNODES_SWIFT:-}"
 if [[ -z "$swift_bin" ]]; then
-    for candidate in "$HOME/X-Code/RunTime/Swift/6.0.3/usr/bin/swift" "$HOME/.swiftly/bin/swift" \
-                     "$HOME/.local/share/swiftly/bin/swift" "$(command -v swift || true)"; do
-        if [[ -n "$candidate" && -x "$candidate" ]]; then swift_bin="$candidate"; break; fi
+    for candidate in "$HOME/X-Code/RunTime/Swift/$swift_version/usr/bin/swift" "/opt/swift-$swift_version/usr/bin/swift" \
+                     "$HOME/.swiftly/bin/swift" "$HOME/.local/share/swiftly/bin/swift" "$(command -v swift || true)"; do
+        if [[ -n "$candidate" && -x "$candidate" ]] && "$candidate" --version 2>/dev/null | grep -q "Swift version $swift_version "; then
+            swift_bin="$candidate"; break
+        fi
     done
 fi
 if [[ -z "$swift_bin" ]] || ! "$swift_bin" --version 2>/dev/null | grep -Eq 'Swift version ([6-9]|[1-9][0-9])\.'; then
-    printf 'Swift 6 not found. Run server/deploy/install.sh, or set THINKNODES_SWIFT.\n' >&2
+    printf 'Swift %s not found. Run server/deploy/install.sh, or set THINKNODES_SWIFT.\n' "$swift_version" >&2
     exit 1
 fi
 export PATH="$(dirname "$swift_bin"):$PATH"
-printf 'Swift: %s\n' "$("$swift_bin" --version 2>&1 | grep -m1 'Swift version')"
+swift_line="$("$swift_bin" --version 2>&1 | grep -m1 'Swift version')"
+printf 'Swift: %s (%s)\n' "$swift_line" "$swift_bin"
+# Másik (vagy ismeretlen) fordítóval épült modulok és gyorsítótárak nem használhatók tovább: ezek törlődnek, a letöltött
+# csomagforrások (checkouts, repositories, package-cache) maradnak.
+if [[ -d .build && "$(cat .build/.swift-version 2>/dev/null)" != "$swift_line" ]]; then
+    printf 'New Swift version for this .build: compiling everything again\n'
+    find .build -mindepth 1 -maxdepth 1 ! -name checkouts ! -name repositories ! -name package-cache \
+        ! -name package-config ! -name package-security ! -name artifacts ! -name workspace-state.json -exec rm -rf {} +
+fi
+mkdir -p .build
+printf '%s\n' "$swift_line" > .build/.swift-version
 
 # --- Browser libraries (served from Public/vendor) ----------------------------------------
 mkdir -p Public/vendor

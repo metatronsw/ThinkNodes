@@ -1,7 +1,8 @@
 ## Nyitott
 
-- **Fedora, Swift 6.3.2 (2026-11-26): kipróbálandó a szerveren**
-  - A build- és telepítőszkript már nem tiltja a csomagfeloldást (a 6.2+ Swift az async-http-client miatt a `swift-configuration` csomagot is kéri, ami a 6.0.3-mal készült `Package.resolved`-ban nincs). Helyben csak macOS + Swift 6.0.3 alatt kipróbálva; hogy a kód és a Vapor 4.122.4 hibátlanul fordul-e Swift 6.3.2-vel, csak a szerveren derül ki.
+- **Szerver: Swift 6.0.3 Fedorán (2026-11-27): kipróbálandó a szerveren**
+  - Az `install.sh` Linuxon a swift.org hivatalos 6.0.3-as csomagját (fedora39 építés) telepíti a `/opt/swift-6.0.3` mappába, aláírás-ellenőrzéssel; a `build.sh` és a `daemon.sh` csak ezt (vagy a `THINKNODES_SWIFT`-et) használja. Helyben csak macOS-en kipróbálva: a letöltési cím, az aláírás-ellenőrzés és a fedora39 építés futása újabb Fedorán (45) a szerveren derül ki.
+  - A Fedora `swift-lang` 6.3.2 (6.3.2-7.fc45) a `swift-service-context` függőség fordításakor (IRGen) egy LLVM-ellenőrzésen összeomlik (`createUniquePath: Model must contain at least one '%'`); egyszálú fordítással is. Pontos bejelentést nem találtunk; a swift.org 6.3.3 nem volt kipróbálva.
   - A szerver repó gyökerében a régi mappaszerkezet maradványai (`.build/`, `Public/`, `Projects/`, `.thinknodes-tls/`) nem követettek; a szolgáltatás nem használja őket, törölhetők.
 
 - **WhiteBoard textúrák és füzetlap (2026-11-26): nyitott és kézzel nézendő**

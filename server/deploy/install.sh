@@ -8,7 +8,9 @@ Usage: server/deploy/install.sh [--force] [--help]
 
 Checks the development and runtime environment of ThinkNodes and installs what is missing:
   - system tools and libraries (git, curl, unzip, compilers and libraries Swift needs on Linux)
-  - Swift 6 toolchain (Fedora: swift-lang package or swiftly; macOS: Xcode Command Line Tools + swiftly)
+  - Swift 6.0.3, the same version everywhere (Linux: the official swift.org toolchain in
+    /opt/swift-6.0.3, signature checked; macOS: Xcode Command Line Tools + swiftly). Another Swift
+    (e.g. Fedora's swift-lang 6.3) may stay installed, it is not used.
   - Node.js 22+ (editor tests) and Python 3 (tools/)
   - headless Chromium on Fedora (web presentation previews)
   - the Swift packages of the server (Vapor and its dependencies), resolved into server/.build
@@ -19,7 +21,7 @@ Options:
   --help      Show this help.
 
 Environment:
-  THINKNODES_SWIFT   Use this Swift 6 executable instead of searching for one.
+  THINKNODES_SWIFT   Use this Swift executable instead of searching for one (any version: your choice).
 EOF
 }
 
@@ -41,16 +43,47 @@ doing() { printf '  install  %s\n' "$*"; }
 sudo_cmd=()
 [[ $EUID -ne 0 ]] && sudo_cmd=(sudo)
 
+# A szerver mindenhol ugyanazzal a Swifttel fordul, mint a fejlesztői gép (Package.resolved, a csomagok leírásai és a
+# fordító viselkedése így egyezik); THINKNODES_SWIFT-tel bármelyik megadható.
+linux_swift_dir=/opt/swift-$swift_version
 find_swift() {
     local candidate
-    for candidate in "${THINKNODES_SWIFT:-}" "$HOME/X-Code/RunTime/Swift/$swift_version/usr/bin/swift" "$HOME/.swiftly/bin/swift" \
-                     "$HOME/.local/share/swiftly/bin/swift" /usr/local/bin/swift "$(command -v swift || true)"; do
+    if [[ -n "${THINKNODES_SWIFT:-}" ]]; then
+        [[ -x "$THINKNODES_SWIFT" ]] && printf '%s\n' "$THINKNODES_SWIFT"
+        return
+    fi
+    for candidate in "$HOME/X-Code/RunTime/Swift/$swift_version/usr/bin/swift" "$linux_swift_dir/usr/bin/swift" \
+                     "$HOME/.swiftly/bin/swift" "$HOME/.local/share/swiftly/bin/swift" "$(command -v swift || true)"; do
         if [[ -n "$candidate" && -x "$candidate" ]] &&
-            "$candidate" --version 2>/dev/null | grep -Eq 'Swift version ([6-9]|[1-9][0-9])\.'; then
+            "$candidate" --version 2>/dev/null | grep -q "Swift version $swift_version "; then
             printf '%s\n' "$candidate"
             return
         fi
     done
+}
+
+install_linux_toolchain() {
+    # A swift.org hivatalos Fedora-csomagja ($swift_version, fedora39 építés, újabb Fedorán is fut), aláírás-ellenőrzéssel,
+    # rendszerszinten (/opt), hogy a thinknodes szolgáltatás-felhasználó is használhassa.
+    local work arch platform name url
+    work="$(mktemp -d)"
+    trap 'rm -rf "$work"' RETURN
+    arch="$(uname -m)"
+    platform=fedora39
+    [[ "$arch" == aarch64 ]] && platform=fedora39-aarch64
+    name="swift-$swift_version-RELEASE-$platform"
+    url="https://download.swift.org/swift-$swift_version-release/$platform/swift-$swift_version-RELEASE/$name.tar.gz"
+    curl --fail --location --silent --show-error -o "$work/$name.tar.gz" "$url"
+    curl --fail --location --silent --show-error -o "$work/$name.tar.gz.sig" "$url.sig"
+    curl --fail --location --silent --show-error -o "$work/keys.asc" https://swift.org/keys/all-keys.asc
+    GNUPGHOME="$work/gnupg" gpg --batch --quiet --import "$work/keys.asc" 2>/dev/null
+    if ! GNUPGHOME="$work/gnupg" gpg --batch --quiet --verify "$work/$name.tar.gz.sig" "$work/$name.tar.gz" 2>/dev/null; then
+        printf 'The signature of %s is not valid.\n' "$name.tar.gz" >&2
+        exit 1
+    fi
+    "${sudo_cmd[@]}" rm -rf "$linux_swift_dir"
+    "${sudo_cmd[@]}" mkdir -p "$linux_swift_dir"
+    "${sudo_cmd[@]}" tar -xzf "$work/$name.tar.gz" -C "$linux_swift_dir" --strip-components=1
 }
 
 node_ok() {
@@ -59,25 +92,14 @@ node_ok() {
 }
 
 install_swiftly_toolchain() {
-    # Installs swiftly and Swift $swift_version. On Linux system-wide (/opt/swiftly, /usr/local/bin),
-    # so the thinknodes service user can build too.
+    # macOS: swiftly és Swift $swift_version a felhasználó saját könyvtárában (Linuxon: install_linux_toolchain).
     local work
     work="$(mktemp -d)"
     trap 'rm -rf "$work"' RETURN
-    if [[ "$(uname -s)" == Darwin ]]; then
-        curl --fail --location --silent --show-error -o "$work/swiftly.pkg" https://download.swift.org/swiftly/darwin/swiftly.pkg
-        installer -pkg "$work/swiftly.pkg" -target CurrentUserHomeDirectory
-        "$HOME/.swiftly/bin/swiftly" init --quiet-shell-followup --assume-yes --skip-install
-        "$HOME/.swiftly/bin/swiftly" install "$swift_version" --use --assume-yes
-    else
-        curl --fail --location --silent --show-error -o "$work/swiftly.tar.gz" \
-            "https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz"
-        tar -xzf "$work/swiftly.tar.gz" -C "$work"
-        "${sudo_cmd[@]}" env SWIFTLY_HOME_DIR=/opt/swiftly SWIFTLY_BIN_DIR=/usr/local/bin \
-            "$work/swiftly" init --quiet-shell-followup --assume-yes --skip-install
-        "${sudo_cmd[@]}" env SWIFTLY_HOME_DIR=/opt/swiftly SWIFTLY_BIN_DIR=/usr/local/bin \
-            /usr/local/bin/swiftly install "$swift_version" --use --assume-yes
-    fi
+    curl --fail --location --silent --show-error -o "$work/swiftly.pkg" https://download.swift.org/swiftly/darwin/swiftly.pkg
+    installer -pkg "$work/swiftly.pkg" -target CurrentUserHomeDirectory
+    "$HOME/.swiftly/bin/swiftly" init --quiet-shell-followup --assume-yes --skip-install
+    "$HOME/.swiftly/bin/swiftly" install "$swift_version" --use --assume-yes
 }
 
 printf '== System (%s) ==\n' "$(uname -s)"
@@ -93,7 +115,7 @@ if [[ "$(uname -s)" == Darwin ]]; then
         command -v "$tool" >/dev/null && ok "$tool" || { printf '  missing  %s (comes with the Command Line Tools)\n' "$tool"; exit 1; }
     done
 elif [[ -f /etc/fedora-release ]]; then
-    packages=(git curl unzip tar gzip python3 nodejs
+    packages=(git curl unzip tar gzip gnupg2 python3 nodejs
               binutils gcc gcc-c++ glibc-devel glibc-static libstdc++-devel libstdc++-static
               libcurl-devel libxml2-devel libuuid-devel libedit-devel sqlite-devel zlib-devel libicu tzdata
               chromium-headless
@@ -122,16 +144,15 @@ swift_bin="$(find_swift)"
 if [[ -n "$swift_bin" && "$force" == false ]]; then
     ok "$("$swift_bin" --version 2>&1 | grep -m1 'Swift version') ($swift_bin)"
 else
-    if [[ -f /etc/fedora-release ]] && dnf -q list --available swift-lang 2>/dev/null | grep -Eq 'swift-lang[^ ]* +([6-9]|[1-9][0-9])\.'; then
-        doing "swift-lang (dnf)"
-        "${sudo_cmd[@]}" dnf install -y swift-lang
-        [[ "$force" == true ]] && "${sudo_cmd[@]}" dnf reinstall -y swift-lang
+    if [[ "$(uname -s)" == Linux ]]; then
+        doing "Swift $swift_version (swift.org, $linux_swift_dir)"
+        install_linux_toolchain
     else
         doing "Swift $swift_version (swiftly)"
         install_swiftly_toolchain
     fi
     swift_bin="$(find_swift)"
-    [[ -n "$swift_bin" ]] || { printf 'Swift 6 is still not available.\n' >&2; exit 1; }
+    [[ -n "$swift_bin" ]] || { printf 'Swift %s is still not available.\n' "$swift_version" >&2; exit 1; }
     ok "$("$swift_bin" --version 2>&1 | grep -m1 'Swift version') ($swift_bin)"
 fi
 

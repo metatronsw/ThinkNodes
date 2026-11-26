@@ -6,6 +6,8 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **Szerver Swift-verziója (2026-11-27):** a Fedora `swift-lang` 6.3.2 fordítója a `swift-service-context` függőségen összeomlott; a szerver mostantól ugyanazzal a Swifttel fordul, mint a fejlesztőgép (6.0.3, swift.org hivatalos csomag, `/opt/swift-6.0.3`). A `build.sh` csak a 6.0.3-at veszi fel magától, és fordítóváltáskor a lefordított részeket újrafordítja (a letöltött csomagforrások maradnak).
+
 - **daemon.sh: „invalid access to /tmp/_opt_ThinkNodes_server_.build.lock” (2026-11-27):** a root-ként futtatott install.sh zárfájljai (`…_.build*.lock`, köztük a `Package.resolved`-é) a thinknodes felhasználónak nem elérhetők; a daemon.sh a build előtt mindet törli, az install.sh root-ként maga után is.
 
 - **Szerverfrissítés: „out-of-date resolved file” Fedorán, Swift 6.3.2-vel (2026-11-26)**

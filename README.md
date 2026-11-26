@@ -15,7 +15,7 @@ Mindegyik önállóan futtatható, és a `--help` kiírja a kapcsolóit.
 
 | Szkript | Feladat |
 | --- | --- |
-| `server/deploy/install.sh` | Ellenőrzi és telepíti a fejlesztéshez és futtatáshoz szükséges környezetet (Swift 6, rendszerkönyvtárak, Node.js, Python, Chromium, Vapor-csomagok). Csak a hiányzót telepíti; `--force`: mindent újra. |
+| `server/deploy/install.sh` | Ellenőrzi és telepíti a fejlesztéshez és futtatáshoz szükséges környezetet (Swift 6.0.3 – Linuxon a swift.org hivatalos csomagja a `/opt/swift-6.0.3` mappában, aláírás-ellenőrzéssel –, rendszerkönyvtárak, Node.js, Python, Chromium, Vapor-csomagok). Csak a hiányzót telepíti; `--force`: mindent újra. |
 | `server/deploy/build.sh` | `git pull`, majd build macOS-en vagy Fedorán. Ha a frissítés nem megy, vagy helyi változás van, felajánlja a GitHub-ág pontos másolatára állítást. A release bináris a `server/thinknodes` helyre kerül. `--debug`, `--no-pull`. |
 | `server/deploy/daemon.sh` | Fedorán: `thinknodes` felhasználó, adatmappák, checkout a `/opt/ThinkNodes` alá, build, systemd szolgáltatás; végül kiírja a teendőket. |
 | `server/run.sh` | A szerver indítása (helyben és élesben). `--update`: előtte `deploy/build.sh`; `--debug`: a debug bináris. A többi kapcsoló a `thinknodes` binárisé. Indítás előtt kiírja a gépen már futó ThinkNodes-szervereket (bármely felhasználóét, a systemd-szolgáltatást is), és nem indul, ha a port foglalt, vagy egy másik példány ugyanazt az adatmappát használja. A szolgáltatás mellett tesztszerver más porton és más adatmappával futtatható (pl. `--port:8888 --project:DIR`). |
@@ -74,7 +74,7 @@ Nem kötelező. Ha a szerver környezetében mindkét változó meg van adva, a 
 - Tesztmódban (`--test`) a Google-bejelentkezés ki van kapcsolva.
 - Élesben a `daemon.sh` által telepített szolgáltatás a `/var/lib/thinknodes/thinknodes.env` fájlból olvassa a változókat; a fájlt a `daemon.sh` hozza létre. A teljes beállítás lépésről lépésre (Google Cloud Console, hozzárendelés, hibakeresés): `server/deploy/GOOGLE.md`.
 
-Élesben (Fedora): `sudo server/deploy/install.sh`, majd `sudo server/deploy/daemon.sh`. Frissítés: a `daemon.sh` által kiírt `build.sh` parancs, majd `sudo systemctl restart thinknodes`.
+Élesben (Fedora): `sudo server/deploy/install.sh`, majd `sudo server/deploy/daemon.sh`. A szerver ugyanazzal a Swifttel (6.0.3) fordul, mint a fejlesztőgép; a Fedora `swift-lang` csomagja (pl. 6.3.2) telepítve maradhat, de nem használja (a 6.3.2 egy függőség fordításakor összeomlott). Más Swift a `THINKNODES_SWIFT` változóval adható meg. Frissítés: a `daemon.sh` által kiírt `build.sh` parancs, majd `sudo systemctl restart thinknodes`.
 
 ## Munkalapok és fájlok
 
