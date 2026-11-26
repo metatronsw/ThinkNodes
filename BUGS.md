@@ -12,7 +12,8 @@
 - **Táblázat-szerkesztés, „Tartalom a dobozhoz”, kurzorcsoport: kézzel nézendő / nyitott** (2026-11-26)
   - A skálázott táblázat szerkesztőjében a valódi egérkattintást a vezérelt Safariban nem lehetett végigpróbálni (az ablak közben elvesztette a fókuszt); a cellaválasztás kódja JS-eseménnyel és a találatvizsgálattal (a kattintott pont alatt a jó cella áll) ellenőrizve. Kézzel nézendő: kattintás, húzásos kijelölés, oszlopszélesség húzása, sor / oszlop kijelölése skálázott táblázatban, nagyított vásznon is.
   - Skálázott szerkesztésnél a fejlécsávok és a képletsor is a táblázattal együtt kicsinyül, és a doboz belső margóján (részben a dobozon belül) állnak; nagy kicsinyítésnél a képletsor nehezen olvasható.
-  - A „Tartalom a dobozhoz” csak táblázatdobozon van (CSV-n nincs); 200 sornál hosszabb táblázatnál az olvasó nézet az első 200 sort skálázza, a szerkesztő az összeset.
+  - „Tartalom a dobozhoz”: 200 sornál hosszabb táblázatnál és CSV-nél az olvasó nézet az első 200 sort skálázza, a szerkesztő az összeset.
+  - CSV-n (2026-11-26 óta): illesztve a CSV a szerkesztés táblázatnézetével jelenik meg (alaprács, félkövér első sor, rögzített oszlopszélesség), nem a sima CSV-nézettel; a táblázat korlátainál (1000 sor × 100 oszlop) nagyobb CSV a sima nézetben marad. Csak fej nélküli Chromiumban próbálva, Safariban kézzel nézendő (kattintás, dupla kattintásos szerkesztés skálázva).
   - Ebben a Safariban a legkisebb betűméret 14 px (Beállítások / Haladó): a 13 px-es doboz- és táblázatszöveg ezért nagyobbnak látszik a beállítottnál. Ez nem hiba, de a méretek mérésekor számít.
   - A kurzorcsoport hosszú nyomása és jobb kattintása kézzel nézendő (a vezérelt ablakban az eszköztár a mozgatható tartományon kívül esett, JS-eseménnyel működött); érintőképernyőn a hosszú nyomás.
 

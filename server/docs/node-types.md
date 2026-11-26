@@ -184,7 +184,9 @@ Importált szöveges fájl: minden nem bináris fájl (UTF-8, NUL bájt nélkül
    - `text` (alap): egyszerű szöveg; `.md` formázva jelenik meg.
    - `code` (`base: text`): `.json`, `.js`, `.mjs`, `.swift`, `.css` … egyenközű betű, nem tördel, vízszintesen görgethető;
      `.json` importkor formázva. Szintaxiskiemelés később.
-   - `csv` (`base: text`): táblázatként jelenik meg (olvasó nézetben legfeljebb 1000 sor × 60 oszlop).
+   - `csv` (`base: text`): táblázatként jelenik meg (olvasó nézetben legfeljebb 1000 sor × 60 oszlop). „Tartalom a dobozhoz”
+     (`contentFit`, mint a táblázatnál): a szerkesztő táblázatdokumentuma arányosan a dobozhoz skálázva (`editor.js fitDocument`,
+     `Rendering.swift csvGridDocument`).
 3. **Fejléc és megjegyzés:** felül a fájlnév (elrejthető), nincs külön cím. Alul megjegyzés: markdown,
    balra / középre / jobbra igazítható, elrejthető.
 4. **Egy forrás, mentés:** egy dobozt egyszerre csak egy felhasználó foghat és szerkeszthet (a kijelölés zárol),

@@ -77,7 +77,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/lib/d3-zoom.js?v=1"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=102"></script>
+        <script type="module" src="/editor.js?v=103"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -1339,16 +1339,75 @@ private func plugMarkup(_ end: String, node: Idea, tip: Point, width: Double, co
     return "<path class=\"wire-arrow wire-plug\" data-arrow-end=\"\(end)\" data-plug=\"\" d=\"M0 -.5A.5 .5 0 0 0 0 .5Z\" transform=\"translate(\(number(tip.x)) \(number(tip.y))) rotate(\(number(angle))) scale(\(number(size)))\" fill=\"\(color)\" stroke=\"none\" pointer-events=\"none\"/>"
 }
 
+/// CSV → mezők soronként, pontosan úgy, mint a szerkesztő (table-csv.js parseCSVRows): a záró üres sorok is sorok, csak a
+/// fájl végi sorvég nem nyit újat. (A TableCSV.rows az importhoz a záró üres sorokat elhagyja, ezért itt nem az kell.)
+func csvEditorRows(_ text: String, separator: Character) -> [[String]] {
+    var rows: [[String]] = [], row: [String] = [], field = "", quoted = false, wasQuoted = false
+    var characters = Array(text)[...]
+    while let character = characters.popFirst() {
+        if quoted {
+            if character == "\"" {
+                if characters.first == "\"" { field.append("\""); characters.removeFirst() } else { quoted = false }
+            } else { field.append(character) }
+        } else if character == "\"" && field.isEmpty && !wasQuoted { quoted = true; wasQuoted = true }
+        else if character == separator { row.append(field); field = ""; wasQuoted = false }
+        else if character == "\n" || character == "\r" || character == "\r\n" {
+            if character == "\r" && characters.first == "\n" { characters.removeFirst() }
+            row.append(field); field = ""; wasQuoted = false; rows.append(row); row = []
+        } else { field.append(character) }
+    }
+    if !field.isEmpty || !row.isEmpty || wasQuoted { row.append(field); rows.append(row) }
+    return rows
+}
+
+/// A CSV táblázatdokumentuma (editor.js csvDocument párja): szöveges cellák formázás nélkül, alaprács, egy fejlécsor, az
+/// oszlopszélesség az első 300 sor leghosszabb mezője (13 px-es betűvel mérve, +20, 48 és 420 között). A szerkesztő ezt
+/// szerkeszti, és ezzel rajzolja a „Tartalom a dobozhoz” nézetet; nil, ha a CSV nagyobb a táblázat korlátainál.
+func csvGridDocument(_ text: String, ext: String) -> TableDocument? {
+    let rows = csvEditorRows(text, separator: TableCSV.detectSeparator(text, ext: ext))
+    let cols = max(1, rows.map(\.count).max() ?? 0)
+    guard rows.count <= TableLimits.maxRows, cols <= TableLimits.maxCols else { return nil }
+    var document = TableDocument(rows: max(1, rows.count), cols: cols)
+    document.grid = true
+    document.header = HeaderInfo(rows: 1, cols: 0)
+    var widths = Array(repeating: 0.0, count: cols)
+    for (r, row) in rows.enumerated() {
+        for (c, value) in row.enumerated() {
+            if !value.isEmpty { document[CellAddress(row: r, col: c)] = TableCell(v: .text(value)) }
+            if r < 300 { widths[c] = max(widths[c], textWidth(value, size: 13)) }
+        }
+    }
+    document.cols = Dictionary(uniqueKeysWithValues: widths.enumerated().map {
+        (CellAddress.columnName($0.offset), ColumnInfo(w: min(max($0.element + 20, 48), 420).rounded()))
+    })
+    return document
+}
+
 /// Fájlt tároló objektum (szöveg, kép, hang, dokumentum) a vásznon: felül fájlnév, középen tartalom, alul megjegyzés.
-/// „Tartalom a dobozhoz” táblázat (editor.js renderTableFit párja): saját foreignObject SVG-szintű scale()-lel, a doboz
-/// bal felső sarkától 20 / 18 px-re (a .node-file és a .node-note belső margója); a táblázat itt skálázatlanul rendeződik.
+/// „Tartalom a dobozhoz” táblázat és CSV (editor.js renderTableFit párja): saját foreignObject SVG-szintű scale()-lel, a
+/// doboz bal felső sarkától 20 / 18 px-re (a .node-file és a .node-note belső margója); a táblázat itt skálázatlanul
+/// rendeződik. A CSV a szerkesztőével azonos táblázatdokumentumként (csvGridDocument) jelenik meg.
 private func fittedTable(_ node: Idea, text: String?) -> String? {
-    guard node.type == "table", node.contentFit == true, let text, let document = try? TableDocument.decode(Data(text.utf8)) else { return nil }
+    guard node.contentFit == true, let text else { return nil }
+    let document: TableDocument, html: String
+    switch node.type {
+    case "table":
+        guard let decoded = try? TableDocument.decode(Data(text.utf8)) else { return nil }
+        document = decoded
+        html = fileTextHTML(node, text: text)
+    case "csv":
+        let ext = (node.file?.filename.map { ($0 as NSString).pathExtension } ?? "").lowercased()
+        guard let grid = csvGridDocument(text, ext: ext) else { return nil }
+        document = grid
+        html = RenderedTables.shared.html(for: "csv-fit\u{0}" + ext + "\u{0}" + text) { "<div class=\"tn-table-wrap\">" + TableHTML.render(grid) + "</div>" }
+    default:
+        return nil
+    }
     let size = TableHTML.size(document), width = size.width + 1, height = size.height + 1
     let scale = max(0.05, min(8, (node.width - 50) / width, (node.height - 36) / height))
     let x = node.position.x - node.width / 2 + 20, y = node.position.y - node.height / 2 + 18
     let paper = node.fill.hasPrefix("#") ? ";--tn-paper:" + escaped(node.fill) : ""
-    return "<g class=\"table-fit\" transform=\"translate(\(number(x)) \(number(y))) scale(\(number(scale)))\"><foreignObject class=\"node-file-frame\" width=\"\(number(width + 16))\" height=\"\(number(height + 16))\"><div xmlns=\"http://www.w3.org/1999/xhtml\" class=\"table-fit-body\" style=\"font-size:\(number(node.fontSize))px;color:\(escaped(node.paperInk ?? node.textColor))\(paper)\"><div class=\"table-fit-note\" style=\"width:\(number(width))px;height:\(number(height))px\">\(fileTextHTML(node, text: text))</div></div></foreignObject></g>"
+    return "<g class=\"table-fit\" transform=\"translate(\(number(x)) \(number(y))) scale(\(number(scale)))\"><foreignObject class=\"node-file-frame\" width=\"\(number(width + 16))\" height=\"\(number(height + 16))\"><div xmlns=\"http://www.w3.org/1999/xhtml\" class=\"table-fit-body\" style=\"font-size:\(number(node.fontSize))px;color:\(escaped(node.paperInk ?? node.textColor))\(paper)\"><div class=\"table-fit-note\" style=\"width:\(number(width))px;height:\(number(height))px\">\(html)</div></div></foreignObject></g>"
 }
 
 private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: Bool, exported: Bool, text: String?,

@@ -623,6 +623,28 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     #expect(!boardSVG(Worksheet(title: "Táblázat", nodes: [node]), fileText: { _ in text }).contains("table-fit"))
 }
 
+/// „Tartalom a dobozhoz” CSV: a szerkesztő táblázatdokumentuma (editor.js csvDocument, Rendering.swift csvGridDocument)
+/// skálázva. A sorok a szerkesztőével egyeznek (table-csv.js parseCSVRows: a záró üres sor is sor), az oszlopszélesség a
+/// leghosszabb mező 13 px-es szélessége + 20 (48 és 420 között).
+@Test func contentFitCSVUsesTheEditorTable() throws {
+    #expect(csvEditorRows("név,érték\nalma,1\nkörte,22\n\n", separator: ",") == [["név", "érték"], ["alma", "1"], ["körte", "22"], [""]])
+    #expect(csvEditorRows("a,\"b,\"\"c\"\"\"\r\n1,2", separator: ",") == [["a", "b,\"c\""], ["1", "2"]])
+    #expect(csvEditorRows("\"\",x\n", separator: ",") == [["", "x"]])
+    #expect(csvEditorRows("a;b\r\n\r\n", separator: ";") == [["a", "b"], [""]])
+    let text = "név,érték\nalma,1\nkörte,22\n\n"
+    var node = Idea(id: "cv", type: "csv", file: CanvasFile(asset: "file-cv", filename: "adat.csv"), position: Point(x: 0, y: 0))
+    node.width = 300
+    node.height = 200
+    node.contentFit = true
+    let svg = boardSVG(Worksheet(title: "CSV", nodes: [node]), fileText: { _ in text })
+    // 4 sor × 24 + 1 = 97 magas; 2 × 51 + 1 = 103 széles; (200 - 36) / 97 = 1,691 (a szélesség: 250 / 103 = 2,43).
+    #expect(svg.contains(#"class="table-fit-note" style="width:103.000px;height:97.000px""#))
+    #expect(svg.contains(#"scale(1.691)"#) && svg.contains("tn-table") && !svg.contains("node-csv"))
+    node.contentFit = nil
+    let plain = boardSVG(Worksheet(title: "CSV", nodes: [node]), fileText: { _ in text })
+    #expect(!plain.contains("table-fit") && plain.contains("node-csv"))
+}
+
 /// Az önálló SVG (letöltés, előnézeti kép) szigorú XML: ha bármelyik doboz HTML-je nem XHTML (pl. lezáratlan <col>),
 /// a böngésző az előnézetet képként nem tölti be, és a főoldali kártyák háttere üres marad. Minden doboztípus egy lapon.
 @Test func standaloneSVGIsWellFormedXMLForEveryBoxType() throws {

@@ -6,6 +6,9 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **„Tartalom a dobozhoz” CSV-n is (2026-11-26)**
+  - Eddig csak táblázatdobozon volt. A CSV illesztve a szerkesztő táblázatdokumentumaként (csvDocument) skálázódik, a szerver ugyanezt rajzolja (`csvGridDocument`, `csvEditorRows` – a szerkesztő CSV-elemzőjének pontos párja). Teszt: `contentFitCSVUsesTheEditorTable`.
+
 - **BUGS.md átnézése, 2. kör (2026-11-26)**
   - Élénk kitöltésen a beállított szövegszín nem igazodott (pl. fehér szöveg a világos módú, 64%-os üveg zöldjén). Javítás: ha a szöveg és a felület (kitöltés a vászon fölött, a téma átlátszatlanságával) kontrasztja 3 alatt van, a téma tintájának jobban olvasható változata jön; szerver: `Rendering.swift labelInk`, `Idea.labelInk`, `Worksheet.painted`; szerkesztő: `editor.js boxInk`. Teszt: `unreadableBoxTextGetsThemeInk`.
   - A CSV olvasó nézet 200 sor × 30 oszlopnál megállt: a korlát 1000 × 60 (`csvPreviewRows`, `csvPreviewColumns`; editor.js `parseCSV`). Teszt a `WorksheetTests`-ben.

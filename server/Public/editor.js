@@ -4464,7 +4464,7 @@ createApp({
       if (fittedTable(node)) {
         const table = note?.closest("[data-node]")?.querySelector(".table-fit-note table");
         if (!table) return null;
-        const scale = tableFitZoom(node, tableOf(node));
+        const scale = tableFitZoom(node, fitDocument(node));
         return cellIn(table, (point.x - (node.position.x - node.width / 2) - 20) / scale, (point.y - (node.position.y - node.height / 2) - 18) / scale);
       }
       const table = note?.querySelector("table");
@@ -4521,7 +4521,7 @@ createApp({
       // A szerkesztő rácsa pontosan az olvasó nézet helyén áll (ugyanaz a belső térköz, betű és görgetés; a fejlécsávok
       // és a képletsor a dobozon kívül, app.css „Táblázat szerkesztése”): a görgetés változatlanul átvehető, semmi sem ugrik.
       // „Tartalom a dobozhoz”: a teljes táblázat befér, nincs görgetés.
-      const fitted = current?.type === "table" && current.contentFit;
+      const fitted = fittedTable(current);
       editor.scrollTop = fitted ? 0 : scroll.top;
       editor.scrollLeft = fitted ? 0 : scroll.left;
       revealedCell = null;
@@ -4818,7 +4818,21 @@ createApp({
     // „Tartalom a dobozhoz” (node.contentFit): a táblázat egyenletes nagyítása, hogy a doboz belsejébe (a .node-note
     // térközén belül: 10 + 10 px oldalt, 8 + 20 px a görgetősávnak, 10 + 8 px fent és lent) pontosan beférjen, torzítás nélkül.
     // Olvasó és szerkesztő nézet ugyanezt a nagyítást kapja (renderTableFit); a szerveroldali pár: Rendering.swift fileBox.
-    const fittedTable = node => node?.type === "table" && node.contentFit === true;
+    // CSV-nél a szerkesztő táblázatdokumentuma (csvDocument) rajzolódik, egyszerre a szerkesztéssel is ugyanaz (a szerveroldali
+    // pár: Rendering.swift csvGridDocument); a táblázat korlátainál nagyobb CSV marad a sima olvasó nézetben.
+    const fittedTable = node => node?.contentFit === true && (node.type === "table" || (node.type === "csv" && !!fitDocument(node)));
+    const fitCSV = new Map();
+    function fitDocument(node) {
+      if (node.type !== "csv") return tableOf(node);
+      if (tableEdit.value?.id === node.id) return tableEdit.value.editor.doc;
+      const text = fileTexts.value.get(fileTextKey(node));
+      if (text == null) return null;
+      const cached = fitCSV.get(node.id);
+      if (cached?.text === text) return cached.doc;
+      const doc = csvDocument(text, node)?.doc ?? null;
+      fitCSV.set(node.id, {text, doc});
+      return doc;
+    }
     function tableFitZoom(node, doc) {
       if (!node.contentFit || !doc) return 1;
       const height = tableHeight(doc, previewRows), width = tableWidth(doc) + 1, room = {x: node.width - 20 - 30, y: node.height - 20 - 16};
@@ -5010,7 +5024,7 @@ createApp({
     // visszanöveli a betűt); az SVG-transzform alatt a táblázat skálázatlanul rendeződik, és kattintható marad.
     // Szerkesztéskor a sorszámok és az oszlopbetűk közvetlenül a táblázat mellett, a képletsor fölötte áll (szintén skálázva).
     function renderTableFit(node) {
-      const editing = tableEdit.value?.id === node.id, doc = editing ? tableEdit.value.editor.doc : tableOf(node);
+      const editing = tableEdit.value?.id === node.id, doc = editing ? tableEdit.value.editor.doc : fitDocument(node);
       if (!doc) return null;
       const scale = tableFitZoom(node, doc), width = tableWidth(doc) + 1;
       const height = (editing ? tableHeight(doc) : tableHeight(doc, previewRows)) + 1 + (!editing && doc.size.rows > previewRows ? 24 : 0);
@@ -6466,6 +6480,8 @@ createApp({
           propertyTools(
             button(editing ? "Szerkesztés vége" : "Cellák szerkesztése", () => editing ? stopTableEdit() : startTableEdit(single), {symbol: "table-grid", disabled: !online.value}),
             fitContentButton(single),
+            tool("content-fit", iconToggle("Tartalom a dobozhoz (arányos nagyítás, torzítás nélkül)", single.contentFit === true,
+              () => change("contentFit", single.contentFit ? undefined : true), icon("aspect"))),
           ),
           h("p", {class: "muted"}, "Cellák szerkesztése: dupla kattintás a táblázaton. A CSV formázás nélküli szöveges dokumentum."),
           propertyTools(button("Grafikon létrehozása", () => addChartBox(single), {symbol: "chart", disabled: !online.value})),
