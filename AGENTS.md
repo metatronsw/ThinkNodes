@@ -28,6 +28,7 @@
 
 # Projectek szabadon törölhetőek és módosíthatóak, ha a default indítás van és a project/ mappa van használva. Ha  --proroject kapcsoló aktív, éles project mappa van használva akkor csak engedélyel módosíthatsz.
 
+# Rendszert mélyen érintő változások előtt vagy animációk esetén olvasd el a PERF.md 
 
 
 
