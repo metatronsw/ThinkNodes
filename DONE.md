@@ -6,6 +6,10 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **A képernyőn kívüli ping nyila sokszor nem jelent meg** (2026-11-26)
+  - Ok: a látható terület a teljes ablak volt (a vászon a puffer miatt nagyobb az ablaknál), így a fejléc / nyitott panel alá eső vagy a szélén épp belógó ping „láthatónak” számított.
+  - Javítás: a vászonterület az ablakra vágva, a nyitott panelek nélkül; nyíl jár, ha a ping közepe nincs 24 px-re a széleken belül (`ping.js`, `editor.js pingBounds`). Safari + Chromium próbával ellenőrizve.
+
 - **A saját résztvevő-gombod is elszürkült, ha a saját ablakod nem volt fókuszban** (2026-11-26)
   - Döntés (felhasználó): a saját gomb kivétel. A szerver továbbra is jelzi a többieknek, hogy nem nézed a lapot (náluk szürke vagy), de a saját listádban a gombod mindig színes (`editor.js`, `viewer.js`: `away && !mine`). Safariban ellenőrizve kényszerített fókuszvesztéssel és egy második résztvevővel.
 

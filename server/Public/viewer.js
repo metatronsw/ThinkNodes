@@ -7,7 +7,7 @@ import {decodeConnection} from "./worksheet-json.js";
 import {sharedMouse} from "./mouse.js";
 import {contextMenu, documentEntries} from "./cards.js";
 import {openExternalLink} from "./links.js";
-import {flashNode, flashPoint, pingOffscreen, visibleBounds} from "./ping.js?v=3";
+import {flashNode, flashPoint, pingOffscreen, playPingSound, visibleBounds} from "./ping.js?v=4";
 import {avatarSymbol} from "./presence.js";
 import {hideTooltip, showTooltip} from "./tooltip.js";
 import {justifyRows} from "./justify.js?v=7";
@@ -225,6 +225,8 @@ function receiveMotion(frame) {
   else if (frame.ping) {
     if (frame.point) flashPoint(main.querySelector(".passive-canvas"), frame.point, 24, 24, "node-ping", frame.color || undefined);
     else flashNode(main, frame.node, frame.color || undefined);
+    playPingSound();
+    flashParticipant(frame.peer);
     // A megtekintő a teljes lapot mutatja, de az oldal görgethető: a látható részen kívüli ping felé nyíl mutat.
     pingOffscreen(() => pingRect(frame), visibleBounds(main.querySelector(".passive-frame")), frame, (rect, bounds) => {
       scrollBy({left: (rect.left + rect.right - bounds.left - bounds.right) / 2,
@@ -263,11 +265,20 @@ function pingRect(target) {
   return canvas?.querySelector('[data-node="' + CSS.escape(target.node) + '"]')?.getBoundingClientRect() ?? null;
 }
 
+// A pingelő neve felvillan a jelenlévők között (az animáció minden pingnél újraindul).
+function flashParticipant(id) {
+  const button = id && roster.querySelector('[data-peer="' + CSS.escape(id) + '"]');
+  if (!button) return;
+  button.classList.remove("pinging");
+  void button.offsetWidth;
+  button.classList.add("pinging");
+}
+
 let rosterSignature;
 let paintedWireOwners = new Map();
 function paint(peers) {
   roster.classList.remove("connection-lost");
-  const signature = JSON.stringify(peers.map(({name, avatar, color, away, mine}) => [name, avatar, color, away && !mine]));
+  const signature = JSON.stringify(peers.map(({id, name, avatar, color, away, mine}) => [id, name, avatar, color, away && !mine]));
   if (signature !== rosterSignature) {
     rosterSignature = signature;
     // A jelenlévők gombok; egyelőre nem csinálnak semmit (később: chatüzenet küldése).
@@ -275,6 +286,8 @@ function paint(peers) {
       const label = document.createElement("button");
       label.type = "button";
       label.className = "button tool-button participant";
+      if (peer.id) label.dataset.peer = peer.id;
+      if (peer.color) label.style.setProperty("--peer-color", peer.color);
       // A név és az avatar a felhasználó színével; aki nem nézi a lapot, annak a gombja szürke (a sajátod soha).
       const away = peer.away && !peer.mine;
       label.title = peer.name + (away ? " · nem aktív" : "");
@@ -401,7 +414,10 @@ document.addEventListener("contextmenu", event => {
   }
   const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(canvas.getScreenCTM().inverse());
   const entries = [["Ping", () => {
-    const color = peers.find(peer => peer.mine)?.color || undefined;
+    const mine = peers.find(peer => peer.mine);
+    const color = mine?.color || undefined;
+    playPingSound();
+    flashParticipant(mine?.id);
     if (box) flashNode(canvas, box.dataset.node, color);
     else flashPoint(canvas, point, 24, 24, "node-ping", color);
     live.ping(box ? {node: box.dataset.node} : {point: {x: point.x, y: point.y}}).catch(error => alert(error.message));

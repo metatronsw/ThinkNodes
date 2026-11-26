@@ -3,6 +3,8 @@ import ThinkCore
 import Vapor
 
 struct Participant: Content {
+    /// A résztvevő nyilvános azonosítója (a kurzorüzenetek `cursor` mezője is ez): a pingelő neve ez alapján villan fel.
+    let id: String
     let name: String
     let color: String
     let node: String?
@@ -218,9 +220,12 @@ final class Collaboration: @unchecked Sendable {
                         let color: String
                         let name: String
                         let avatar: Int?
+                        /// A küldő azonosítója (`Participant.id`).
+                        let peer: String
                     }
                     let data = try JSONEncoder().encode(Ping(revision: board.revision, node: node, point: point, color: peer.color,
-                                                             name: peer.name ?? "Vendég", avatar: peer.avatar ?? (peer.name == nil ? nil : 1)))
+                                                             name: peer.name ?? "Vendég", avatar: peer.avatar ?? (peer.name == nil ? nil : 1),
+                                                             peer: peer.cursorID))
                     for (id, receiver) in room.peers where id != client {
                         receiver.socket?.send(String(decoding: data, as: UTF8.self))
                     }
@@ -265,7 +270,7 @@ final class Collaboration: @unchecked Sendable {
                 if adminA != adminB { return adminA }
                 return a.value.joined == b.value.joined ? a.key < b.key : a.value.joined < b.value.joined
             }.map {
-                Participant(name: $0.value.name ?? "Vendég", color: $0.value.color, node: $0.value.node, edge: $0.value.edge, avatar: $0.value.avatar ?? ($0.value.name == nil ? nil : 1), mine: $0.key == client, viewing: $0.value.viewing, away: $0.value.away)
+                Participant(id: $0.value.cursorID, name: $0.value.name ?? "Vendég", color: $0.value.color, node: $0.value.node, edge: $0.value.edge, avatar: $0.value.avatar ?? ($0.value.name == nil ? nil : 1), mine: $0.key == client, viewing: $0.value.viewing, away: $0.value.away)
             })
             rooms[path.url] = room.peers.isEmpty ? nil : room
             return (state, wait)

@@ -1,5 +1,37 @@
 import {avatarSymbol} from "./presence.js";
 
+// Ping hangja: rövid, csengő kéthangú szinuszjel (Web Audio, hangfájl nélkül). A böngésző csak felhasználói művelet
+// után enged hangot, ezért az első kattintás / billentyű létrehozza és elindítja a hangkörnyezetet.
+let audio;
+function unlockAudio() {
+  const Context = globalThis.AudioContext ?? globalThis.webkitAudioContext;
+  if (!Context) return;
+  audio ??= new Context();
+  if (audio.state === "suspended") audio.resume().catch(() => {});
+}
+if (typeof document !== "undefined" && document.addEventListener) {
+  for (const type of ["pointerdown", "keydown"]) document.addEventListener(type, unlockAudio, {capture: true, passive: true});
+}
+export function playPingSound() {
+  if (!audio || audio.state !== "running") return;
+  const start = audio.currentTime, end = start + .7;
+  const volume = audio.createGain();
+  volume.gain.setValueAtTime(.0001, start);
+  volume.gain.exponentialRampToValueAtTime(.16, start + .012);
+  volume.gain.exponentialRampToValueAtTime(.0001, end);
+  volume.connect(audio.destination);
+  for (const [frequency, level] of [[1318.5, 1], [1975.5, .3], [2637, .12]]) {
+    const tone = audio.createOscillator(), gain = audio.createGain();
+    tone.type = "sine";
+    tone.frequency.setValueAtTime(frequency, start);
+    tone.frequency.exponentialRampToValueAtTime(frequency * .985, end);
+    gain.gain.value = level;
+    tone.connect(gain).connect(volume);
+    tone.start(start);
+    tone.stop(end + .05);
+  }
+}
+
 // A ping a küldő színével rajzolódik (`color`); szín nélkül a régi narancs.
 export function flashNode(canvas, id, color) {
   const node = canvas?.querySelector('[data-node="' + CSS.escape(id) + '"]');
@@ -22,13 +54,15 @@ export function flashPoint(layer, point, width = 24, height = 24, kind = "node-p
 
 // Képernyőn kívüli ping: a látható terület (`bounds`, képernyő-koordinátában) szélén nyíl mutat a ping felé, a küldő
 // színével és avatarjával; a pinggel együtt halványul el. `locate()`: a ping helye a képernyőn (DOMRect), kattintáskor
-// is újra lekérdezve; `jump(rect, bounds)`: a nézet odaigazítása. Ha a ping látszik, nem rajzol semmit.
-export function pingOffscreen(locate, bounds, {color, name, avatar}, jump) {
+// is újra lekérdezve; `jump(rect, bounds)`: a nézet odaigazítása. Ha a ping közepe jól láthatóan a területen belül
+// van (a széleitől legalább `margin` pixelre), nem rajzol semmit; a szélén épp csak belógó vagy a panel alá eső ping is nyilat kap.
+export function pingOffscreen(locate, bounds, {color, name, avatar}, jump, margin = 24) {
   const target = locate();
   if (!target || !bounds || bounds.width <= 0 || bounds.height <= 0) return null;
-  if (target.right >= bounds.left && target.left <= bounds.right && target.bottom >= bounds.top && target.top <= bounds.bottom) return null;
+  const tx = (target.left + target.right) / 2, ty = (target.top + target.bottom) / 2;
+  if (tx >= bounds.left + margin && tx <= bounds.right - margin && ty >= bounds.top + margin && ty <= bounds.bottom - margin) return null;
   const cx = bounds.left + bounds.width / 2, cy = bounds.top + bounds.height / 2;
-  const dx = (target.left + target.right) / 2 - cx, dy = (target.top + target.bottom) / 2 - cy;
+  const dx = tx - cx, dy = ty - cy;
   const inset = 40;
   const reach = Math.min(Math.max(1, bounds.width / 2 - inset) / Math.abs(dx || 1e-9), Math.max(1, bounds.height / 2 - inset) / Math.abs(dy || 1e-9));
   const arrow = document.createElement("button");
@@ -57,11 +91,18 @@ export function pingOffscreen(locate, bounds, {color, name, avatar}, jump) {
   return arrow;
 }
 
-// A látható terület: az elem téglalapja az ablakra vágva.
-export function visibleBounds(element) {
+// A látható terület: az elem téglalapja az ablakra vágva; a megadott, fölötte lévő oldalpanelek (pl. a jobb oldali
+// tulajdonságpanel) által takart sáv levonva.
+export function visibleBounds(element, panels = []) {
   const rect = element?.getBoundingClientRect();
   if (!rect) return null;
-  const left = Math.max(rect.left, 0), top = Math.max(rect.top, 0);
-  const right = Math.min(rect.right, innerWidth), bottom = Math.min(rect.bottom, innerHeight);
+  let left = Math.max(rect.left, 0), top = Math.max(rect.top, 0);
+  let right = Math.min(rect.right, innerWidth), bottom = Math.min(rect.bottom, innerHeight);
+  for (const panel of panels) {
+    const p = panel?.getBoundingClientRect();
+    if (!p || !p.width || !p.height || p.bottom <= top || p.top >= bottom) continue;
+    if (p.left > (left + right) / 2 && p.left < right) right = p.left;
+    else if (p.right < (left + right) / 2 && p.right > left) left = p.right;
+  }
   return new DOMRect(left, top, Math.max(0, right - left), Math.max(0, bottom - top));
 }

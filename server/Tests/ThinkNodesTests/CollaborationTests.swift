@@ -243,6 +243,7 @@ import VaporTesting
     let state = try poll(cili, away: true)
     #expect(state.participants.first { $0.name == "cili" }?.color == userPalette[0])
     #expect(state.participants.first { $0.name == "cili" }?.away == true)
+    #expect(Set(state.participants.map(\.id)).count == 2 && !state.participants.contains { $0.id.isEmpty })
     #expect(state.participants.first { $0.name == "anna" }?.color == anna.color && state.participants.first { $0.name == "anna" }?.away == false)
     #expect(try poll(cili).participants.first { $0.name == "cili" }?.away == true)
     let back = try live.presence(path, user: cili, client: cili.name, action: "status", node: nil, since: nil, loop: loop, away: false).0

@@ -576,6 +576,19 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 /* A jelenlévők: név és avatar a felhasználó színével; aki nem nézi a lapot, annak a gombja teljesen elszürkül. */
 .participants .participant-name { display: inline; font: inherit; }
 .participant[data-away] { filter: grayscale(1); opacity: .5; }
+/* A pingelő neve felvillan: a név szövege a saját színében izzik (háromszor felerősödik), az avatar is fénylik. */
+.participant.pinging .participant-name { animation: participant-ping-name var(--ping-duration) ease-out; }
+.participant.pinging .peer-avatar { animation: participant-ping-avatar var(--ping-duration) ease-out; }
+@keyframes participant-ping-name {
+  0%, 100% { text-shadow: none; }
+  8%, 38%, 68% { text-shadow: 0 0 3px var(--peer-color, currentColor), 0 0 9px var(--peer-color, currentColor), 0 0 18px var(--peer-color, currentColor); }
+  23%, 53%, 83% { text-shadow: 0 0 2px var(--peer-color, currentColor), 0 0 5px var(--peer-color, currentColor); }
+}
+@keyframes participant-ping-avatar {
+  0%, 100% { filter: none; }
+  8%, 38%, 68% { filter: drop-shadow(0 0 4px var(--peer-color, currentColor)) drop-shadow(0 0 8px var(--peer-color, currentColor)); }
+  23%, 53%, 83% { filter: drop-shadow(0 0 2px var(--peer-color, currentColor)); }
+}
 .peer-cursor-label text { font-family: system-ui, sans-serif; }
 
 @media (max-width:1100px) {

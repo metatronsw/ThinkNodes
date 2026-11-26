@@ -1,5 +1,13 @@
 # Változások
 
+## 2026-11-26 – Ping: a nyíl a valóban látható vászonterülethez igazodik; a pingelő neve felvillan; ping hang
+
+- **Hiba: a képernyőn kívüli ping nyila sokszor nem jelent meg.** A vászon (`svg.editor-canvas`) a puffer miatt jóval nagyobb az ablaknál, ezért a teljes ablak számított látható területnek: a fejléc mögé, a nyitott tulajdonságpanel alá eső vagy a szélén épp csak belógó ping nem kapott nyilat. Most a vászonterület (`.canvas-area`) az ablakra vágva, a nyitott panelek nélkül számít (`visibleBounds`, `pingBounds`), és nyíl jár minden pinghez, amelynek a közepe nincs legalább 24 px-re a látható terület szélein belül.
+- **A pingelő neve felvillan** a jobb alsó sarokban: a név szövege a saját színében háromszor felizzik (text-shadow), az avatarja is fénylik, a pinggel azonos ideig. A saját pingnél a saját neved villan. Ehhez a résztvevők nyilvános azonosítót kaptak (`Participant.id`, a pingüzenetben `peer`).
+- **Ping hang:** rövid, csengő hang (Web Audio, hangfájl nélkül) a kapott és a saját pingnél. A böngésző csak felhasználói művelet után enged hangot: az oldalon az első kattintás vagy billentyű után szól.
+- Verziók: `editor.js?v=89`, `viewer.js?v=27`, `app.css?v=57`, `ping.js?v=4`.
+- Ellenőrizve két valódi böngészővel (Safari + fej nélküli Chromium, mindkét irányban): a nyíl a jobb szélen és a nyitott panel szélén, a név izzása a küldő színével, a hang (3 oszcillátor) Safariban. Tesztek: 105 Swift-teszt és minden JS-teszt átmegy. Szerverkód változott: a helyi tesztszerver (8888) újraindítva.
+
 ## 2026-11-26 – A saját résztvevő-gomb nem szürkül el
 
 - Ha a saját ablakod nincs fókuszban, a többiek továbbra is szürkén látnak, de a saját jelenlévő-listádban a gombod színes marad (szerkesztő és megtekintő). Csak kliensoldali változás (`editor.js`, `viewer.js`); a szerver változatlan, nem kellett újraindítani.

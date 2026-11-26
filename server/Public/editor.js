@@ -8,7 +8,7 @@ import {chooseZip, exportPackage, importPackage, isPackageZip} from "./package.j
 import {decodeWorksheet, encodeWorksheet} from "./worksheet-json.js";
 import {sharedMouse} from "./mouse.js";
 import {worksheetChanges, replayChanges, sameValue} from "./editor-history.js?v=2";
-import {flashNode, flashPoint, pingOffscreen, visibleBounds} from "./ping.js?v=3";
+import {flashNode, flashPoint, pingOffscreen, playPingSound, visibleBounds} from "./ping.js?v=4";
 import {sketchSeed, sketchOutline, sketchPaths, sketchShift, stickyColor} from "./sketch.js?v=3";
 import {showTooltip, hideTooltip} from "./tooltip.js";
 import {justifyRows, justifyShifts} from "./justify.js?v=7";
@@ -689,8 +689,10 @@ createApp({
       if (frame.ping) {
         if (frame.point) flashPoint(canvas.value?.querySelector("[data-scene]"), frame.point, 24, 24, "node-ping", frame.color || undefined);
         else flashNode(canvas.value, frame.node, frame.color || undefined);
+        playPingSound();
+        flashParticipant(frame.peer);
         // A vásznon kívül eső ping felé nyíl mutat a vászon szélén; rákattintva a nézet odaugrik.
-        pingOffscreen(() => pingRect(frame), visibleBounds(canvas.value), frame, (rect, bounds) => {
+        pingOffscreen(() => pingRect(frame), pingBounds(), frame, (rect, bounds) => {
           const current = view.value;
           setView(d3.zoomIdentity.translate(current.x + bounds.left + bounds.width / 2 - (rect.left + rect.right) / 2,
             current.y + bounds.top + bounds.height / 2 - (rect.top + rect.bottom) / 2).scale(current.k));
@@ -1037,6 +1039,17 @@ createApp({
 
     const mouse = sharedMouse(point => live.cursor(point));
     watch(view, () => mouse?.rescale());
+    // A ténylegesen látható vászonterület: a vászon puffere miatt nagyobb az ablaknál, ezért a vászonterület (.canvas-area)
+    // számít, az ablakra vágva, a fölötte lévő, nyitott tulajdonságpanelek nélkül (az üres panel-oszlop nem takar).
+    function pingBounds() {
+      return visibleBounds(canvas.value?.closest?.(".canvas-area") ?? canvas.value, [...document.querySelectorAll(".inspector-column > *")]);
+    }
+    // A pingelő neve felvillan a jelenlévők között: a számláló a gomb kulcsában van, így minden ping újraindítja az animációt.
+    const pingFlashes = shallowRef(new Map());
+    function flashParticipant(id) {
+      if (!id) return;
+      pingFlashes.value = new Map(pingFlashes.value).set(id, (pingFlashes.value.get(id) ?? 0) + 1);
+    }
     // A ping helye a képernyőn: pontnál a pont körüli kis négyzet, doboznál a doboz.
     function pingRect(target) {
       if (target.point) {
@@ -5052,7 +5065,9 @@ createApp({
             !online.value && problem.value ? h("span", {class: "connection-lost", role: "status"}, "Kapcsolat megszakadt") : peers.value.map((p, index) =>
               // A jelenlévők gombok; egyelőre nem csinálnak semmit (később: chatüzenet küldése). A név és az avatar a
               // felhasználó színével látszik; aki nem nézi a lapot, annak a gombja szürke (a sajátod soha).
-              h("button", {key: index, type: "button", class: "button tool-button participant", title: p.name + (p.away && !p.mine ? " · nem aktív" : ""),
+              h("button", {key: (p.id ?? index) + ":" + (pingFlashes.value.get(p.id) ?? 0), type: "button",
+                class: ["button tool-button participant", pingFlashes.value.has(p.id) && "pinging"], title: p.name + (p.away && !p.mine ? " · nem aktív" : ""),
+                style: p.color ? {"--peer-color": p.color} : undefined,
                 "data-away": p.away && !p.mine ? "" : undefined, onPointerdown: event => event.stopPropagation()},
                 [p.avatar ? h("svg", {class: "peer-avatar", viewBox: "0 0 24 24", fill: p.color || "currentColor", "aria-hidden": "true"},
                   [h("use", {href: "/icons/avatar-" + p.avatar + ".svg#a"})]) : null,
@@ -5080,7 +5095,10 @@ createApp({
 
     function ping(target) {
       menu.value = null;
-      const color = peers.value.find(p => p.mine)?.color || undefined;
+      const mine = peers.value.find(p => p.mine);
+      const color = mine?.color || undefined;
+      playPingSound();
+      flashParticipant(mine?.id);
       if (target.point) flashPoint(canvas.value?.querySelector("[data-scene]"), target.point, 24, 24, "node-ping", color);
       else flashNode(canvas.value, target.node, color);
       live.ping(target).catch(error => { problem.value = error.message; });
