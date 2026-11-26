@@ -134,6 +134,35 @@ package struct VisualTheme: Content, Equatable {
             }
         }
         var paper: Paper?
+        /// Ismétlődő raszteres textúrák (editor.js textureLayer / drawTexture / textureDefinitions, Rendering.swift
+        /// textureDefinitions): `images` név → beágyazott kép (csak `data:image/webp;base64,…`), `size` a csempe mérete
+        /// vászonegységben (alap 256). `canvas` a vászon háttere módonként ("light" / "dark"): a kép neve és az
+        /// átlátszatlansága; a szerkesztőben a tartalommal együtt mozog és nagyul, szintenként (2^n) áttűnő csempével.
+        /// `paper` a papírfelületeké (füzetlap, cetli), módtól független, mert a papír mindig világos. A szabadkézi doboz
+        /// nem kap külön textúrát (a felülete halvány tónus, a vászoné átlátszik). A „Díszítő háttér kikapcsolása” elrejti őket.
+        package struct Textures: Codable, Equatable, Sendable {
+            package struct Layer: Codable, Equatable, Sendable {
+                var image: String
+                var opacity: Double?
+            }
+            var size: Double?
+            var images: [String: String]
+            var canvas: [String: Layer]?
+            var paper: Layer?
+            var layers: [Layer] { Array((canvas ?? [:]).values) + (paper.map { [$0] } ?? []) }
+            var valid: Bool {
+                guard (32.0...4096.0).contains(size ?? 256), !images.isEmpty, images.count <= 8 else { return false }
+                guard Set((canvas ?? [:]).keys).isSubset(of: ["light", "dark"]) else { return false }
+                guard images.allSatisfy({ name, data in
+                    !name.isEmpty && name.count <= 40 && data.count <= 400_000
+                        && data.range(of: "^data:image/webp;base64,[A-Za-z0-9+/]+={0,2}$", options: .regularExpression) != nil
+                }) else { return false }
+                return layers.allSatisfy { images[$0.image] != nil && (0.0...1.0).contains($0.opacity ?? 1) }
+            }
+            /// A módhoz tartozó réteg (sötét: a vászon háttere sötét).
+            func canvasLayer(dark: Bool) -> Layer? { canvas?[dark ? "dark" : "light"] }
+        }
+        var textures: Textures?
         /// Látványcsomag (jelenleg: "liquid"): gazdagabb dobozfelület, háttérfények, rámutatás-, kattintás- és
         /// kijelöléseffektek. A csomag stílusai az app.css `[data-effects]` szabályaiban vannak; téma nélküle nem fizet értük.
         var effects: String?
@@ -200,7 +229,8 @@ package struct VisualTheme: Content, Equatable {
         for (name, scale) in graphics.lineScale ?? [:] {
             guard ConnectionType(rawValue: name) != nil, scale.valid else { return false }
         }
-        guard graphics.frame?.valid ?? true, graphics.sketch?.valid ?? true, graphics.paper?.valid ?? true else { return false }
+        guard graphics.frame?.valid ?? true, graphics.sketch?.valid ?? true, graphics.paper?.valid ?? true,
+              graphics.textures?.valid ?? true else { return false }
         guard (0.0...40.0).contains(graphics.boxRadius ?? 12), ["liquid"].contains(graphics.effects ?? "liquid") else { return false }
         let grids: [String] = ["dots", "lines", "drafting"]
         guard grids.contains(graphics.grid ?? "dots") else { return false }

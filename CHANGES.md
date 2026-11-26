@@ -1,5 +1,11 @@
 # Változások
 
+## 2026-11-26 – WhiteBoard: pontos füzetvonalak, ismétlődő textúrák; VectorStudio téma törölve
+
+- **Füzetvonalak:** a címsor sávja a sormagasság egész többszöröse, az alapvonala a vonalra esik; a markdown kódblokk térköze csak oldalt, a vízszintes vonal egy sor, így az utánuk következő sorok sem csúsznak el (Chrome-ban mérve: az alapvonal kb. 2 px-lel a vonal fölött a dokumentum végéig). A füzetlap markdownja a doboz betűméretével íródik; a kódfájl (`type: "code"`) már nem füzetlap.
+- **Textúrák:** a téma ismétlődő webp textúrákat adhat a vászonnak és a dobozoknak (`graphics.textures`; csempe 256 képernyőképpont, a nagyítástól független); a „Díszítő háttér kikapcsolása” ezeket is elrejti. A tábla filcnyomai megszűntek. Részletek: server/docs/themes.md „Textúrák”, séma: server/docs/theme.schema.json.
+- A **VectorStudio** téma törölve; a tesztek a LiquidGlass témát használják. Nyitott, kézzel nézendő tételek: BUGS.md.
+
 ## 2026-11-26 – Kapcsolatvesztés: nincs villogás, nincs újratöltés; tartós munkamenetek
 
 - **Ok:** a munkamenetek memóriában voltak, ezért a szerver újraindulása után új CSRF-token (tesztmódban új „TesterN” név) járt, és a nyitott szerkesztő és megtekintő a visszatéréskor teljesen újratöltötte magát (villanás, újraépülés); többszöri leállás–indulásnál ez villogásként látszott. Kapcsolat nélkül a megtekintő másodpercenként újraírta a „Kapcsolat megszakadt” jelzést, és mindkét lap másodpercenként próbálkozott.

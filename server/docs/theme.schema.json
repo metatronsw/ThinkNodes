@@ -329,7 +329,7 @@
         },
         "paper": {
           "type": "object",
-          "description": "Papírfelületek: táblázat és CSV cetli, szöveg- és kódfájl füzetlap; a lap, a tinta, a sorvonal és a margó színe.",
+          "description": "Papírfelületek: táblázat és CSV cetli, szövegfájl (.md, .txt) füzetlap (a kódfájl nem); a lap, a tinta, a sorvonal és a margó színe.",
           "properties": {
             "grid": {
               "enum": [
@@ -360,6 +360,92 @@
               "pattern": "^#[0-9A-Fa-f]{6}$"
             }
           },
+          "additionalProperties": false
+        },
+        "textures": {
+          "type": "object",
+          "description": "Ismétlődő raszteres textúrák: beágyazott webp képek (data URL) és rétegek: a vászon háttere módonként, a papírfelületeké módtól függetlenül. A „Díszítő háttér kikapcsolása” kapcsoló elrejti őket.",
+          "properties": {
+            "size": {
+              "type": "number",
+              "minimum": 32,
+              "maximum": 4096,
+              "description": "A csempe mérete vászonegységben (alap 256); a szerkesztő vásznán szintenként (2^n) áttűnő csempével."
+            },
+            "images": {
+              "type": "object",
+              "minProperties": 1,
+              "maxProperties": 8,
+              "additionalProperties": {
+                "type": "string",
+                "pattern": "^data:image/webp;base64,[A-Za-z0-9+/]+={0,2}$",
+                "maxLength": 400000
+              }
+            },
+            "canvas": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "type": "object",
+                  "properties": {
+                    "image": {
+                      "type": "string",
+                      "description": "Az images egyik neve."
+                    },
+                    "opacity": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  },
+                  "required": [
+                    "image"
+                  ],
+                  "additionalProperties": false
+                },
+                "dark": {
+                  "type": "object",
+                  "properties": {
+                    "image": {
+                      "type": "string",
+                      "description": "Az images egyik neve."
+                    },
+                    "opacity": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  },
+                  "required": [
+                    "image"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "paper": {
+              "type": "object",
+              "properties": {
+                "image": {
+                  "type": "string",
+                  "description": "Az images egyik neve."
+                },
+                "opacity": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              },
+              "required": [
+                "image"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "images"
+          ],
           "additionalProperties": false
         }
       },

@@ -77,7 +77,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/lib/d3-zoom.js?v=1"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=103"></script>
+        <script type="module" src="/editor.js?v=106"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -88,7 +88,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=72">
+          <link rel="stylesheet" href="/app.css?v=75">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -794,21 +794,9 @@ private func liquidDefinitions(_ board: Worksheet) -> String {
         + "<filter id=\"fx-glow\" x=\"-50%\" y=\"-50%\" width=\"200%\" height=\"200%\" color-interpolation-filters=\"sRGB\"><feGaussianBlur stdDeviation=\"5\" result=\"blur\"/><feMerge><feMergeNode in=\"blur\"/><feMergeNode in=\"blur\"/><feMergeNode in=\"SourceGraphic\"/></feMerge></filter>"
 }
 
-/// A füzetlap szabályai az önálló SVG-be (app.css .paper-notebook; a kettő egyezzen).
-private let notebookRules = ".paper-notebook .node-note { padding: 10px 14px 10px 46px;  background-image: repeating-linear-gradient(to bottom, transparent 0 calc(var(--rule) - 1px), var(--paper-rule, #9cc3e6) calc(var(--rule) - 1px) var(--rule));  background-origin: content-box; background-position: 0 -.42em; background-attachment: local; }.paper-notebook .node-note, .paper-notebook .node-note * { line-height: var(--rule); }.paper-notebook .node-note :is(.node-code, .node-plain) { font-size: 1em; }.paper-notebook .formatted-text :is(h1, h2, h3, h4, h5, h6, p, ul, ol, li, pre, blockquote, table, hr) { margin-block: 0; }.paper-notebook .formatted-text > * + * { margin-top: var(--rule); }"
-
-/// A tábla letörölt filcnyomai; sötét táblán világos maszatok (app.css .canvas-smudge párja).
-private func sketchSmudges(originX: Double, originY: Double, width: Double, height: Double, dark: Bool) -> String {
-    let spots: [(Double, Double, Double, Double, String)] = dark
-        ? [(0.24, 0.28, 0.42, 0.24, "#ffffff"), (0.76, 0.62, 0.32, 0.2, "#ffffff"), (0.56, 0.16, 0.36, 0.12, "#ffffff"), (0.3, 0.84, 0.28, 0.22, "#ffffff")]
-        : [(0.22, 0.3, 0.4, 0.22, "#5b6b8a"), (0.74, 0.64, 0.3, 0.18, "#8a5b5b"), (0.58, 0.18, 0.34, 0.14, "#5b8a6a"), (0.3, 0.82, 0.26, 0.2, "#5b6b8a")]
-    let opacity = 0.07
-    return "<defs>" + spots.enumerated().map { index, spot in
-        "<radialGradient id=\"sketch-smudge-\(index)\"><stop offset=\"0\" stop-color=\"\(spot.4)\" stop-opacity=\"\(number(opacity))\"/><stop offset=\"1\" stop-color=\"\(spot.4)\" stop-opacity=\"0\"/></radialGradient>"
-    }.joined() + "</defs><g class=\"sketch-smudges\" pointer-events=\"none\" aria-hidden=\"true\">" + spots.enumerated().map { index, spot in
-        "<ellipse cx=\"\(number(originX + width * spot.0))\" cy=\"\(number(originY + height * spot.1))\" rx=\"\(number(width * spot.2))\" ry=\"\(number(height * spot.3))\" fill=\"url(#sketch-smudge-\(index))\"/>"
-    }.joined() + "</g>"
-}
+/// A füzetlap szabályai az önálló SVG-be (app.css .paper-notebook, az `@property --note-em`-től a cetliig; a kettő
+/// szó szerint egyezzen). XML-ben a `<style>` tartalma escape-elve kerül a fájlba (`syntax: "<length>"`).
+private let notebookRules = "@property --note-em { syntax: \"<length>\"; inherits: true; initial-value: 13px; } @property --pitch { syntax: \"<length>\"; inherits: true; initial-value: 20.8px; } .paper-notebook .node-note { padding: 10px 14px 10px 46px; --pitch: calc(1.6 * 1em); background-image: repeating-linear-gradient(to bottom, transparent 0 calc(var(--pitch) - 1px), var(--paper-rule, #9cc3e6) calc(var(--pitch) - 1px) var(--pitch)); background-origin: content-box; background-position: 0 calc(2.5px + .36em - var(--pitch) / 2); background-attachment: local; } .paper-notebook .md-lines { font-size: 1em; } .paper-notebook :is(.node-note, .formatted-text, .md-lines) { --note-em: 1em; } .paper-notebook .node-note, .paper-notebook .node-note * { line-height: 1.6; } .paper-notebook .node-note :is(.node-code, .node-plain) { font-size: 1em; } .paper-notebook .formatted-text :is(h1, h2, h3, h4, h5, h6, p, ul, ol, li, pre, blockquote, table, hr) { margin-block: 0; } .paper-notebook .formatted-text > * + * { margin-top: var(--pitch); } .paper-notebook .node-note :is(h1, h2, h3, h4, h5, h6) { --h: round(up, max(1.2em, var(--pitch) + .72 * (1em - var(--note-em))), var(--pitch)); --d: calc((var(--h) - var(--pitch)) / 2 + .36 * (var(--note-em) - 1em)); line-height: var(--h); padding-top: var(--d); margin-bottom: calc(-1 * var(--d)); } .paper-notebook .formatted-text pre { padding: 0 8px; border-radius: 0; color: inherit; font-size: 1em; background: color-mix(in srgb, currentColor 6%, var(--tn-paper, #fbfaf4)); } .paper-notebook .formatted-text pre code { font-size: 1em; } .paper-notebook .formatted-text hr { height: var(--pitch); border: 0; opacity: .35; background: linear-gradient(currentColor, currentColor) 0 50% / 100% 1px no-repeat; } .paper-notebook .md-lines { --md-line: var(--pitch); }"
 
 /// A háttér álló fényfoltjai (a szerkesztőben lassan úsznak: app.css .canvas-aurora).
 private func liquidAurora(originX: Double, originY: Double, width: Double, height: Double) -> String {
@@ -891,6 +879,26 @@ func labelInk(_ node: Idea, background: String, graphics: VisualTheme.Graphics?,
 }
 
 /// Cetli és füzetlap (editor.js paperSurface). A cetli színe a `fill`-ben érkezik (Worksheet.painted).
+/// Ismétlődő textúrák (graphics.textures; editor.js textureDefinitions / GridLayer): a minták a defs-ben, a módhoz tartozó
+/// képpel és átlátszatlansággal (a kép a mintán belül áttetsző, így a felület csak hivatkozik rá). A vászoné a vászon
+/// origójához igazítva ismétlődik; a dobozé és a papíré a doboz saját koordinátáiban (a dobozzal együtt mozog).
+private func textureDefinitions(_ graphics: VisualTheme.Graphics?, dark: Bool) -> String {
+    guard let textures = graphics?.textures else { return "" }
+    let size = number(textures.size ?? 256)
+    func pattern(_ id: String, _ layer: VisualTheme.Graphics.Textures.Layer?) -> String {
+        let image = layer.flatMap { layer in textures.images[layer.image].map { "<image href=\"\($0)\" width=\"\(size)\" height=\"\(size)\" preserveAspectRatio=\"none\" opacity=\"\(number(layer.opacity ?? 1))\"/>" } } ?? ""
+        return "<pattern id=\"\(id)\" patternUnits=\"userSpaceOnUse\" width=\"\(size)\" height=\"\(size)\">\(image)</pattern>"
+    }
+    return (textures.canvas != nil ? pattern("worksheet-texture", textures.canvasLayer(dark: dark)) : "")
+        + (textures.paper != nil ? pattern("tn-texture-paper", textures.paper) : "")
+}
+
+/// A papírfelület textúrája (`kind`: "paper"), ha a téma ad ilyet; `shape` az elem neve és alakja.
+private func textureFill(_ kind: String, shape: String, _ graphics: VisualTheme.Graphics?) -> String {
+    guard graphics?.textures?.paper != nil else { return "" }
+    return "<\(shape) class=\"tn-texture\" fill=\"url(#tn-texture-\(kind))\" pointer-events=\"none\" aria-hidden=\"true\"/>"
+}
+
 private func paperSurface(_ node: Idea, kind: String, graphics: VisualTheme.Graphics?) -> String {
     let x = node.width / 2, y = node.height / 2, quiet = " pointer-events=\"none\" aria-hidden=\"true\""
     if kind == "sticky" {
@@ -901,6 +909,7 @@ private func paperSurface(_ node: Idea, kind: String, graphics: VisualTheme.Grap
         }.joined()
         return "<path class=\"paper-shadow\" d=\"M\(number(-x + 5)) \(number(-y + 8))L\(number(x + 4)) \(number(-y + 10))L\(number(x + 3)) \(number(y - c + 6))L\(number(x - c + 5)) \(number(y + 7))Q0 \(number(y + 12)) \(number(-x + 3)) \(number(y + 5))Z\" fill=\"#000\" fill-opacity=\".2\"\(quiet)/>"
             + "<path class=\"node-surface paper-sheet\" d=\"M\(number(-x)) \(number(-y))H\(number(x))V\(number(y - c))L\(number(x - c)) \(number(y))H\(number(-x))Z\" fill=\"\(escaped(node.fill))\" stroke=\"#000\" stroke-opacity=\".08\" stroke-width=\"1\"/>"
+            + textureFill("paper", shape: "path d=\"M\(number(-x)) \(number(-y))H\(number(x))V\(number(y - c))L\(number(x - c)) \(number(y))H\(number(-x))Z\"", graphics)
             + "<path class=\"paper-curl\" d=\"M\(number(x)) \(number(y - c))L\(number(x - c)) \(number(y))Q\(number(x - c * 0.78)) \(number(y - c * 0.55)) \(number(x - c * 0.9)) \(number(y - c * 0.9))Q\(number(x - c * 0.55)) \(number(y - c * 0.78)) \(number(x)) \(number(y - c))Z\" fill=\"\(shade)\"\(quiet)/>"
             + "<rect class=\"paper-tape\" x=\"\(number(-tape / 2))\" y=\"\(number(-y - 11))\" width=\"\(number(tape))\" height=\"22\" transform=\"rotate(\(tilt) 0 \(number(-y)))\" fill=\"#fffdf2\" fill-opacity=\".6\" stroke=\"#000\" stroke-opacity=\".07\"\(quiet)/>"
     }
@@ -910,6 +919,7 @@ private func paperSurface(_ node: Idea, kind: String, graphics: VisualTheme.Grap
     }.joined()
     return "<rect class=\"paper-shadow\" x=\"\(number(-x + 3))\" y=\"\(number(-y + 5))\" width=\"\(number(node.width))\" height=\"\(number(node.height))\" rx=\"3\" fill=\"#000\" fill-opacity=\".18\"\(quiet)/>"
         + "<rect class=\"node-surface paper-sheet\" x=\"\(number(-x))\" y=\"\(number(-y))\" width=\"\(number(node.width))\" height=\"\(number(node.height))\" rx=\"3\" fill=\"\(escaped(graphics?.paper?.sheet ?? "#fbf9f1"))\" stroke=\"#000\" stroke-opacity=\".1\" stroke-width=\"1\"/>"
+        + textureFill("paper", shape: "rect x=\"\(number(-x))\" y=\"\(number(-y))\" width=\"\(number(node.width))\" height=\"\(number(node.height))\" rx=\"3\"", graphics)
         + "<path class=\"paper-margin\" d=\"M\(number(-x + 34)) \(number(-y))V\(number(y))\" stroke=\"\(escaped(graphics?.paper?.margin ?? "#e2747c"))\" stroke-width=\"1.4\"\(quiet)/>" + holes
 }
 
@@ -1468,10 +1478,11 @@ private func fileBox(_ node: Idea, file: CanvasFile, base: String, interactive: 
     let paper = paperKind(node, graphics).map { " paper-" + $0 } ?? ""
     // A papíron a szöveg a téma tintája; a füzetlap sorvonalainak színe CSS-változóban (app.css .paper-notebook).
     let rule = (graphics?.paper?.rule).map { ";--paper-rule:" + escaped($0) } ?? ""
-    let ruleHeight = ";--rule:" + String(Int((node.fontSize * 1.6 + 0.5).rounded(.down))) + "px"
     // A táblázat kerete a doboz színéből kevert, átlátszatlan árnyalat (app.css .tn-table): --tn-paper a doboz felülete.
     let tablePaper = node.fill.hasPrefix("#") ? ";--tn-paper:" + escaped(node.fill) : ""
-    let paperStyle = (paper.isEmpty ? "" : ";color:" + escaped(node.paperInk ?? node.textColor) + rule + ruleHeight) + tablePaper
+    // A füzetlap szövege a doboz betűméretével (a sormagasság is abból számol; a szerkesztőben a .node-note stílusa).
+    let noteSize = paper == " paper-notebook" ? ";font-size:" + number(node.fontSize) + "px" : ""
+    let paperStyle = (paper.isEmpty ? "" : ";color:" + escaped(node.paperInk ?? node.textColor) + rule + noteSize) + tablePaper
     // Publikus fájl: pillangó ikon a fájlnév-sor fölött középen.
     let publicMark = node.webPublic == true
         ? "<svg class=\"ui-icon web-public-mark\" x=\"\(number(node.position.x - 10))\" y=\"\(number(top - 24))\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" color=\"\(escaped(node.textColor))\" pointer-events=\"none\"><use href=\"/icons.svg#butterfly\"/></svg>" : ""
@@ -1491,7 +1502,7 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
     let graphics = Themes.catalog.first { $0.id == board.appearance?.theme }?.graphics
     // Vászonszín háttérmód: a doboz felülete a munkalap háttérszínét kapja (editor.js surfaceColor); a papír (cetli) kivétel.
     var board = board
-    // Textúrás / effektes vásznon (Liquid Glass fényfoltjai, WhiteBoard maszatja) a felület a vászon háttere a textúrával
+    // Textúrás / effektes vásznon (Liquid Glass fényfoltjai, a téma textúrája) a felület a vászon háttere a textúrával
     // együtt (a `canvas-art` másolata a doboz alakjára vágva, boxSurface): a rács, az alatta álló elemek és a doboz saját
     // árnyéka nem látszik (editor.js seeThrough, underMasks). A fájl- és grafikondoboz (HTML-felület) a vászon színét kapja.
     let textured = graphics?.effects == "liquid" || graphics?.sketch != nil
@@ -1973,10 +1984,10 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
     // Önálló SVG-ben a füzetlap sorvonalai (app.css .paper-notebook) is beágyazva.
     // A vászon háttere (szín és textúra). Vászonszínű dobozok textúrás vásznon: a háttér mintaként, a doboz helyéhez igazítva.
     let canvasArt = backdrop(escaped(board.backgroundColor))
+        + (graphics?.textures?.canvas != nil ? backdrop("url(#worksheet-texture)") : "")
         + (liquid ? liquidAurora(originX: originX, originY: originY, width: spanX, height: spanY) : "")
-        + (graphics?.sketch != nil ? sketchSmudges(originX: originX, originY: originY, width: spanX, height: spanY, dark: darkBackground(board)) : "")
     let canvasFills = texturedSurfaces ? "<g id=\"canvas-art\">\(canvasArt)</g>" : ""
-    let paperStyle = noteBase == nil && board.nodes.contains(where: { paperKind($0, graphics) == "notebook" }) ? "<style>" + notebookRules + "</style>" : ""
+    let paperStyle = noteBase == nil && board.nodes.contains(where: { paperKind($0, graphics) == "notebook" }) ? "<style>" + escaped(notebookRules) + "</style>" : ""
     let codeStyle = noteBase == nil && board.nodes.contains(where: { node in
         node.type == "code" && CodeHighlight.supports((node.file?.filename as NSString?)?.pathExtension ?? "")
     }) ? "<style>.node-code { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; } "
@@ -1984,7 +1995,7 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
     let svg = """
         <svg xmlns="http://www.w3.org/2000/svg" class="canvas passive-canvas"\(liquid ? " data-effects=\"liquid\" style=\"--fx-accent: \(liquidAccent(board, 4))\"" : "") role="\(noteBase == nil ? "img" : "group")" aria-label="\(escaped(board.title))" width="\(width)" height="\(height)" viewBox="\(number(originX)) \(number(originY)) \(width) \(height)">
           \(noteBase == nil ? "<title>\(escaped(board.title))</title>" : "")
-          <defs>\(paperStyle)\(codeStyle)\(definitions.joined())\(grid)\(glassDefinitions)\(canvasFills)</defs>
+          <defs>\(paperStyle)\(codeStyle)\(textureDefinitions(graphics, dark: darkBackground(board)))\(definitions.joined())\(grid)\(glassDefinitions)\(canvasFills)</defs>
           \(canvasArt)
           \(grid.isEmpty ? "" : backdrop("url(#draft-grid)"))
           \(scene.joined(separator: "\n"))

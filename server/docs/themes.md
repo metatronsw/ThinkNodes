@@ -44,11 +44,26 @@ A `frame` a dobozok keretét állítja. A `width` a vastagság (0,5–16, alap: 
 
 A `sketch` a dobozokat és a vonalakat szabadkézi (filc) rajzzá alakítja. A sarkos alakok egyetlen folytonos, kissé hajló vonalból állnak, amelynek a vége túlfut a kezdőponton; az ellipszis egyetlen, a bal oldalon pontosan össze nem érő vonal. A vonalak egy második, kissé elcsúsztatott, halványabb húzást kapnak. A `roughness` a remegés mértéke vászonegységben (0–5, alap 1,2), a `passes` a körvonal húzásainak száma (1–3, alap 2). A remegés a doboz azonosítójából számolódik, így minden újrarajzoláskor és az SVG-exportban is ugyanaz. A kattintható terület és a szöveg helye a szabályos alak marad. A keret vastagságát és színét, valamint a kitöltés átlátszatlanságát a `frame` adja. Sötét módban a rajz ugyanilyen, csak a színek mások. A közös algoritmus: `Public/sketch.js` és `Sources/ThinkCore/Sketch.swift`; a kettő egyezését a `Tests/Fixtures/sketch.json` ellenőrzi.
 
-A `paper` papírfelületeket ad. A `grid: "sticky"` a táblázatot és a CSV-t cetlivé teszi (ragasztószalag, felpödrődő sarok, árnyék). A cetli színe a doboz színe fehérrel félig keverve; alapszínnél (2) a paletta 6-os színe. A `text: "notebook"` a szöveg- és kódfájlt füzetlappá teszi (sorvonalak, margóvonal, lyukak); a sorok magassága a betűméret 1,6-szorosa, a szöveg a vonalakon ül. A `sheet` a füzetlap, az `ink` a papíron álló szöveg, a `rule` a sorvonalak, a `margin` a margóvonal színe. A papír mindkét módban világos, ezért rajta a paletta színeinek nappali változata látszik.
+A `paper` papírfelületeket ad. A `grid: "sticky"` a táblázatot és a CSV-t cetlivé teszi (ragasztószalag, felpödrődő sarok, árnyék). A cetli színe a doboz színe fehérrel félig keverve; alapszínnél (2) a paletta 6-os színe. A `text: "notebook"` a szövegfájlt (.md, .txt) füzetlappá teszi (sorvonalak, margóvonal, lyukak); a kódfájl nem füzetlap, hanem a téma szokásos dobozán áll, sorvonalak nélkül. A sorok magassága a betűméret 1,6-szorosa, a szöveg alapvonala 2 képponttal a vonal fölött van (nem ér hozzá), a markdown is a doboz betűméretével íródik; a nagyobb címsorok a sormagasság egész többszörösét foglalják el, és az utolsó vonalukon ülnek, a kódblokk saját, vonal nélküli sávot kap, a vízszintes vonal egy sor; így a vonalak a dokumentum végéig nem csúsznak el. A `sheet` a füzetlap, az `ink` a papíron álló szöveg, a `rule` a sorvonalak, a `margin` a margóvonal színe. A papír mindkét módban világos, ezért rajta a paletta színeinek nappali változata látszik.
 
 ```json
 "sketch": {"roughness": 1.3, "passes": 1},
 "paper": {"grid": "sticky", "text": "notebook", "sheet": "#fbfaf4", "ink": "#25314d", "rule": "#a9c8e8", "margin": "#e58a8f"}
+```
+
+## Textúrák
+
+A `textures` ismétlődő raszteres textúrákat ad. Az `images` név → beágyazott kép (csak `data:image/webp;base64,…`, legfeljebb 8 kép, képenként kb. 300 KB); a `size` a csempe mérete vászonegységben (alap 256). A képek kontrasztja legyen elég nagy: egy szinte egyszínű (1–2 fokozatnyi szórású) kép a vásznon nem látszik. Rétegek (mindegyik `{"image": név, "opacity": 0–1}`):
+
+- `canvas.light` / `canvas.dark`: a vászon háttere a vászonszín fölött, a rács alatt; a vászonszínű (átlátszó) dobozokon is ez látszik. A tartalommal együtt mozog és nagyul, nagyításkor sem ugrik. Részletességi szintekkel (LOD) rajzolódik, mint a Blender csomópont-szerkesztőjének rácsa vagy a „zoomable texturing”: a csempe vászonbeli mérete `size` · 2^n, és mindig két szomszédos szint látszik egymásba úsztatva, így a szemcse a képernyőn `size` és 2 · `size` képpont között marad. A szerkesztő a rajzolt rácsvásznon (2D canvas) rajzolja, a mozdulat minden képkockájában két mintás kitöltéssel; SVG-minta nincs.
+- `paper`: a papírfelületek (füzetlap, cetli) textúrája a lap saját koordinátáiban; a lappal együtt mozog és nagyul, mint egy valódi papír. Módtól független, mert a papír mindig világos.
+
+A szabadkézi doboz nem kap külön textúrát: a felülete halvány tónus, a vászon textúrája átlátszik rajta (dobozonként nincs plusz mintás elem). A mód a vászon színéből adódik (sötét vászon: `dark`). A szerkesztőben a képek blob: URL-ként kerülnek a mintákba (a CSP data: képet nem enged); az önálló SVG-ben data URL-ként, szintek nélkül, `size` vászonegységes csempével. A vezérlősáv „Díszítő háttér kikapcsolása” kapcsolója minden textúrát elrejt (`[data-plain] .tn-texture`, a rácsvásznon nem rajzol), az „Animációk leállítása” a mozgást állítja le. A téma teljes katalógusa minden szerkesztőlapba beágyazva érkezik, ezért a képek legyenek kicsik.
+
+```json
+"textures": {"size": 192, "images": {"paper": "data:image/webp;base64,…", "cardboard": "data:image/webp;base64,…"},
+  "canvas": {"light": {"image": "paper", "opacity": 0.45}, "dark": {"image": "cardboard", "opacity": 0.2}},
+  "paper": {"image": "paper", "opacity": 0.4}}
 ```
 
 ## Minimalist

@@ -66,7 +66,6 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 
 # HÁTTEREK ÉS MEGJELENÍTÉS
 
-+ Téma függő, ismétlődő raszteres textúra a vásznon és a dobozokon; a „Díszítő háttér kikapcsolása” kapcsoló ezekre is hasson (app.css `[data-plain]`).
 + A megtekintő megszűnik: a vendégeknek és a csak olvasási joggal rendelkezőknek a szerkesztő csak olvasható módja kell (exportok, előadás követése, csevegés, napló, élő kijelölések). Utána a viewer.js, a passivePage és a megtekintő-specifikus szerveroldali rajzolás törölhető.
 
 

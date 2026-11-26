@@ -36,27 +36,28 @@ import VaporTesting
     #expect(dark.contains(##"M0 12.000 H120.000 M12.000 0 V120.000" stroke="#789bb0" stroke-opacity=".22""##))
     #expect(reopened.painted(mode: "dark").edges[0].type == .straight)
     #expect(!dark.contains("fill=\"@"))
-    var vectorStudio = reopened
-    vectorStudio.appearance = Appearance(theme: 2, palette: 1)
-    vectorStudio.edges.append(Connection(id: "curved", sourcePoint: Point(x: 0, y: 100),
+    var liquidGlass = reopened
+    liquidGlass.appearance = Appearance(theme: 4, palette: 1)
+    liquidGlass.edges.append(Connection(id: "curved", sourcePoint: Point(x: 0, y: 100),
                                          target: ConnectionTarget(point: Point(x: 120, y: 140)), type: .sCurve))
-    let glass = boardSVG(vectorStudio, mode: "dark")
-    #expect(glass.contains(##"fill="url(#glass-sheen)" pointer-events="none""##))
-    #expect(glass.contains(##"fill="#282534" stroke="url(#glass-rim)" stroke-width="1.6" fill-opacity=".66""##))
+    let glass = boardSVG(liquidGlass, mode: "dark")
+    // Üveges látványcsomag (LiquidGlass, id 4): csillogás és fénylő perem a doboz felületén.
+    #expect(glass.contains(##"class="fx-sheen" fill="url(#fx-sheen)" pointer-events="none""##))
+    #expect(glass.contains(##"fill="#1d2f44" stroke="url(#fx-rim)" stroke-width="1.6" fill-opacity=".64""##))
     #expect(glass.contains("data-wire-taper"))
-    var withoutArrows = vectorStudio
+    var withoutArrows = liquidGlass
     withoutArrows.edges[0].startArrow = false
     withoutArrows.edges[0].endArrow = false
-    #expect(boardSVG(withoutArrows, mode: "dark").contains("M 0.000 80.000 Q 60.000 56.000 120.000 80.000"))
-    #expect(glass.contains("M 0.000 100.000 C 60.000 100.000 60.000 140.000 106.500 140.000"))
+    #expect(boardSVG(withoutArrows, mode: "dark").contains("M 0.000 80.000 Q 60.000 65.600 120.000 80.000"))
+    #expect(glass.contains("M 0.000 100.000 C 60.000 100.000 60.000 140.000 107.850 140.000"))
     #expect(!glass.contains("glass-ambient"))
-    vectorStudio.edges = [
+    liquidGlass.edges = [
         Connection(id: "bolt", sourcePoint: Point(x: 0, y: 80),
                    target: ConnectionTarget(point: Point(x: 140, y: 80)), type: .zigzag),
         Connection(id: "zigzag", sourcePoint: Point(x: 0, y: 100),
                    target: ConnectionTarget(point: Point(x: 140, y: 100)), type: .lightning, label: "Zigzag"),
     ]
-    let rounded = boardSVG(vectorStudio, mode: "dark")
+    let rounded = boardSVG(liquidGlass, mode: "dark")
     #expect(rounded.components(separatedBy: " Q ").count - 1 == 8)
     #expect(rounded.contains(">Zigzag</text>"))
     var otherEdit = reopened
@@ -284,7 +285,9 @@ import VaporTesting
         // A kattintható felület a szabályos alak (láthatatlan), fölötte a szabadkézi kitöltés és egyetlen folytonos vonal.
         #expect(svg.contains(#"class="node-surface""#) && svg.contains(#"fill-opacity="0" stroke="none""#))
         #expect(svg.contains("sketch-fill") && svg.components(separatedBy: "class=\"sketch-stroke\"").count - 1 == 1)
-        #expect(svg.contains("sketch-smudges") && !svg.contains("stroke-dasharray"))
+        // Háttérfény (filcnyom) nincs; a vászon textúrája mintaként (graphics.textures), a doboz nem kap külön textúrát.
+        #expect(!svg.contains("sketch-smudge") && !svg.contains("stroke-dasharray"))
+        #expect(svg.contains(#"id="worksheet-texture""#) && svg.contains("url(#worksheet-texture)") && !svg.contains("tn-texture-box"))
     }
     // Más témában semmi szabadkézi elem nincs.
     sheet.appearance = Appearance(theme: 1, palette: 1)

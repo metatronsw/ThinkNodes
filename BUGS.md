@@ -1,5 +1,14 @@
 ## Nyitott
 
+- **WhiteBoard textúrák és füzetlap (2026-11-26): nyitott és kézzel nézendő**
+  - Csak Chrome-ban ellenőrizve (képernyőkép, a sorvonalak mérése); Safariban nincs megnézve: a `round()` és az `@property` (Safari 15.4 / 16.4+), a mintás kitöltés pásztázás közben, a textúrás dobozok húzásának költsége.
+  - A textúra sűrűsége és erőssége szemre állítandó: a csempe 256 képernyőképpont (`textures.size`), az erősség a rétegek `opacity`-je (világos vászon 0,85, sötét karton 0,3, doboz 1 / 0,1, papír 0,75). A képek kontrasztja a beágyazás előtt meg lett emelve (papír ×8, karton ×8 enyhe simítással; az eredeti szórásuk 1 fokozat körüli volt, láthatatlan).
+  - A két kép base64-ben kb. 67 KB, és a témakatalógussal minden szerkesztőlap HTML-jébe beágyazva érkezik (nem gyorsítótárazható). Ha ez sok: a katalógus külön, gyorsítótárazható fájlba tehető.
+  - A vászon textúrája a pásztázással együtt mozog, a nagyítással nem nő (felhasználói döntés); a rajzolt rácsvásznon mozdulat közben képkockánként egy mintás kitöltés, nincs mérve sok dobozos lapon (p300) és Safariban. Nagyítás közben (a rögzítésig) a dobozok textúrája a vászonnal együtt nagyul, utána visszaugrik.
+  - A füzetvonal az alapvonalhoz képest a betűtípus mértékeiből becsült (k ≈ 0,36: rendszerbetű, egyenközű); más betűnél 1–2 px eltérés lehet. A füzetlapon a markdown mostantól a doboz betűméretével íródik (eddig fix 14 px).
+  - A füzetlapon a kép és a táblázat (ha a markdown ad ilyet) magassága nem a sormagasság többszöröse: utána a sorok elcsúszhatnak.
+  - Kézzel nézendő: kijelölt füzetlap / cetli kerete (a textúra a keret belső felét fedi), a kódfájl doboza mostantól a szokásos szabadkézi doboz (sorvonal nélkül, sötét módban sötét).
+
 - **Kapcsolatvesztés (2026-11-26): kézzel nézendő**
   - Safariban csak a kapcsolat nélküli szakasz mérve (nincs ismétlődő DOM-írás); a szerver visszatérése utáni viselkedés (nincs újratöltés) csak Chrome-ban.
   - Valódi hálózatvesztés (Wi-Fi ki, alvás utáni ébredés) és élesben a fordított proxy (502-es válaszok) mögötti viselkedés nincs kipróbálva.
@@ -59,7 +68,7 @@
   - A sötét palettaszínek (pl. `#027864`, `#6550b9`) neve sötét módban a jelenlévők között halványabban olvasható.
 
 - **WhiteBoard: nyitott és kézzel nézendő tételek** (2026-11-25)
-  - Füzetlapon a markdown lista elemei között egy üres sor van (a sorvonalak tartása miatt); a nagy címsor egy sorvonalnyi magasságba szorul.
+  - Füzetlapon a markdown lista elemei között egy üres sor van (a sorvonalak tartása miatt).
   - Kézzel nézendő: szabadkézi doboz kijelölése és átméretezése (a rajz méretváltáskor újraszámolódik), zárolt konténer, megtekintő és SVG-export a füzetlappal (beágyazott CSS, `lh` nélkül, `--rule` változóval), a cetli táblázatszerkesztése.
 
 - **Liquid Glass: kézzel nézendő és nyitott tételek** (2026-11-25)

@@ -469,12 +469,13 @@ function darkBoard() {
   const value = parseInt(paint(currentBoard.value?.background, 0).slice(1), 16);
   return .2126 * (value >> 16 & 255) + .7152 * (value >> 8 & 255) + .0722 * (value & 255) < 128;
 }
-// Papírfajta: táblázat és CSV → cetli, szöveg- és kódfájl → füzetlap (graphics.paper.grid / .text).
+// Papírfajta: táblázat és CSV → cetli, szövegfájl (.md, .txt) → füzetlap (graphics.paper.grid / .text). A kódfájl nem
+// papír: a téma szokásos (szabadkézi) dobozán áll, sorvonalak nélkül (Sketch.swift paperKind).
 function paperKind(node) {
   const paper = graphics.value.paper;
   if (!paper || !node.file || ["empty", "free"].includes(backgroundMode(node))) return null;
   if (isGridType(node.type)) return paper.grid === "sticky" ? "sticky" : null;
-  return isTextFile(node) && paper.text === "notebook" ? "notebook" : null;
+  return node.type === "text" && paper.text === "notebook" ? "notebook" : null;
 }
 // A papír színe: füzetlap a téma lapszíne; cetli a doboz színe fehérrel keverve (alapszínnél a paletta sárgája).
 // A papír mindkét módban világos, ezért a paletta színeinek nappali változata számít (sötét módban is).
@@ -487,6 +488,43 @@ function paperInk(node) {
   return node.textColor == null || node.textColor === 1 || node.textColor === "@1" ? graphics.value.paper?.ink ?? "#25314d" : paint(node.textColor, 1, "light");
 }
 const sketchedBox = node => !!sketching() && !isJunction(node) && !isImage(node) && node.type !== "preview" && !paperKind(node);
+
+// Ismétlődő textúrák (graphics.textures; Theme.swift Textures, Rendering.swift textureDefinitions). A beágyazott webp
+// képek blob: URL-ként kerülnek a mintákba (a szerkesztő CSP-je data: képet nem enged), képenként egyszer dekódolva.
+// Rétegek: a vászon háttere (canvas; drawTexture, szintenként áttűnő csempével) és a papírfelületek (paper; a lap saját
+// koordinátáiban, a lappal együtt nagyul, mint egy valódi papír). A szabadkézi doboz nem kap külön textúrát: a felülete
+// halvány tónus, a vászon textúrája átlátszik rajta. Mód: a vászon háttere sötét-e (darkBoard; Rendering.swift
+// darkBackground). A „Díszítő háttér kikapcsolása” kapcsoló elrejti őket (app.css [data-plain] .tn-texture, drawTexture).
+const textureURLs = new Map();
+function textureURL(name) {
+  const data = graphics.value.textures?.images?.[name];
+  if (!data) return null;
+  let url = textureURLs.get(data);
+  if (!url) {
+    const binary = atob(data.slice(data.indexOf(",") + 1)), bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    url = URL.createObjectURL(new Blob([bytes], {type: "image/webp"}));
+    textureURLs.set(data, url);
+  }
+  return url;
+}
+function textureLayer(kind) {
+  const textures = graphics.value.textures;
+  const layer = kind === "paper" ? textures?.paper : textures?.[kind]?.[darkBoard() ? "dark" : "light"];
+  return layer && textures.images?.[layer.image] ? layer : null;
+}
+// A papír mintája (a vászoné a rajzolt rácsvásznon: drawTexture). A minta a hivatkozó elem saját koordinátarendszerében
+// ismétlődik, `size` vászonegységes csempével: a lappal együtt mozog és nagyul, nagyítás után sem ugrik.
+function textureDefinitions() {
+  const size = graphics.value.textures?.size ?? 256, layer = textureLayer("paper");
+  return layer ? [h("pattern", {id: "tn-texture-paper", patternUnits: "userSpaceOnUse", width: size, height: size},
+    [h("image", {href: textureURL(layer.image), width: size, height: size, preserveAspectRatio: "none"})])] : [];
+}
+function textureFill(kind, attrs) {
+  const layer = textureLayer(kind);
+  return layer ? h(attrs.d ? "path" : "rect", {...attrs, class: "tn-texture", fill: "url(#tn-texture-" + kind + ")",
+    "fill-opacity": layer.opacity ?? 1, "pointer-events": "none", "aria-hidden": "true"}) : null;
+}
 
 // Olvasható szöveg a doboz felületén (Rendering.swift labelInk, minimumTextContrast): ha a beállított szövegszín
 // kontrasztja (WCAG-arány) a felülettel 3 alatt van, a téma tintájának nappali vagy esti változata közül a jobban
@@ -546,6 +584,7 @@ function paperSurface(node, kind) {
       h("path", {class: "paper-shadow", d: `M${-x + 5} ${-y + 8}L${x + 4} ${-y + 10}L${x + 3} ${y - c + 6}L${x - c + 5} ${y + 7}Q0 ${y + 12} ${-x + 3} ${y + 5}Z`,
         fill: "#000", "fill-opacity": .2, ...quiet}),
       h("path", {class: "node-surface paper-sheet", d: `M${-x} ${-y}H${x}V${y - c}L${x - c} ${y}H${-x}Z`, fill: color, stroke: "#000", "stroke-opacity": .08, "stroke-width": 1}),
+      textureFill("paper", {d: `M${-x} ${-y}H${x}V${y - c}L${x - c} ${y}H${-x}Z`}),
       h("path", {class: "paper-curl", d: `M${x} ${y - c}L${x - c} ${y}Q${x - c * .78} ${y - c * .55} ${x - c * .9} ${y - c * .9}Q${x - c * .55} ${y - c * .78} ${x} ${y - c}Z`, fill: shade, ...quiet}),
       h("rect", {class: "paper-tape", x: -tape / 2, y: -y - 11, width: tape, height: 22, transform: `rotate(${tilt} 0 ${-y})`,
         fill: "#fffdf2", "fill-opacity": .6, stroke: "#000", "stroke-opacity": .07, ...quiet}),
@@ -555,6 +594,7 @@ function paperSurface(node, kind) {
   return [
     h("rect", {class: "paper-shadow", x: -x + 3, y: -y + 5, width: node.width, height: node.height, rx: 3, fill: "#000", "fill-opacity": .18, ...quiet}),
     h("rect", {class: "node-surface paper-sheet", x: -x, y: -y, width: node.width, height: node.height, rx: 3, fill: color, stroke: "#000", "stroke-opacity": .1, "stroke-width": 1}),
+    textureFill("paper", {x: -x, y: -y, width: node.width, height: node.height, rx: 3}),
     h("path", {class: "paper-margin", d: `M${-x + 34} ${-y}V${y}`, stroke: graphics.value.paper?.margin ?? "#e2747c", "stroke-width": 1.4, ...quiet}),
     ...Array.from({length: count}, (_, i) => h("circle", {class: "paper-hole", cx: -x + 15, cy: -y + node.height * (i + .5) / count, r: 5,
       fill: "#000", "fill-opacity": .24, ...quiet})),
@@ -1896,7 +1936,7 @@ createApp({
       svg.style.transform = `matrix(${scale},0,0,${scale},${shiftX},${shiftY})`;
       // A rács nem skálázódik a réteggel: a mintája közvetlenül az élő nézetet követi.
       const [centerX, centerY] = center();
-      if (perfOptions.grid === "separate") zoomHost()?.querySelector?.("#worksheet-grid")?.setAttribute("patternTransform", transform + " translate(" + centerX + " " + centerY + ")");
+      if (perfOptions.grid === "separate") for (const id of ["#worksheet-grid", "#worksheet-texture"]) zoomHost()?.querySelector?.(id)?.setAttribute("patternTransform", transform + " translate(" + centerX + " " + centerY + ")");
       else if (perfOptions.grid === "css" || perfOptions.grid === "draw") applyGrid(transform);
     }
     // Háttérrács CSS-háttérként, saját rétegben (perfOptions.grid = "css", alap). Az SVG-minta festése Safariban drága:
@@ -2079,8 +2119,56 @@ createApp({
       }
       context.restore();
     }
+    // A vászon textúrája a rajzolt rács mögé (graphics.textures.canvas; az SVG-rácsos módokban a GridLayer mintája): a
+    // rács és a kivágott lyukak után "destination-over"-rel, így a vászonszínű dobozok helyén is látszik. Vászonegységben
+    // áll, a tartalommal együtt mozog és nagyul (nincs ugrás a nagyítás rögzítésekor). Részletességi szintek (LOD, mint a
+    // Blender rácsa vagy a „zoomable texturing”): a csempe vászonbeli mérete `size` · 2^n, és mindig két szomszédos
+    // szint látszik egymásba úsztatva, így a szemcse a képernyőn `size` és 2·`size` képpont között marad, és szintváltáskor
+    // sem ugrik. A mozdulat minden képkockájában két mintás kitöltés. „Díszítő háttér kikapcsolása”: nincs textúra.
+    const textureImages = new Map();
+    function textureImage(url) {
+      let image = textureImages.get(url);
+      if (!image) {
+        image = new Image();
+        image.onload = () => applyGrid(pendingView ?? view.value);
+        image.src = url;
+        textureImages.set(url, image);
+      }
+      return image.complete && image.naturalWidth ? image : null;
+    }
+    function drawTexture(element, transform) {
+      if (plainBackground.value) return;
+      const layer = textureLayer("canvas"), context = element.getContext?.("2d");
+      const image = layer && context ? textureImage(textureURL(layer.image)) : null;
+      if (!image || !element.width || !element.height) return;
+      const ratio = window.devicePixelRatio || 1, [centerX, centerY] = center(), k = transform.k;
+      const size = graphics.value.textures?.size ?? 256, opacity = layer.opacity ?? 1;
+      // level: hányszor kell a csempét duplázni, hogy a képernyőn `size` legyen; t: a két szomszédos szint aránya.
+      const level = Math.log2(1 / k), n = Math.floor(level), t = level - n;
+      const originX = (transform.x + k * centerX) * ratio, originY = (transform.y + k * centerY) * ratio;
+      const fill = (world, alpha) => {
+        if (alpha <= 0.002) return;
+        const scale = world * k * ratio / image.naturalWidth, pattern = context.createPattern(image, "repeat");
+        pattern.setTransform?.(new DOMMatrix([scale, 0, 0, scale, originX, originY]));
+        context.globalAlpha = alpha;
+        context.fillStyle = pattern;
+        context.fillRect(0, 0, element.width, element.height);
+      };
+      context.save();
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.globalCompositeOperation = "destination-over";
+      // Elöl a finomabb szint (képernyőn size/2…size), mögötte a durvább (size…2·size); az átlátszatlanságok úgy, hogy a
+      // kettő együtt `opacity` legyen, a szintek súlya pedig 1 − t és t (folytonos áttűnés).
+      const front = opacity * (1 - t);
+      fill(size * 2 ** n, front);
+      fill(size * 2 ** (n + 1), front < 1 ? opacity * t / (1 - front) : 0);
+      context.restore();
+    }
     function applyGrid(transform) {
-      if (gridElement.value?.getContext) { drawGrid(gridElement.value, transform); cutGridHoles(gridElement.value.getContext("2d"), transform); return; }
+      if (gridElement.value?.getContext) {
+        drawGrid(gridElement.value, transform); cutGridHoles(gridElement.value.getContext("2d"), transform); drawTexture(gridElement.value, transform);
+        return;
+      }
       const style = gridElement.value?.style;
       if (!style) return;
       if (!gridVisible.value) { style.backgroundImage = "none"; return; }
@@ -5052,7 +5140,7 @@ createApp({
           // A tartalom szövegszíne a dobozé (a megjelenítőben: data-file-ink, viewer.js); --tn-paper: a táblázatszerkesztő háttere.
           h("div", {class: ["node-file", "node-" + root, paperKind(node) && "paper-" + paperKind(node), tableOutside && "table-editing"], style: {height: node.height + "px",
             color: paperKind(node) ? paperInk(node) : paint(node.textColor, 1), "--tn-paper": paperKind(node) ? paperColor(node, paperKind(node)) : surfaceColor(node),
-            "--paper-rule": graphics.value.paper?.rule, "--rule": Math.round((node.fontSize ?? 13) * 1.6) + "px"}},
+            "--paper-rule": graphics.value.paper?.rule}},
             [h("div", {class: "node-body"}, [content])]),
           below ? h("div", {class: "node-below"}, [marker, comment]) : null,
         ]),
@@ -5665,9 +5753,15 @@ createApp({
         // ami nagyításnál a fő lassító volt.
         const inside = perfOptions.grid !== "separate";
         const [marginX, marginY] = margin();
+        // A vászon textúrája (graphics.textures.canvas) a rács alatt, ugyanúgy a nézettel transzformált mintával: mozdulat
+        // közben a réteggel együtt mozog, újrafestés csak a nézet rögzítésekor (vászonegységes csempe, szintek nélkül).
+        const texture = textureLayer("canvas"), tile = graphics.value.textures?.size ?? 256;
         return h(inside ? "g" : "svg", inside ? {"aria-hidden": "true", "data-editor-only": "", "pointer-events": "none"}
           : {class: "canvas-grid-layer", "aria-hidden": "true", "data-editor-only": ""}, [
           h("defs", [
+            texture ? h("pattern", {id: "worksheet-texture", patternUnits: "userSpaceOnUse", width: tile, height: tile,
+              patternTransform: view.value + " translate(" + centerX + " " + centerY + ")"}, [
+              h("image", {href: textureURL(texture.image), width: tile, height: tile, preserveAspectRatio: "none"})]) : null,
             h("pattern", {id: "worksheet-grid", patternUnits: "userSpaceOnUse", x: -spacing/2, y: -spacing/2, width: gridSize, height: gridSize,
               patternTransform: view.value + " translate(" + centerX + " " + centerY + ")"}, [
               ...(drafting ? [h("path", {...gridStroke, "stroke-opacity": .08, d: [1, 2, 3, 4].map(i => gridLine((i + .5) * spacing)).join(" ")})] : []),
@@ -5677,6 +5771,8 @@ createApp({
                   "fill-opacity": glass ? .24 : .28}),
             ]),
           ]),
+          texture ? h("rect", {class: "tn-texture canvas-texture", ...(inside ? {x: -marginX, y: -marginY} : {}), width: "100%", height: "100%",
+            fill: "url(#worksheet-texture)", "fill-opacity": texture.opacity ?? 1}) : null,
           gridVisible.value && perfOptions.grid !== "none" ? h("rect", {class: "canvas-grid", ...(inside ? {x: -marginX, y: -marginY} : {}), width: "100%", height: "100%", fill: "url(#worksheet-grid)"}) : null,
         ]);
       },
@@ -5694,8 +5790,6 @@ createApp({
         // Látványcsomag: lassan úszó fényfoltok a vászon alatt (app.css .canvas-aurora); csak a transzformjuk animált.
         liquid() ? h("div", {class: "canvas-aurora", "aria-hidden": "true", "data-editor-only": "",
           style: {"--fx-a": paint(4, 4), "--fx-b": paint(5, 5), "--fx-c": paint(7, 7)}}, [h("i"), h("i"), h("i")]) : null,
-        // Szabadkézi téma: a tábla letörölt filcnyomai (álló, festés után nem változik; app.css .canvas-smudge).
-        sketching() ? h("div", {class: "canvas-smudge", "data-dark": darkBoard() ? "" : undefined, "aria-hidden": "true", "data-editor-only": ""}) : null,
         perfOptions.grid === "separate" ? h(GridLayer) : null,
         perfOptions.grid === "css" ? h("div", {class: "canvas-grid-css", ref: gridElement, "aria-hidden": "true", "data-editor-only": ""}) : null,
         perfOptions.grid === "draw" ? h("canvas", {class: "canvas-grid-css canvas-grid-draw", ref: gridElement, "aria-hidden": "true", "data-editor-only": ""}) : null,
@@ -5744,6 +5838,7 @@ createApp({
         }, [
           h("defs", [
             ...glowDefinitions.value.map(spec => glowVNode(h, spec)),
+            ...textureDefinitions(),
             ...(liquid() ? liquidDefinitions(mode.value === "dark") : glass ? [
               h("linearGradient", {id: "glass-rim", x2: "25%", y2: "100%"}, [
                 h("stop", {offset: "0%", "stop-color": "#f4eeff", "stop-opacity": .93}),
@@ -6899,7 +6994,7 @@ createApp({
     // A nagyítási lépcső CSS-változóban: a fogantyúk és a vonalak találati szélessége ebből számol (app.css),
     // így lépcsőváltáskor egyetlen stílusérték változik, nem rajzolódik újra minden vonal.
     // A CSS-rács a rögzített nézetet, a rácsbeállításokat és a méretet követi (mozdulat közben a previewView frissíti).
-    watchEffect(() => { size.value; gridSpacing.value; gridColor.value; graphics.value; gridVisible.value; gridHoles.value; applyGrid(pendingView ?? view.value); }, {flush: "post"});
+    watchEffect(() => { size.value; gridSpacing.value; gridColor.value; graphics.value; gridVisible.value; gridHoles.value; plainBackground.value; darkBoard(); applyGrid(pendingView ?? view.value); }, {flush: "post"});
 
     return () => timed("rootRender", () => {
       if (!board.value) return h("p", {class: problem.value ? "error editor-loading" : "editor-loading"}, problem.value || "Szerkesztő betöltése…");

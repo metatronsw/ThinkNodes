@@ -6,6 +6,11 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **WhiteBoard: elcsúszó füzetvonalak, vonalazott kódfájl, textúrák (2026-11-26)**
+  - Ok: a nagyobb betűs címsor alapvonala nem a sáv vonalára esett (5 px-ig), a markdown kódblokk 12 px-es belső térköze és a vízszintes vonal kerete eltolta az utána következő összes sort (kb. 5 px).
+  - Javítás: a címsor sávja a sormagasság egész többszöröse, a felső térköze az alapvonalat a vonalra teszi, a negatív alsó margó visszaveszi; a kódblokk térköze csak oldalt, a vízszintes vonal egy sor. Chrome-ban mérve: minden sor alapvonala 0,6–0,9 px-lel a vonal fölött (a dokumentum végéig). A kódfájl (`type: "code"`) már nem füzetlap. Új: ismétlődő webp textúrák a témában (`graphics.textures`), a „Díszítő háttér kikapcsolása” elrejti őket. Részletek: server/docs/themes.md „Textúrák”.
+  - Utána (felhasználói visszajelzés): a szöveg alapvonala 2 px-lel a vonal fölött (Chrome-ban mérve 2,0–2,2 px); a textúra nem látszott (a képek szinte egyszínűek voltak, és a nagyítással együtt kicsinyedtek): kontrasztemelt képek, a csempe a nagyítástól független 256 képernyőképpont; a tábla filcnyomai (háttérfények) megszűntek. A tesztek a törölt VectorStudio helyett a LiquidGlass témát használják.
+
 - **Kapcsolatvesztéskor villogó szerkesztő és megtekintő (2026-11-26)**
   - Ok: a szerver újraindulása után (memóriában tartott munkamenet) új token jött, és mindkét lap teljesen újratöltötte magát; kapcsolat nélkül a megtekintő másodpercenként újraírta a jelzést. Javítás: tartós munkamenetek (`FileSessions`), tokenátvétel újratöltés helyett, fokozatos újrapróbálkozás, egyszeri jelzés. Chrome-ban mérve; részletek: CHANGES.md.
 

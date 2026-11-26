@@ -159,9 +159,10 @@ func stickyColor(_ hex: String) -> String {
     }.joined()
 }
 
-/// Papírfajta: táblázat és CSV → cetli, szöveg- és kódfájl → füzetlap (editor.js paperKind).
+/// Papírfajta: táblázat és CSV → cetli, szövegfájl (.md, .txt) → füzetlap (editor.js paperKind). A kódfájl nem papír:
+/// a téma szokásos (szabadkézi) dobozán áll, sorvonalak nélkül.
 func paperKind(_ node: Idea, _ graphics: VisualTheme.Graphics?) -> String? {
     guard let paper = graphics?.paper, node.file != nil, ![.empty, .free].contains(node.resolvedBackgroundMode) else { return nil }
     if node.type == "table" || node.type == "csv" { return paper.grid == "sticky" ? "sticky" : nil }
-    return node.isTextFile && paper.text == "notebook" ? "notebook" : nil
+    return node.type == "text" && paper.text == "notebook" ? "notebook" : nil
 }

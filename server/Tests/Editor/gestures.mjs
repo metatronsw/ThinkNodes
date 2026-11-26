@@ -40,7 +40,7 @@ const renderer = Vue.createRenderer({
   remove, parentNode: n => n.parent, nextSibling: n => n.parent?.children[n.parent.children.indexOf(n)+1],
 });
 const root = element("root");
-root.dataset = {themes: JSON.stringify(["ThinkDefault","VectorStudio","Blueprint"].map(name =>
+root.dataset = {themes: JSON.stringify(["ThinkDefault","LiquidGlass","Blueprint"].map(name =>
   JSON.parse(readFileSync("Public/themes/" + name + ".json", "utf8")))), path: "test", role: "admin", user: "admin"};
 const listeners = {};
 const zoomEvents = {};
@@ -1560,10 +1560,11 @@ listeners["thinknodes-display"](); await tick();
 // A munkalap háttérszíne a vászonterület (canvas-area) háttere, a rács és az átlátszó vászonréteg alatt.
 assert.equal(prop("class", "canvas-area").props.style.background, "#14273a");
 assert.ok(prop("fill", "#bbbbbb", canvas()));
-await chooseAppearance("Téma", "2");
+// Üveges látványcsomag (LiquidGlass, id 4): csillogás és fénylő perem a doboz felületén, lekerekített ívű vonalak.
+await chooseAppearance("Téma", "4");
 assert.ok(prop("data-glass", "dark"));
-assert.ok(prop("fill", "url(#glass-sheen)", canvas()));
-assert.ok(prop("stroke", "url(#glass-rim)", canvas()).props["stroke-width"] > 0);
+assert.ok(prop("fill", "url(#fx-sheen)", canvas()));
+assert.ok(prop("stroke", "url(#fx-rim)", canvas()).props["stroke-width"] > 0);
 const from = {x: 0, y: 0}, to = {x: 200, y: 0};
 assert.equal(prop("id", "glass-ambient", canvas()), undefined);
 const zigzagWire = themedGeometry({type: "lightning", sourcePoint: from, target: {point: to}}, () => undefined);
@@ -1575,9 +1576,9 @@ const [entry, sharpTip] = zigzagWire.corners[0];
 assert.ok(Math.hypot(entry.x - sharpTip.x, entry.y - sharpTip.y) > 10);
 assert.ok(!edgeInRectangle(zigzagWire, {x: sharpTip.x - .1, y: sharpTip.y - .1, width: .2, height: .2}, true));
 const shallowArc = themedGeometry({type: "straight", sourcePoint: from, target: {point: to}}, () => undefined);
-assert.equal(shallowArc.path(from, to), "M 0 0 Q 100 -40 200 0");
+assert.equal(shallowArc.path(from, to), "M 0 0 Q 100 -24 200 0");
 assert.ok(Math.abs(shallowArc.labelPosition.x - 100) < 1e-8);
-assert.ok(Math.abs(shallowArc.labelPosition.y + 20) < 1e-8);
+assert.ok(Math.abs(shallowArc.labelPosition.y + 12) < 1e-8);
 const widths = (startArrow, endArrow) => {
   // 3-as méret (10,5): a vékony vég a vastagság negyede (Rendering.swift taperedWireArc párja).
   const outline = taperedArc(shallowArc, edgePaint({size: 3, startArrow, endArrow})).outline();
@@ -1585,9 +1586,10 @@ const widths = (startArrow, endArrow) => {
   return [0, 16, 32].map(i => Math.hypot(points[i][0] - points[65 - i][0], points[i][1] - points[65 - i][1]))
     .map(Math.round);
 };
-assert.deepEqual(widths(false, true), [3, 7, 10]);
-assert.deepEqual(widths(true, false), [10, 7, 3]);
-assert.deepEqual(widths(true, true), [10, 3, 10]);
+// A laposabb íven (lineArc 0,06) a vastag vég a teljes 10,5-ös vastagság, kerekítve 11.
+assert.deepEqual(widths(false, true), [3, 7, 11]);
+assert.deepEqual(widths(true, false), [11, 7, 3]);
+assert.deepEqual(widths(true, true), [11, 3, 11]);
 assert.equal(taperedArc(shallowArc, edgePaint({startArrow: false, endArrow: false})), null);
 assert.equal(taperedArc(shallowArc, edgePaint({appearance: "dashed"})), null);
 assert.equal(arrowLength(2), 13.5);
