@@ -77,7 +77,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/lib/d3-zoom.js?v=1"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=106"></script>
+        <script type="module" src="/editor.js?v=107"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -880,13 +880,14 @@ func labelInk(_ node: Idea, background: String, graphics: VisualTheme.Graphics?,
 
 /// Cetli és füzetlap (editor.js paperSurface). A cetli színe a `fill`-ben érkezik (Worksheet.painted).
 /// Ismétlődő textúrák (graphics.textures; editor.js textureDefinitions / GridLayer): a minták a defs-ben, a módhoz tartozó
-/// képpel és átlátszatlansággal (a kép a mintán belül áttetsző, így a felület csak hivatkozik rá). A vászoné a vászon
-/// origójához igazítva ismétlődik; a dobozé és a papíré a doboz saját koordinátáiban (a dobozzal együtt mozog).
+/// képpel (data URL: a fájl a betöltéskor beolvasva, Themes.catalog) és átlátszatlansággal (a kép a mintán belül
+/// áttetsző, így a felület csak hivatkozik rá). A vászoné a vászon origójához igazítva ismétlődik; a papíré a lap saját
+/// koordinátáiban (a lappal együtt mozog).
 private func textureDefinitions(_ graphics: VisualTheme.Graphics?, dark: Bool) -> String {
     guard let textures = graphics?.textures else { return "" }
     let size = number(textures.size ?? 256)
     func pattern(_ id: String, _ layer: VisualTheme.Graphics.Textures.Layer?) -> String {
-        let image = layer.flatMap { layer in textures.images[layer.image].map { "<image href=\"\($0)\" width=\"\(size)\" height=\"\(size)\" preserveAspectRatio=\"none\" opacity=\"\(number(layer.opacity ?? 1))\"/>" } } ?? ""
+        let image = layer.flatMap { layer in textures.embedded[layer.image].map { "<image href=\"\($0)\" width=\"\(size)\" height=\"\(size)\" preserveAspectRatio=\"none\" opacity=\"\(number(layer.opacity ?? 1))\"/>" } } ?? ""
         return "<pattern id=\"\(id)\" patternUnits=\"userSpaceOnUse\" width=\"\(size)\" height=\"\(size)\">\(image)</pattern>"
     }
     return (textures.canvas != nil ? pattern("worksheet-texture", textures.canvasLayer(dark: dark)) : "")

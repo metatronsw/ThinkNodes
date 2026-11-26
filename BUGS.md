@@ -1,13 +1,12 @@
 ## Nyitott
 
 - **WhiteBoard textúrák és füzetlap (2026-11-26): nyitott és kézzel nézendő**
-  - Csak Chrome-ban ellenőrizve (képernyőkép, a sorvonalak mérése); Safariban nincs megnézve: a `round()` és az `@property` (Safari 15.4 / 16.4+), a mintás kitöltés pásztázás közben, a textúrás dobozok húzásának költsége.
-  - A textúra sűrűsége és erőssége szemre állítandó: a csempe 256 képernyőképpont (`textures.size`), az erősség a rétegek `opacity`-je (világos vászon 0,85, sötét karton 0,3, doboz 1 / 0,1, papír 0,75). A képek kontrasztja a beágyazás előtt meg lett emelve (papír ×8, karton ×8 enyhe simítással; az eredeti szórásuk 1 fokozat körüli volt, láthatatlan).
-  - A két kép base64-ben kb. 67 KB, és a témakatalógussal minden szerkesztőlap HTML-jébe beágyazva érkezik (nem gyorsítótárazható). Ha ez sok: a katalógus külön, gyorsítótárazható fájlba tehető.
-  - A vászon textúrája a pásztázással együtt mozog, a nagyítással nem nő (felhasználói döntés); a rajzolt rácsvásznon mozdulat közben képkockánként egy mintás kitöltés, nincs mérve sok dobozos lapon (p300) és Safariban. Nagyítás közben (a rögzítésig) a dobozok textúrája a vászonnal együtt nagyul, utána visszaugrik.
-  - A füzetvonal az alapvonalhoz képest a betűtípus mértékeiből becsült (k ≈ 0,36: rendszerbetű, egyenközű); más betűnél 1–2 px eltérés lehet. A füzetlapon a markdown mostantól a doboz betűméretével íródik (eddig fix 14 px).
+  - Chrome-ban (képernyőkép három nagyításon, a sorvonalak mérése) és Safari 18.6-ban (a sorvonalak mérése, képernyőkép) ellenőrizve. Nincs mérve: a vászontextúra kétszintes kitöltésének költsége mozdulat közben sok dobozos lapon (p300), főleg Safariban.
+  - A textúra sűrűsége és erőssége szemre állítandó: a csempe 192 vászonegység (a képernyőn 192–384 px között, szintenként áttűnve), erősség: világos vászon 0,45, sötét karton 0,2, papír 0,4. A képek kontrasztja a beágyazás előtt meg lett emelve (papír ×8, karton ×8 enyhe simítással).
+  - A füzetvonal az alapvonalhoz képest a betűtípus mértékeiből becsült (k ≈ 0,36: rendszerbetű, egyenközű): Chrome-ban a vonal teteje kb. 2 px-lel, Safariban 2,5–3,5 px-lel az alapvonal alatt. A Safari „legkisebb betűméret” beállítása (itt 14 px) miatt a sorköz a tényleges betűméretből számol; a 14 px-nél kisebb címsor (h4–h6 nagyon kicsi dobozbetűnél) sávja így is eltérhet.
   - A füzetlapon a kép és a táblázat (ha a markdown ad ilyet) magassága nem a sormagasság többszöröse: utána a sorok elcsúszhatnak.
   - Kézzel nézendő: kijelölt füzetlap / cetli kerete (a textúra a keret belső felét fedi), a kódfájl doboza mostantól a szokásos szabadkézi doboz (sorvonal nélkül, sötét módban sötét).
+  - Az önálló SVG-export (/export/svg) a szerverre mutató címeket beágyazza (elemenként legfeljebb 20 MB, összesen 100 MB; ami ezen túl van, hivatkozás marad). Nagy fájlokkal (videó, nagy PDF) az SVG mérete megnő; a letöltés ideje nincs mérve. Az előnézeti képek és a megtekintő nem ágyaz be. Helyi fájlként megnyitva a fájldoboz feliratai (pl. a fájlnév) a böngésző alapbetűjével látszanak: az önálló SVG-ben az app.css általános szabályai nincsenek benne (régi állapot).
 
 - **Kapcsolatvesztés (2026-11-26): kézzel nézendő**
   - Safariban csak a kapcsolat nélküli szakasz mérve (nincs ismétlődő DOM-írás); a szerver visszatérése utáni viselkedés (nincs újratöltés) csak Chrome-ban.

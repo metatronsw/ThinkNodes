@@ -135,8 +135,10 @@ package struct VisualTheme: Content, Equatable {
         }
         var paper: Paper?
         /// Ismétlődő raszteres textúrák (editor.js textureLayer / drawTexture / textureDefinitions, Rendering.swift
-        /// textureDefinitions): `images` név → beágyazott kép (csak `data:image/webp;base64,…`), `size` a csempe mérete
-        /// vászonegységben (alap 256). `canvas` a vászon háttere módonként ("light" / "dark"): a kép neve és az
+        /// textureDefinitions): `images` név → a téma JSON-ja mellett álló képfájl neve (pl. `WhiteBoard.paper.webp`;
+        /// webp, png vagy jpg, alkönyvtár nélkül), a szerkesztő a `/themes/<fájl>` címről tölti (gyorsítótárazható); az
+        /// önálló SVG-be a betöltéskor beolvasott tartalma kerül (`embedded`, a kliens felé nem kódolt). `size` a csempe
+        /// mérete vászonegységben (alap 256). `canvas` a vászon háttere módonként ("light" / "dark"): a kép neve és az
         /// átlátszatlansága; a szerkesztőben a tartalommal együtt mozog és nagyul, szintenként (2^n) áttűnő csempével.
         /// `paper` a papírfelületeké (füzetlap, cetli), módtól független, mert a papír mindig világos. A szabadkézi doboz
         /// nem kap külön textúrát (a felülete halvány tónus, a vászoné átlátszik). A „Díszítő háttér kikapcsolása” elrejti őket.
@@ -149,13 +151,16 @@ package struct VisualTheme: Content, Equatable {
             var images: [String: String]
             var canvas: [String: Layer]?
             var paper: Layer?
+            /// A képek data URL-ként (név → `data:…;base64,…`): a témakatalógus betöltése tölti ki, az SVG-export használja.
+            var embedded: [String: String] = [:]
+            private enum CodingKeys: String, CodingKey { case size, images, canvas, paper }
             var layers: [Layer] { Array((canvas ?? [:]).values) + (paper.map { [$0] } ?? []) }
             var valid: Bool {
                 guard (32.0...4096.0).contains(size ?? 256), !images.isEmpty, images.count <= 8 else { return false }
                 guard Set((canvas ?? [:]).keys).isSubset(of: ["light", "dark"]) else { return false }
-                guard images.allSatisfy({ name, data in
-                    !name.isEmpty && name.count <= 40 && data.count <= 400_000
-                        && data.range(of: "^data:image/webp;base64,[A-Za-z0-9+/]+={0,2}$", options: .regularExpression) != nil
+                guard images.allSatisfy({ name, file in
+                    !name.isEmpty && name.count <= 40 && file.count <= 120 && !file.contains("..")
+                        && file.range(of: "^[A-Za-z0-9][A-Za-z0-9._-]*\\.(webp|png|jpg|jpeg)$", options: .regularExpression) != nil
                 }) else { return false }
                 return layers.allSatisfy { images[$0.image] != nil && (0.0...1.0).contains($0.opacity ?? 1) }
             }
@@ -294,8 +299,20 @@ package enum Themes {
         var result = [VisualTheme]()
         for url in ((try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []).sorted(by: { $0.path < $1.path }) where url.pathExtension == "json" {
             do {
-                let theme = try JSONDecoder().decode(VisualTheme.self, from: Data(contentsOf: url))
+                var theme = try JSONDecoder().decode(VisualTheme.self, from: Data(contentsOf: url))
                 guard theme.valid, !result.contains(where: { $0.id == theme.id }) else { throw Abort(.unprocessableEntity) }
+                // A textúrák képfájljai a téma JSON-ja mellett; az SVG-exporthoz egyszer beolvasva (legfeljebb 2 MB / kép).
+                if let images = theme.graphics?.textures?.images {
+                    var embedded = [String: String]()
+                    for (name, file) in images {
+                        let data = try Data(contentsOf: dir.appendingPathComponent(file))
+                        guard data.count <= 2_000_000 else { throw Abort(.payloadTooLarge) }
+                        let ext = (file as NSString).pathExtension.lowercased()
+                        let mime = ext == "png" ? "image/png" : ext == "webp" ? "image/webp" : "image/jpeg"
+                        embedded[name] = "data:" + mime + ";base64," + data.base64EncodedString()
+                    }
+                    theme.graphics?.textures?.embedded = embedded
+                }
                 result.append(theme)
             } catch { print("ThinkNodes: invalid theme \(url.lastPathComponent): \(error)") }
         }

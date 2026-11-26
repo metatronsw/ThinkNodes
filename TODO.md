@@ -9,6 +9,7 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 + Visszavonás lomtárba tétel után: a fájl visszaáll (2026-11-24), de a többi lapon a törölt / üres dobozzá alakított dobozok nem állnak vissza. Ehhez a lomtárba tételkor fel kellene jegyezni a többi lap érintett dobozait.
 + A pillangó ikon és az átnevezett fájlnév a többi lapon a következő betöltéskor frissül (a szerver olvasáskor adja); nyitott szerkesztőben azonnali frissítéshez értesítés kellene a többi lapnak.
 + Törölt projekt visszaállítása más néven (most csak az eredeti néven, ha szabad).
++ .web élő ablak a dobozban (előnézet helyett futó oldal, átméretezés = ablakméretezés): tanulmány kész (server/docs/web-elo-ablak-tanulmany.md, 2026-11-26); a 9. pont kérdései döntésre várnak, utána Safari-prototípus és mérés.
 
 
 # Kódszínezés (server/Sources/ThinkHighlight) és dobozon szerkesztés
@@ -66,6 +67,7 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 
 # HÁTTEREK ÉS MEGJELENÍTÉS
 
++ Könyvtárra bontott témák: `Public/themes/<Név>/theme.json`, mellette a téma képei és hangjai (most a képek `Public/themes/<Téma>.<név>.webp` néven a JSON mellett állnak). Utána témánkénti hang (pl. `sounds.ping`). Érinti: betöltő (Theme.swift `Themes.catalog`), editor.js `textureURL`, a témák áthelyezése, tesztek (gestures.mjs, test.sh), themes.md / séma.
 + A megtekintő megszűnik: a vendégeknek és a csak olvasási joggal rendelkezőknek a szerkesztő csak olvasható módja kell (exportok, előadás követése, csevegés, napló, élő kijelölések). Utána a viewer.js, a passivePage és a megtekintő-specifikus szerveroldali rajzolás törölhető.
 
 

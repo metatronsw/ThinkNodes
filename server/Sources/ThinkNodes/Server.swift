@@ -836,9 +836,11 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
         switch req.parameters.get("format") {
         case "svg":
             let host = req.headers.first(name: .host), mode = siteMode(req)
-            let svg = try await req.application.threadPool.runIfActive {
+            let rendered = try await req.application.threadPool.runIfActive {
                 boardSVG(worksheet, siteHost: host, assetBase: "/" + path.url, mode: mode, fileText: { $0.file.flatMap { texts[$0.textKey] } })
             }
+            // A letöltött SVG önálló: a szerverre mutató képek, hangok, letöltések és ikonok a fájlba ágyazva.
+            let svg = await selfContainedSVG(rendered, req: req, publicDirectory: assets)
             return response("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + svg,
                             type: "image/svg+xml; charset=utf-8", filename: "\(path.name).svg")
         case "thnode", "json":
@@ -1695,6 +1697,61 @@ private func debugBadge(dataFolder: String) -> String {
     #else
     return ""
     #endif
+}
+
+/// Önálló SVG-export (/export/svg): minden, a saját szerverre mutató hivatkozás a fájlba kerül, hogy letöltve, a szerver
+/// nélkül is teljes legyen. Az ikonkészlet (`/icons.svg#név`) használt szimbólumai a defs-be, a hivatkozás `#név`;
+/// a többi `src` / `href` (kép, hang, a fájldoboz letöltése, link-előnézet) belső kéréssel, a letöltő felhasználó
+/// munkamenetével (ugyanazok a jogok) töltődik le, és data URL lesz belőle (letöltésnél `download` névvel). Elemenként
+/// legfeljebb 20 MB, összesen 100 MB; ami ezen túl van vagy nem tölthető le, hivatkozás marad.
+private func selfContainedSVG(_ svg: String, req: Request, publicDirectory: String) async -> String {
+    var result = svg
+    // Ikonok: a használt szimbólumok az icons.svg-ből.
+    let iconPattern = try! NSRegularExpression(pattern: #"href="/icons\.svg#([A-Za-z0-9_-]+)""#)
+    let names = Set(iconPattern.matches(in: svg, range: NSRange(svg.startIndex..., in: svg)).compactMap { match in
+        Range(match.range(at: 1), in: svg).map { String(svg[$0]) }
+    })
+    if !names.isEmpty, let sprite = try? String(contentsOfFile: publicDirectory + "icons.svg", encoding: .utf8) {
+        let symbols = names.sorted().compactMap { name -> String? in
+            guard let start = sprite.range(of: "<symbol id=\"\(name)\""),
+                  let end = sprite.range(of: "</symbol>", range: start.upperBound..<sprite.endIndex) else { return nil }
+            result = result.replacingOccurrences(of: "href=\"/icons.svg#\(name)\"", with: "href=\"#\(name)\"")
+            return String(sprite[start.lowerBound..<end.upperBound])
+        }
+        if let defs = result.range(of: "<defs>") { result.insert(contentsOf: symbols.joined(), at: defs.upperBound) }
+    }
+    // Saját szerverre mutató címek (egy / jellel kezdődő, nem // protokoll-relatív): belső kéréssel beágyazva.
+    let linkPattern = try! NSRegularExpression(pattern: ##"(src|href)="(/[^/"#][^"]*)""##)
+    let addresses = Set(linkPattern.matches(in: result, range: NSRange(result.startIndex..., in: result)).compactMap { match in
+        Range(match.range(at: 2), in: result).map { String(result[$0]) }
+    })
+    var total = 0
+    for escapedAddress in addresses.sorted() {
+        let address = escapedAddress.replacingOccurrences(of: "&amp;", with: "&")
+        var headers = HTTPHeaders()
+        for name in ["cookie", "host", "authorization", "user-agent"] { for value in req.headers[name] { headers.add(name: name, value: value) } }
+        let inner = Request(application: req.application, method: .GET, url: URI(string: address), headers: headers, remoteAddress: req.remoteAddress, logger: req.logger, on: req.eventLoop)
+        guard let response = try? await req.application.responder.respond(to: inner).get(), response.status == .ok,
+              let body = try? await response.body.collect(on: req.eventLoop).get(),
+              body.readableBytes <= 20_000_000, total + body.readableBytes <= 100_000_000 else { continue }
+        total += body.readableBytes
+        let type = (response.headers.first(name: .contentType) ?? "application/octet-stream").split(separator: ";").first.map(String.init) ?? "application/octet-stream"
+        let data = "data:" + type.trimmingCharacters(in: .whitespaces) + ";base64," + Data(buffer: body).base64EncodedString()
+        // Letöltésnél (Content-Disposition) a fájl neve a `download` attribútumba.
+        var download = ""
+        if let disposition = response.headers.first(name: "content-disposition") {
+            var name: String?
+            if let start = disposition.range(of: "filename*=UTF-8''")?.upperBound {
+                name = disposition[start...].prefix { $0 != ";" }.removingPercentEncoding
+            } else if let start = disposition.range(of: "filename=\"")?.upperBound, let end = disposition[start...].firstIndex(of: "\"") {
+                name = String(disposition[start..<end])
+            }
+            if let name, !name.isEmpty { download = " download=\"" + escaped(name) + "\"" }
+        }
+        result = result.replacingOccurrences(of: "src=\"\(escapedAddress)\"", with: "src=\"\(data)\"")
+        result = result.replacingOccurrences(of: "href=\"\(escapedAddress)\"", with: "href=\"\(data)\"" + download)
+    }
+    return result
 }
 
 private func siteMode(_ req: Request) -> String? {

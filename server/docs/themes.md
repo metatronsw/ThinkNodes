@@ -53,15 +53,15 @@ A `paper` papírfelületeket ad. A `grid: "sticky"` a táblázatot és a CSV-t c
 
 ## Textúrák
 
-A `textures` ismétlődő raszteres textúrákat ad. Az `images` név → beágyazott kép (csak `data:image/webp;base64,…`, legfeljebb 8 kép, képenként kb. 300 KB); a `size` a csempe mérete vászonegységben (alap 256). A képek kontrasztja legyen elég nagy: egy szinte egyszínű (1–2 fokozatnyi szórású) kép a vásznon nem látszik. Rétegek (mindegyik `{"image": név, "opacity": 0–1}`):
+A `textures` ismétlődő raszteres textúrákat ad. Az `images` név → a téma JSON-ja mellett álló képfájl neve (`Public/themes/`, alkönyvtár nélkül; webp, png vagy jpg; legfeljebb 8 kép, képenként 2 MB; ajánlott elnevezés: `<Téma>.<név>.webp`, pl. `WhiteBoard.paper.webp`). A szerkesztő a `/themes/<fájl>` címről tölti (a böngésző gyorsítótárazza), az önálló SVG-be a szerver a betöltéskor beolvasott tartalmat ágyazza be; hiányzó fájl esetén a téma nem töltődik be. a `size` a csempe mérete vászonegységben (alap 256). A képek kontrasztja legyen elég nagy: egy szinte egyszínű (1–2 fokozatnyi szórású) kép a vásznon nem látszik. Rétegek (mindegyik `{"image": név, "opacity": 0–1}`):
 
 - `canvas.light` / `canvas.dark`: a vászon háttere a vászonszín fölött, a rács alatt; a vászonszínű (átlátszó) dobozokon is ez látszik. A tartalommal együtt mozog és nagyul, nagyításkor sem ugrik. Részletességi szintekkel (LOD) rajzolódik, mint a Blender csomópont-szerkesztőjének rácsa vagy a „zoomable texturing”: a csempe vászonbeli mérete `size` · 2^n, és mindig két szomszédos szint látszik egymásba úsztatva, így a szemcse a képernyőn `size` és 2 · `size` képpont között marad. A szerkesztő a rajzolt rácsvásznon (2D canvas) rajzolja, a mozdulat minden képkockájában két mintás kitöltéssel; SVG-minta nincs.
 - `paper`: a papírfelületek (füzetlap, cetli) textúrája a lap saját koordinátáiban; a lappal együtt mozog és nagyul, mint egy valódi papír. Módtól független, mert a papír mindig világos.
 
-A szabadkézi doboz nem kap külön textúrát: a felülete halvány tónus, a vászon textúrája átlátszik rajta (dobozonként nincs plusz mintás elem). A mód a vászon színéből adódik (sötét vászon: `dark`). A szerkesztőben a képek blob: URL-ként kerülnek a mintákba (a CSP data: képet nem enged); az önálló SVG-ben data URL-ként, szintek nélkül, `size` vászonegységes csempével. A vezérlősáv „Díszítő háttér kikapcsolása” kapcsolója minden textúrát elrejt (`[data-plain] .tn-texture`, a rácsvásznon nem rajzol), az „Animációk leállítása” a mozgást állítja le. A téma teljes katalógusa minden szerkesztőlapba beágyazva érkezik, ezért a képek legyenek kicsik.
+A szabadkézi doboz nem kap külön textúrát: a felülete halvány tónus, a vászon textúrája átlátszik rajta (dobozonként nincs plusz mintás elem). A mód a vászon színéből adódik (sötét vászon: `dark`). Az önálló SVG-ben a képek data URL-ként, szintek nélkül, `size` vászonegységes csempével állnak. A vezérlősáv „Díszítő háttér kikapcsolása” kapcsolója minden textúrát elrejt (`[data-plain] .tn-texture`, a rácsvásznon nem rajzol), az „Animációk leállítása” a mozgást állítja le. A téma katalógusa (a JSON) minden szerkesztőlapba beágyazva érkezik, ezért a képek nem a JSON-ban, hanem külön fájlban vannak.
 
 ```json
-"textures": {"size": 192, "images": {"paper": "data:image/webp;base64,…", "cardboard": "data:image/webp;base64,…"},
+"textures": {"size": 192, "images": {"paper": "WhiteBoard.paper.webp", "cardboard": "WhiteBoard.cardboard.webp"},
   "canvas": {"light": {"image": "paper", "opacity": 0.45}, "dark": {"image": "cardboard", "opacity": 0.2}},
   "paper": {"image": "paper", "opacity": 0.4}}
 ```

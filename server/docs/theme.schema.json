@@ -364,7 +364,7 @@
         },
         "textures": {
           "type": "object",
-          "description": "Ismétlődő raszteres textúrák: beágyazott webp képek (data URL) és rétegek: a vászon háttere módonként, a papírfelületeké módtól függetlenül. A „Díszítő háttér kikapcsolása” kapcsoló elrejti őket.",
+          "description": "Ismétlődő raszteres textúrák: a téma JSON-ja melletti képfájlok és rétegek: a vászon háttere módonként, a papírfelületeké módtól függetlenül. A „Díszítő háttér kikapcsolása” kapcsoló elrejti őket.",
           "properties": {
             "size": {
               "type": "number",
@@ -376,10 +376,11 @@
               "type": "object",
               "minProperties": 1,
               "maxProperties": 8,
+              "description": "Név → a téma JSON-ja mellett álló képfájl neve (alkönyvtár nélkül).",
               "additionalProperties": {
                 "type": "string",
-                "pattern": "^data:image/webp;base64,[A-Za-z0-9+/]+={0,2}$",
-                "maxLength": 400000
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*\\.(webp|png|jpg|jpeg)$",
+                "maxLength": 120
               }
             },
             "canvas": {

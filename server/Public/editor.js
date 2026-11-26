@@ -489,24 +489,15 @@ function paperInk(node) {
 }
 const sketchedBox = node => !!sketching() && !isJunction(node) && !isImage(node) && node.type !== "preview" && !paperKind(node);
 
-// Ismétlődő textúrák (graphics.textures; Theme.swift Textures, Rendering.swift textureDefinitions). A beágyazott webp
-// képek blob: URL-ként kerülnek a mintákba (a szerkesztő CSP-je data: képet nem enged), képenként egyszer dekódolva.
+// Ismétlődő textúrák (graphics.textures; Theme.swift Textures, Rendering.swift textureDefinitions). A képek a téma
+// JSON-ja mellett álló fájlok (`/themes/<fájl>`), a böngésző gyorsítótárazza őket.
 // Rétegek: a vászon háttere (canvas; drawTexture, szintenként áttűnő csempével) és a papírfelületek (paper; a lap saját
 // koordinátáiban, a lappal együtt nagyul, mint egy valódi papír). A szabadkézi doboz nem kap külön textúrát: a felülete
 // halvány tónus, a vászon textúrája átlátszik rajta. Mód: a vászon háttere sötét-e (darkBoard; Rendering.swift
 // darkBackground). A „Díszítő háttér kikapcsolása” kapcsoló elrejti őket (app.css [data-plain] .tn-texture, drawTexture).
-const textureURLs = new Map();
 function textureURL(name) {
-  const data = graphics.value.textures?.images?.[name];
-  if (!data) return null;
-  let url = textureURLs.get(data);
-  if (!url) {
-    const binary = atob(data.slice(data.indexOf(",") + 1)), bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    url = URL.createObjectURL(new Blob([bytes], {type: "image/webp"}));
-    textureURLs.set(data, url);
-  }
-  return url;
+  const file = graphics.value.textures?.images?.[name];
+  return file ? "/themes/" + encodeURIComponent(file) : null;
 }
 function textureLayer(kind) {
   const textures = graphics.value.textures;

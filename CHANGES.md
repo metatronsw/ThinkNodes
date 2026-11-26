@@ -1,5 +1,13 @@
 # Változások
 
+## 2026-11-26 – WhiteBoard: textúrák külön fájlban, nagyításkor nem ugranak; füzetvonalak Safariban; önálló SVG-export
+
+- **Textúrák külön fájlban:** a képek kikerültek a téma JSON-jából (base64 helyett): `Public/themes/WhiteBoard.paper.webp`, `WhiteBoard.cardboard.webp`, a JSON-ban csak a fájlnév (`graphics.textures.images`). A szerkesztő a `/themes/…` címről tölti (gyorsítótárazható), a szerver a betöltéskor beolvassa őket az SVG-exporthoz; hiányzó fájlnál a téma nem töltődik be. A képek kontrasztja meg lett emelve (az eredetiek szinte egyszínűek voltak).
+- **Nagyításkor nincs ugrás:** a vászon textúrája vászonegységben áll, a tartalommal együtt mozog és nagyul; részletességi szintekkel (2^n, két szomszédos szint áttűnve, mint a Blender rácsa), így a szemcse a képernyőn 192–384 px között marad. A rajzolt rácsvásznon két mintás kitöltés, SVG-minta nélkül. A szabadkézi doboz nem kap külön textúrát (a vászoné átlátszik), a papír a lap saját koordinátáiban. Halványabb: világos 0,45, sötét karton 0,2, papír 0,4.
+- **Füzetvonalak Safariban:** a Safari „legkisebb betűméret” beállítása a 13 px-es betűt 14-re emelte, és a px-es sormagasságot arányosan növelte, a vonalak és margók nem; a sorok fokozatosan elcsúsztak. Most egység nélküli sormagasság (1.6) és a tényleges betűméretből számolt sorköz (`--pitch`); a szöveg alapvonala kb. 2 px-lel a vonal fölött (Chrome és Safari 18.6, mérve). A tábla filcnyomai (háttérfények) megszűntek.
+- **Önálló SVG-export** (`/export/svg`): a képek, a hang, a fájldobozok letöltése (`download` névvel), a használt ikonok és a textúrák a fájlba ágyazva, belső kéréssel a letöltő munkamenetével (Server.swift `selfContainedSVG`; elemenként 20 MB, összesen 100 MB). Teszt: `svgExportIsSelfContained`. PERF.md 3. szabály kiegészítve.
+- Megjegyzés: a `9fb0caa` commit már tartalmazta a nagyításkori ugrás javítását, a Safari-vonalakat és a filcnyomok megszüntetését, de az üzenete egy korábbi állapotot ír le; ez a bejegyzés pótolja. Dokumentáció: server/docs/themes.md „Textúrák”, theme.schema.json; nyitott tételek: BUGS.md, a könyvtárra bontott témák: TODO.md.
+
 ## 2026-11-26 – .web oldal: `../` hivatkozás a projektmappán belül
 
 - A .web oldal eddig csak a saját mappájából tölthetett be fájlt (a `../kepek/x.png` 404 lett); a közös könyvtár abszolút címmel (`/common/...`) eddig is működött.
