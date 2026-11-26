@@ -1260,15 +1260,14 @@ svg text { text-rendering: geometricPrecision; }
    így más témában semmibe sem kerül. A doboz rétegeit (fx-shadow, fx-sheen) és a definíciókat (fx-rim, fx-glow) az
    editor.js liquid… függvényei és a Rendering.swift adják. Safariban SVG elemen a CSS drop-shadow() nem rajzolódik ki:
    a fényhatás áttetsző körvonalakból, átmenetekből és (rövid életű elemen) hivatkozott SVG-szűrőből áll. */
-/* Háttérfények: három lassan úszó folt a vászon alatt; csak a transzformjuk animált (a kompozitor végzi, festés nélkül). */
+/* Háttérfények: három álló folt a vászon alatt. (2026-11-26-ig lassan úsztak: a végtelen animáció Chrome-ban üresjáratban
+   is ~17% CPU-t vitt, a mozgás pedig nem is volt észrevehető; docs/PERF.md „Üresjárat”.) */
 .canvas-aurora { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-.canvas-aurora > i { position: absolute; width: 74%; aspect-ratio: 1; border-radius: 50%; will-change: transform;
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--fx-spot) 36%, transparent), color-mix(in srgb, var(--fx-spot) 12%, transparent) 56%, transparent);
-  animation: fx-drift 26s ease-in-out infinite alternate; }
+.canvas-aurora > i { position: absolute; width: 74%; aspect-ratio: 1; border-radius: 50%; transform: translate3d(1%, 1%, 0) scale(1.1);
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--fx-spot) 36%, transparent), color-mix(in srgb, var(--fx-spot) 12%, transparent) 56%, transparent); }
 .canvas-aurora > i:nth-child(1) { --fx-spot: var(--fx-a); left: -20%; top: -34%; }
 .canvas-aurora > i:nth-child(2) { --fx-spot: var(--fx-b); right: -24%; top: -12%; animation-duration: 34s; animation-direction: alternate-reverse; }
 .canvas-aurora > i:nth-child(3) { --fx-spot: var(--fx-c); left: 14%; bottom: -52%; animation-duration: 41s; }
-@keyframes fx-drift { from { transform: translate3d(-7%, -5%, 0) scale(1); } to { transform: translate3d(9%, 7%, 0) scale(1.2); } }
 
 /* Doboz: rámutatáskor a csillogás kifényesedik, az árnyék megnő (a doboz „megemelkedik”), a perem megvastagszik. */
 [data-effects="liquid"] .fx-sheen { opacity: .78; transition: opacity .28s ease; }
@@ -1314,7 +1313,7 @@ svg text { text-rendering: geometricPrecision; }
 .editor-workspace[data-moving][data-effects] .editor-canvas :is(.fx-sheen, .fx-shadow, .node-surface, .selection-own-tint, .selection-own, .wire-own-halo, .wire-hit) {
   transition: none; animation: none; }
 @media (prefers-reduced-motion: reduce) {
-  .canvas-aurora > i, [data-effects="liquid"] :is(.selection-own-tint, .selection-own, .wire-own-halo, .selection-glow) { animation: none; }
+  [data-effects="liquid"] :is(.selection-own-tint, .selection-own, .wire-own-halo, .selection-glow) { animation: none; }
   [data-effects="liquid"] :is(.fx-sheen, .fx-shadow, .node-surface) { transition: none; }
 }
 
@@ -1476,3 +1475,55 @@ svg text { text-rendering: geometricPrecision; }
 .table-fit-note .tn-colstrip { padding-left: 0; }
 .table-fit-note .tn-rowstrip { padding-top: 0; }
 .tn-table.tn-editing td.header { background: color-mix(in srgb, currentColor 9%, transparent); }
+
+/* ===== Tartalom-animációk a szerkesztőben (doboz: node.animation; vonal: edge.animated) =====
+   CSS-animáció 20 lépés/mp-re korlátozva (steps, minden szakasz 50 ms egész többszöröse), a szerkesztő a közös idővonal
+   nullpontjához igazítja őket (editor.js alignMotion): így másodpercenként legfeljebb 20 képkocka kell, akárhány animáció
+   fut. A korábbi SMIL Safariban animációnként 14–19% CPU-t vitt, Chrome-ban minden 60 Hz-es animáció a teljes vásznat
+   rajzoltatta (docs/PERF.md „Üresjárat”). A letölthető SVG SMIL-t használ (Rendering.swift), ugyanezekkel a mértékekkel;
+   az időzítés nem kulcskocka-pontos, a látvány egyezik. A téma sebességét (motionSpeed) csak az SVG alkalmazza: a szerkesztőben
+   minden lépés 50 ms marad, különben az eltérő ütemek kétszer annyi képkockát kérnének. */
+.editor-canvas .node-motion { transform-box: view-box; transform-origin: 0 0; }
+.editor-canvas .node-motion[data-box-animation="pulse"] { animation: tn-pulse 2.8s steps(28) infinite; }
+.editor-canvas .node-motion[data-box-animation="blink"] { animation: tn-blink 2.4s steps(24) infinite; }
+.editor-canvas .node-motion[data-box-animation="rock"] { animation: tn-rock 4.8s step-end infinite; }
+.editor-canvas .node-motion[data-box-animation="hop"] { animation: tn-hop 5.8s step-end infinite; }
+@keyframes tn-pulse { 50% { transform: scale(1.09); } }
+@keyframes tn-blink { 50% { opacity: .28; } }
+@keyframes tn-rock {
+  0% { transform: rotate(0deg); animation-timing-function: steps(8); }
+  8.3333% { transform: rotate(8deg); animation-timing-function: steps(10); }
+  18.75% { transform: rotate(-6deg); animation-timing-function: steps(11); }
+  30.2083% { transform: rotate(3deg); animation-timing-function: steps(9); }
+  39.5833% { transform: rotate(-1deg); animation-timing-function: steps(9); }
+  48.9583%, 100% { transform: rotate(0deg); }
+}
+@keyframes tn-hop {
+  0% { transform: translate(0, 0) scale(1, 1); animation-timing-function: steps(7); }
+  6.0345% { transform: translate(0, 1px) scale(1.03, .95); animation-timing-function: steps(10); }
+  14.6552% { transform: translate(0, -17px) scale(1.035, 1.06); animation-timing-function: steps(11); }
+  24.1379% { transform: translate(0, 0) scale(1.045, .96); animation-timing-function: steps(9); }
+  31.8966% { transform: translate(0, -4px) scale(.99, 1.02); animation-timing-function: steps(9); }
+  39.6552%, 100% { transform: translate(0, 0) scale(1, 1); }
+}
+/* Vonal: szaggatott minta halad (--tn-shift), vastag vonal lüktet (--tn-pulse), kúpos vastag vonal a kitöltés köré rajzolt
+   körvonallal vastagodik, sima vonalon pötty fut (offset-path), lüktető nyílhegy. */
+.editor-canvas .wire-motion-dash { animation: tn-dash 1.6s steps(32) infinite; }
+.editor-canvas .wire-motion-dash.is-round-trip { animation-direction: alternate; }
+.editor-canvas .wire-motion-thick { animation: tn-thick 1.5s steps(30) infinite alternate; }
+.editor-canvas .wire-motion-taper { stroke-width: 0; stroke-linejoin: round; animation: tn-thick 1.5s steps(30) infinite alternate; }
+.editor-canvas .wire-dot { offset-rotate: 0deg; }
+.editor-canvas .wire-arrow-pulse { animation: tn-arrow 1.5s steps(30) infinite alternate; }
+@keyframes tn-dash { to { stroke-dashoffset: var(--tn-shift); } }
+@keyframes tn-thick { to { stroke-width: var(--tn-pulse); } }
+@keyframes tn-dot { from { offset-distance: 0%; } to { offset-distance: 100%; } }
+@keyframes tn-arrow { to { transform: scale(1.12); } }
+
+/* „Animációk ki” (vezérlősáv; böngészőnként tárolva): minden folyamatos animáció leáll a vásznon (tartalom, kijelölés
+   fénye), a futó pötty eltűnik. A ping és a rámutatás rövid áttűnései maradnak. */
+.editor-workspace[data-still] .editor-canvas :is(.node-motion, [class*="wire-motion"], .wire-arrow-pulse, .selection-own-tint,
+  .selection-own, .wire-own-halo, .selection-glow, .search-candidate, .drop-target) { animation: none; }
+.editor-workspace[data-still] .editor-canvas .wire-dot { display: none; }
+/* „Háttér ki” (vezérlősáv; böngészőnként tárolva): a díszítő hátterek nem rajzolódnak ki (Liquid Glass fényei, a tábla
+   filcnyomai; később a téma ismétlődő textúrái is ide kerülnek). A vászon színe és a rács marad. */
+.editor-workspace[data-plain] :is(.canvas-aurora, .canvas-smudge) { display: none; }

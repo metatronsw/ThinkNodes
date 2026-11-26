@@ -1,5 +1,19 @@
 ## Nyitott
 
+- **Üresjárati terhelés és akadások javítása (2026-11-26): maradék és kézzel nézendő tételek** (részletek: server/docs/PERF.md „Üresjárat”)
+  - Maradék üresjárati terhelés a Liquid Glass lapon 9 futó animációval: Chrome ~17–21%, Safari ~25% WebContent + 5% WindowServer („Animációk ki”: ~0%). Ha ez is sok: kevesebb lépés/mp (12-vel Chrome ~13%, Safari ~10% volt), vagy csak a látható animációk futtatása.
+  - Saját kijelölésnél a kijelölés fénye (Liquid Glass „lélegzés”) végtelen animáció: amíg valami ki van jelölve, folyamatos képkockák (döntés: maradhat, csak szerkesztői).
+  - Chrome-ban az első kijelölésnél egy 67 ms-os képkocka maradt (a tulajdonságpanel első megnyitása); a késés már 8 ms.
+  - Egy mérésnél (Chrome, meleg kör, 55–58 mp) 1,4 és 1,6 mp-es fagyás volt; a következő 5 kör hibátlan, nem reprodukálható. Megfigyelendő.
+  - Firefox nincs a gépen: a CSS-animációk (offset-path a futó pöttyön) és az új kapcsolók ott nincsenek kipróbálva.
+  - Kézzel nézendő Chrome-ban és Safariban: az „Animációk leállítása” és a „Díszítő háttér kikapcsolása” gomb, a dobozanimációk látványa a letöltött SVG-hez mérten, a kúpos vastag vonal új lüktetése (a hegye is kicsit vastagodik).
+  - A mérőeszközök a `Public/`-ban is hagytak fájlt: `bench-idle.js` (a szerkesztő csak `?bench=` címre tölti be), `bench-anim.svg`, `bench-dot.html` (próbaoldalak); élesben is kiszolgálódnak. Törlésük / áthelyezésük döntésre vár.
+
+- **Megtekintő (megszűnik): ismert eltérések a szerkesztőtől** (2026-11-26)
+  - A megtekintőben az animációk SMIL-esek maradtak (Safariban ~44–48% üresjáratban); a szerkesztő CSS-animációi ott nem működnének, mert a CSP (`style-src 'self'`) az elemenkénti stílust tiltja.
+  - Minden betöltéskor ~122 CSP-hiba („Applying inline style violates…”): a szerver által írt `style` attribútumokat a böngésző eldobja, amit kell, a `viewer.js` állítja be utólag.
+  - A jelenlét-jelzés (`/api/presence`) a már bezárt lapoktól tömegesen 410-es választ naplóz a szerveren.
+
 - **Főoldali .webp előnézetek: nyitott / kézzel nézendő** (2026-11-26)
   - A librsvg a dobozokba ágyazott HTML-t (táblázat, szövegfájl, .md tartalma) nem rajzolja ki: a háttérképen ezek a dobozok üresek. Ha zavaró, a szerver a raszteres változathoz egyszerű helyettesítő vonalakat rajzolhat a szöveg helyére.
   - Élesben (Fedora) a `librsvg2-tools` és `libwebp-tools` csomag kell (az install.sh telepíti); a meglévő szerveren kézzel: `dnf install librsvg2-tools libwebp-tools`, utána szerver-újraindítás. Nélkülük a régi SVG-előnézet megy.

@@ -39,6 +39,8 @@ const tally = name => window.__perf?.count(name);
 const timed = (name, run) => window.__perf ? window.__perf.time(name, run) : run();
 // Teljesítmény-kapcsolók kísérletezéshez (docs/PERF.md): localStorage.tnPerf = '{"overscan":0.5,"moving":"all",…}', majd újratöltés.
 // Alapértékek: a mérések szerint legjobb beállítás; a kapcsolókkal a korábbi viselkedés visszaállítható és összemérhető.
+// Teszt ág: üresjárati mérés Safariban (Public/bench-idle.js, Tests/Perf/safari-idle.py).
+if (new URLSearchParams(location.search).has("bench")) import("./bench-idle.js");
 const perfOptions = {overscan: 1, moving: "gesture", shield: true, rest: true, grid: "draw", layer: "wrapper", coalesce: true, pause: true, sharp: true,
   ...(() => { try { return JSON.parse(localStorage.getItem("tnPerf") || "{}"); } catch { return {}; } })()};
 const {cloneVNode, createApp, computed, getCurrentInstance, h, markRaw, nextTick, onMounted, onUnmounted, onUpdated, reactive, ref, shallowRef, toRaw, watch, watchEffect} = window.Vue;
@@ -373,16 +375,25 @@ function boxEditArea(node) {
   return {x: -width / 2, y: -height / 2, width, height};
 }
 
+// Doboz animációja CSS-ből (app.css „Tartalom-animációk”, 20 lépés/mp); a letölthető SVG ugyanezt SMIL-lel rajzolja
+// (Rendering.swift animatedBox). A téma sebességét (motionSpeed) a szerkesztő nem alkalmazza: a 0,9-es szorzó 55,6 ms-os
+// lépést adott, ami a vonalak 50 ms-os ütemével együtt majdnem kétszer annyi képkockát kért (az időzítés nem prioritás).
 function animateBox(mode, contents) {
-  const motion = Object.hasOwn(boxMotion, mode) ? boxMotion[mode] : null;
-  if (!motion) return contents;
-  const {dur, times, ...tracks} = motion;
-  const timing = {dur: parseFloat(dur) / (graphics.value.motionSpeed ?? 1) + "s", repeatCount: "indefinite", calcMode: "spline", keyTimes: times,
-    keySplines: times.split(";").slice(1).map(() => ".33 0 .67 1").join(";")};
-  const animations = Object.entries(tracks).map(([type, values]) => type === "opacity"
-    ? h("animate", {...timing, attributeName: "opacity", values})
-    : h("animateTransform", {...timing, attributeName: "transform", type, additive: "sum", values}));
-  return [h("g", {class: "node-motion", "data-box-animation": mode}, [...animations, ...contents])];
+  if (!Object.hasOwn(boxMotion, mode)) return contents;
+  queueMotionAlign();
+  return [h("g", {class: "node-motion", "data-box-animation": mode}, contents)];
+}
+// A CSS-animációk lépései (50 ms) a közös idővonal nullpontjához igazítva: így minden animáció ugyanazokban a
+// pillanatokban lép, és másodpercenként legfeljebb 20 képkocka kell, akárhány animáció fut (docs/PERF.md „Üresjárat”).
+let motionAlignQueued = false;
+function queueMotionAlign() {
+  if (motionAlignQueued || typeof requestAnimationFrame !== "function") return;
+  motionAlignQueued = true;
+  requestAnimationFrame(() => {
+    motionAlignQueued = false;
+    for (const animation of document.getAnimations?.() ?? [])
+      if (animation.animationName?.startsWith("tn-") && animation.startTime !== 0) animation.startTime = 0;
+  });
 }
 
 function backgroundMode(node) {
@@ -675,26 +686,26 @@ function wireDrawing(edge, geometry, plug = false) {
 // teljes útja (Rendering.swift wireAnimation párja).
 function animatedWire(edge, paint, from, to, taper, shaftPath, route) {
   if (!edge.animated) return {};
-  const loop = {repeatCount: "indefinite"};
+  // CSS-animáció (app.css „Tartalom-animációk”); a letölthető SVG ugyanezt SMIL-lel rajzolja (Rendering.swift wireAnimation).
+  queueMotionAlign();
   if (edge.appearance === "thick") {
     const pulse = Math.min(maximumLineWidth, paint.lineWidth * 1.45);
-    const values = taper ? [shaftPath, taper.outline(pulse / paint.lineWidth), shaftPath] : [paint.lineWidth, pulse, paint.lineWidth];
-    return {shaft: h("animate", {...loop, attributeName: taper ? "d" : "stroke-width", values: values.join(";"), dur: "3s"})};
+    // Kúpos vastag vonal (kitöltött körvonal): a kitöltés köré rajzolt, azonos színű körvonal vastagodik.
+    return {shaft: taper ? {class: "wire-motion-taper", stroke: paint.color, style: {"--tn-pulse": pulse - paint.lineWidth + "px"}}
+      : {class: "wire-motion-thick", style: {"--tn-pulse": pulse + "px"}}};
   }
   const reverse = paint.startArrow && !paint.endArrow;
   const roundTrip = paint.startArrow && paint.endArrow;
   if (paint.dash) {
     const shift = paint.width * (edge.appearance === "dotted" ? 8 : 6) * (reverse ? 1 : -1);
-    return {shaft: h("animate", {...loop, attributeName: "stroke-dashoffset",
-      values: roundTrip ? "0;" + shift + ";0" : "0;" + shift, dur: roundTrip ? "3.2s" : "1.6s"})};
+    return {shaft: {class: ["wire-motion-dash", {"is-round-trip": roundTrip}], style: {"--tn-shift": shift + "px"}}};
   }
   const dx = to.x - from.x, dy = to.y - from.y;
   if ((dx === 0 && dy === 0) || !route) return {};
-  const seconds = Math.min(12, Math.max(1.5, Math.hypot(dx, dy) / 140)) * (roundTrip ? 2 : 1);
-  // A pálya a kulcsban: Safari a futó animateMotion pályájának változását nem követte (a pötty a régi úton maradt).
-  return {dot: h("circle", {key: "dot:" + route, class: "wire-dot", r: Math.max(3, paint.lineWidth * 1.3), fill: paint.color, stroke: "none", "pointer-events": "none"}, [
-    h("animateMotion", {...loop, path: route, dur: seconds + "s", calcMode: "linear",
-      keyPoints: roundTrip ? "0;1;0" : reverse ? "1;0" : "0;1", keyTimes: roundTrip ? "0;0.5;1" : "0;1"})])};
+  // Egy irány ideje 50 ms-ra kerekítve (20 lépés/mp); két nyílnál oda-vissza (alternate).
+  const seconds = Math.round(Math.min(12, Math.max(1.5, Math.hypot(dx, dy) / 140)) * 20) / 20;
+  return {dot: h("circle", {key: "dot:" + route, class: "wire-dot", r: Math.max(3, paint.lineWidth * 1.3), fill: paint.color, stroke: "none", "pointer-events": "none",
+    style: {offsetPath: "path('" + route + "')", animation: "tn-dot " + seconds + "s steps(" + Math.round(seconds * 20) + ") infinite" + (roundTrip ? " alternate" : reverse ? " reverse" : "")}})};
 }
 
 function setEndpoint(edge, end, endpoint) {
@@ -1032,6 +1043,13 @@ createApp({
       }))).catch(error => { problem.value = error.message; });
     }
     function toggleGrid() { gridVisible.value = !gridVisible.value; savePreferences(); }
+    // „Animációk ki” és „Háttér ki” (vezérlősáv): böngészőnként tárolt megjelenítési beállítás, a munkalapot nem érinti
+    // (app.css data-still / data-plain). Gyengébb gépen vagy akkumulátorról minimális terhelés.
+    const storedFlag = key => { try { return localStorage.getItem(key) === "1"; } catch { return false; } };
+    const storeFlag = (key, on) => { try { if (on) localStorage.setItem(key, "1"); else localStorage.removeItem(key); } catch {} };
+    const motionOff = ref(storedFlag("tnMotionOff")), plainBackground = ref(storedFlag("tnPlainBackground"));
+    function toggleMotion() { motionOff.value = !motionOff.value; storeFlag("tnMotionOff", motionOff.value); }
+    function togglePlainBackground() { plainBackground.value = !plainBackground.value; storeFlag("tnPlainBackground", plainBackground.value); }
     const gridSpacing = computed(() => board.value?.gridSpacing ?? defaultGridSpacing);
     const gridColor = computed(() => automaticGridColor(paint(board.value?.background, 0)));
 
@@ -1787,7 +1805,12 @@ createApp({
           // Görgős nagyítás: a nézet rögzítése (a teljes újrarajzolás, kis nagyításnál 30–130 ms-os képkocka) nem a
           // görgetés minden szünetében történik, hanem csak rövid nyugalom után. Egérgörgőnél így a kattanások egy
           // folyamatos mozdulattá olvadnak össze, nem akad meg minden kattanás után.
-          if (event?.sourceEvent?.type === "wheel" && pendingView) commitTimer = setTimeout(() => commitView(pendingView), wheelCommitDelay);
+          // Egérrel pásztázásnál ugyanígy (perfOptions.panCommit, alapból 400 ms): a felengedés pillanatában nincs teljes
+          // újrarajzolás (Safariban 55–70 ms-os képkocka volt minden pásztázás végén), az egymás utáni húzások között pedig
+          // egyáltalán nincs. Kattintás előtt a flushView azonnal rögzít; a pontkoordináták (world) közben is helyesek.
+          const source = event?.sourceEvent?.type;
+          if (source === "wheel" && pendingView) commitTimer = setTimeout(() => commitView(pendingView), wheelCommitDelay);
+          else if (pendingView && (source === "mouseup" || source === "pointerup")) commitTimer = setTimeout(() => commitView(pendingView), panCommitDelay);
           else commitView(event?.transform ?? pendingView);
           markMoving("zoom", false);
         });
@@ -1843,7 +1866,7 @@ createApp({
     }
     let pendingView = null;
     // A görgős nagyítás halasztott rögzítése (lásd a zoom "end" kezelőjét); kattintás előtt azonnal lefut (flushView).
-    const wheelCommitDelay = Number(perfOptions.wheelCommit ?? 300);
+    const wheelCommitDelay = Number(perfOptions.wheelCommit ?? 300), panCommitDelay = Number(perfOptions.panCommit ?? 400);
     let commitTimer = null;
     function flushView() { if (commitTimer != null && pendingView) commitView(pendingView); }
     function previewView(transform) {
@@ -5308,11 +5331,14 @@ createApp({
 
     function renderArrow(head, color, animated = false) {
       if (!head.visible) return null;
-      // Lüktető nyílnál a hely a kulcsban: Safari a futó animateTransform mellett a transform változását nem rajzolta ki
-      // (a nyíl a régi helyén maradt), ezért helyváltozáskor új elem készül.
-      return h("path", {key: animated ? "arrow:" + head.transform : undefined, class: "wire-arrow", transform: head.transform, stroke: "none", fill: color, "pointer-events": "none", d: "M0 0L-1 -.5V.5Z"},
-        animated ? [h("animateTransform", {attributeName: "transform", type: "scale", additive: "sum",
-          values: "1;1.12;1", dur: "3s", repeatCount: "indefinite"})] : undefined);
+      // Lüktető nyíl (app.css .wire-arrow-pulse): a CSS-transzform a transform attribútumot felülírná, ezért a helyet a
+      // burkoló csoport adja, a nyíl a saját csúcsa körül skálázódik.
+      if (animated) {
+        queueMotionAlign();
+        return h("g", {transform: head.transform, "pointer-events": "none"},
+          [h("path", {class: "wire-arrow wire-arrow-pulse", stroke: "none", fill: color, d: "M0 0L-1 -.5V.5Z"})]);
+      }
+      return h("path", {class: "wire-arrow", transform: head.transform, stroke: "none", fill: color, "pointer-events": "none", d: "M0 0L-1 -.5V.5Z"});
     }
 
     function endpointHandle(edge, end, point) {
@@ -5460,7 +5486,8 @@ createApp({
               ]),
             ]);
           })() : null,
-          h("path", {class: "wire-line", ...stroke, ...(taper ? {fill: shaftColor} : {stroke: shaftColor}), "pointer-events": "visiblePainted", "clip-path": clipPath}, animation.shaft ? [animation.shaft] : undefined),
+          h("path", {...stroke, ...(taper ? {fill: shaftColor} : {stroke: shaftColor}), "pointer-events": "visiblePainted", "clip-path": clipPath,
+            ...animation.shaft, class: ["wire-line", animation.shaft?.class]}),
           // Szabadkézi téma: a vonal második, kissé elcsúsztatott, halványabb húzása (sketch.js sketchShift).
           sketching() ? h("path", {class: "wire-sketch", ...stroke, ...(taper ? {fill: shaftColor, "fill-opacity": .4} : {stroke: shaftColor, "stroke-opacity": .5}),
             transform: "translate(" + sketchShift(sketchSeed(edge.id), sketching().roughness ?? 1.2).join(" ") + ")",
@@ -5749,6 +5776,10 @@ createApp({
           button("", () => { panLocked.value = !panLocked.value; savePreferences(); },
             {symbol: "hand", title: "Vászonmozgatás zárolása", "aria-label": "Vászonmozgatás zárolása", "aria-pressed": panLocked.value}),
           button("", fit, {"aria-label": "Mind", title: "A teljes vászon megjelenítése", symbol: "fit-objects"}),
+          button("", toggleMotion, {title: motionOff.value ? "Animációk bekapcsolása" : "Animációk leállítása (minimális terhelés)",
+            "aria-label": "Animációk leállítása", "aria-pressed": motionOff.value, symbol: "pause"}),
+          button("", togglePlainBackground, {title: plainBackground.value ? "Díszítő háttér bekapcsolása" : "Díszítő háttér kikapcsolása (fények, textúrák)",
+            "aria-label": "Díszítő háttér kikapcsolása", "aria-pressed": plainBackground.value, symbol: "box-background"}),
           button("", () => { if (presenting.value) stopPresentation(); else presentChooser.value = !presentChooser.value; }, {
             class: "button present-tool", symbol: "play", disabled: !online.value || (!!presentation.value && !presenting.value && pageRole !== "admin"),
             title: presenting.value ? "Előadás befejezése" : "Előadás indítása (a többiek a te nézetedet követik)",
@@ -6858,7 +6889,8 @@ createApp({
         : "";
       return [
         h("div", {class: "editor-workspace", "data-glass": graphics.value.glass ? mode.value : undefined,
-          "data-effects": graphics.value.effects, "data-sketch": sketching() ? "" : undefined, style: {
+          "data-effects": graphics.value.effects, "data-sketch": sketching() ? "" : undefined,
+          "data-still": motionOff.value ? "" : undefined, "data-plain": plainBackground.value ? "" : undefined, style: {
           ...(sketching() ? {"--sketch-select": selectionTint()} : {}),
           // A látványcsomag kijelölés- és kiemelésszíne (saját szín, illetve a paletta jelzőszíne).
           ...(liquid() ? {"--fx-select": selectionTint(), "--fx-accent": paint(4, 4)} : {}),
