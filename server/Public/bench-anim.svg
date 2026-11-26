@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="700" height="360" viewBox="0 0 700 360">
+<style>
+@keyframes tnb-pulse { 0% { transform: scale(1) } 50% { transform: scale(1.09) } 100% { transform: scale(1) } }
+@keyframes tnb-dot { to { offset-distance: 100% } }
+@keyframes tnb-dash { to { stroke-dashoffset: -24px } }
+@keyframes tnb-d { 50% { d: path("M 400 300 C 470 230 540 330 640 240 L 644 250 C 540 342 470 246 400 312 Z") } }
+@keyframes tnb-grow { 50% { stroke-width: 6px } }
+@keyframes tnb-arrow { 50% { transform: scale(1.12) } }
+.pulse { animation: tnb-pulse 2.8s steps(56) infinite }
+.dot { offset-path: path("M 60 220 C 160 120 260 320 360 220"); offset-rotate: 0deg; animation: tnb-dot 3s steps(60) infinite }
+.dash { stroke-dasharray: 8 4; animation: tnb-dash 1.6s steps(32) infinite }
+.taper { animation: tnb-d 3s steps(60) infinite }
+.taper2 { stroke-width: 0; animation: tnb-grow 3s steps(60) infinite }
+.arrow { animation: tnb-arrow 3s steps(60) infinite }
+</style>
+<g transform="translate(120 80)"><g class="pulse"><rect x="-60" y="-30" width="120" height="60" rx="12" fill="#1c7dee"/><text text-anchor="middle" y="6" fill="#fff" font-size="16">pulse</text></g></g>
+<path id="route" d="M 60 220 C 160 120 260 320 360 220" fill="none" stroke="#999" stroke-width="2"/>
+<circle class="dot" r="6" fill="#e33"/>
+<path class="dash" d="M 400 60 L 660 60" stroke="#0a938e" stroke-width="4"/>
+<path class="taper" d="M 400 300 C 470 230 540 330 640 240 L 642 246 C 540 336 470 240 400 306 Z" fill="#7f66e9"/>
+<path class="taper2" d="M 400 160 C 470 90 540 190 640 100 L 642 106 C 540 196 470 100 400 166 Z" fill="#ca5b04" stroke="#ca5b04" stroke-linejoin="round"/>
+<g transform="translate(560 220) rotate(30)"><path class="arrow" d="M 0 0 L -16 -8 L -16 8 Z" fill="#333"/></g>
+</svg>

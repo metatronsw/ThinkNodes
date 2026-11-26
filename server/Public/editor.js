@@ -39,6 +39,8 @@ const tally = name => window.__perf?.count(name);
 const timed = (name, run) => window.__perf ? window.__perf.time(name, run) : run();
 // Teljesítmény-kapcsolók kísérletezéshez (docs/PERF.md): localStorage.tnPerf = '{"overscan":0.5,"moving":"all",…}', majd újratöltés.
 // Alapértékek: a mérések szerint legjobb beállítás; a kapcsolókkal a korábbi viselkedés visszaállítható és összemérhető.
+// Teszt ág: üresjárati mérés Safariban (Public/bench-idle.js, Tests/Perf/safari-idle.py).
+if (new URLSearchParams(location.search).has("bench")) import("./bench-idle.js");
 const perfOptions = {overscan: 1, moving: "gesture", shield: true, rest: true, grid: "draw", layer: "wrapper", coalesce: true, pause: true, sharp: true,
   ...(() => { try { return JSON.parse(localStorage.getItem("tnPerf") || "{}"); } catch { return {}; } })()};
 const {cloneVNode, createApp, computed, getCurrentInstance, h, markRaw, nextTick, onMounted, onUnmounted, onUpdated, reactive, ref, shallowRef, toRaw, watch, watchEffect} = window.Vue;

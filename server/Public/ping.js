@@ -1,35 +1,14 @@
 import {avatarSymbol} from "./presence.js";
 
-// Ping hangja: rövid, csengő kéthangú szinuszjel (Web Audio, hangfájl nélkül). A böngésző csak felhasználói művelet
-// után enged hangot, ezért az első kattintás / billentyű létrehozza és elindítja a hangkörnyezetet.
-let audio;
-function unlockAudio() {
-  const Context = globalThis.AudioContext ?? globalThis.webkitAudioContext;
-  if (!Context) return;
-  audio ??= new Context();
-  if (audio.state === "suspended") audio.resume().catch(() => {});
-}
-if (typeof document !== "undefined" && document.addEventListener) {
-  for (const type of ["pointerdown", "keydown"]) document.addEventListener(type, unlockAudio, {capture: true, passive: true});
-}
+// Ping hangja: rövid, csengő kéthangú szinuszjel (Public/ping.wav; a korábbi Web Audio-hanggal azonos paraméterekkel
+// előállítva). Teszt ág: a Web Audio hangkörnyezete (new AudioContext) Chrome-ban 250–290 ms-ig szinkron blokkolta a
+// főszálat (első lenyomás: első kijelölés / pásztázás akadása); a médiaelem lejátszása nem a főszálon indul. A böngésző a
+// lapon egyszer már megtörtént felhasználói művelet után enged hangot; addig a lejátszás csendben elmarad.
+let sound;
 export function playPingSound() {
-  if (!audio || audio.state !== "running") return;
-  const start = audio.currentTime, end = start + .7;
-  const volume = audio.createGain();
-  volume.gain.setValueAtTime(.0001, start);
-  volume.gain.exponentialRampToValueAtTime(.16, start + .012);
-  volume.gain.exponentialRampToValueAtTime(.0001, end);
-  volume.connect(audio.destination);
-  for (const [frequency, level] of [[1318.5, 1], [1975.5, .3], [2637, .12]]) {
-    const tone = audio.createOscillator(), gain = audio.createGain();
-    tone.type = "sine";
-    tone.frequency.setValueAtTime(frequency, start);
-    tone.frequency.exponentialRampToValueAtTime(frequency * .985, end);
-    gain.gain.value = level;
-    tone.connect(gain).connect(volume);
-    tone.start(start);
-    tone.stop(end + .05);
-  }
+  sound ??= new Audio("/ping.wav");
+  sound.currentTime = 0;
+  sound.play().catch(() => {});
 }
 
 // A ping a küldő színével rajzolódik (`color`); szín nélkül a régi narancs.
