@@ -16,12 +16,24 @@ struct Participant: Content {
     let away: Bool
 }
 
+/// Folyamatban lévő előadás (prezentáció mód) a szobában: ki adja elő, milyen módban („invite”: a követők leválhatnak;
+/// „forced”: kötelező követés) és a legutóbbi keret (munkalap-koordinátában: x, y, szélesség, magasság).
+struct PresentationState: Content {
+    let presenter: String
+    let name: String
+    let color: String
+    let avatar: Int?
+    let mode: String
+    let rect: [Double]?
+}
+
 struct LiveState: Content {
     let version: String
     let revision: Int
     let checkpointRevision: Int?
     let checkpointChanged: Bool
     let participants: [Participant]
+    var presentation: PresentationState? = nil
 }
 
 /// Selection, revision checks and writes share one critical section.
@@ -79,7 +91,20 @@ final class Collaboration: @unchecked Sendable {
         var waiter: EventLoopPromise<Void>?
     }
 
+    private struct Presentation {
+        let client: String
+        let mode: String
+        var rect: [Double]?
+
+        func message(from peer: Peer) -> String? {
+            guard let rect else { return nil }
+            struct Frame: Encodable { let present: String; let rect: [Double] }
+            return (try? JSONEncoder().encode(Frame(present: peer.cursorID, rect: rect))).map { String(decoding: $0, as: UTF8.self) }
+        }
+    }
+
     private struct Room {
+        var presentation: Presentation?
         var checkpoint: Worksheet?
         var revision = 0
         var version = UUID().uuidString
@@ -109,6 +134,7 @@ final class Collaboration: @unchecked Sendable {
                 peers.removeValue(forKey: id)
             }
             if !peers.values.contains(where: \.editing) { checkpoint = nil }
+            if let presenter = presentation?.client, peers[presenter] == nil { presentation = nil }
             if !expired.isEmpty { changed() }
         }
 
@@ -142,7 +168,7 @@ final class Collaboration: @unchecked Sendable {
     func presence(_ path: WorksheetPath, user: User?, client: String, action: String, node: String?, edge: String? = nil,
                   since: String?, loop: any EventLoop, editing: Bool = false,
                   revision: Int? = nil, checkpointRevision: Int? = nil, unlocks: Set<String> = [], point: Point? = nil,
-                  away: Bool? = nil) throws -> (LiveState, EventLoopFuture<Void>?) {
+                  away: Bool? = nil, mode: String? = nil) throws -> (LiveState, EventLoopFuture<Void>?) {
         try lock.withLock {
             expireInactiveRooms()
             var board = try store.load(path, user: user, unlocks: unlocks)
@@ -158,6 +184,7 @@ final class Collaboration: @unchecked Sendable {
                 leaving?.socket?.close(promise: nil)
                 leaving?.waiter?.succeed(())
                 if !room.peers.values.contains(where: \.editing) { room.checkpoint = nil }
+                if room.presentation?.client == client { room.presentation = nil }
                 room.changed()
             } else {
                 if action == "checkpoint" || action == "resign" {
@@ -230,6 +257,22 @@ final class Collaboration: @unchecked Sendable {
                         receiver.socket?.send(String(decoding: data, as: UTF8.self))
                     }
                 }
+                // Előadás indítása / befejezése. Egyszerre egy előadó lehet; a futó előadást csak admin veheti át.
+                if action == "present" {
+                    guard let user, let mode, ["invite", "forced"].contains(mode) else { throw Abort(.forbidden) }
+                    if let current = room.presentation, current.client != client, let presenter = room.peers[current.client],
+                       user.role != .admin {
+                        throw Abort(.locked, reason: "\(presenter.name ?? "Vendég") már előad.")
+                    }
+                    room.presentation = Presentation(client: client, mode: mode, rect: room.presentation?.client == client ? room.presentation?.rect : nil)
+                    room.changed()
+                }
+                if action == "unpresent" {
+                    if let current = room.presentation, current.client == client || user?.role == .admin {
+                        room.presentation = nil
+                        room.changed()
+                    }
+                }
                 if action == "select" || action == "view-select" {
                     let viewing = action == "view-select"
                     guard viewing ? user != nil : access.editable else { throw Abort(.forbidden) }
@@ -264,7 +307,7 @@ final class Collaboration: @unchecked Sendable {
             comparable.resetRevision = room.checkpoint?.resetRevision
             comparable.schemaVersion = room.checkpoint?.schemaVersion ?? board.schemaVersion
             let changed = room.checkpoint.map { $0 != comparable } ?? false
-            let state = LiveState(version: room.version, revision: board.revision, checkpointRevision: room.checkpoint?.revision, checkpointChanged: changed, participants: room.peers.sorted { a, b in
+            var state = LiveState(version: room.version, revision: board.revision, checkpointRevision: room.checkpoint?.revision, checkpointChanged: changed, participants: room.peers.sorted { a, b in
                 let adminA = a.value.role == .admin
                 let adminB = b.value.role == .admin
                 if adminA != adminB { return adminA }
@@ -272,6 +315,11 @@ final class Collaboration: @unchecked Sendable {
             }.map {
                 Participant(id: $0.value.cursorID, name: $0.value.name ?? "Vendég", color: $0.value.color, node: $0.value.node, edge: $0.value.edge, avatar: $0.value.avatar ?? ($0.value.name == nil ? nil : 1), mine: $0.key == client, viewing: $0.value.viewing, away: $0.value.away)
             })
+            if let presentation = room.presentation, let presenter = room.peers[presentation.client] {
+                state.presentation = PresentationState(presenter: presenter.cursorID, name: presenter.name ?? "Vendég", color: presenter.color,
+                                                       avatar: presenter.avatar ?? (presenter.name == nil ? nil : 1), mode: presentation.mode,
+                                                       rect: presentation.rect)
+            }
             rooms[path.url] = room.peers.isEmpty ? nil : room
             return (state, wait)
         }
@@ -330,6 +378,10 @@ final class Collaboration: @unchecked Sendable {
                 if let cursor = other.cursor { socket.send(cursor.message) }
                 if let cells = other.cells, other.node == cells.node { socket.send(cells.message) }
             }
+            if let room = rooms[path.url], let presentation = room.presentation, presentation.client != client,
+               let presenter = room.peers[presentation.client], let message = presentation.message(from: presenter) {
+                socket.send(message)
+            }
             return true
         }
         guard attached else { socket.close(promise: nil); return }
@@ -362,6 +414,20 @@ final class Collaboration: @unchecked Sendable {
                     guard let data = try? JSONEncoder().encode(Relay(laser: sender.cursorID, color: sender.color, stroke: frame.stroke,
                                                                      points: frame.points, end: frame.end)) else { return }
                     let message = String(decoding: data, as: UTF8.self)
+                    for (id, other) in room.peers where id != client { other.socket?.send(message) }
+                }
+                return
+            }
+            // Előadás kerete: csak az előadótól; eltárolódik (a később belépők is megkapják) és megy a többieknek.
+            struct Present: Decodable { let present: Bool; let rect: [Double] }
+            if let frame = try? JSONDecoder().decode(Present.self, from: Data(text.utf8)) {
+                guard frame.present, frame.rect.count == 4, frame.rect.allSatisfy({ $0.isFinite && abs($0) <= 1_000_000 }),
+                      frame.rect[2] > 0, frame.rect[3] > 0 else { return }
+                self?.lock.withLock {
+                    guard let room = self?.rooms[path.url], let sender = room.peers[client], sender.socket === socket,
+                          room.presentation?.client == client, sender.seen.duration(to: .now) < .seconds(45) else { return }
+                    self?.rooms[path.url]?.presentation?.rect = frame.rect
+                    guard let message = self?.rooms[path.url]?.presentation?.message(from: sender) else { return }
                     for (id, other) in room.peers where id != client { other.socket?.send(message) }
                 }
                 return

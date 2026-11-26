@@ -70,7 +70,7 @@ export function rebaseWorksheet(base, local, remote) {
   return result;
 }
 
-export function liveConnection(path, csrf, onState, onError, {editing = false, onMotion, onCursor, onCells, onScroll, onLaser, rate = 33} = {}) {
+export function liveConnection(path, csrf, onState, onError, {editing = false, onMotion, onCursor, onCells, onScroll, onLaser, onPresent, rate = 33} = {}) {
   const client = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, "0")).join("");
   const headers = {"Content-Type": "application/json", "X-CSRF-Token": csrf, "X-Worksheet-Client": client};
   let controller;
@@ -114,6 +114,7 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
       const frame = JSON.parse(event.data);
       if (frame.cursor) onCursor?.(frame);
       else if (frame.laser) onLaser?.(frame);
+      else if (frame.present) onPresent?.(frame);
       else if (frame.cells) onCells?.(frame);
       else if (frame.scroll) onScroll?.(frame);
       else onMotion(frame); };
@@ -219,7 +220,12 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
   function laser(frame) {
     if (socket?.readyState === 1) socket.send(JSON.stringify(frame));
   }
-  return {client, start, stop, cursor, cells, scroll, laser, motion, flushMotion, endMotion, ping: target => request("ping", target), snapshot: () => request("poll", {editing, away}),
+  // Előadás: a keret az előadótól a WebSocketen megy (munkalap-koordinátában: [x, y, szélesség, magasság]).
+  function present(rect) {
+    if (socket?.readyState === 1) socket.send(JSON.stringify({present: true, rect}));
+  }
+  return {client, start, stop, cursor, cells, scroll, laser, present,
+    presentStart: mode => request("present", {mode}), presentStop: () => request("unpresent", {}), motion, flushMotion, endMotion, ping: target => request("ping", target), snapshot: () => request("poll", {editing, away}),
     checkpoint: (action, revision, checkpointRevision) => request(action, {revision, checkpointRevision}),
     viewSelect: node => request("view-select", {node}),
     select: (node, edge) => request("select", {node, edge})};

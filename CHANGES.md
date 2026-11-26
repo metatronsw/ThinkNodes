@@ -1,5 +1,14 @@
 # Változások
 
+## 2026-11-26 – Előadás (prezentáció mód)
+
+- Új eszköztár gomb a szerkesztőben (`.present-tool`, „lejátszás” ikon). Indításkor az előadó választ: **felkérés** (aki maga mozgatja / nagyítja a vásznat, leválik; a sávon „Vissza az előadáshoz” és „Leválás” gomb) vagy **kötelező követés** (a követő nem mozgathatja a nézetet).
+- Az előadó egy 16:9-es **keretet** oszt meg: a látható vászonterülete közepén, annak 92%-ában (munkalap-koordinátában). A követők nézete úgy igazodik, hogy a keret kitöltse a saját látható területük 96%-át (a nyitott tulajdonságpanel nélkül), így eltérő képernyőn is nagyjából ugyanaz a tartalom látszik. A keret szaggatott vonallal, az előadó színével mindenkinél látszik (útmutató; a tartalom kilóghat).
+- Sáv a vászon tetején: az előadónál a mód és a „Befejezés”, a követőnél ki ad elő (avatar, név a saját színével), a mód, ha az előadó nem aktív, és a leválás / visszatérés. Admin a futó előadást befejezheti és átveheti.
+- Szerver: egyszerre egy előadó szobánként (`present` / `unpresent` művelet, mód: `invite` / `forced`); nem admin nem veheti át (423, „X már előad.”); az előadó távozásával vagy lejártával véget ér. A keret a WebSocketen megy (`{present, rect}`), a szoba megjegyzi, így a később belépő azonnal követ (`LiveState.presentation`).
+- A követés a görgős nagyításhoz hasonló úton megy (mozdulat közben csak a CSS-réteg mozog, nyugalomban rajzol újra), így a folyamatos követés nem rajzolja újra a lapot minden lépésnél.
+- Teszt: új `presentationOwnership` (Swift). Két valódi böngészővel ellenőrizve (Chromium ad elő, Safari követ): a keret a követőnél középen kitölti a területet, követi az előadó pásztázását; felkérésnél a saját húzás leválaszt, a „Vissza” visszaállít; kötelező módban a húzás nem mozdít; befejezéskor a sáv eltűnik. Verziók: `editor.js?v=92`, `app.css?v=59`. Szerverkód változott: a helyi tesztszerver (8888) újraindítva.
+
 ## 2026-11-26 – Lézer pointer
 
 - Új eszköztár gomb (`.laser-tool`, a szerkesztőben és a megtekintőben a tagoknak): bekapcsolva az egérrel húzott vonal a saját színeddel látszik mindenkinél, és kb. 1,2 mp alatt elhalványul (a vonal vége folyamatosan fogy, „csóva”). Fénylő szél + fehér közép, a nagyítástól független vastagság. Nem mentődik.

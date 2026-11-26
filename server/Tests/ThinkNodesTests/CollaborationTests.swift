@@ -249,3 +249,32 @@ import VaporTesting
     let back = try live.presence(path, user: cili, client: cili.name, action: "status", node: nil, since: nil, loop: loop, away: false).0
     #expect(back.participants.first { $0.name == "cili" }?.away == false)
 }
+
+// Előadás: egyszerre egy előadó; nem admin nem veheti át, admin igen; az előadó távozásával véget ér.
+@Test func presentationOwnership() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-present-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    let live = Collaboration(store: store)
+    let path = try WorksheetPath(["main", "eloadas"])
+    let anna = User(name: "anna", role: .editor, passwordHash: ""), bela = User(name: "bela", role: .editor, passwordHash: "")
+    let admin = User(name: "admin", role: .admin, passwordHash: "")
+    _ = try store.open(path, user: admin)
+    _ = try store.manage(WorksheetPath(["main"]), operation: DocumentAction(scope: "project", action: "mode", value: "public"), user: admin, unlocks: [])
+    let loop = MultiThreadedEventLoopGroup.singleton.next()
+    func act(_ user: User, _ action: String, mode: String? = nil) throws -> LiveState {
+        try live.presence(path, user: user, client: user.name, action: action, node: nil, since: nil, loop: loop, mode: mode).0
+    }
+    _ = try act(bela, "poll")
+    #expect(throws: Abort.self) { try act(anna, "present", mode: "slides") }
+    let started = try act(anna, "present", mode: "forced")
+    let annaID = try #require(started.participants.first { $0.name == "anna" }?.id)
+    #expect(started.presentation?.presenter == annaID && started.presentation?.mode == "forced" && started.presentation?.name == "anna")
+    #expect(throws: Abort.self) { try act(bela, "present", mode: "invite") }
+    _ = try act(bela, "unpresent")
+    #expect(try act(bela, "poll").presentation?.presenter == annaID)
+    let takeover = try act(admin, "present", mode: "invite")
+    #expect(takeover.presentation?.name == "admin" && takeover.presentation?.mode == "invite")
+    _ = try act(admin, "leave")
+    #expect(try act(bela, "poll").presentation == nil)
+}

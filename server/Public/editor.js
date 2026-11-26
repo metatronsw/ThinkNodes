@@ -31,7 +31,7 @@ import {attachScrollbars, detachScrollbars} from "./scrollbar-drag.js";
 import {highlightHTML, supportsHighlight} from "./highlight/index.js";
 
 const mount = document.querySelector("#editor");
-const {path, csrf, user, motionRate} = mount.dataset;
+const {path, csrf, user, motionRate, role: pageRole} = mount.dataset;
 const d3 = window.d3;
 // Mérés (Tests/Perf): a mérőszkript által betöltött rögzítő számolja, melyik komponens hányszor rajzolódott újra.
 const tally = name => window.__perf?.count(name);
@@ -1046,6 +1046,127 @@ createApp({
     function pingBounds() {
       return visibleBounds(canvas.value?.closest?.(".canvas-area") ?? canvas.value, [...document.querySelectorAll(".inspector-column > *")]);
     }
+    // --- Előadás (prezentáció mód) ---
+    // Az előadó egy 16:9-es keretet oszt meg (a látható vászonterület közepén, 92%-os méretben, munkalap-koordinátában);
+    // a követők nézete úgy igazodik, hogy ez a keret kitöltse a saját látható területüket. Így eltérő képernyőn is
+    // nagyjából ugyanaz a tartalom látszik; a keret szaggatott vonallal mindenkinél látszik (útmutató, a tartalom kilóghat).
+    // Mód (az előadó választja): „invite” – aki maga mozgatja a vásznat, leválik, és visszatérhet; „forced” – a követő
+    // nem mozgathatja a nézetet.
+    const presentation = shallowRef(null);   // {presenter, name, color, avatar, mode, rect} a szerverről
+    const presentRect = shallowRef(null);    // az előadó legutóbbi kerete: [x, y, szélesség, magasság]
+    const following = ref(true);
+    const presentChooser = ref(false);
+    const presenting = computed(() => !!presentation.value && presentation.value.presenter === peers.value.find(p => p.mine)?.id);
+    const forcedFollow = () => !!presentation.value && !presenting.value && presentation.value.mode === "forced";
+    function receivePresentation(next) {
+      const previous = presentation.value;
+      if (JSON.stringify(previous ?? null) === JSON.stringify(next ?? null)) return;
+      presentation.value = next ?? null;
+      if (!next) { presentRect.value = null; return; }
+      if (previous?.presenter !== next.presenter || previous?.mode !== next.mode) following.value = true;
+      if (presenting.value) sendPresentRect();
+      else if (next.rect && JSON.stringify(next.rect) !== JSON.stringify(presentRect.value)) {
+        presentRect.value = next.rect;
+        applyFollow();
+      }
+    }
+    function receivePresentFrame(frame) {
+      if (!frame || frame.present !== presentation.value?.presenter || presenting.value) return;
+      presentRect.value = frame.rect;
+      applyFollow();
+    }
+    // Képernyőpont ↔ munkalap-pont a nézet transzformációjából (a d3 koordinátái a vászonterülethez képest értendők).
+    function viewWorld(screenX, screenY, transform = view.value) {
+      const area = zoomHost()?.getBoundingClientRect(), [cx, cy] = center();
+      if (!area) return null;
+      return {x: (screenX - area.left - transform.x) / transform.k - cx, y: (screenY - area.top - transform.y) / transform.k - cy};
+    }
+    function presenterRect(transform = view.value) {
+      const b = pingBounds();
+      if (!b || !b.width || !b.height) return null;
+      let w = b.width * .92, h = w * 9 / 16;
+      if (h > b.height * .92) { h = b.height * .92; w = h * 16 / 9; }
+      const left = b.left + (b.width - w) / 2, top = b.top + (b.height - h) / 2;
+      const p0 = viewWorld(left, top, transform), p1 = viewWorld(left + w, top + h, transform);
+      if (!p0 || !p1) return null;
+      return [p0.x, p0.y, p1.x - p0.x, p1.y - p0.y].map(value => Math.round(value * 10) / 10);
+    }
+    let presentTimer = null, presentLatest = null;
+    function sendPresentRect(transform) {
+      if (!presenting.value) return;
+      presentLatest = transform ?? view.value;
+      if (presentTimer) return;
+      presentTimer = setTimeout(() => {
+        presentTimer = null;
+        const rect = presenterRect(presentLatest);
+        if (rect) live.present(rect);
+      }, 80);
+    }
+    // A követő nézete: a keret kitölti a látható területet. A nézetváltás a görgős nagyításhoz hasonlóan megy (mozdulat
+    // közben csak a CSS-réteg mozog, nyugalomban rajzol újra), így a folyamatos követés nem rajzolja újra a lapot minden lépésnél.
+    function applyFollow() {
+      const rect = presentRect.value;
+      if (!rect || presenting.value || !following.value || !zoom) return;
+      const bounds = pingBounds(), area = zoomHost()?.getBoundingClientRect();
+      if (!bounds || !area || !bounds.width || !bounds.height) return;
+      const [x, y, w, h] = rect, [cx, cy] = center();
+      // 96%: a keret szaggatott vonala a látható területen belül maradjon.
+      const k = limit(Math.min(bounds.width / w, bounds.height / h) * .96, 0.0005, maxScale);
+      const tx = bounds.left + bounds.width / 2 - area.left, ty = bounds.top + bounds.height / 2 - area.top;
+      d3.select(zoomHost()).call(zoom.transform, d3.zoomIdentity.translate(tx - k * (x + w / 2 + cx), ty - k * (y + h / 2 + cy)).scale(k),
+        null, {type: "wheel", presentation: true});
+    }
+    async function startPresentation(mode) {
+      presentChooser.value = false;
+      try { receivePresentation((await live.presentStart(mode)).presentation); }
+      catch (error) { problem.value = error.message; }
+    }
+    async function stopPresentation() {
+      try { receivePresentation((await live.presentStop()).presentation); }
+      catch (error) { problem.value = error.message; }
+    }
+    function returnToPresentation() { following.value = true; applyFollow(); }
+    // A keret a vásznon (munkalap-koordinátában, a nagyítástól független vonalvastagsággal).
+    function presentationFrame() {
+      if (!presentation.value) return null;
+      const rect = presenting.value ? presenterRect() : presentRect.value;
+      if (!rect) return null;
+      const [x, y, width, height] = rect;
+      return h("rect", {class: "presentation-frame", x, y, width, height, fill: "none", stroke: presentation.value.color || "#3e63dd",
+        "stroke-width": 2, "stroke-dasharray": "10 7", "vector-effect": "non-scaling-stroke", "pointer-events": "none", "data-editor-only": ""});
+    }
+    // Sáv a vászon tetején: az előadónál a mód és a befejezés, a követőnél ki ad elő, és a leválás / visszatérés.
+    function presentationBar() {
+      const chooser = presentChooser.value && !presenting.value ? h("div", {class: "presentation-chooser panel", role: "dialog",
+        "aria-label": "Előadás indítása", onPointerdown: event => event.stopPropagation()}, [
+        h("strong", null, "Előadás indítása"),
+        h("p", {class: "muted"}, "A többiek a te nézetedet követik; a szaggatott keret mutatja, mi látszik náluk biztosan."),
+        button("Felkérés – a többiek leválhatnak", () => startPresentation("invite"), {symbol: "play"}),
+        button("Kötelező követés", () => startPresentation("forced"), {symbol: "lock"}),
+        button("Mégse", () => { presentChooser.value = false; }, {symbol: "close"}),
+      ]) : null;
+      const p = presentation.value;
+      if (!p) return chooser;
+      if (chooser) return chooser;
+      const presenterPeer = peers.value.find(peer => peer.id === p.presenter);
+      const mode = p.mode === "forced" ? "kötelező követés" : "felkérés";
+      const parts = presenting.value ? [
+        h("span", {class: "presentation-label"}, "Előadás · " + mode),
+        button("Befejezés", stopPresentation, {symbol: "close"}),
+      ] : [
+        p.avatar ? h("svg", {class: "peer-avatar", viewBox: "0 0 24 24", fill: p.color || "currentColor", "aria-hidden": "true"},
+          [h("use", {href: "/icons/avatar-" + p.avatar + ".svg#a"})]) : null,
+        h("span", {class: "presentation-label", style: p.color ? {color: p.color} : undefined}, p.name),
+        h("span", null, " előad · " + mode + (presenterPeer?.away ? " · nem aktív" : "")),
+        p.mode === "forced" ? null : following.value
+          ? button("Leválás", () => { following.value = false; }, {symbol: "unlink"})
+          : button("Vissza az előadáshoz", returnToPresentation, {symbol: "play"}),
+        pageRole === "admin" ? button("Befejezés", stopPresentation, {symbol: "close", title: "Az előadás befejezése (admin)"}) : null,
+      ];
+      return h("div", {class: "presentation-bar", "data-following": !presenting.value && following.value ? "" : undefined,
+        onPointerdown: event => event.stopPropagation()}, parts);
+    }
+    watch(size, () => { if (presenting.value) sendPresentRect(); else applyFollow(); });
     // A pingelő neve felvillan a jelenlévők között: a számláló a gomb kulcsában van, így minden ping újraindítja az animációt.
     const pingFlashes = shallowRef(new Map());
     function flashParticipant(id) {
@@ -1072,6 +1193,7 @@ createApp({
       online.value = true;
       receiveCheckpoint(state);
       peers.value = state.participants;
+      receivePresentation(state.presentation);
       if (state.revision > baseline.revision) await enqueue(async () => {
         if (state.revision > baseline.revision) await refresh();
       });
@@ -1093,7 +1215,7 @@ createApp({
       if (gesture.value) finishPointer({pointerId: gesture.value.pointer}, true);
       if (inspector.value?.kind === "node") inspectNothing();
       problem.value = error.message;
-    }, {editing: true, onCursor: mouse?.receive, onLaser: laser.receive, onMotion: receiveMotion, onCells: receiveCells, onScroll: receiveScroll, rate: Number(motionRate) || 33});
+    }, {editing: true, onCursor: mouse?.receive, onLaser: laser.receive, onPresent: receivePresentFrame, onMotion: receiveMotion, onCells: receiveCells, onScroll: receiveScroll, rate: Number(motionRate) || 33});
 
     // Mentés ütemezése. Mezőszerkesztés (gépelés) közben a mentés a szünetre vár (0,5 mp), de legfeljebb 2 mp-et,
     // így nem megy ki minden leütés után a teljes munkalap; egyébként (húzás, gomb) 70 ms után ment. docs/PLAN.md C5.
@@ -1428,14 +1550,23 @@ createApp({
           zoom.scaleExtent([Math.min(minScale(), (pendingView ?? view.value).k), maxScale]);
           // A vezérlők és jelenlévők (a vászon szülőjének többi gyereke) fölötti események nem nagyítanak/pásztáznak.
           if (canvas.value?.contains && event.target && !canvas.value.contains(event.target)) return false;
+          // Kötelező követésnél (előadás) a nézetet csak az előadó mozgatja.
+          if (forcedFollow()) return false;
           if (event.type === "wheel") return !gesture.value && !scrollsSelectedText(event);
           if (event.type === "touchstart") return false;
           if (spacePan.value) return !event.button && !gesture.value;
           return !panLocked.value && !event.button && !event.altKey && !event.ctrlKey && !reconnect.value && !gesture.value
             && !event.target.closest("[data-node], [data-edge]");
         })
-        .on("start", event => { menu.value = null; if (event.sourceEvent) lastClick = null; markMoving("zoom", true); })
+        .on("start", event => {
+          menu.value = null;
+          if (event.sourceEvent) lastClick = null;
+          // Előadás követése közben a saját mozdulat leválaszt (kötelező követésnél ide sem jut el).
+          if (event.sourceEvent && !event.sourceEvent.presentation && presentation.value && !presenting.value) following.value = false;
+          markMoving("zoom", true);
+        })
         .on("zoom", event => {
+          if (presenting.value) sendPresentRect(event.transform);
           showZoomLevel(event.transform.k);
           const type = event.sourceEvent?.type;
           if (type === "mousemove" || type === "pointermove" || type === "touchmove") panning.value = true;
@@ -4941,6 +5072,7 @@ createApp({
             gesture.value?.type === "rectangle" ? h("rect", {class: "marquee", ...rectangle(gesture.value.initial,gesture.value.point),
               "stroke-dasharray": rectangleTouches(gesture.value) ? "6 4" : undefined,
               fill: "#4168e922", stroke: "#4168e9", "vector-effect": "non-scaling-stroke", "pointer-events": "none"}) : null,
+            presentationFrame(),
             mouse ? h("g", {class: "peer-cursors", "data-mouse-layer": ""}) : null,
           ]);
       },
@@ -5065,6 +5197,7 @@ createApp({
         // nyugalomban nem kap egéreseményt, húzáskor csak a saját stílusa változik.
         perfOptions.shield ? h(DragShield) : null,
         // A létrehozó neve nem jelenik meg a vásznon (a megtekintő cím sorában látszik); itt csak a jelenlévők.
+        presentationBar(),
         h("div", {class: "canvas-people"}, [
           h("div", {class: "participants", "aria-label": "Jelenlévők"},
             !online.value && problem.value ? h("span", {class: "connection-lost", role: "status"}, "Kapcsolat megszakadt") : peers.value.map((p, index) =>
@@ -5088,6 +5221,10 @@ createApp({
           button("", () => { panLocked.value = !panLocked.value; savePreferences(); },
             {symbol: "hand", title: "Vászonmozgatás zárolása", "aria-label": "Vászonmozgatás zárolása", "aria-pressed": panLocked.value}),
           button("", fit, {"aria-label": "Mind", title: "A teljes vászon megjelenítése", symbol: "fit-objects"}),
+          button("", () => { if (presenting.value) stopPresentation(); else presentChooser.value = !presentChooser.value; }, {
+            class: "button present-tool", symbol: "play", disabled: !online.value || (!!presentation.value && !presenting.value && pageRole !== "admin"),
+            title: presenting.value ? "Előadás befejezése" : "Előadás indítása (a többiek a te nézetedet követik)",
+            "aria-label": "Előadás", "aria-pressed": presenting.value}),
           button("", () => transfer(async () => {
             if (document.fullscreenElement) await document.exitFullscreen();
             else await document.documentElement.requestFullscreen();

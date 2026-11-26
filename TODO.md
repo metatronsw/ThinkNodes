@@ -112,7 +112,7 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 
 Kitalálandó, ötletek (2026-11-26):
 
-**Fókusz kérése / prezentáció mód**
+**Fókusz kérése / prezentáció mód** — kész (2026-11-26, az előadó választja a módot; lásd CHANGES.md). Hátra: a megtekintő oldalon (nincs nagyítás) nincs követés; a keret aránya most rögzített 16:9 (választható arány később).
 - Az előadó egy *keretet* oszt meg: a vászon egy téglalapját (világkoordinátában), alapból a saját látható területét, vagy rögzített 16:9 / 4:3 arányt. Minden követő kliens maga számolja a nagyítást (`k = min(saját szélesség / keret szélessége, saját magasság / keret magassága)`) és középre teszi a keretet, így eltérő képernyőn is ugyanaz a tartalom látszik; az eltérő képarány csak a keret körüli sávot változtatja.
 - A keret vékony (az előadó színű, szaggatott) vonalként látszik mindenkinél, útmutatásként; a tartalom kilóghat belőle.
 - Átvitel: a meglévő WebSocketen, mint a kurzor (`{present: {rect}}`, legfeljebb ~10/mp, a köztes állapotokat a kliens 150–200 ms-os áttűnéssel simítja). A szoba megjegyzi az utolsó keretet, így a később belépő is azonnal követ.

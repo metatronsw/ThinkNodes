@@ -604,13 +604,14 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
             let revision: Int?
             let checkpointRevision: Int?
             let away: Bool?
+            let mode: String?
         }
         let path = try WorksheetPath(req.parameters.getCatchall())
         let sessions = req.application.sessions
         guard let cookie = req.cookies[sessions.configuration.cookieName],
               let token = req.headers.first(name: "X-CSRF-Token") else { throw Abort(.forbidden) }
         let form = try req.content.decode(Form.self)
-        guard ["poll", "select", "view-select", "leave", "checkpoint", "resign", "ping", "status"].contains(form.action),
+        guard ["poll", "select", "view-select", "leave", "checkpoint", "resign", "ping", "status", "present", "unpresent"].contains(form.action),
               let client = req.headers.first(name: "X-Worksheet-Client"),
               client.count == 32, validSlug(client) else { throw Abort(.badRequest) }
         @Sendable func state(_ action: String, since: String?) async throws -> (LiveState, EventLoopFuture<Void>?) {
@@ -624,7 +625,7 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
                 return try live.presence(path, user: user, client: client, action: action,
                                   node: form.node, edge: form.edge, since: since, loop: req.eventLoop, editing: form.editing == true,
                                   revision: form.revision, checkpointRevision: form.checkpointRevision, unlocks: documentUnlocks(data), point: form.point,
-                                  away: action == "snapshot" ? nil : form.away)
+                                  away: action == "snapshot" ? nil : form.away, mode: form.mode)
             }
         }
         var (snapshot, wait) = try await state(form.action, since: form.since)
