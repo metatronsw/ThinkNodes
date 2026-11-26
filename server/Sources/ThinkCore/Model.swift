@@ -14,7 +14,7 @@ package struct Point: Codable, Equatable, Sendable {
     }
 }
 
-private func automaticBorder(_ fill: String) -> String {
+func automaticBorder(_ fill: String) -> String {
     guard let rgb = Int(fill.dropFirst(), radix: 16) else { return "#526982" }
     // Kézi hex-írás: a String(format:) dobozonként, sokszor hívva drága volt.
     let digits = Array("0123456789abcdef")
@@ -247,7 +247,7 @@ package struct Idea: Codable, Equatable, Sendable {
     var resolvedBackgroundMode: BoxBackgroundMode { backgroundMode ?? .solid }
     var animation: BoxAnimation?
     @StoredPaint var textColor = "#182335"
-    var border: String { automaticBorder(fill) }
+    var border: String { surfaceBorder ?? automaticBorder(fill) }
     var fitText: Bool?
     var fontSize: Double = 16
     var bold: Bool?
@@ -286,6 +286,9 @@ package struct Idea: Codable, Equatable, Sendable {
     var paperInk: String? = nil
     /// Kiemelt szabadkézi doboz alapszíne (a tábla színe); nem tárolt mező, a renderWorksheetCanvas tölti ki.
     var sketchBase: String? = nil
+    /// Vászonszínű felület textúrás vásznon: a keret színe a vászonszínből (a kitöltés ilyenkor mintára mutat);
+    /// nem tárolt mező, a renderWorksheetCanvas tölti ki.
+    var surfaceBorder: String? = nil
     /// Görgethető tartalom (szövegfájl, CSV, táblázat) mentett görgetési helyzete képpontban: minden résztvevő és a
     /// megtekintő is ezt látja. Az állítja, aki a dobozt kijelölve görget.
     package var scroll: Point?

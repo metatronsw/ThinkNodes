@@ -68,6 +68,14 @@ import VaporTesting
     themed.appearance = Appearance()
     themed.background = "#123456"
     #expect(boardSVG(themed).contains(##"class="node-surface" fill="#123456""##))
+    // Textúrás vásznon (Liquid Glass) a felület a vászon háttere a textúrával együtt: a doboz helyéhez igazított minta.
+    var liquid = themed
+    liquid.appearance = Appearance(theme: 4, palette: 1)
+    let glass = boardSVG(liquid)
+    #expect(glass.contains(##"<clipPath id="canvas-clip-box">"##))
+    #expect(glass.contains(##"<use href="#canvas-art" transform="translate(-0.000 -0.000)"/>"##) || glass.contains(##"<use href="#canvas-art" transform="translate(0.000 0.000)"/>"##))
+    #expect(glass.contains(##"class="node-surface" fill="none""##))
+    #expect(glass.contains(##"<g id="canvas-art"><rect"##) && glass.contains("fx-aurora"))
     // Közvetlen (#hex) szín: változatlanul megmarad és úgy rajzolódik.
     themed.nodes[0].fill = "#a1b2c3"
     #expect(boardSVG(themed).contains(##"fill="#a1b2c3""##))

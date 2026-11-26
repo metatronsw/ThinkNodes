@@ -5,9 +5,8 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 ## Nyitott
 
 - **Igazítás, sarokfogó, vászonszín, színválasztó, .md szerkesztő: nyitott és kézzel nézendő tételek** (2026-11-26)
-  - Textúrás vásznon (Liquid Glass, WhiteBoard) a vászonszínű doboz valóban átlátszó: a rács és a saját árnyéka nem látszik benne, de az alatta álló dobozok és vonalak átlátszanak. Ha ezeket is takarnia kell, a vászon textúráját kellene a dobozba másolni (a Liquid Glass fényfoltjai a szerkesztőben mozognak, ezért ez nem egyszerű). Döntés kell.
-  - A megtekintő oldal és az SVG-export a vászonszínű dobozt textúrás vásznon is átlátszatlan vászonszínnel rajzolja (a szerkesztőben átlátszó).
-  - Csoportos húzás közben a rács kivágása a húzás eltolásával követi a dobozt; a pásztázás / nagyítás közbeni követés és sok vászonszínű doboz költsége Safariban nincs mérve.
+  - Vászonszínű doboz textúrás vásznon: az alatta álló elemek maszkolással takarva (2026-11-26, felhasználói döntés). Nincs mérve Safariban: sok vászonszínű doboz / sok átfedő elem költsége (maszkos csoportok), a fájldoboz (foreignObject) maszk alatt. A takarás a doboz alakját követi, a WhiteBoard szabadkézi körvonalát nem (a szabályos alak). Vászonszínű fájl- és grafikondoboz textúrás vásznon a vászon színét kapja (nem a textúrát).
+  - Csoportos húzás közben a rács kivágása és a takarás a húzás eltolásával követi a dobozt; a pásztázás / nagyítás közbeni követés Safariban szemmel nézendő.
   - A .md szerkesztőben a címsor nyersen, alapméretben látszik (megjelenítéskor nagyobb), ezért a címsor alatti sorok szerkesztésbe lépve a címsor magasságkülönbségével feljebb kerülnek; a sorok közti távolság egyezik. Kézzel nézendő: holt billentyűs ékezet a nyilak után, nagyított vászon, füzetlapos (WhiteBoard) .md doboz.
   - Kézzel nézendő: a sarokfogó érintéssel, ellipszis / rombusz alakú dobozon (a fogó a befoglaló téglalap sarkán áll), a rendszer színválasztójának élő húzása (minden mozdulat ment), a színválasztó a tulajdonságpanelen (ott a lista még eltolja a gombokat).
   - A próbaprojekt (`projects/proba-igazitas`, a próba Liquid Glass témára állította) és a teszthez a scratchpadban létrehozott git worktree (`git worktree list`) törlése engedélyre vár.

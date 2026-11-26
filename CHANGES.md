@@ -1,5 +1,12 @@
 # Változások
 
+## 2026-11-26 – Vászonszínű doboz textúrás vásznon: az alatta lévő elemeket is takarja
+
+- A felhasználó döntése alapján: textúrás vásznon (Liquid Glass, WhiteBoard) a vászonszínű doboz nem valódi átlátszóság, hanem „ablak a vászonra”: a vászon textúrája látszik benne, a rács, a saját árnyéka és az alatta álló dobozok, vonalak, árnyékok nem.
+- Szerkesztő: ami a rajzolási sorrendben a vászonszínű doboz alatt áll és átfedi (doboz az árnyékával, vonal), az maszkos csoportba kerül, a maszkban a doboz alakja kivágva (`underMasks`, `UnderMasks`). Így a valódi, mozgó Liquid Glass fényfoltok látszanak; a doboz gyermekei (a tartalma) fölötte vannak, azok látszanak. A maszkok helye külön komponensben frissül, a jelenet csak akkor rajzolódik újra, ha a takart elemek köre változik. A Liquid Glass árnyéka a vászonszínű dobozon álló (osztály nélkül), mert Safari a CSS-transzformos árnyékon a maszkot nem alkalmazta.
+- Megtekintő és SVG-export: a doboz felülete a vászon hátterének (szín + fényfoltok / maszat, `canvas-art`) a doboz alakjára vágott másolata (`canvasCopy`); így eleve takarja a rácsot, az alatta lévőt és a saját árnyékát. (Mintázattal – `pattern` – Safari a nagy csempét hibásan rajzolta, ezért vágott másolat.)
+- Teszt: `paletteColorZeroIsTheCanvasSurface` bővítve (Liquid Glass: vágott másolat). Swift- és JS-tesztek átmennek. Safariban ellenőrizve a szerkesztőben (Liquid Glass és WhiteBoard: az alatta álló doboz takarva, a textúra egyezik) és a megtekintőben. Verzió: `editor.js?v=97`. Szerverkód változott: a helyi tesztszerver (8888) újraindítva.
+
 ## 2026-11-26 – Igazítás, elosztás, sarokfogó, rácsra illesztés a sarokkal, vászonszín a paletta 0. színeként, #hex színválasztó, .md szerkesztő
 
 - **Igazítás (csak több kijelölt doboznál):** a gyors eszközök (jobb kattintás a kijelölésen) új „Dobozok igazítása” csoportja kinyitva 6 gombot ad: bal szél / függőleges közép / jobb szél egy vonalba (oszlop), felső szél / vízszintes közép / alsó szél egy vonalba (sor). A mérce a kijelölés befoglaló téglalapja; a dobozok a tartalmukkal együtt mozognak, a konténerbe tartozás nem változik (`editor.js arrangeBoxes`).

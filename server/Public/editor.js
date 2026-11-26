@@ -411,7 +411,9 @@ function shadowMask(node, shadow) {
       h("rect", {x: -w / 2 - reach, y: -hgt / 2 - reach, width: w + 2 * reach, height: hgt + 2 * reach, fill: "#fff"}),
       h(hole[0], {...hole[1], fill: "#000"}),
     ]),
-    h("g", {mask: "url(#" + id + ")"}, [shadow]),
+    // A Liquid Glass árnyékának CSS-transzformja (rámutatáskor nő) mellett Safari a szülő maszkját nem alkalmazza:
+    // itt az árnyék álló (osztály nélkül, az app.css átlátszatlanságával).
+    h("g", {mask: "url(#" + id + ")"}, [shadow.props?.class === "fx-shadow" ? h(shadow.type, {...shadow.props, class: "fx-shadow-still", opacity: .85}) : shadow]),
   ]);
 }
 
@@ -1915,18 +1917,66 @@ createApp({
     // közepéhez képest) SVG-útvonalként; a húzott csoport a húzás eltolásával.
     const noHoles = [];
     const gridHoles = computed(() => {
-      const nodes = board.value && texturedCanvas() ? board.value.nodes.filter(seeThrough) : [];
+      const nodes = board.value && texturedCanvas() ? orderedNodes.value.map((node, index) => [node, index]).filter(([node]) => seeThrough(node)) : [];
       if (!nodes.length) return noHoles;
       const drag = gesture.value, delta = drag?.type === "batch" && drag.delta ? drag.delta : null;
-      return nodes.map(node => {
+      return nodes.map(([node, index]) => {
         const [tag, a] = sketchedBox(node) ? ["path", {d: boxSketch(node).fill}] : boxShapeGeometry(node);
         const d = tag === "path" ? a.d : tag === "polygon" ? "M" + a.points + "Z"
           : tag === "ellipse" ? `M${-a.rx} 0A${a.rx} ${a.ry} 0 1 0 ${a.rx} 0A${a.rx} ${a.ry} 0 1 0 ${-a.rx} 0Z`
           : roundedRectPath(a.x, a.y, a.width, a.height, Math.min(a.rx ?? 0, a.width / 2, a.height / 2));
         const shift = delta && drag.members?.has(node.id) ? delta : {x: 0, y: 0};
-        return {x: node.position.x + shift.x, y: node.position.y + shift.y, d};
+        return {id: node.id, index, x: node.position.x + shift.x, y: node.position.y + shift.y, width: node.width, height: node.height, d};
       });
     });
+    // Ami egy átlátszó vászonszínű doboz alatt van (a rajzolási sorrendben előtte), és átfedi, az a doboz alakjában ki
+    // van takarva (maszk): a dobozon át a vászon valódi (mozgó) textúrája látszik, az alatta álló doboz, vonal, árnyék
+    // nem. A doboz tartalma (a gyermekei) fölötte van, az látszik. Eredmény: elem kulcsa → a takaró dobozok azonosítói;
+    // ha a halmaz nem változik, ugyanaz az objektum (a jelenet így mozgatáskor nem rajzolódik újra, csak a maszkok).
+    const noMasks = new Map();
+    let lastMasks = noMasks, lastMaskKey = "";
+    const underMasks = computed(() => {
+      const holes = gridHoles.value;
+      if (!holes.length) { lastMasks = noMasks; lastMaskKey = ""; return noMasks; }
+      const result = new Map(), drag = gesture.value, delta = drag?.type === "batch" && drag.delta ? drag.delta : null;
+      const area = (hole, pad) => ({x: hole.x - hole.width / 2 - pad, y: hole.y - hole.height / 2 - pad, width: hole.width + 2 * pad, height: hole.height + 2 * pad});
+      const overlaps = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+      orderedNodes.value.forEach((node, index) => {
+        const above = holes.filter(hole => hole.index > index);
+        if (!above.length) return;
+        const shift = delta && drag.members?.has(node.id) ? delta : {x: 0, y: 0};
+        // Az árnyék a doboz alatt-mellett túlnyúlik: bő ráhagyás.
+        const own = area({x: node.position.x + shift.x, y: node.position.y + shift.y, width: node.width, height: node.height}, 48);
+        const ids = above.filter(hole => overlaps(own, area(hole, 0))).map(hole => hole.id);
+        if (ids.length) result.set(node.id, ids);
+      });
+      wireLayers.value.forEach((edges, layer) => {
+        const above = holes.filter(hole => hole.index >= layer);
+        if (above.length) for (const edge of edges) {
+          const geometry = wireGeometry(edge);
+          const ids = above.filter(hole => edgeInRectangle(geometry, area(hole, 8), true)).map(hole => hole.id);
+          if (ids.length) result.set("edge/" + edge.id, ids);
+        }
+      });
+      const key = [...result].map(([item, ids]) => item + ":" + ids.join(",")).join(";");
+      if (key === lastMaskKey) return lastMasks;
+      lastMaskKey = key;
+      return lastMasks = result;
+    });
+    const underMaskID = key => "under-" + key.replace(/[^\w-]/g, "-");
+    // A takaró maszkok (vászonkoordinátában; a helyük mozgatáskor csak itt frissül).
+    const UnderMasks = {
+      setup: () => () => {
+        const masks = underMasks.value;
+        if (!masks.size) return null;
+        const holes = new Map(gridHoles.value.map(hole => [hole.id, hole])), reach = 200000;
+        const region = {x: -reach, y: -reach, width: 2 * reach, height: 2 * reach};
+        return h("defs", {"data-editor-only": ""}, [...masks].map(([key, ids]) => h("mask", {key, id: underMaskID(key), maskUnits: "userSpaceOnUse", ...region}, [
+          h("rect", {...region, fill: "#fff"}),
+          ...ids.map(id => holes.get(id)).filter(Boolean).map(hole => h("path", {key: hole.id, d: hole.d, fill: "#000", transform: "translate(" + hole.x + " " + hole.y + ")"})),
+        ])));
+      },
+    };
     const roundedRectPath = (x, y, w, h, r) => r > 0
       ? `M${x + r} ${y}H${x + w - r}A${r} ${r} 0 0 1 ${x + w} ${y + r}V${y + h - r}A${r} ${r} 0 0 1 ${x + w - r} ${y + h}H${x + r}A${r} ${r} 0 0 1 ${x} ${y + h - r}V${y + r}A${r} ${r} 0 0 1 ${x + r} ${y}Z`
       : `M${x} ${y}H${x + w}V${y + h}H${x}Z`;
@@ -5334,12 +5384,14 @@ createApp({
     const CanvasScene = {
       setup: () => () => {
         tally("scene");
-        const layers = wireLayers.value;
-        const children = [];
-        const addEdge = edge => children.push(h(EdgeView, {key: "edge/" + edge.id, edge}));
+        const layers = wireLayers.value, masks = underMasks.value;
+        const children = masks.size ? [h(UnderMasks, {key: "under-masks"})] : [];
+        // Átlátszó vászonszínű doboz alatt álló elem: maszkos csoportban (underMasks).
+        const add = (key, vnode) => children.push(masks.has(key) ? h("g", {key: "masked/" + key, mask: "url(#" + underMaskID(key) + ")"}, [vnode]) : vnode);
+        const addEdge = edge => add("edge/" + edge.id, h(EdgeView, {key: "edge/" + edge.id, edge}));
         orderedNodes.value.forEach((node, index) => {
           layers[index].forEach(addEdge);
-          children.push(h(NodeView, {key: node.id, node}));
+          add(node.id, h(NodeView, {key: node.id, node}));
         });
         layers.at(-1).forEach(addEdge);
         children.push(h(HandleLayer, {key: "handles"}));
