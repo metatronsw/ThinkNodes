@@ -1,5 +1,9 @@
 # Változások
 
+## 2026-11-26 – Takarítás (a felhasználó engedélyével)
+
+- Törölve: a próbaprojekt (`projects/proba-igazitas`: próbalap, `jegyzet.md`, `tabla.tntable`, előnézetek), a 12 régi, hibás előnézeti gyorsítótár-fájl (`projects/**/.*.preview-v11*.svg`, a `.trash` kivételével; a v12-es fájlok újrakészülnek), és a teszthez a scratchpadban létrehozott ideiglenes git worktree. A főoldal a próbaprojekt nélkül töltődik be.
+
 ## 2026-11-26 – Előnézeti képek: teljes ellenőrzés és védőteszt
 
 - A felhasználó jelezte: az előnézeti képek hibája nem a mai változtatásoktól volt, régóta fennállt. Az ok a táblázat lezáratlan `<col>` eleme volt (az önálló SVG, amiből az előnézet készül, szigorú XML); a javítás (önlezáró `<col/>`, előnézet-gyorsítótár v12) az előző commitban van.

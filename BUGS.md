@@ -10,7 +10,6 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
   - A „Tartalom a dobozhoz” csak táblázatdobozon van (CSV-n nincs); 200 sornál hosszabb táblázatnál az olvasó nézet az első 200 sort skálázza, a szerkesztő az összeset.
   - Ebben a Safariban a legkisebb betűméret 14 px (Beállítások / Haladó): a 13 px-es doboz- és táblázatszöveg ezért nagyobbnak látszik a beállítottnál. Ez nem hiba, de a méretek mérésekor számít.
   - A kurzorcsoport hosszú nyomása és jobb kattintása kézzel nézendő (a vezérelt ablakban az eszköztár a mozgatható tartományon kívül esett, JS-eseménnyel működött); érintőképernyőn a hosszú nyomás.
-  - A régi, hibás előnézeti gyorsítótár-fájlok (`projects/*/.*.preview-v11*.svg`) a lemezen maradtak (már nem használja őket semmi); törlésük engedélyre vár.
 
 - **Egységes gombok, vonalak, Liquid Glass (2026-11-26): kézzel nézendő**
   - Automatizált Safariban ellenőrizve (lásd CHANGES.md). Kézzel nézendő: a rámutatás kiemelése érintőképernyőn, a fejléc gombjai mindegyik témában, a megtekintő eszköztára, a kép rámutatása Liquid Glass témán (próbaképes doboz nem volt a próbalapon), a csevegőablak világos Liquid Glass módban, a felugró Megjelenés panel kis ablakban.
@@ -21,7 +20,6 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
   - Csoportos húzás közben a rács kivágása és a takarás a húzás eltolásával követi a dobozt; a pásztázás / nagyítás közbeni követés Safariban szemmel nézendő.
   - A .md szerkesztőben a címsor nyersen, alapméretben látszik (megjelenítéskor nagyobb), ezért a címsor alatti sorok szerkesztésbe lépve a címsor magasságkülönbségével feljebb kerülnek; a sorok közti távolság egyezik. Kézzel nézendő: holt billentyűs ékezet a nyilak után, nagyított vászon, füzetlapos (WhiteBoard) .md doboz.
   - Kézzel nézendő: a sarokfogó érintéssel, ellipszis / rombusz alakú dobozon (a fogó a befoglaló téglalap sarkán áll), a rendszer színválasztójának élő húzása (minden mozdulat ment), a színválasztó a tulajdonságpanelen (ott a lista még eltolja a gombokat).
-  - A próbaprojekt (`projects/proba-igazitas`, a próba Liquid Glass témára állította) és a teszthez a scratchpadban létrehozott git worktree (`git worktree list`) törlése engedélyre vár.
 
 - **Közös munka (színek, avatarok, kurzorcímke, ping nyila): kézzel nézendő és döntésre váró tételek** (2026-11-26)
   - Kézzel nézendő két valódi böngészővel / eszközzel: a kurzorcímke olvashatósága világos és sötét vásznon, a ping nyila az ablak sarkaiban és teljes képernyőn, a nyíl fölötti megállás és a kattintás, a megtekintő oldal görgetett állapotban. Az automatizált Safari ablaka nincs fókuszban, ezért ott a saját résztvevő mindig „nem aktív”.
