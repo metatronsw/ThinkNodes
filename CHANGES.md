@@ -2,7 +2,7 @@
 
 ## 2026-11-27 – daemon.sh: elárvult SwiftPM zárfájl
 
-- A root-ként futtatott `install.sh` a `/tmp`-ben hagyta a SwiftPM zárfájlját (`/tmp/_opt_ThinkNodes_server_.build.lock`), a `thinknodes` felhasználóként futó build ezért „invalid access” hibával leállt. A `server/deploy/daemon.sh` a fordítás előtt törli (a név a `.build` útvonalából képezve).
+- A root-ként futtatott `install.sh` a `/tmp`-ben hagyta a SwiftPM zárfájljait (`/tmp/_opt_ThinkNodes_server_.build*.lock`: a build, a `Package.resolved`, a munkaterület-állapot és a manifest-gyorsítótár zárja), a `thinknodes` felhasználóként futó build ezért „invalid access” hibával leállt (a `Package.resolved`-ot „corrupted”-nek jelezte). A `server/deploy/daemon.sh` a fordítás előtt mindet törli, az `install.sh` root-ként futtatva maga után is (az előtag a `.build` útvonalából képezve).
 
 ## 2026-11-26 – Szerverfrissítés Fedorán Swift 6.3.2-vel: csomagfeloldás a build előtt
 

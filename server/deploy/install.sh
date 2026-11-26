@@ -172,5 +172,10 @@ else
         --cache-path "$PWD/.build/package-cache" --config-path "$PWD/.build/package-config" \
         --security-path "$PWD/.build/package-security" resolve
 fi
+# Root-ként futtatva a SwiftPM zárfájljai (/tmp/<a .build útvonala, / helyett _>*.lock) a root tulajdonában maradnának,
+# és a thinknodes felhasználóként futó build nem férne hozzájuk.
+if [[ $EUID -eq 0 && "$(uname -s)" == Linux ]]; then
+    rm -f "/tmp/$(printf '%s' "$PWD/.build" | tr '/' '_')"*.lock
+fi
 
 printf '\nReady. Next: server/deploy/build.sh, then server/run.sh (see --help of each).\n'
