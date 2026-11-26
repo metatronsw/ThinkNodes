@@ -1,5 +1,11 @@
 # Változások
 
+## 2026-11-26 – Szerverfrissítés Fedorán Swift 6.3.2-vel: csomagfeloldás a build előtt
+
+- **Ok:** az async-http-client 1.33.1 a Swift 6.2+ alatt más csomagleírást használ, és a `swift-configuration` csomagot is kéri; a 6.0.3-mal készült `server/Package.resolved`-ban ez nincs, a build pedig tiltotta a feloldást („out-of-date resolved file”). Egy korábbi feloldás a szerveren helyben módosította a `Package.resolved`-ot, ami a `git pull`-t is megakasztotta.
+- **`server/deploy/build.sh`:** a fordítás előtt `swift package resolve` (a rögzített verziók maradnak, a hiányzók bekerülnek), pull előtt a `Package.resolved` helyi változása kérdés nélkül elvetve (generált fájl). **`server/deploy/install.sh`:** a csomagok előzetes feloldása is engedi a hiányzó csomagokat.
+- macOS + Swift 6.0.3 alatt kipróbálva (a fájl nem változik); Fedora + Swift 6.3.2 a szerveren ellenőrizendő (BUGS.md).
+
 ## 2026-11-26 – WhiteBoard: textúrák külön fájlban, nagyításkor nem ugranak; füzetvonalak Safariban; önálló SVG-export
 
 - **Textúrák külön fájlban:** a képek kikerültek a téma JSON-jából (base64 helyett): `Public/themes/WhiteBoard.paper.webp`, `WhiteBoard.cardboard.webp`, a JSON-ban csak a fájlnév (`graphics.textures.images`). A szerkesztő a `/themes/…` címről tölti (gyorsítótárazható), a szerver a betöltéskor beolvassa őket az SVG-exporthoz; hiányzó fájlnál a téma nem töltődik be. A képek kontrasztja meg lett emelve (az eredetiek szinte egyszínűek voltak).

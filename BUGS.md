@@ -1,5 +1,9 @@
 ## Nyitott
 
+- **Fedora, Swift 6.3.2 (2026-11-26): kipróbálandó a szerveren**
+  - A build- és telepítőszkript már nem tiltja a csomagfeloldást (a 6.2+ Swift az async-http-client miatt a `swift-configuration` csomagot is kéri, ami a 6.0.3-mal készült `Package.resolved`-ban nincs). Helyben csak macOS + Swift 6.0.3 alatt kipróbálva; hogy a kód és a Vapor 4.122.4 hibátlanul fordul-e Swift 6.3.2-vel, csak a szerveren derül ki.
+  - A szerver repó gyökerében a régi mappaszerkezet maradványai (`.build/`, `Public/`, `Projects/`, `.thinknodes-tls/`) nem követettek; a szolgáltatás nem használja őket, törölhetők.
+
 - **WhiteBoard textúrák és füzetlap (2026-11-26): nyitott és kézzel nézendő**
   - Chrome-ban (képernyőkép három nagyításon, a sorvonalak mérése) és Safari 18.6-ban (a sorvonalak mérése, képernyőkép) ellenőrizve. Nincs mérve: a vászontextúra kétszintes kitöltésének költsége mozdulat közben sok dobozos lapon (p300), főleg Safariban.
   - A textúra sűrűsége és erőssége szemre állítandó: a csempe 192 vászonegység (a képernyőn 192–384 px között, szintenként áttűnve), erősség: világos vászon 0,45, sötét karton 0,2, papír 0,4. A képek kontrasztja a beágyazás előtt meg lett emelve (papír ×8, karton ×8 enyhe simítással).

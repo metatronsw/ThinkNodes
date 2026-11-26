@@ -6,6 +6,10 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **Szerverfrissítés: „out-of-date resolved file” Fedorán, Swift 6.3.2-vel (2026-11-26)**
+  - Ok: az async-http-client 1.33.1 a Swift 6.2+ alatt más csomagleírást használ, és a `swift-configuration` csomagot is kéri; a 6.0.3-mal készült `Package.resolved`-ban ez nincs, a build pedig tiltotta a feloldást. Egy korábbi feloldás emiatt helyben módosította a `Package.resolved`-ot, ami a `git pull`-t is megakasztotta.
+  - Javítás: a `build.sh` a fordítás előtt feloldja a csomagokat (a rögzített verziók maradnak, csak a hiányzók kerülnek be), és pull előtt a `Package.resolved` helyi változását elveti (generált fájl); az `install.sh` is engedi a feloldást. macOS + Swift 6.0.3 alatt kipróbálva (a fájl nem változik).
+
 - **.web oldal: `../` hivatkozás a projektmappán belül (2026-11-26)**
   - Ok: a .web kiszolgáló csak a saját mappájából adott fájlt; a `../kepek/x.png` hivatkozás 404 lett. A közös könyvtár (`/common/...`) abszolút címmel eddig is működött.
   - Javítás: minden HTML oldal tükrözött `<base>`-t kap (`_tn-assets/{bérlet|public}/{projektbeli útvonal}`), így a `../` a projekt gyökeréig feloldódik, fölötte 404. A projekt fájljaira a projekt olvasási joga vonatkozik; rejtett, `.thnode`, HTML fájl és link nem szolgálható ki. Teszt: `presentationParentReferencesStayInsideProject`; Chrome-ban (CDP, homokozóval) ellenőrizve. Részletek: server/docs/node-types.md „.web mappa”.

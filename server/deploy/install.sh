@@ -165,11 +165,12 @@ fi
 if [[ -d .build/checkouts/vapor ]]; then
     ok "already resolved in server/.build"
 else
+    # The pins of Package.resolved are kept; a newer Swift (e.g. 6.2+) may add packages its manifests need.
     doing "resolving Package.resolved"
     mkdir -p .build/module-cache .build/package-cache .build/package-config .build/package-security
     CLANG_MODULE_CACHE_PATH="$PWD/.build/module-cache" "$swift_bin" package \
         --cache-path "$PWD/.build/package-cache" --config-path "$PWD/.build/package-config" \
-        --security-path "$PWD/.build/package-security" --disable-automatic-resolution resolve
+        --security-path "$PWD/.build/package-security" resolve
 fi
 
 printf '\nReady. Next: server/deploy/build.sh, then server/run.sh (see --help of each).\n'
