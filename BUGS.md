@@ -85,7 +85,7 @@
   - Nincs mérve: egy 1000 × 60-as CSV kirajzolásának és görgetésének ideje (Safari, megtekintő és szerkesztő).
 
 - **Olvasható szövegszín a dobozon (2026-11-26): kézzel nézendő / ismert korlátok**
-  - Fej nélküli Chromiumban ellenőrizve (szerkesztő és megtekintő egyezik, világos és sötét mód; próbalap: `server/.build/perf-data/kontraszt`, törölhető). Safariban kézzel nézendő, a többi témában és palettán is.
+  - Fej nélküli Chromiumban ellenőrizve (szerkesztő és megtekintő egyezik, világos és sötét mód). Safariban kézzel nézendő, a többi témában és palettán is.
   - A felületet a kitöltés és a vászon színéből számolja: konténerbe tett, átlátszó kitöltésű dobozon (Liquid Glass, áttetsző mód) a konténer színe nem számít, és a vászon textúrája / háttérfényei sem.
   - Csak a sima doboz szövegére hat (kitöltött, áttetsző vagy vászonszínű háttérnél); az üres és szabad háttérmódú doboz, a fájldobozok, a vonalcímkék és a dobozon kívüli megjegyzés szövege változatlan.
 
