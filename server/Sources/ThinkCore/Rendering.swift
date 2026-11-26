@@ -960,7 +960,8 @@ private func boxSurface(_ node: Idea, geometry: String, graphics: VisualTheme.Gr
     let frameWidth = frame?.width ?? 1.6
     // Üres doboz keretének színe a doboz színe.
     // Szövegfájl- és táblázatdoboz kerete kikapcsolható (frame: false), bármelyik háttérmód mellett.
-    let frameless = node.type == "preview" || (node.isTextFile && node.frame == false)
+    // A téma kerete is elhagyható (graphics.frame.kind "none"): ilyenkor csak az üres doboz és a zárolt konténer kap körvonalat.
+    let frameless = node.type == "preview" || (node.isTextFile && node.frame == false) || (frame?.hidden == true && !empty && !locked)
     let stroke = frameless ? "none" : empty ? escaped(node.fill) : image ? "none" : themed ? escaped(node.fill) : glass ? "url(#glass-rim)" : liquid ? "url(#fx-rim)" : escaped(node.border)
     // Minden doboz kerete sima és egyforma vastag (a zárolt konténer jelzése kivétel).
     let width = locked ? frame?.width.map { number(max(6.4, $0 + 3)) } ?? "6.4" : frame?.width.map(number) ?? "1.6"

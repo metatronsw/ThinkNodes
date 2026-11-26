@@ -24,7 +24,9 @@ let selection;
 let peers = [];
 let selectionRequest = Promise.resolve();
 const main = document.querySelector("#worksheet-view");
-const {path, csrf} = main.dataset;
+const {path} = main.dataset;
+// A szerver újraindulása után új token jár (refreshPage); az élő kapcsolat és a csevegés átveszi.
+let {csrf} = main.dataset;
 let graphics = JSON.parse(main.dataset.graphics || "null") ?? {};
 useWorksheetGeometry(() => graphics);
 const ns = "http://www.w3.org/2000/svg";
@@ -453,7 +455,15 @@ function refreshPage(signal, incoming) {
     if (signal?.aborted) return;
     const next = page.querySelector("#worksheet-view");
     if (response.status >= 500) throw new Error("A munkalap nem érhető el.");
-    if (response.redirected || !next || next.dataset.csrf !== csrf) { location.reload(); return; }
+    if (response.redirected || !next) { location.reload(); return; }
+    // Új token (a szerver újraindult, a memóriában tartott munkamenet elveszett): ha a jogosultság ugyanaz, a lap átveszi
+    // az új tokent, és nem tölt újra (a teljes újratöltés villanással újraépítette a lapot). Más jogosultságnál újratölt.
+    if (next.dataset.csrf !== csrf) {
+      if (next.dataset.member !== main.dataset.member || next.dataset.editable !== main.dataset.editable) { location.reload(); return; }
+      csrf = next.dataset.csrf;
+      live.setToken(csrf);
+      chat?.setToken(csrf);
+    }
     if (Number(next.dataset.revision) < Number(main.dataset.revision)) return;
     const updatedCanvas = next.dataset.revision !== main.dataset.revision || next.dataset.siteMode !== main.dataset.siteMode;
     const frame = main.querySelector(".passive-frame");
@@ -536,8 +546,11 @@ const live = liveConnection(path, csrf, async state => {
     presenceStopped = true;
     refreshPage().catch(() => {});
   }
-  roster.classList.add("connection-lost");
-  roster.textContent = "Kapcsolat megszakadt";
+  // A jelzés csak egyszer íródik ki (az újrapróbálkozások nem írják újra a DOM-ot).
+  if (!roster.classList.contains("connection-lost")) {
+    roster.classList.add("connection-lost");
+    roster.textContent = "Kapcsolat megszakadt";
+  }
   rosterSignature = undefined;
   peers = [];
   if (!roster.isConnected) main.prepend(roster);

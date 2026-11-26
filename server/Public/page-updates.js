@@ -31,6 +31,7 @@ export function watchPageUpdates(onChange) {
     controller?.abort();
     controller = new AbortController();
     const {signal} = controller;
+    let failures = 0;
     while (!signal.aborted) {
       try {
         const response = await fetch("/api/page-changes/" + id + "?since=" + since, {cache: "no-store", signal});
@@ -45,9 +46,11 @@ export function watchPageUpdates(onChange) {
           if (signal.aborted) return;
           id = replacement.dataset.id;
           since = replacement.content;
+          failures = 0;
         } else {
           if (!response.ok) throw Error("A frissítések nem érhetők el.");
           const version = await response.text();
+          failures = 0;
           if (!signal.aborted && version !== since) {
             await onChange(signal);
             if (signal.aborted) return;
@@ -55,7 +58,9 @@ export function watchPageUpdates(onChange) {
           }
         }
       } catch (error) {
-        if (!signal.aborted) await new Promise(resolve => setTimeout(resolve, 1000));
+        // Kapcsolat nélkül fokozatosan ritkuló újrapróbálkozás (1, 2, 4, 5 mp): offline állapotban kevesebb kérés és munka.
+        if (!signal.aborted) await new Promise(resolve => setTimeout(resolve, Math.min(5000, 1000 * 2 ** failures++)));
+        continue;
       }
     }
   }

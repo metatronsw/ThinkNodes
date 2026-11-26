@@ -10,7 +10,8 @@ export const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 export async function launch({width = 1600, height = 1000} = {}) {
   const profile = mkdtempSync(join(tmpdir(), "tn-chrome-"));
-  const port = 9300 + (process.pid % 600);
+  // Folyamatonként több példány is indulhat: mindegyik saját vezérlőportot kap.
+  const port = 9300 + ((process.pid + (launch.count = (launch.count ?? 0) + 1) * 37) % 600);
   const proc = spawn(CHROME, ["--remote-debugging-port=" + port, "--user-data-dir=" + profile, "--no-first-run", "--no-default-browser-check",
     "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding", "--disable-background-timer-throttling",
     "--window-position=40,40", "--window-size=" + width + "," + height, "about:blank"], {stdio: "ignore"});

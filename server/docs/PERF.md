@@ -13,6 +13,7 @@ Cél: a szerkesztő maximális teljesítménye. Olcsó témák maradjanak olcsó
 6. **Eseménykezelő (pointerdown stb.) kritikus útján nincs drága szinkron munka:** pl. `new AudioContext()` (290 ms volt), nagy fetch / parse, ciklusban kényszerített elrendezés (`getBoundingClientRect`, `getScreenCTM`), első modulbetöltés.
 7. **Célzott újrarajzolás:** doboz / vonal csak a saját állapotát olvassa (`nodeUi` / `edgeUi` / `syncUi`); globális állapot (`view`, `gesture`, kijelölés) olvasása rajzoláskor minden elemet újrarajzoltat.
 8. **CSP** (`style-src 'self'`): beszúrt `<style>` és inline `style` attribútum nem működik; dinamikus stílus Vue `style`-lal vagy CSSOM-mal.
+9. **Kapcsolatvesztés:** kapcsolat nélkül a lap álló kép marad, és működik (pásztázás, nézés): nincs teljes újratöltés, nincs ismétlődő DOM-írás (a jelzés egyszer jelenik meg), az újrapróbálkozás fokozatosan ritkul (1, 2, 4, 5 mp). Visszatéréskor újratöltés csak akkor, ha a jogosultság változott; a munkamenet tartós (`FileSessions`), a token újraindítás után sem változik.
 
 **Mérés – minden rajzolást, animációt, témát, effektet vagy eseménykezelőt érintő változás után:**
 - Böngésző: **valódi Chrome (elsődleges) és Safari.** Nem hiteles: a beépített böngészőpanel, a fej nélküli Chromium (szoftveres GPU), a takart ablak (a Safari ott a CSS-animációt leállítja, a SMIL-t nem).
@@ -36,6 +37,7 @@ Cél: a szerkesztő maximális teljesítménye. Olcsó témák maradjanak olcsó
 | `perf.py` (+ `summary.py`) | régi Safari-forgatókönyvek nagy lapon (`p300`) | a régi forgatókönyvek elemazonosítói változnak |
 | `idle.mjs`, `trace-idle.mjs`, `layers.mjs` | fej nélküli Chromium: csak trend és nyomkövetés, abszolút szám nem | – |
 | `safari-idle.py`, `safari-url-idle.py` | WebDriver nélkül (csak ha a Safari elöl van) / tetszőleges címek | – |
+| `chrome-offline.mjs` (`TN_RETURN=1`, `TN_SEQ=1`), `safari-offline.py` | kapcsolatvesztés: DOM-változások, képbetöltések, kérések a szerver leállítása alatt és visszatérése után (a szervert kívülről kell leállítani / elindítani) | a jelenlévők sávjának osztályai (`.participants`, `.connection-lost`) változnak |
 
 Ha egy eszköz hibát ad, vagy egy változat `[0 animáció]`-t, hiányzó elemet vagy gyanúsan 0%-ot jelez, előbb az eszközt kell javítani, csak utána szabad a számokban megbízni.
 

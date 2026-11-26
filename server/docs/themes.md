@@ -34,7 +34,7 @@ A vonal vastagságát a téma adja: a vonal mérete (vékony 2, közepes 5, vast
 
 ## Dobozkeret
 
-A `frame` a dobozok keretét állítja. A `width` a vastagság (0,5–16, alap: 1,6). A `color: "fill"` esetén a keret a doboz saját színét kapja, kitöltött dobozon is (alap: `auto`, a kitöltésből számolt sötétebb szín). A `fillOpacity` a kitöltött felület átlátszatlansága (áttetsző módban a fele) – alacsony értékkel a doboz színes keretű, halványan színezett belsejű lesz. A `halo` a keret körüli fényudvar átlátszatlansága: háromszoros vastagságú, áttetsző körvonal, szűrő nélkül. A kép és az előnézet saját keretét nem érinti.
+A `frame` a dobozok keretét állítja. A `width` a vastagság (0,5–16, alap: 1,6). A `color: "fill"` esetén a keret a doboz saját színét kapja, kitöltött dobozon is (alap: `auto`, a kitöltésből számolt sötétebb szín). A `fillOpacity` a kitöltött felület átlátszatlansága (áttetsző módban a fele) – alacsony értékkel a doboz színes keretű, halványan színezett belsejű lesz. A `halo` a keret körüli fényudvar átlátszatlansága: háromszoros vastagságú, áttetsző körvonal, szűrő nélkül. A `kind` a keret fajtája és helye: `outline` (alap) körvonal a doboz körül; `none` esetén a kitöltött doboz keret nélkül rajzolódik (a felület elválását a kitöltés és a vászon színkülönbsége adja), csak az üres háttérmódú doboz és a zárolt konténer kap körvonalat, a saját kijelölést pedig vékony kijelölés-körvonal jelzi. Későbbi bővítésre fenntartva: pl. `side` – a doboz oldalának színezése keret helyett. A kép és az előnézet saját keretét nem érinti.
 
 ```json
 "frame": {"width": 4, "color": "fill", "fillOpacity": 0.14, "halo": 0.28}
@@ -50,6 +50,10 @@ A `paper` papírfelületeket ad. A `grid: "sticky"` a táblázatot és a CSV-t c
 "sketch": {"roughness": 1.3, "passes": 1},
 "paper": {"grid": "sticky", "text": "notebook", "sheet": "#fbfaf4", "ink": "#25314d", "rule": "#a9c8e8", "margin": "#e58a8f"}
 ```
+
+## Minimalist
+
+A leggyorsabb téma (id 7): nincs effekt, üveg, szabadkézi rajz, fényudvar (`glow: 0`, szűrő sem készül) és dobozkeret (`frame.kind: "none"`); egyenes vonalak, 6-os sarokkerekítés, kis csomópont. A világos és a sötét mód fényereje és kontrasztja hasonló: a vászon tört fehér, illetve grafit (egyik sem vakító vagy fekete), a szöveg kontrasztja mindkettőben kb. 9,3–10:1. Öt palettája (Kő, Fjord, Pasztell, Föld, Grafit) 21–21 színből áll, OKLCH-térben: 0 lap, 1 tinta, 2 felület (a vászonnál egy fokkal világosabb kártya), 3 vonal; 4–12 kilenc közép-tónusú szín (világosban egy fokkal mélyebb); 13–20 nyolc halvány (világos) / mély (sötét) kitöltésszín. A dobozfelület elválása a vászontól 1,24 (világos) / 1,34 (sötét), a szöveg a halvány kitöltéseken 8,6 / 6,1.
 
 ## Látványcsomag
 

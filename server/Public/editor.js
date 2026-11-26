@@ -32,7 +32,9 @@ import {attachScrollbars, detachScrollbars} from "./scrollbar-drag.js";
 import {highlightHTML, supportsHighlight} from "./highlight/index.js";
 
 const mount = document.querySelector("#editor");
-const {path, csrf, user, motionRate, role: pageRole} = mount.dataset;
+const {path, user, motionRate, role: pageRole} = mount.dataset;
+// A szerver újraindulása után új token jár (oldalfrissítés: watchPageUpdates); a kérések mindig az aktuálisat viszik.
+let {csrf} = mount.dataset;
 const d3 = window.d3;
 // Mérés (Tests/Perf): a mérőszkript által betöltött rögzítő számolja, melyik komponens hányszor rajzolódott újra.
 const tally = name => window.__perf?.count(name);
@@ -604,6 +606,8 @@ const framedType = node => isImage(node) || node.type === "preview";
 const hasFrame = node => isImage(node) ? node.frame === true : node.type === "preview" && node.frame !== false;
 // Szövegfájl- és táblázatdoboz: a felület kerete kikapcsolható (frame: false), bármelyik háttérmód mellett (Rendering.swift boxSurface).
 const frameless = node => isTextFile(node) && node.frame === false;
+// A téma kitöltött dobozokon nem rajzol keretet (graphics.frame.kind "none", pl. Minimalist).
+const themeFrameless = () => graphics.value.frame?.kind === "none";
 function frameOutline(node) {
   if (!hasFrame(node)) return null;
   return h("rect", {x: -node.width/2, y: -node.height/2, width: node.width, height: node.height, rx: 5, fill: "none",
@@ -637,7 +641,8 @@ function shape(node, linked, dropTarget = false) {
   // A téma kerete (graphics.frame; Rendering.swift boxSurface): vastagság, a doboz saját színe, felület-átlátszatlanság, fényudvar.
   const themed = graphics.value.frame ?? {};
   // Üres doboz: csak a keret látszik, a keret színe a doboz színe.
-  const frame = node.type === "preview" || frameless(node) ? "none" : empty ? paint(node.fill, 2) : image && !empty ? "none" : themed.color === "fill" ? fill : glass ? "url(#glass-rim)" : glazed ? "url(#fx-rim)" : automaticBorder(fill);
+  // A téma kerete elhagyható (graphics.frame.kind "none"; Rendering.swift boxSurface): az üres doboz és a zárolt konténer marad.
+  const frame = node.type === "preview" || frameless(node) || (themeFrameless() && !empty && !locked) ? "none" : empty ? paint(node.fill, 2) : image && !empty ? "none" : themed.color === "fill" ? fill : glass ? "url(#glass-rim)" : glazed ? "url(#fx-rim)" : automaticBorder(fill);
   const translucent = mode === "translucent" && !canvasTint;
   const frameWidth = themed.width ?? boxFrameWidth;
   const opacity = themed.fillOpacity == null || canvasTint ? undefined : mode === "solid" ? themed.fillOpacity : translucent ? themed.fillOpacity / 2 : undefined;
@@ -3178,6 +3183,8 @@ createApp({
     const glowDefinitions = shallowRef([]);
     function glow(kind, color) {
       const size = graphics.value.glow ?? 3;
+      // 0: a téma nem kér fényudvart (pl. Minimalist) – szűrő sem készül.
+      if (size <= 0) return undefined;
       const id = glowId(kind, color, size);
       if (!glowFilters.has(id)) {
         glowFilters.set(id, glowFilter(kind, color, size));
@@ -3848,6 +3855,16 @@ createApp({
           if (signal.aborted) return;
           if (response.status >= 500) throw Error("A munkalap nem érhető el.");
           const editor = page.querySelector("#editor");
+          // Új token, de ugyanaz a felhasználó és jogosultság (a szerver újraindult, a memóriában tartott munkamenet
+          // elveszett): a lap átveszi az új tokent, és nem tölt újra – a teljes újratöltés villanással újraépítette a lapot.
+          const sameAccess = editor && editor.dataset.user === mount.dataset.user && editor.dataset.role === mount.dataset.role
+            && editor.dataset.manage === mount.dataset.manage;
+          if (editor && editor.dataset.csrf !== csrf && sameAccess) {
+            csrf = editor.dataset.csrf;
+            mount.dataset.csrf = csrf;
+            live.setToken(csrf);
+            chat?.setToken(csrf);
+          }
           if (editor && editor.dataset.csrf === csrf) {
             updateSection(document, page, ".worksheet-nav .header-actions");
             live.start();
@@ -5257,7 +5274,8 @@ createApp({
         peerOwner || snapTarget ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-glow", color: peerOwner ? peerOwner.color : selectionTint(), filter: glow("peer", peerOwner ? peerOwner.color : selectionTint()), fill: "none",
           stroke: peerOwner ? peerOwner.color : selectionTint(), "stroke-width": 3, "pointer-events": "none"}) : null,
         // Saját kijelölés látható felület nélküli objektumon (Free doboz, átlátszó kép, csomópont): vékony, nyugodt körvonal.
-        ownSelected && !peerOwner && (junction || backgroundMode(node) === "free" || isImage(node))
+        // Keret nélküli témában (themeFrameless) a kitöltött dobozon sincs vastagodó keret, ezért ott is ez jelzi a kijelölést.
+        ownSelected && !peerOwner && (junction || backgroundMode(node) === "free" || isImage(node) || themeFrameless())
           ? h(outline, {"data-editor-only": "", ...dimensions, class: "selection-own", filter: glow("ownFrame", selectionTint()), fill: "none", stroke: selectionTint(), "stroke-width": 2.5, "pointer-events": "none"}) : null,
         ui.candidate ? h(outline, {"data-editor-only": "", ...dimensions, class: "search-candidate", "stroke-width": 3}) : null,
         ...animateBox(isBox(node) ? node.animation : undefined, [

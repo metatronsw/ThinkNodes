@@ -6,6 +6,11 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **Kapcsolatvesztéskor villogó szerkesztő és megtekintő (2026-11-26)**
+  - Ok: a szerver újraindulása után (memóriában tartott munkamenet) új token jött, és mindkét lap teljesen újratöltötte magát; kapcsolat nélkül a megtekintő másodpercenként újraírta a jelzést. Javítás: tartós munkamenetek (`FileSessions`), tokenátvétel újratöltés helyett, fokozatos újrapróbálkozás, egyszeri jelzés. Chrome-ban mérve; részletek: CHANGES.md.
+
+- **Minimalist téma és keret nélküli dobozok (2026-11-26):** új téma (minden effekt ki, nincs dobozkeret, hasonló világos / sötét mód, 5 × 21 szín); a téma `frame.kind: "none"` mezővel elhagyhatja a kitöltött dobozok keretét; `glow: 0` mellett nincs szűrő. Részletek: CHANGES.md, server/docs/themes.md „Minimalist”.
+
 - **Napló-zaj: lapbezárásonként egy „Abort.410: Gone” figyelmeztetés a szerver naplójában (2026-11-26)**
   - Ok: a jelenlét hosszú lekérdezése (`/api/presence`) a várakozás végén már nem találta a közben távozott (leave, újratöltés) vagy lejárt résztvevőt; a lapváltozás-lekérdezés (`/api/page-changes`) lejárt csatornánál (pl. szerver-újraindítás után) ugyanígy. A dobott 410-et a Vapor hibakezelője figyelmeztetésként naplózta.
   - Javítás: várt esetként csendes 410-es válasz, dobás nélkül (`Server.swift goneResponse`, `quietGone`); a kliens viselkedése változatlan. Chrome-ban 5 újratöltés és bezárás után a napló tiszta.

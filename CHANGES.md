@@ -1,5 +1,20 @@
 # Változások
 
+## 2026-11-26 – Kapcsolatvesztés: nincs villogás, nincs újratöltés; tartós munkamenetek
+
+- **Ok:** a munkamenetek memóriában voltak, ezért a szerver újraindulása után új CSRF-token (tesztmódban új „TesterN” név) járt, és a nyitott szerkesztő és megtekintő a visszatéréskor teljesen újratöltötte magát (villanás, újraépülés); többszöri leállás–indulásnál ez villogásként látszott. Kapcsolat nélkül a megtekintő másodpercenként újraírta a „Kapcsolat megszakadt” jelzést, és mindkét lap másodpercenként próbálkozott.
+- **Tartós munkamenetek** (`Sources/ThinkNodes/FileSessions.swift`): az adatmappa `.sessions.json` fájljában (0600), összevont írással, a 30 napja nem használtak törlésével. Újraindítás után senki nem lép ki, a token sem változik. Teszt: `sessionsSurviveServerRestart`.
+- **Újratöltés helyett tokenátvétel:** ha mégis új a token, de a felhasználó és a jogosultság ugyanaz, a szerkesztő és a megtekintő átveszi (`live.setToken`, `chat.setToken`); újratöltés csak jogosultság-változáskor.
+- **Fokozatos újrapróbálkozás** kapcsolat nélkül (1, 2, 4, 5 mp; `collaboration.js`, `page-updates.js`); a megtekintő a jelzést csak egyszer írja ki.
+- Ellenőrzés (Chrome, szerver leállítva, majd újraindítva): kapcsolat nélkül a lapok állnak és működnek; visszatéréskor nincs újratöltés, képbetöltés vagy vászoncsere, a lapok újracsatlakoznak. Mérőeszköz: `Tests/Perf/chrome-offline.mjs`, `safari-offline.py`. PERF.md: 9. szabály.
+
+## 2026-11-26 – Minimalist téma; keret nélküli dobozok a témából
+
+- **Új téma: Minimalist** (`Public/themes/Minimalist.json`, id 7): a leggyorsabb – nincs effekt, üveg, szabadkézi rajz, fényudvar, dobozkeret; egyenes vonalak, kis sarokkerekítés. Öt paletta (Kő, Fjord, Pasztell, Föld, Grafit) 21–21 színnel, OKLCH-ban; a világos és a sötét mód fényereje, kontrasztja hasonló (szöveg kb. 9,3 / 10:1).
+- **`graphics.frame.kind`** (`outline` alap, `none`): a téma elhagyhatja a kitöltött dobozok keretét (editor.js `shape`, Rendering.swift `boxSurface`); az üres doboz és a zárolt konténer körvonala marad, a saját kijelölést ilyenkor a vékony kijelölés-körvonal jelzi. Későbbi bővítésre fenntartva (pl. `side`: az oldal színezése).
+- **`glow: 0`**: nem készül fényudvar-szűrő (eddig üres szűrő jött létre).
+- Teszt: `minimalistThemeDrawsNoFrame`. Mérés (Chrome, a Liquid Glass lap tartalma, 9 tartalom-animációval): üresjárat Minimalist 18%, Liquid Glass 21%; animációk nélkül mindkettő ~0%. Próbalap: `projects/Minimalist`.
+
 ## 2026-11-26 – Szerver: napló-zaj megszüntetése a hosszú lekérdezéseknél
 
 - A jelenlét (`/api/presence`) és a lapváltozás (`/api/page-changes`) hosszú lekérdezése a várt „lejárt” esetben (a kliens elhagyta a lapot, a csatorna lejárt) csendes 410-es választ ad dobás nélkül; korábban minden lapbezárás egy „Abort.410: Gone” figyelmeztetést írt a naplóba. A kliens viselkedése nem változott (jelenlét: újracsatlakozás, lapváltozás: az oldal újratöltése).

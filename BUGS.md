@@ -1,5 +1,15 @@
 ## Nyitott
 
+- **Kapcsolatvesztés (2026-11-26): kézzel nézendő**
+  - Safariban csak a kapcsolat nélküli szakasz mérve (nincs ismétlődő DOM-írás); a szerver visszatérése utáni viselkedés (nincs újratöltés) csak Chrome-ban.
+  - Valódi hálózatvesztés (Wi-Fi ki, alvás utáni ébredés) és élesben a fordított proxy (502-es válaszok) mögötti viselkedés nincs kipróbálva.
+  - A kapcsolat nélkül még be nem töltött fájltartalmak (szövegfájl, táblázat, kép) offline nem töltődnek be; a már betöltöttek látszanak.
+
+- **Minimalist téma (2026-11-26): kézzel nézendő**
+  - Safariban nincs megnézve; Chrome-ban világos és sötét módban képernyőképpel ellenőrizve.
+  - A „Kiemelés” beállítású dobozok árnyéka a témától független (tömör, eltolt árnyék); ha a Minimalistban zavaró, a téma kikapcsolhatná vagy halványíthatná.
+  - A Pasztell paletta közép-tónusú színei világos módban gyengébben válnak el a vászontól (2,3:1), a többi palettáé 3,3–3,6:1.
+
 - **Üresjárati terhelés és akadások javítása (2026-11-26): maradék és kézzel nézendő tételek** (részletek: server/docs/PERF.md „Üresjárat”)
   - Maradék üresjárati terhelés a Liquid Glass lapon 9 futó animációval: Chrome ~17–21%, Safari ~25% WebContent + 5% WindowServer („Animációk ki”: ~0%). Ha ez is sok: kevesebb lépés/mp (12-vel Chrome ~13%, Safari ~10% volt), vagy csak a látható animációk futtatása.
   - Saját kijelölésnél a kijelölés fénye (Liquid Glass „lélegzés”) végtelen animáció: amíg valami ki van jelölve, folyamatos képkockák (döntés: maradhat, csak szerkesztői).

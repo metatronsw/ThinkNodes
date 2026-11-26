@@ -5,6 +5,8 @@ import {playPingSound} from "./ping.js?v=4";
 // üzenetek a WebSocketen (`{chat: …}`). Eszköztár gomb olvasatlan-számlálóval; a panel a vászon jobb alsó részén.
 // Enter: küldés, Shift+Enter: új sor. Aki megemlít (@név), annál az üzenet kiemelt, és hangjelzés szól.
 export function sharedChat({path, csrf, me, admin = () => false}) {
+  // A szerver újraindulása után új CSRF-token jár (setToken), újratöltés nélkül.
+  let token = csrf;
   let button, badge, panel, list, input, area, listeners;
   let messages = [], loaded = false, stale = true, open = false, unread = 0;
   const readKey = "thinknodes:chat-read:" + path;
@@ -88,7 +90,7 @@ export function sharedChat({path, csrf, me, admin = () => false}) {
   }
   async function send(body) {
     const response = await fetch("/api/chat/" + path, {method: "POST",
-      headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify(body)});
+      headers: {"Content-Type": "application/json", "X-CSRF-Token": token}, body: JSON.stringify(body)});
     if (!response.ok) throw Error((await response.json().catch(() => ({}))).reason || "Az üzenet nem ment el.");
     return response.json();
   }
@@ -192,5 +194,6 @@ export function sharedChat({path, csrf, me, admin = () => false}) {
     render();
     if (!loaded) load().catch(() => {});
   }
-  return {bind, receive, open: mention => toggle(true, mention), stop() { listeners?.abort(); panel?.remove(); button?.remove(); }};
+  return {bind, receive, open: mention => toggle(true, mention), setToken: value => { token = value; },
+    stop() { listeners?.abort(); panel?.remove(); button?.remove(); }};
 }

@@ -151,6 +151,34 @@ import VaporTesting
     #expect(!boardSVG(sheet, mode: "dark").contains("fx-"))
 }
 
+/// Minimalist téma: minden effekt ki, a kitöltött doboznak nincs kerete (graphics.frame.kind "none"); az üres doboz és a
+/// zárolt konténer körvonala marad. Palettánként legalább 21 szín, világos és sötét változattal.
+@Test func minimalistThemeDrawsNoFrame() throws {
+    let theme = try #require(Themes.catalog.first { $0.name == "Minimalist" })
+    #expect(theme.valid && theme.graphics?.frame?.kind == "none" && theme.graphics?.glow == 0 && theme.graphics?.effects == nil)
+    #expect(theme.palettes.count >= 5 && theme.palettes.allSatisfy { $0.colors.count >= 21 && $0.hasDark })
+    var sheet = Worksheet(title: "Minimal")
+    sheet.background = "@0"
+    sheet.appearance = Appearance(theme: theme.id, palette: theme.palettes[0].id)
+    sheet.nodes = [Idea(id: "solid", text: "Kitöltött", position: Point(x: 0, y: 0), fill: "@2", textColor: "@1"),
+                   Idea(id: "empty", text: "Üres", position: Point(x: 300, y: 0), fill: "@4", backgroundMode: .empty, textColor: "@1")]
+    // A dobozok felülete rajzolási sorrendben: az első a kitöltött, a második az üres doboz.
+    let surfaces = { (svg: String) -> [String] in
+        let pattern = try! NSRegularExpression(pattern: #"<[a-z]+ [^>]*class="node-surface"[^>]*>"#)
+        return pattern.matches(in: svg, range: NSRange(svg.startIndex..., in: svg)).map { String(svg[Range($0.range, in: svg)!]) }
+    }
+    for mode in ["light", "dark"] {
+        let found = surfaces(boardSVG(sheet, mode: mode))
+        #expect(found.count == 2)
+        #expect(found.first?.contains(#"stroke="none""#) == true)
+        #expect(found.last?.contains(#"stroke="none""#) == false)
+    }
+    // A keret fajtája csak "outline" vagy "none" lehet.
+    var bad = try #require(theme.graphics?.frame)
+    bad.kind = "side"
+    #expect(!bad.valid)
+}
+
 /// Olvasható szöveg (Rendering.swift labelInk, editor.js boxInk): ha a beállított szövegszín a doboz felületén (a
 /// kitöltés a vászon fölött, a téma átlátszatlanságával) nem elég kontrasztos, a téma tintájának jobb változata jön.
 @Test func unreadableBoxTextGetsThemeInk() throws {

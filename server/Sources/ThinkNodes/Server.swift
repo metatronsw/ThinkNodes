@@ -347,7 +347,9 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
     let secure = secureCookies ?? (application.http.server.configuration.tlsConfiguration != nil)
     // Without HTTPS the browser drops the SameSite=None asset cookie, so the lease URL alone grants access.
     let webSessions = WebPresentationSessions(requireCookie: secure)
-    application.sessions.use(.memory)
+    // Tartós munkamenetek (FileSessions): újraindítás után sem lép ki senki, a token sem változik (nincs lapújratöltés).
+    let sessionStore = FileSessions(directory: store.dataRoot)
+    application.sessions.use { _ in sessionStore }
     application.sessions.configuration = .init(cookieName: "thinknodes_session") { sessionID in
         .init(string: sessionID.string, path: "/", isSecure: secure, isHTTPOnly: true, sameSite: .lax)
     }

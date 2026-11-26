@@ -363,3 +363,27 @@ private func queryValue(_ name: String, in url: String) -> String? {
         #expect(try await signIn("bela@ceg.hu").response.status == .unauthorized)
     }
 }
+
+/// Tartós munkamenetek (FileSessions): a szerver újraindulása (új tárolópéldány ugyanazon a mappán) után is megvan a
+/// munkamenet ugyanazzal az adattal (bejelentkezés, CSRF-token), a fájl csak a tulajdonosé (0600); a törölt munkamenet eltűnik.
+@Test func sessionsSurviveServerRestart() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-sessions-\(UUID())")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let app = try await Application.make(.testing)
+    let request = Request(application: app, on: app.eventLoopGroup.next())
+    let first = FileSessions(directory: root)
+    let id = try await first.createSession(SessionData(initialData: ["user": "anna", "csrf": "token-1"]), for: request).get()
+    _ = try await first.updateSession(id, to: SessionData(initialData: ["user": "anna", "csrf": "token-2"]), for: request).get()
+    first.flush()
+    let file = root.appendingPathComponent(".sessions.json")
+    let permissions = try FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? Int
+    #expect(permissions == 0o600)
+    let restarted = FileSessions(directory: root)
+    let data = try await restarted.readSession(id, for: request).get()
+    #expect(data?["user"] == "anna" && data?["csrf"] == "token-2")
+    try await restarted.deleteSession(id, for: request).get()
+    restarted.flush()
+    #expect(try await FileSessions(directory: root).readSession(id, for: request).get() == nil)
+    try await app.asyncShutdown()
+}

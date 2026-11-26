@@ -183,7 +183,7 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
   async function start() {
     controller?.abort();
     const active = controller = new AbortController();
-    let since;
+    let since, failures = 0;
     while (!active.signal.aborted) {
       try {
         watchAway();
@@ -193,11 +193,13 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
         openSocket();
         await onState(state);
         since = state.version;
+        failures = 0;
       } catch (error) {
         if (active.signal.aborted) return;
         onError(error);
         if ([401, 403, 404, 423].includes(error.status)) return;
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Kapcsolat nélkül fokozatosan ritkuló újrapróbálkozás (1, 2, 4, 5 mp): offline állapotban kevesebb kérés és munka.
+        await new Promise(resolve => setTimeout(resolve, Math.min(5000, 1000 * 2 ** failures++)));
         since = undefined;
       }
     }
@@ -225,7 +227,9 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
   function present(rect) {
     if (socket?.readyState === 1) socket.send(JSON.stringify({present: true, rect}));
   }
-  return {client, start, stop, cursor, cells, scroll, laser, present,
+  // A szerver újraindulása után (a munkamenet memóriában volt) új CSRF-token jár; a kapcsolat ezt veszi át, újratöltés nélkül.
+  const setToken = token => { headers["X-CSRF-Token"] = token; };
+  return {client, start, stop, cursor, cells, scroll, laser, present, setToken,
     presentStart: mode => request("present", {mode}), presentStop: () => request("unpresent", {}), motion, flushMotion, endMotion, ping: target => request("ping", target), snapshot: () => request("poll", {editing, away}),
     checkpoint: (action, revision, checkpointRevision) => request(action, {revision, checkpointRevision}),
     viewSelect: node => request("view-select", {node}),

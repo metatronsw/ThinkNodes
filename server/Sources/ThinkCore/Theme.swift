@@ -91,15 +91,22 @@ package struct VisualTheme: Content, Equatable {
         /// A doboz kerete a témából (nélküle: 1,6 vastag, a kitöltésből számolt színnel). `width`: vastagság; `color`:
         /// "fill" = a doboz saját színe, kitöltött dobozon is; `fillOpacity`: a kitöltött felület átlátszatlansága
         /// (áttetsző módban a fele); `halo`: a keret körüli fényudvar átlátszatlansága (háromszoros vastagságú körvonal).
+        /// `kind`: a keret fajtája / helye – "outline" (alap): körvonal a doboz körül; "none": a kitöltött dobozon nincs keret
+        /// (az üres háttérmódú dobozé és a zárolt konténer jelzése marad; editor.js shape, Rendering.swift boxSurface).
+        /// Későbbi bővítésre fenntartva pl. "side": a doboz oldalának színezése keret helyett.
         package struct Frame: Codable, Equatable, Sendable {
             var width: Double?
             var color: String?
             var fillOpacity: Double?
             var halo: Double?
+            var kind: String?
             var valid: Bool {
                 (0.5...16.0).contains(width ?? 1.6) && ["auto", "fill"].contains(color ?? "auto")
                     && (0.0...1.0).contains(fillOpacity ?? 1) && (0.0...1.0).contains(halo ?? 0)
+                    && ["outline", "none"].contains(kind ?? "outline")
             }
+            /// Kitöltött dobozon nincs keret.
+            var hidden: Bool { kind == "none" }
         }
         var frame: Frame?
         /// Szabadkézi rajz (sketch.js, Rendering.swift SketchPen): `roughness` a remegés mértéke vászonegységben (0–5,
