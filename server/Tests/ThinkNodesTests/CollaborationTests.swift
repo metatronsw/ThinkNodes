@@ -205,3 +205,46 @@ import VaporTesting
         #expect(try await save(browser, path: folder.url, worksheet: edited, session: session).status == .forbidden)
     }
 }
+
+// Felhasználói színek: automatikus (a paletta szabad színeiből, fiókonként eltérő) vagy az admin által megadott #hex;
+// a jelenlévők között a szín és az, hogy ki nem nézi éppen a lapot.
+@Test func userColorsAndAwayPeers() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-colors-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    for name in ["anna", "bela", "cili"] { try store.setUser(name: name, role: .admin, passwordHash: "x") }
+    let automatic = try ["anna", "bela", "cili"].map { try #require(try store.user(named: $0)?.color) }
+    #expect(Set(automatic).count == 3 && automatic.allSatisfy(userPalette.contains))
+    try store.assignColor("#ABCDEF", to: "bela")
+    #expect(try store.user(named: "bela")?.color == "#abcdef")
+    #expect(throws: Abort.self) { try store.assignColor("red", to: "bela") }
+    #expect(throws: Abort.self) { try store.assignColor("#123456", to: "nincs") }
+    try store.assignColor(userPalette[0], to: "cili")
+    #expect(try store.user(named: "anna")?.color != userPalette[0])
+    try store.savePreferences(UserPreferences(snap: true), for: "bela")
+    #expect(try store.user(named: "bela")?.color == "#abcdef")
+    try store.assignColor(nil, to: "bela")
+    #expect(try store.user(named: "bela")?.color != "#abcdef")
+    #expect(throws: Abort.self) { try store.assignAvatar(avatarCount + 1, to: "anna") }
+    try store.assignAvatar(avatarCount, to: "anna")
+    let avatars = try FileManager.default.contentsOfDirectory(atPath: URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().appendingPathComponent("../../Public/icons").standardized.path).filter { $0.hasPrefix("avatar-") }
+    #expect(avatars.count == avatarCount)
+
+    let live = Collaboration(store: store)
+    let path = try WorksheetPath(["main", "szinek"])
+    let anna = try #require(try store.user(named: "anna")), cili = try #require(try store.user(named: "cili"))
+    _ = try store.open(path, user: anna)
+    let loop = MultiThreadedEventLoopGroup.singleton.next()
+    func poll(_ user: User, away: Bool? = nil) throws -> LiveState {
+        try live.presence(path, user: user, client: user.name, action: "poll", node: nil, since: nil, loop: loop, away: away).0
+    }
+    _ = try poll(anna)
+    let state = try poll(cili, away: true)
+    #expect(state.participants.first { $0.name == "cili" }?.color == userPalette[0])
+    #expect(state.participants.first { $0.name == "cili" }?.away == true)
+    #expect(state.participants.first { $0.name == "anna" }?.color == anna.color && state.participants.first { $0.name == "anna" }?.away == false)
+    #expect(try poll(cili).participants.first { $0.name == "cili" }?.away == true)
+    let back = try live.presence(path, user: cili, client: cili.name, action: "status", node: nil, since: nil, loop: loop, away: false).0
+    #expect(back.participants.first { $0.name == "cili" }?.away == false)
+}

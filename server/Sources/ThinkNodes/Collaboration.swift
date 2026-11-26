@@ -10,6 +10,8 @@ struct Participant: Content {
     var avatar: Int?
     let mine: Bool
     let viewing: Bool
+    /// Nem nézi a lapot (másik ablak vagy fül van előtérben): a jelenlévők között szürkén látszik, a kurzora nem.
+    let away: Bool
 }
 
 struct LiveState: Content {
@@ -25,6 +27,9 @@ final class Collaboration: @unchecked Sendable {
     private struct Cursor: Codable {
         let cursor: String
         let color: String
+        /// A kurzor mellé írt név, illetve rajzolt avatar (a néző választja ki, melyik látszódjon).
+        let name: String
+        let avatar: Int
         var point: Point?
 
         var message: String {
@@ -59,8 +64,9 @@ final class Collaboration: @unchecked Sendable {
 
         let name: String?
         let role: Role?
-        let color: String
+        var color: String
         var avatar: Int?
+        var away = false
         var editing = false
         var viewing = false
         var socket: WebSocket?
@@ -104,14 +110,10 @@ final class Collaboration: @unchecked Sendable {
             if !expired.isEmpty { changed() }
         }
 
-        func color(for name: String?) -> String {
-            if let name, let peer = peers.values.first(where: { $0.name == name }) { return peer.color }
+        /// Fiók nélküli résztvevő színe: a palettának a szobában még nem használt színe (a fiókok színe a beállításokból jön).
+        func guestColor() -> String {
             let used = Set(peers.values.map(\.color))
-            let palette = ["#365bd6", "#bd4359", "#078469", "#9452ba", "#b35a14", "#167eae", "#a23878"]
-            if let color = palette.first(where: { !used.contains($0) }) { return color }
-            var color: String
-            repeat { color = String(format: "#%06x", Int.random(in: 0x303030...0xb0b0b0)) } while used.contains(color)
-            return color
+            return userPalette.first(where: { !used.contains($0) }) ?? userPalette[peers.count % userPalette.count]
         }
     }
 
@@ -137,7 +139,8 @@ final class Collaboration: @unchecked Sendable {
 
     func presence(_ path: WorksheetPath, user: User?, client: String, action: String, node: String?, edge: String? = nil,
                   since: String?, loop: any EventLoop, editing: Bool = false,
-                  revision: Int? = nil, checkpointRevision: Int? = nil, unlocks: Set<String> = [], point: Point? = nil) throws -> (LiveState, EventLoopFuture<Void>?) {
+                  revision: Int? = nil, checkpointRevision: Int? = nil, unlocks: Set<String> = [], point: Point? = nil,
+                  away: Bool? = nil) throws -> (LiveState, EventLoopFuture<Void>?) {
         try lock.withLock {
             expireInactiveRooms()
             var board = try store.load(path, user: user, unlocks: unlocks)
@@ -175,8 +178,23 @@ final class Collaboration: @unchecked Sendable {
                     room.changed()
                 }
                 if room.peers[client] == nil {
-                    room.peers[client] = Peer(name: user?.name, role: user?.role, color: user == nil && !access.editable ? "" : room.color(for: user?.name))
+                    room.peers[client] = Peer(name: user?.name, role: user?.role, color: user == nil && !access.editable ? "" : user?.color ?? room.guestColor())
                     room.changed()
+                }
+                if let color = user?.color, room.peers[client]?.color != color {
+                    room.peers[client]?.color = color
+                    room.changed()
+                }
+                // A „status” kérés és minden hosszú lekérdezés hozza, hogy a résztvevő nézi-e a lapot.
+                if let away {
+                    if room.peers[client]?.away != away {
+                        room.peers[client]?.away = away
+                        if away {
+                            room.hideCursor(room.peers[client])
+                            room.peers[client]?.cursor = nil
+                        }
+                        room.changed()
+                    }
                 }
                 if room.peers[client]?.avatar != user?.avatar {
                     room.peers[client]?.avatar = user?.avatar
@@ -196,8 +214,13 @@ final class Collaboration: @unchecked Sendable {
                         let revision: Int
                         let node: String?
                         let point: Point?
+                        /// A pinget küldő színe, neve és avatarja (a ping és a képernyőn kívüli ping nyila ezzel rajzolódik).
+                        let color: String
+                        let name: String
+                        let avatar: Int?
                     }
-                    let data = try JSONEncoder().encode(Ping(revision: board.revision, node: node, point: point))
+                    let data = try JSONEncoder().encode(Ping(revision: board.revision, node: node, point: point, color: peer.color,
+                                                             name: peer.name ?? "Vendég", avatar: peer.avatar ?? (peer.name == nil ? nil : 1)))
                     for (id, receiver) in room.peers where id != client {
                         receiver.socket?.send(String(decoding: data, as: UTF8.self))
                     }
@@ -242,7 +265,7 @@ final class Collaboration: @unchecked Sendable {
                 if adminA != adminB { return adminA }
                 return a.value.joined == b.value.joined ? a.key < b.key : a.value.joined < b.value.joined
             }.map {
-                Participant(name: $0.value.name ?? "Vendég", color: $0.value.color, node: $0.value.node, edge: $0.value.edge, avatar: $0.value.avatar ?? ($0.value.name == nil ? nil : 1), mine: $0.key == client, viewing: $0.value.viewing)
+                Participant(name: $0.value.name ?? "Vendég", color: $0.value.color, node: $0.value.node, edge: $0.value.edge, avatar: $0.value.avatar ?? ($0.value.name == nil ? nil : 1), mine: $0.key == client, viewing: $0.value.viewing, away: $0.value.away)
             })
             rooms[path.url] = room.peers.isEmpty ? nil : room
             return (state, wait)
@@ -311,9 +334,10 @@ final class Collaboration: @unchecked Sendable {
             if let pointer = try? JSONDecoder().decode(Pointer.self, from: Data(text.utf8)) {
                 guard pointer.mouse, pointer.point?.isValid != false else { return }
                 self?.lock.withLock {
-                    guard let room = self?.rooms[path.url], let peer = room.peers[client],
-                          peer.name != nil, peer.socket === socket, peer.seen.duration(to: .now) < .seconds(45) else { return }
-                    let cursor = Cursor(cursor: peer.cursorID, color: peer.color, point: pointer.point)
+                    guard let room = self?.rooms[path.url], let peer = room.peers[client], let name = peer.name,
+                          peer.socket === socket, peer.seen.duration(to: .now) < .seconds(45),
+                          !peer.away || pointer.point == nil else { return }
+                    let cursor = Cursor(cursor: peer.cursorID, color: peer.color, name: name, avatar: peer.avatar ?? 1, point: pointer.point)
                     self?.rooms[path.url]?.peers[client]?.cursor = pointer.point == nil ? nil : cursor
                     let message = cursor.message
                     for (id, other) in room.peers where id != client { other.socket?.send(message) }

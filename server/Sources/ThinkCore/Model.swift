@@ -581,16 +581,39 @@ package struct UserPreferences: Content {
     var showGrid = true
     var panLocked = false
     package var avatar: Int?
+    /// A felhasználó színe (#rrggbb, kisbetűvel); csak az admin állítja. `nil` = automatikus (`SiteSettings.color(for:)`).
+    package var color: String?
     package var theme: String?
 
     // A memberwise inicializáló pontos mása (modulhatár).
-    package init(snap: Bool = false, showGrid: Bool = true, panLocked: Bool = false, avatar: Int? = nil, theme: String? = nil) {
+    package init(snap: Bool = false, showGrid: Bool = true, panLocked: Bool = false, avatar: Int? = nil, color: String? = nil, theme: String? = nil) {
         self.snap = snap
         self.showGrid = showGrid
         self.panLocked = panLocked
         self.avatar = avatar
+        self.color = color
         self.theme = theme
     }
+}
+
+/// A választható avatarok száma (`Public/icons/avatar-1…N.svg`, fekete alakzatok; a felület színezi őket).
+package let avatarCount = 32
+
+/// A felhasználói színek alappalettája: globális, témától független, világos és sötét háttéren is látszik. Ebből kap
+/// automatikusan színt, akinek az admin nem adott meg sajátot (és a vendég); az admin ettől eltérő #hex színt is adhat.
+package let userPalette = [
+    "#e5484d", "#e54d2e", "#f76b15", "#cc4e00", "#ab6400", "#9e6c00", "#978365", "#ad7f58",
+    "#a18072", "#5c7c2f", "#46a758", "#30a46c", "#218358", "#29a383", "#12a594", "#027864",
+    "#00a2c7", "#00749e", "#0090ff", "#0d74ce", "#3e63dd", "#5b5bd6", "#6e56cf", "#6550b9",
+    "#8e4ec6", "#ab4aba", "#953ea3", "#d6409f", "#e93d82", "#cb1d63", "#e54666", "#8b8d98",
+]
+
+/// `#rrggbb` alakú szín egységesítve (kisbetűvel); érvénytelen bemenetre `nil`.
+package func normalizedUserColor(_ raw: String) -> String? {
+    let color = raw.trimmingCharacters(in: .whitespaces).lowercased()
+    guard color.utf8.count == 7, color.hasPrefix("#"),
+          color.utf8.dropFirst().allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else { return nil }
+    return color
 }
 
 package func previewType(_ url: URL) -> String? {
@@ -615,6 +638,24 @@ package struct SiteSettings: Codable, Sendable {
         self.preferences = preferences
         self.users = users
         self.googleAccess = googleAccess
+    }
+
+    /// A felhasználó színe: az admin által beállított, különben automatikus. Az automatikus színt a saját színnel nem
+    /// rendelkező fiókok név szerinti sorrendben kapják a paletta még szabad színeiből (körbe járva), így két fiók csak
+    /// akkor kap automatikusan azonos színt, ha elfogyott a paletta. Fiókon kívüli névre (tesztfelhasználó) a név
+    /// alapján választ.
+    package func color(for name: String) -> String {
+        if let color = preferences?[name]?.color { return color }
+        let accounts = (users ?? []).map(\.name)
+        let taken = Set(accounts.compactMap { preferences?[$0]?.color })
+        // A paletta árnyalat szerint rendezett; az automatikus kiosztás 13-as lépésközzel halad rajta (32-höz relatív prím,
+        // így minden színt érint), hogy az egymás utáni fiókok jól megkülönböztethető színt kapjanak.
+        let spread = userPalette.indices.map { userPalette[$0 * 13 % userPalette.count] }
+        let free = spread.filter { !taken.contains($0) }
+        let pool = free.isEmpty ? spread : free
+        let automatic = accounts.filter { preferences?[$0]?.color == nil }.sorted()
+        let index = automatic.firstIndex(of: name) ?? name.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xffff }
+        return pool[index % pool.count]
     }
 }
 
@@ -687,6 +728,8 @@ package struct User: Codable, Sendable {
     package var role: Role
     package var passwordHash: String
     package var avatar: Int?
+    /// A felhasználó színe (#rrggbb); a beállításokból töltődik (`SiteSettings.color(for:)`), nem tárolódik a fiókkal.
+    package var color: String?
     /// A fiókhoz rendelt Google-fiók e-mail-címe (kisbetűs); ezzel a fiókkal jelszó nélkül is be lehet lépni.
     package var google: String?
     /// Adminnak szóló, elintézendő jelzések száma (`AdminMessage`); kérésenként számolódik, nem tárolódik.
@@ -1021,13 +1064,14 @@ package final class WorksheetStore: @unchecked Sendable {
     }
 
     package func savePreferences(_ prefs: UserPreferences, for name: String) throws {
-        guard prefs.avatar.map({ (1...12).contains($0) }) ?? true,
+        guard prefs.avatar.map({ (1...avatarCount).contains($0) }) ?? true,
               prefs.theme.map(validSlug) ?? true else { throw Abort(.badRequest) }
         try lock.withLock {
             var settings = try readSettings()
             var entries = settings.preferences ?? [:]
             var updated = prefs
             updated.avatar = entries[name]?.avatar
+            updated.color = entries[name]?.color
             entries[name] = updated
             settings.preferences = entries
             try saveSiteSettings(settings)
@@ -1037,9 +1081,23 @@ package final class WorksheetStore: @unchecked Sendable {
     package func assignAvatar(_ avatar: Int, to name: String) throws {
         try lock.withLock {
             var settings = try readSettings()
-            guard (1...12).contains(avatar), settings.users?.contains(where: { $0.name == name }) == true else { throw Abort(.badRequest) }
+            guard (1...avatarCount).contains(avatar), settings.users?.contains(where: { $0.name == name }) == true else { throw Abort(.badRequest) }
             var entries = settings.preferences ?? [:]
             entries[name, default: UserPreferences()].avatar = avatar
+            settings.preferences = entries
+            try saveSiteSettings(settings)
+        }
+    }
+
+    /// `color`: #rrggbb, vagy `nil` = vissza az automatikus színre.
+    package func assignColor(_ color: String?, to name: String) throws {
+        let normalized = color.flatMap(normalizedUserColor)
+        if color != nil && normalized == nil { throw Abort(.badRequest) }
+        try lock.withLock {
+            var settings = try readSettings()
+            guard settings.users?.contains(where: { $0.name == name }) == true else { throw Abort(.badRequest) }
+            var entries = settings.preferences ?? [:]
+            entries[name, default: UserPreferences()].color = normalized
             settings.preferences = entries
             try saveSiteSettings(settings)
         }
@@ -2366,6 +2424,7 @@ package final class WorksheetStore: @unchecked Sendable {
             let settings = try readSettings()
             var user = settings.users?.first { $0.name == name }
             user?.avatar = settings.preferences?[name]?.avatar
+            user?.color = settings.color(for: name)
             return user
         }
     }
@@ -2377,6 +2436,7 @@ package final class WorksheetStore: @unchecked Sendable {
             let settings = try readSettings()
             guard var user = settings.users?.first(where: { $0.google == email }) else { return nil }
             user.avatar = settings.preferences?[user.name]?.avatar
+            user.color = settings.color(for: user.name)
             return user
         }
     }

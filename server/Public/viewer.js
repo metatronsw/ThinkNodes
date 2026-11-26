@@ -7,7 +7,8 @@ import {decodeConnection} from "./worksheet-json.js";
 import {sharedMouse} from "./mouse.js";
 import {contextMenu, documentEntries} from "./cards.js";
 import {openExternalLink} from "./links.js";
-import {flashNode, flashPoint} from "./ping.js?v=2";
+import {flashNode, flashPoint, pingOffscreen, visibleBounds} from "./ping.js?v=3";
+import {avatarSymbol} from "./presence.js";
 import {hideTooltip, showTooltip} from "./tooltip.js";
 import {justifyRows} from "./justify.js?v=7";
 import {attachScrollbars} from "./scrollbar-drag.js";
@@ -222,8 +223,13 @@ function receiveMotion(frame) {
     motions.clear();
   } else if (frame.revision !== Number(main.dataset.revision)) return;
   else if (frame.ping) {
-    if (frame.point) flashPoint(main.querySelector(".passive-canvas"), frame.point);
-    else flashNode(main, frame.node);
+    if (frame.point) flashPoint(main.querySelector(".passive-canvas"), frame.point, 24, 24, "node-ping", frame.color || undefined);
+    else flashNode(main, frame.node, frame.color || undefined);
+    // A megtekintő a teljes lapot mutatja, de az oldal görgethető: a látható részen kívüli ping felé nyíl mutat.
+    pingOffscreen(() => pingRect(frame), visibleBounds(main.querySelector(".passive-frame")), frame, (rect, bounds) => {
+      scrollBy({left: (rect.left + rect.right - bounds.left - bounds.right) / 2,
+        top: (rect.top + rect.bottom - bounds.top - bounds.bottom) / 2, behavior: "smooth"});
+    });
     return;
   } else {
     if (frame.delta) motions.set(frame.node, frame.delta);
@@ -246,11 +252,22 @@ function outline(box, marker, color) {
   box.prepend(frame);
 }
 
+function pingRect(target) {
+  const canvas = main.querySelector(".passive-canvas");
+  if (target.point) {
+    const matrix = canvas?.getScreenCTM();
+    if (!matrix) return null;
+    const {x, y} = new DOMPoint(target.point.x, target.point.y).matrixTransform(matrix);
+    return new DOMRect(x - 12, y - 12, 24, 24);
+  }
+  return canvas?.querySelector('[data-node="' + CSS.escape(target.node) + '"]')?.getBoundingClientRect() ?? null;
+}
+
 let rosterSignature;
 let paintedWireOwners = new Map();
 function paint(peers) {
   roster.classList.remove("connection-lost");
-  const signature = JSON.stringify(peers.map(({name, avatar}) => [name, avatar]));
+  const signature = JSON.stringify(peers.map(({name, avatar, color, away}) => [name, avatar, color, away]));
   if (signature !== rosterSignature) {
     rosterSignature = signature;
     // A jelenlévők gombok; egyelőre nem csinálnak semmit (később: chatüzenet küldése).
@@ -258,15 +275,15 @@ function paint(peers) {
       const label = document.createElement("button");
       label.type = "button";
       label.className = "button tool-button participant";
-      label.title = peer.name;
-      label.textContent = peer.name;
-      if (peer.avatar) {
-        const img = document.createElement("img");
-        img.src = "/icons/avatar-" + peer.avatar + ".svg";
-        img.className = "peer-avatar";
-        img.alt = "";
-        label.prepend(img);
-      }
+      label.title = peer.name + (peer.away ? " · nem aktív" : "");
+      // A név és az avatar a felhasználó színével; aki nem nézi a lapot, annak a gombja szürke.
+      if (peer.away) label.dataset.away = "";
+      const name = document.createElement("span");
+      name.className = "participant-name";
+      name.textContent = peer.name;
+      if (peer.color) name.style.color = peer.color;
+      label.append(name);
+      if (peer.avatar) label.prepend(avatarSymbol(peer.avatar, peer.color || "currentColor"));
       return label;
     }));
   }
@@ -383,8 +400,9 @@ document.addEventListener("contextmenu", event => {
   }
   const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(canvas.getScreenCTM().inverse());
   const entries = [["Ping", () => {
-    if (box) flashNode(canvas, box.dataset.node);
-    else flashPoint(canvas, point);
+    const color = peers.find(peer => peer.mine)?.color || undefined;
+    if (box) flashNode(canvas, box.dataset.node, color);
+    else flashPoint(canvas, point, 24, 24, "node-ping", color);
     live.ping(box ? {node: box.dataset.node} : {point: {x: point.x, y: point.y}}).catch(error => alert(error.message));
   }, "center"]];
   if (copyLink) entries.unshift(copyLink);

@@ -20,6 +20,8 @@
     {"page": "editor", "name": "Szerkesztő › Vászon › Eszköztár › Vászonmozgatás zárolása", "selector": ".canvas-controls > [aria-label=\"Vászonmozgatás zárolása\"], .canvas-controls > [title=\"Vászonmozgatás zárolása\"]", "description": ""},
     {"page": "editor", "name": "Szerkesztő › Vászon › Eszköztár › Teljes vászon", "selector": ".canvas-controls > [aria-label=\"Mind\"], .canvas-controls > [title=\"Mind\"], .canvas-controls > [title=\"A teljes vászon megjelenítése\"]", "description": "Minden elem látszódjon."},
     {"page": "all", "name": "Vászon › Egérmutató megosztása gomb", "selector": ".mouse-share", "description": "Saját egérmutató mutatása a többieknek."},
+    {"page": "all", "name": "Vászon › Kurzorcímke gomb", "selector": ".cursor-label", "description": "A többiek kurzora mellett a név vagy az avatar látszik."},
+    {"page": "all", "name": "Vászon › Ping nyila", "selector": ".ping-arrow", "description": "A képernyőn kívüli ping iránya; rákattintva a nézet odaugrik."},
     {"page": "editor", "name": "Szerkesztő › Vászon › Eszköztár › Teljes képernyő", "selector": ".canvas-controls > [aria-label=\"Teljes képernyő\"], .canvas-controls > [title=\"Teljes képernyő\"]", "description": ""},
     {"page": "editor", "name": "Szerkesztő › Vászon › Eszköztár", "selector": ".canvas-controls", "description": "A vászon bal alsó gombsora."},
     {"page": "editor", "name": "Szerkesztő › Vászon › Létrehozó felirat", "selector": ".canvas-creator", "description": "Jobb alul: ki hozta létre a munkalapot."},

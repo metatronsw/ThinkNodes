@@ -80,6 +80,25 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
   let timer;
   let pending;
   let cursorPoint;
+  // Nem nézi a lapot (rejtett fül, vagy másik ablak van fókuszban): a többiek szürkén látják. Minden hosszú lekérdezés
+  // viszi, változáskor külön „status” kérés is megy. A beágyazott keret (pl. webes előnézet) fókusza nem számít távollétnek.
+  let away = false, awayWatch;
+  const isAway = () => document.hidden || !document.hasFocus();
+  function checkAway() {
+    const next = isAway();
+    if (next === away) return;
+    away = next;
+    request("status", {away}).catch(() => {});
+  }
+  function watchAway() {
+    if (awayWatch) return;
+    awayWatch = new AbortController();
+    const options = {signal: awayWatch.signal};
+    window.addEventListener("focus", checkAway, options);
+    window.addEventListener("blur", () => setTimeout(checkAway), options);
+    document.addEventListener("visibilitychange", checkAway, options);
+    away = isAway();
+  }
   function cursor(point) {
     if (!onCursor) return;
     cursorPoint = point;
@@ -164,7 +183,8 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
     let since;
     while (!active.signal.aborted) {
       try {
-        const state = await request("poll", {since, editing}, {signal: active.signal});
+        watchAway();
+        const state = await request("poll", {since, editing, away}, {signal: active.signal});
         if (active.signal.aborted) return;
         audience = state.participants.length > 1;
         openSocket();
@@ -181,6 +201,8 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
   }
   function stop() {
     controller?.abort();
+    awayWatch?.abort();
+    awayWatch = null;
     clearTimeout(timer);
     timer = null;
     pending = null;
@@ -191,7 +213,7 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
     socket = null;
     request("leave", {}, {keepalive: true}).catch(() => {});
   }
-  return {client, start, stop, cursor, cells, scroll, motion, flushMotion, endMotion, ping: target => request("ping", target), snapshot: () => request("poll", {editing}),
+  return {client, start, stop, cursor, cells, scroll, motion, flushMotion, endMotion, ping: target => request("ping", target), snapshot: () => request("poll", {editing, away}),
     checkpoint: (action, revision, checkpointRevision) => request(action, {revision, checkpointRevision}),
     viewSelect: node => request("view-select", {node}),
     select: (node, edge) => request("select", {node, edge})};

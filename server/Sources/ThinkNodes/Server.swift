@@ -156,7 +156,9 @@ private struct SessionInfo: Sendable {
 
 private func authenticatedUser(_ data: SessionData, store: WorksheetStore) throws -> User? {
     if store.testMode, let name = data["tester"], isTesterName(name) {
-        var tester = User(name: name, role: .admin, passwordHash: "", avatar: try store.settings().preferences?[name]?.avatar)
+        let settings = try store.settings()
+        var tester = User(name: name, role: .admin, passwordHash: "", avatar: settings.preferences?[name]?.avatar)
+        tester.color = settings.color(for: name)
         tester.adminMessages = try store.adminMessages().reduce(0) { $0 + $1.count }
         return tester
     }
@@ -601,13 +603,14 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
             let editing: Bool?
             let revision: Int?
             let checkpointRevision: Int?
+            let away: Bool?
         }
         let path = try WorksheetPath(req.parameters.getCatchall())
         let sessions = req.application.sessions
         guard let cookie = req.cookies[sessions.configuration.cookieName],
               let token = req.headers.first(name: "X-CSRF-Token") else { throw Abort(.forbidden) }
         let form = try req.content.decode(Form.self)
-        guard ["poll", "select", "view-select", "leave", "checkpoint", "resign", "ping"].contains(form.action),
+        guard ["poll", "select", "view-select", "leave", "checkpoint", "resign", "ping", "status"].contains(form.action),
               let client = req.headers.first(name: "X-Worksheet-Client"),
               client.count == 32, validSlug(client) else { throw Abort(.badRequest) }
         @Sendable func state(_ action: String, since: String?) async throws -> (LiveState, EventLoopFuture<Void>?) {
@@ -620,7 +623,8 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
                 if data["user"] != nil && user == nil { throw Abort(.unauthorized) }
                 return try live.presence(path, user: user, client: client, action: action,
                                   node: form.node, edge: form.edge, since: since, loop: req.eventLoop, editing: form.editing == true,
-                                  revision: form.revision, checkpointRevision: form.checkpointRevision, unlocks: documentUnlocks(data), point: form.point)
+                                  revision: form.revision, checkpointRevision: form.checkpointRevision, unlocks: documentUnlocks(data), point: form.point,
+                                  away: action == "snapshot" ? nil : form.away)
             }
         }
         var (snapshot, wait) = try await state(form.action, since: form.since)
@@ -1794,6 +1798,17 @@ private func configureAdmin(_ app: any RoutesBuilder, store: WorksheetStore, liv
         return redirect("/admin")
     }
 
+    /// A felhasználó színe (#rrggbb); üres érték = vissza az automatikus színre.
+    app.post("admin", "color") { req -> Response in
+        struct Form: Content { var name: String; var color: String; var csrf: String }
+        _ = try requireAdmin(req, store: store)
+        let form = try req.content.decode(Form.self)
+        try verify(req, token: form.csrf)
+        try store.assignColor(form.color.isEmpty ? nil : form.color, to: form.name)
+        live.accountChanged()
+        return redirect("/admin")
+    }
+
     app.post("admin", "users") { req async throws -> Response in
         _ = try requireAdmin(req, store: store)
         let form = try req.content.decode(AdminUserForm.self)
@@ -1947,10 +1962,15 @@ private func adminPage(users: [User], settings: SiteSettings, requests: (pending
     }
     let accountRows = users.map { account in
         let currentAvatar = settings.preferences?[account.name]?.avatar ?? 1
-        let avatarIcon = "<img src='/icons/avatar-\(currentAvatar).svg' alt=''>"
+        let explicitColor = settings.preferences?[account.name]?.color
+        let currentColor = settings.color(for: account.name)
+        let avatarIcon = avatarSymbol(currentAvatar, color: currentColor)
         let dialogID = "avatar-" + escaped(account.name)
-        let avatars = (1...12).map { number in
-            "<button name='avatar' value='\(number)' aria-label='Avatar \(number)' aria-pressed='\(currentAvatar == number)'><img src='/icons/avatar-\(number).svg' alt=''></button>"
+        let avatars = (1...avatarCount).map { number in
+            "<button name='avatar' value='\(number)' aria-label='Avatar \(number)' aria-pressed='\(currentAvatar == number)'>\(avatarSymbol(number, color: currentColor))</button>"
+        }.joined()
+        let swatches = userPalette.map { color in
+            "<button name='color' value='\(color)' aria-label='Szín \(color)' aria-pressed='\(explicitColor == color)'><svg viewBox='0 0 1 1' aria-hidden='true'><rect width='1' height='1' rx='.2' fill='\(color)'/></svg></button>"
         }.joined()
         let delete = user.name == account.name ? "" : """
             <form method="post" action="/admin/users/delete">
@@ -1962,9 +1982,18 @@ private func adminPage(users: [User], settings: SiteSettings, requests: (pending
             <div class="account-row">
               <button type="button" class="button current-avatar" data-avatar-dialog="\(dialogID)" aria-haspopup="dialog" aria-label="Avatar kiválasztása · \(escaped(account.name))">\(avatarIcon)</button>
               <dialog id="\(dialogID)" class="panel avatar-dialog" aria-labelledby="\(dialogID)-title">
-                <h3 id="\(dialogID)-title">Avatar · \(escaped(account.name))</h3>
+                <h3 id="\(dialogID)-title">Avatar és szín · \(escaped(account.name))</h3>
                 <form class="avatar-picker" method="post" action="/admin/avatar">\(csrfInput(csrf))<input type="hidden" name="name" value="\(escaped(account.name))">\(avatars)</form>
-                <form method="dialog"><button class="button">Mégse</button></form>
+                <h4>Szín\(explicitColor == nil ? " (automatikus)" : "")</h4>
+                <form class="color-picker" method="post" action="/admin/color">\(csrfInput(csrf))<input type="hidden" name="name" value="\(escaped(account.name))">\(swatches)</form>
+                <form class="color-custom" method="post" action="/admin/color">\(csrfInput(csrf))<input type="hidden" name="name" value="\(escaped(account.name))">
+                  <label>Egyedi szín<input type="color" name="color" value="\(currentColor)"></label>
+                  <button class="button" type="submit">Beállítás</button>
+                </form>
+                <form class="color-custom" method="post" action="/admin/color">\(csrfInput(csrf))<input type="hidden" name="name" value="\(escaped(account.name))"><input type="hidden" name="color" value="">
+                  <button class="button" type="submit"\(explicitColor == nil ? " disabled" : "")>Automatikus szín</button>
+                </form>
+                <form method="dialog"><button class="button">Bezárás</button></form>
               </dialog>
               <form method="post" action="/admin/users" class="\(fieldsClass)">
                 \(csrfInput(csrf))<input type="hidden" name="name" value="\(escaped(account.name))">

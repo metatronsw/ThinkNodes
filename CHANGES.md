@@ -1,5 +1,19 @@
 # Változások
 
+## 2026-11-26 – Közös munka: felhasználói színek, 32 avatar, kurzorcímke, nem aktív résztvevő, ping a képernyőn kívül
+
+- **Felhasználói szín:** minden fióknak van színe (#rrggbb). Alapból automatikus egy 32 színű, globális, témától független alappalettából (`userPalette`, Radix-színek, világos és sötét háttéren is látszik); a fiókok név szerinti sorrendben, szétszórt sorrendben kapják a még szabad színeket, így az egymás utáni fiókok jól elkülönülnek. Az admin oldalon az „Avatar és szín” ablakban a palettából vagy egyedi színválasztóval adható meg, és visszaállítható automatikusra (`POST /admin/color`, `WorksheetStore.assignColor`, `SiteSettings.color(for:)`). A vendég (fiók nélkül) a szobában még nem használt palettaszínt kapja.
+- **32 avatar:** új, jól felismerhető fekete alakzatok (szív, csillag, korona, sakkfigurák, kártyaszínek, hold, nap, felhő, villám, hópehely, csepp, láng, levél, fenyő, virág, gomba, hal, macska, mancs, szellem, horgony, kulcs, harang, rakéta, esernyő, hangjegy, ház, villanykörte). A felület `<use href="/icons/avatar-N.svg#a">` hivatkozással a felhasználó színére színezi (`avatarSymbol`, `presence.js`). Előállításuk: `server/docs/avatars.mjs`. A meglévő 1–12-es avatarok sorszáma megmaradt, de a kinézetük az új alakzatokra változott.
+- **Kurzor:** a megosztott kurzor mellett a név (színes címkében) vagy az avatar látszik; hogy melyik, azt mindenki maga választja az eszköztár új gombjával (`.cursor-label`, a böngészőben megjegyezve). A kurzor a nagyítástól függetlenül állandó méretű a képernyőn.
+- **Jelenlévők (jobb alsó sarok):** a név és az avatar a felhasználó színével. Aki nem nézi a lapot (rejtett fül vagy az ablak nincs fókuszban; a beágyazott keret fókusza nem számít), annak a gombja teljesen elszürkül, és a kurzora eltűnik. A kliens minden hosszú lekérdezéssel és változáskor külön `status` kéréssel jelzi (`away`); a szerver a nem aktív résztvevő kurzorát elrejti és nem továbbítja.
+- **Ping:** a küldő színével rajzolódik (a saját ping is). Ha a ping a látható területen kívül esik, a vászon (megtekintőben az ablak) szélén a ping irányába mutató nyíl jelenik meg a küldő színével és avatarjával; a pinggel együtt halványul el (fölötte megáll), kattintásra a nézet odaugrik. A ping ideje 1,2 mp-ről 2 mp-re nőtt (`--ping-duration`), hogy a nyílra legyen idő rákattintani.
+- Szerver: `Participant.away`, a kurzor- és pingüzenet a küldő nevét, avatarját és színét is viszi; `UserPreferences.color`, `User.color`; avatar-tartomány 1–32 (`avatarCount`).
+- Súgó és felületnevek: új „Kurzorcímke váltása” sor (`docs/hotkeys.json`, `utmutato.html`, `ui-names.json`).
+- Tesztek: új `userColorsAndAwayPeers` (automatikus és admin szín, érvénytelen szín, avatar-tartomány, színek és távollét a jelenlévők között); a `gestures.mjs` dokumentum-csonkja megkapta a fókusz-API-t. `./test.sh`: 105 Swift-teszt és minden JS-teszt átmegy.
+- Safariban (WebDriver + szimulált második résztvevő) ellenőrizve: névcímke és avatarcímke, jelenlévők színe, szürke nem aktív résztvevő és eltűnő kurzora, a ping nyila és az odaugrás, az admin ablak, a megtekintő gombjai.
+- Szerverkód változott: a helyi tesztszerver (8888) újraindítva.
+- Ötletek a következő közös munka feladatokhoz (prezentáció mód, chat, napló, lézer pointer): TODO.md „Közös munka”.
+
 ## 2026-11-26 – Tesztek az új vonalméret-rendszerhez; test.sh a macOS bash-ével
 
 - **Tesztek hozzáigazítva** (kód nem változott): `RenderingTests` – a legnagyobb vastagság a méretből és a témaszorzóból, az íves vonal 3-as mérettel, az animált sima vonalon futó pötty (a gradiens helyett); `WorksheetTests` – `width` helyett `size`; `Tests/Fixtures/wires.json` újraírva (csak a régi `w` értékű esetek változtak), új eset a `size` mezővel; `gestures.mjs` – futó pötty, csoporton belüli gombkeresés, vonalméret a megszűnt vastagságmező helyett, a szerkesztővel azonos `geometry.js`-példány.

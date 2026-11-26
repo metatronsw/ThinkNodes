@@ -104,3 +104,37 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 - WebGL: próba csak dobozokkal, vonalakkal és ráccsal, mérés a `p1000` lapon a mostani SVG-hez képest.
 - WASM: előbb mérni, mennyi idő megy JS-számításra (táblázat, kódszínezés) a `tabla` és a `p1000` lapon.
 - Natív: a fejlesztőgép frissíthetősége (macOS 13.7.8 / Xcode 15.2, Intel); `GET /api/session` végpont; Google-átadás az apphoz.
+
+
+# Közös munka (online felhasználók)
+
++ Kész (2026-11-26): felhasználói szín (32 színű alappaletta + admin #hex), 32 fekete, színezett avatar, név / avatar a kurzor mellett (néző választja, eszköztár), jelenlévők a saját színükkel, nem aktív (rejtett fül / nincs fókusz) résztvevő szürke és kurzor nélkül, ping a küldő színével, képernyőn kívüli ping nyila (kattintásra odaugrik). Részletek: CHANGES.md.
+
+Kitalálandó, ötletek (2026-11-26):
+
+**Fókusz kérése / prezentáció mód**
+- Az előadó egy *keretet* oszt meg: a vászon egy téglalapját (világkoordinátában), alapból a saját látható területét, vagy rögzített 16:9 / 4:3 arányt. Minden követő kliens maga számolja a nagyítást (`k = min(saját szélesség / keret szélessége, saját magasság / keret magassága)`) és középre teszi a keretet, így eltérő képernyőn is ugyanaz a tartalom látszik; az eltérő képarány csak a keret körüli sávot változtatja.
+- A keret vékony (az előadó színű, szaggatott) vonalként látszik mindenkinél, útmutatásként; a tartalom kilóghat belőle.
+- Átvitel: a meglévő WebSocketen, mint a kurzor (`{present: {rect}}`, legfeljebb ~10/mp, a köztes állapotokat a kliens 150–200 ms-os áttűnéssel simítja). A szoba megjegyzi az utolsó keretet, így a később belépő is azonnal követ.
+- Egyszerre egy előadó szobánként (a doboz kijelöléséhez hasonló zárral); az admin átveheti. Ha az előadó elmegy vagy nem aktív, a követőknél ez kiírva látszik („Az előadó nem aktív”), kilépésekor a mód véget ér.
+- Követő: ha maga mozgatja / nagyítja a vásznat, leválik („Leválva – vissza az előadáshoz” gomb). Kérdés: lehessen-e a követést kötelezővé tenni (pl. oktatásnál), vagy mindig csak felkérés legyen.
+- Az előadó kurzora és lézere ilyenkor mindig látszik, a néző beállításától függetlenül.
+
+**Chat**
+- A jelenlévők gombjai (már most is gombok) nyitják a csevegőpanelt; kattintás egy névre = annak megemlítése.
+- Tárolás munkalaponként, a munkalap fájlján kívül, hozzáfűzéses naplóként (pl. `<projekt>/.chat/<lap>.jsonl`: id, szerző, idő, szöveg, opcionális hivatkozás dobozra / pontra), így nem ütközik a lap mentéseivel és verzióival. Kézbesítés a meglévő hosszú lekérdezéssel vagy WebSocket-üzenettel; az előzmények lapozva (utolsó 100).
+- Olvasatlan-jelzés a csevegő gombján; `@név` megemlítés kiemelve, a címzettnél ping-szerű jelzéssel. A hivatkozott dobozra kattintva a nézet odaugrik (a ping nyilának ugrása újrahasznosítható).
+- Saját üzenet szerkesztése / törlése rövid ideig, admin bármikor törölhet; egyszerű markdown (a `canvas-markdown.js` részhalmaza).
+- Kérdések: lapra vagy projektre szóljon-e a chat; olvashatja-e a vendég; kell-e a kurzor mellett rövid ideig felvillanó buborék (táblás programokban szokásos).
+
+**Napló**
+- Projektenként egy közös napló, saját dokumentumtípusként a fában (mint a munkalap), így exportálható / importálható és lomtárba tehető. Bejegyzés: id, szerző, létrehozás és utolsó módosítás ideje (ki, mikor), szöveg, jelzők: fontos, elvégezve, inaktív (+ később szabad címkék).
+- Megjelenítés idő szerint (újak felül vagy alul, választható), szűrők: elvégzettek / inaktívak elrejtése, csak a fontosak. Szerkesztő ír és jelöl, a vendég csak olvas.
+- Bejegyzésenkénti műveletek (hozzáadás, jelző váltása, szöveg módosítása) a teljes dokumentum mentése helyett, így két ember egyszerre is dolgozhat rajta ütközés nélkül.
+- Kapcsolódások: chatüzenetből „Naplóba” gomb; dobozra hivatkozás a bejegyzésben.
+- Kérdések: projekt- vagy lapszintű legyen; ki jelölhet „elvégezve”-re (bárki vagy csak a szerző / admin); kell-e határidő.
+
+**Lézer pointer**
+- Eszköz az eszköztáron (és gyorsbillentyű, pl. nyomva tartott L): húzás közben a vonal pontjai a WebSocketen mennek (mint a kurzor, ~30/mp, vonásonként legfeljebb néhány száz pont), soha nem mentődnek.
+- Rajz: a felhasználó színével, enyhe fényudvarral, a képernyőn állandó vastagsággal (a kurzorhoz hasonló ellen-nagyítással); minden pont kb. 1,5 mp alatt elhalványul (csóva), a saját vonás azonnal látszik.
+- Szerveroldali sebességkorlát; érintés / toll is. Prezentáció módban az előadó lézere a fő mutató; képernyőn kívüli lézerre a ping nyila használható.

@@ -8,7 +8,7 @@ import {chooseZip, exportPackage, importPackage, isPackageZip} from "./package.j
 import {decodeWorksheet, encodeWorksheet} from "./worksheet-json.js";
 import {sharedMouse} from "./mouse.js";
 import {worksheetChanges, replayChanges, sameValue} from "./editor-history.js?v=2";
-import {flashNode, flashPoint} from "./ping.js?v=2";
+import {flashNode, flashPoint, pingOffscreen, visibleBounds} from "./ping.js?v=3";
 import {sketchSeed, sketchOutline, sketchPaths, sketchShift, stickyColor} from "./sketch.js?v=3";
 import {showTooltip, hideTooltip} from "./tooltip.js";
 import {justifyRows, justifyShifts} from "./justify.js?v=7";
@@ -687,8 +687,14 @@ createApp({
       if (!frame) { motions.value = new Map(); return; }
       if (frame.revision !== board.value?.revision) return;
       if (frame.ping) {
-        if (frame.point) flashPoint(canvas.value?.querySelector("[data-scene]"), frame.point);
-        else flashNode(canvas.value, frame.node);
+        if (frame.point) flashPoint(canvas.value?.querySelector("[data-scene]"), frame.point, 24, 24, "node-ping", frame.color || undefined);
+        else flashNode(canvas.value, frame.node, frame.color || undefined);
+        // A vásznon kívül eső ping felé nyíl mutat a vászon szélén; rákattintva a nézet odaugrik.
+        pingOffscreen(() => pingRect(frame), visibleBounds(canvas.value), frame, (rect, bounds) => {
+          const current = view.value;
+          setView(d3.zoomIdentity.translate(current.x + bounds.left + bounds.width / 2 - (rect.left + rect.right) / 2,
+            current.y + bounds.top + bounds.height / 2 - (rect.top + rect.bottom) / 2).scale(current.k));
+        });
         return;
       }
       const next = new Map(motions.value);
@@ -1030,6 +1036,17 @@ createApp({
     }
 
     const mouse = sharedMouse(point => live.cursor(point));
+    watch(view, () => mouse?.rescale());
+    // A ping helye a képernyőn: pontnál a pont körüli kis négyzet, doboznál a doboz.
+    function pingRect(target) {
+      if (target.point) {
+        const matrix = canvas.value?.querySelector("[data-scene]")?.getScreenCTM();
+        if (!matrix) return null;
+        const {x, y} = new DOMPoint(target.point.x, target.point.y).matrixTransform(matrix);
+        return new DOMRect(x - 12, y - 12, 24, 24);
+      }
+      return canvas.value?.querySelector('[data-node="' + CSS.escape(target.node) + '"]')?.getBoundingClientRect() ?? null;
+    }
     const live = liveConnection(path, csrf, async state => {
       if (!online.value) {
         problem.value = "";
@@ -5033,10 +5050,13 @@ createApp({
         h("div", {class: "canvas-people"}, [
           h("div", {class: "participants", "aria-label": "Jelenlévők"},
             !online.value && problem.value ? h("span", {class: "connection-lost", role: "status"}, "Kapcsolat megszakadt") : peers.value.map((p, index) =>
-              // A jelenlévők gombok; egyelőre nem csinálnak semmit (később: chatüzenet küldése).
-              h("button", {key: index, type: "button", class: "button tool-button participant", title: p.name,
-                onPointerdown: event => event.stopPropagation()},
-                [p.avatar ? h("img", {class: "peer-avatar", src: "/icons/avatar-" + p.avatar + ".svg", alt: ""}) : null, p.name]))),
+              // A jelenlévők gombok; egyelőre nem csinálnak semmit (később: chatüzenet küldése). A név és az avatar a
+              // felhasználó színével látszik; aki nem nézi a lapot, annak a gombja szürke.
+              h("button", {key: index, type: "button", class: "button tool-button participant", title: p.name + (p.away ? " · nem aktív" : ""),
+                "data-away": p.away ? "" : undefined, onPointerdown: event => event.stopPropagation()},
+                [p.avatar ? h("svg", {class: "peer-avatar", viewBox: "0 0 24 24", fill: p.color || "currentColor", "aria-hidden": "true"},
+                  [h("use", {href: "/icons/avatar-" + p.avatar + ".svg#a"})]) : null,
+                  h("span", {class: "participant-name", style: p.color ? {color: p.color} : undefined}, p.name)]))),
         ]),
         h("div", {class: "canvas-controls", "data-open": toolbarOpen.value}, [
           button("", () => { toolbarOpen.value = !toolbarOpen.value; }, {symbol: toolbarOpen.value ? "left" : "right",
@@ -5060,8 +5080,9 @@ createApp({
 
     function ping(target) {
       menu.value = null;
-      if (target.point) flashPoint(canvas.value?.querySelector("[data-scene]"), target.point);
-      else flashNode(canvas.value, target.node);
+      const color = peers.value.find(p => p.mine)?.color || undefined;
+      if (target.point) flashPoint(canvas.value?.querySelector("[data-scene]"), target.point, 24, 24, "node-ping", color);
+      else flashNode(canvas.value, target.node, color);
       live.ping(target).catch(error => { problem.value = error.message; });
     }
 

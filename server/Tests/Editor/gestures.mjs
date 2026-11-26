@@ -55,6 +55,8 @@ function zoom() {
   return behavior;
 }
 globalThis.document = {documentElement: {dataset: {display: "light"}}, querySelector: () => root,
+  // A jelenlét-figyelés (collaboration.js: nézi-e a lapot) a fókuszt és a láthatóságot kérdezi.
+  hidden: false, hasFocus: () => true, addEventListener() {},
   // A dobozon szerkesztés (editor.js codeEdit) a kurzort a szövegcsomópontok szerint állítja be; itt nincs valódi DOM.
   createTreeWalker: () => ({nextNode: () => null})};
 const storage = new Map();

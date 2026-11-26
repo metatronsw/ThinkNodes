@@ -411,7 +411,17 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .project-card.layers-1 { box-shadow: 3px 3px var(--sheet-color), 4px 4px var(--line); }
 .project-card.layers-2 { box-shadow: 3px 3px var(--sheet-color), 4px 4px var(--line), 7px 7px var(--sheet-color), 8px 8px var(--line); }
 .inspector :is(label > span, .color-field > span, legend) { font-family: inherit; font-size: .78rem; font-weight: 600; line-height: 1.3; color: var(--muted); }
-.node-ping { transform-box: fill-box; transform-origin: center; animation: node-ping 1.2s ease-out forwards; }
+.node-ping { transform-box: fill-box; transform-origin: center; animation: node-ping var(--ping-duration) ease-out forwards; }
+:root { --ping-duration: 2s; }
+/* Képernyőn kívüli ping: nyíl a látható terület szélén, a küldő színével és avatarjával; a pinggel együtt halványul el
+   (fölötte megáll, hogy rá lehessen kattintani). */
+.ping-arrow { position: fixed; z-index: 1000; box-sizing: border-box; width: 34px; height: 34px; margin: -17px 0 0 -17px; padding: 0;
+  display: grid; place-items: center; border: 2px solid var(--ping-color); border-radius: 50%; background: white; cursor: pointer;
+  box-shadow: 0 1px 5px #0005; animation: ping-arrow var(--ping-duration) ease-out forwards; }
+.ping-arrow:hover { animation-play-state: paused; }
+.ping-arrow-pointer { position: absolute; left: 50%; top: 50%; width: 60px; height: 60px; margin: -30px 0 0 -30px; overflow: visible; fill: var(--ping-color); pointer-events: none; }
+.ping-arrow-avatar { width: 20px; height: 20px; }
+@keyframes ping-arrow { 0% { opacity: 0; transform: scale(.6); } 12% { opacity: 1; transform: scale(1); } 65% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes node-ping { 0% { transform: scale(.98); opacity: .9; } 18% { opacity: 1; } 100% { transform: scale(1.45); opacity: 0; } }
 
 .header-actions .header-user { margin-inline-start: 24px; }
@@ -463,7 +473,8 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .connection-lost, .participants.connection-lost { background: #a62739; color: white; border-radius: 5px; padding: 4px 7px; }
 /* Viewer canvas controls match the editor: 6px inset, 4px gap, compact buttons; users in the lower right corner. */
 .passive-frame > :is(.fullscreen, .mouse-share) { position: absolute; bottom: 6px; left: 6px; right: auto; z-index: 2; min-height: var(--tool-button-size, 32px); height: var(--tool-button-size, 32px); padding: 4px 9px; }
-.passive-frame:has(> .mouse-share) > .fullscreen { left: 46px; }
+.passive-frame:has(> .mouse-share) > .fullscreen { left: 86px; }
+.passive-frame > .cursor-label { position: absolute; bottom: 6px; left: 46px; z-index: 2; min-height: var(--tool-button-size, 32px); height: var(--tool-button-size, 32px); padding: 4px 9px; }
 .passive-frame > .participants { position: absolute; right: 12px; bottom: 8px; z-index: 2; max-width: min(47%, calc(100% - 110px)); padding: 4px 7px; border-radius: 5px; background: #fffffff0; white-space: nowrap; }
 .passive-frame > .participants:empty { display: none; }
 .mouse-share[aria-pressed="true"] { background: var(--accent); color: white; }
@@ -552,11 +563,20 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 .current-avatar { align-self: center; }
 .avatar-dialog { max-width: calc(100% - 24px); padding: 16px; color: var(--ink); }
 .avatar-dialog::backdrop { background: #18233580; }
-.avatar-picker { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 12px 0; }
-.avatar-picker img, .current-avatar img { width: 28px; height: 28px; display: block; }
-.avatar-picker button { padding:3px; border:1px solid var(--line); background:white; border-radius:4px; }
-.avatar-picker button[aria-pressed=true] { outline:2px solid var(--accent); }
-.peer-avatar { width:20px; height:20px; vertical-align:middle; }
+.avatar-picker, .color-picker { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; margin: 12px 0; }
+.avatar-picker svg, .current-avatar svg { width: 28px; height: 28px; display: block; }
+.color-picker svg { width: 22px; height: 22px; display: block; margin: auto; }
+:is(.avatar-picker, .color-picker) button { padding:3px; border:1px solid var(--line); background:white; border-radius:4px; }
+:is(.avatar-picker, .color-picker) button[aria-pressed=true] { outline:2px solid var(--accent); }
+.avatar-dialog h4 { margin: 0; }
+.color-custom { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+.color-custom label { display: inline-flex; align-items: center; gap: 6px; }
+.color-custom input[type=color] { inline-size: 44px; block-size: 30px; padding: 0 2px; border: 1px solid var(--line); border-radius: 4px; background: white; }
+.peer-avatar { width:20px; height:20px; vertical-align:middle; flex: none; }
+/* A jelenlévők: név és avatar a felhasználó színével; aki nem nézi a lapot, annak a gombja teljesen elszürkül. */
+.participants .participant-name { display: inline; font: inherit; }
+.participant[data-away] { filter: grayscale(1); opacity: .5; }
+.peer-cursor-label text { font-family: system-ui, sans-serif; }
 
 @media (max-width:1100px) {
   .site-header:has(.header-open) .header-left { grid-column:1; }
@@ -1169,8 +1189,8 @@ svg text { text-rendering: geometricPrecision; }
 @keyframes fx-peer { 50% { opacity: .5; stroke-width: 6px; } }
 
 /* Ping: felvillanó kitöltés, majd kétszer táguló, fénylő gyűrű. */
-[data-effects="liquid"] .node-ping { stroke: var(--fx-accent, #f58a16); fill: var(--fx-accent, #f58a16); filter: url(#fx-glow);
-  animation: fx-ping 1.5s cubic-bezier(.2, .7, .2, 1) forwards; }
+[data-effects="liquid"] .node-ping { stroke: var(--ping-color, var(--fx-accent, #f58a16)); fill: var(--ping-color, var(--fx-accent, #f58a16)); filter: url(#fx-glow);
+  animation: fx-ping var(--ping-duration) cubic-bezier(.2, .7, .2, 1) forwards; }
 @keyframes fx-ping {
   0% { transform: scale(.94); opacity: 1; fill-opacity: .5; stroke-width: 10px; }
   30% { transform: scale(1.1); fill-opacity: .1; stroke-width: 5px; }

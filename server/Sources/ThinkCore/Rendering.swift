@@ -59,7 +59,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=55">
+          <link rel="stylesheet" href="/app.css?v=56">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -96,6 +96,12 @@ package func csrfInput(_ token: String) -> String {
 
 package func uiIcon(_ symbol: String) -> String {
     "<svg class=\"ui-icon\" aria-hidden=\"true\" viewBox=\"0 0 24 24\"><use href=\"/icons.svg#\(symbol)\"/></svg>"
+}
+
+/// Avatar a megadott színnel: a fekete alakzat (`/icons/avatar-N.svg#a`) a `fill` örökléssel színeződik (stílus-attribútum
+/// nélkül, az oldal tartalombiztonsági szabálya miatt).
+package func avatarSymbol(_ number: Int, color: String, classes: String = "avatar-symbol") -> String {
+    "<svg class=\"\(classes)\" viewBox=\"0 0 24 24\" fill=\"\(color)\" aria-hidden=\"true\"><use href=\"/icons/avatar-\(number).svg#a\"/></svg>"
 }
 
 package let headerButtonClass = "button header-button"
