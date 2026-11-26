@@ -55,6 +55,36 @@ import VaporTesting
     #expect(boardSVG(tinted).contains(##"class="node-surface" fill="#123456""##))
 }
 
+/// A vászonszín a paletta 0. színe: a régi "canvas" háttérmód betöltéskor 0. színű kitöltés lesz, és a 0. színű,
+/// kitöltött doboz felülete a munkalap háttere (editor.js canvasSurface).
+@Test func paletteColorZeroIsTheCanvasSurface() throws {
+    let legacy = #"{"schemaVersion":3,"title":"Vászon","nodes":[{"id":"box","type":"box","text":"Doboz","position":{"x":0,"y":0},"fill":5,"backgroundMode":"canvas"}],"edges":[]}"#
+    let board = try JSONDecoder().decode(Worksheet.self, from: Data(legacy.utf8))
+    #expect(board.nodes[0].backgroundMode == nil)
+    #expect(board.nodes[0].fill == "@0")
+    let saved = try JSONSerialization.jsonObject(with: JSONEncoder().encode(board)) as! [String: Any]
+    #expect((saved["nodes"] as! [[String: Any]])[0]["fill"] as? Int == 0)
+    var themed = board
+    themed.appearance = Appearance()
+    themed.background = "#123456"
+    #expect(boardSVG(themed).contains(##"class="node-surface" fill="#123456""##))
+    // Közvetlen (#hex) szín: változatlanul megmarad és úgy rajzolódik.
+    themed.nodes[0].fill = "#a1b2c3"
+    #expect(boardSVG(themed).contains(##"fill="#a1b2c3""##))
+}
+
+/// A .md fájldoboz: a sima sortörés egy új sor (nem kettő), a blokkok között annyi üres sor, ahány a forrásban.
+@Test func markdownExactLinesKeepTheSourceSpacing() {
+    let html = markdownHTML("# Cím\nelső\nmásodik\n\nharmadik\n\n\n- a\n- b", exactLines: true)
+    #expect(!html.contains("data-sourcepos"))
+    #expect(html.contains("első<br />\nmásodik"))
+    #expect(html.contains(#"<p data-gap="1">harmadik"#))
+    #expect(html.contains(#"<ul data-gap="2">"#))
+    #expect(!html.contains(#"<li data-gap"#))
+    #expect(!html.contains(#"<p data-gap="1">első"#))
+    #expect(markdownHTML("a\nb") == markdownHTML("a\nb", exactLines: false))
+}
+
 @Test func textFileBoxFrameCanBeSwitchedOffInEveryBackgroundMode() throws {
     var note = Idea(id: "note", type: "text", file: CanvasFile(asset: "file-note", filename: "jegyzet.txt"), position: Point(x: 0, y: 0))
     #expect(!boardSVG(Worksheet(title: "Keret", nodes: [note])).contains(#"class="node-surface" fill="\#(note.fill)" stroke="none""#))

@@ -133,6 +133,8 @@ private struct LoginForm: Content {
 
 private struct MarkdownForm: Content {
     var text: String
+    /// A forrás sorai pontosan (.md fájldoboz): markdownHTML(exactLines:).
+    var lines: Bool?
 }
 
 private struct CanvasMarkdownRequest: Content {
@@ -781,9 +783,9 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
 
     app.post("api", "text") { req -> Response in
         try verify(req, token: req.headers.first(name: "X-CSRF-Token"))
-        let source = try req.content.decode(MarkdownForm.self).text
-        guard source.utf8.count <= 100_000 else { throw Abort(.payloadTooLarge) }
-        return response(markdownHTML(source), type: "text/html; charset=utf-8")
+        let form = try req.content.decode(MarkdownForm.self)
+        guard form.text.utf8.count <= 100_000 else { throw Abort(.payloadTooLarge) }
+        return response(markdownHTML(form.text, exactLines: form.lines == true), type: "text/html; charset=utf-8")
     }
 
     app.post("api", "text", "canvas") { req async throws -> CanvasMarkdownResponse in
@@ -1710,7 +1712,7 @@ private func passivePage(_ req: Request, path: WorksheetPath, worksheet: Workshe
         let body = $0.uppercase == true ? "<div class=\"is-uppercase\">\(markdownHTML($0.text))</div>" : markdownHTML($0.text)
         return "<template data-tooltip=\"\($0.id)\" data-align=\"\($0.alignment.rawValue)\"\(justification)>\(body)</template>"
     }.joined()
-    let introduction = worksheet.text.map(markdownHTML) ?? ""
+    let introduction = worksheet.text.map { markdownHTML($0) } ?? ""
     let notes = introduction.isEmpty ? "" :
         "<section class=\"panel worksheet-notes\"><div class=\"formatted-text\(worksheet.textJustified == true ? " justified-text" : "")\">\(introduction)</div></section>"
     let external = worksheet.nodes.compactMap { node -> String? in

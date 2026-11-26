@@ -311,6 +311,8 @@ extension Worksheet {
             if node.isJunction { sheet.nodes[i].shape = theme.graphics?.junction ?? .ellipse }
             else if node.shape == .rounded { sheet.nodes[i].shape = theme.graphics?.box ?? .rounded }
             sheet.nodes[i].fill = resolve(node.fill, 2)
+            // A paletta 0. színe kitöltésként: vászonszínű felület (a munkalap háttere, rács nélkül; editor.js canvasSurface).
+            if node.fill == "@0", !node.isJunction, [.solid, .translucent].contains(node.resolvedBackgroundMode) { sheet.nodes[i].backgroundMode = .canvas }
             sheet.nodes[i].textColor = resolve(node.textColor, 1)
             if let color = node.file?.alphaBackground { sheet.nodes[i].file?.alphaBackground = resolve(color, 2) }
             // Papírfelület: a cetli színe a doboz színe fehérrel keverve (alapszínnél a paletta sárgája, 6); a papíron

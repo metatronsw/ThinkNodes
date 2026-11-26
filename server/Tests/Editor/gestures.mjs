@@ -798,21 +798,40 @@ assert.equal(button("Free").props["aria-pressed"], false);
 const emptySurface = prop("class", "node-surface", graphic("outside"));
 assert.equal(emptySurface.props.fill, "none");
 assert.notEqual(emptySurface.props.stroke, "none");
-// Az elmosott háttér megszűnt; a vászonszín (a munkalap háttérszíne, rács nélkül) minden dobozon választható.
+// Az elmosott háttér megszűnt; a vászonszín (a munkalap háttérszíne, rács nélkül) a paletta 0. színe, minden dobozon
+// választható (a külön „Vászonszín” gomb megszűnt).
 assert.equal(button("Elmosott"), undefined);
 assert.equal(prop("id", "box-background-blur"), undefined);
-await press("Vászonszín (a rács nem látszik át)"); await save();
-assert.equal(button("Üres").props["aria-pressed"], false);
-const canvasSurface = prop("class", "node-surface", graphic("outside"));
-assert.notEqual(canvasSurface.props.fill, "none");
-assert.notEqual(canvasSurface.props.fill, model("outside").fill);
-assert.equal(canvasSurface.props.filter, undefined);
-assert.equal(model("outside").backgroundMode, "canvas");
-await press("Vászonszín (a rács nem látszik át)"); await save();
+assert.equal(button("Vászonszín (a rács nem látszik át)"), undefined);
+await press("Üres"); await save();
 assert.equal(model("outside").backgroundMode, undefined);
 const backgroundPicker = () => prop("aria-label", "Háttér színválasztó");
+const ownFill = model("outside").fill;
 if (!backgroundPicker().props["aria-expanded"]) backgroundPicker().props.onClick();
 await tick();
+const swatches = () => find(n => n.props?.class?.includes?.("color-tools"), backgroundPicker().parent);
+assert.equal(prop("class", "canvas-swatch", swatches()), swatches().children.filter(n => n.tag === "button")[1]);
+prop("class", "canvas-swatch", swatches()).props.onClick(); await save();
+assert.equal(model("outside").fill, 0);
+assert.equal(model("outside").backgroundMode, undefined);
+const canvasSurface = prop("class", "node-surface", graphic("outside"));
+assert.notEqual(canvasSurface.props.fill, "none");
+assert.equal(canvasSurface.props["fill-opacity"], undefined);
+assert.equal(canvasSurface.props.filter, undefined);
+// Közvetlen szín a #hex mezőből (a rövid alak is); témaváltáskor is ez marad.
+const hexField = () => prop("class", "color-hex", swatches());
+hexField().props.onChange({target: {value: "#1A2"}}); await save();
+assert.equal(model("outside").fill, "#11aa22");
+assert.equal(prop("class", "node-surface", graphic("outside")).props.fill, "#11aa22");
+assert.equal(hexField().props.value, "#11aa22");
+hexField().props.onChange({target: {value: "zöld"}}); await save();
+assert.equal(model("outside").fill, "#11aa22");
+if (typeof ownFill === "number") {
+  const name = JSON.parse(readFileSync("Public/themes/ThinkDefault.json", "utf8")).palettes[0].colors.find(c => c.id === ownFill).name;
+  find(n => n.tag === "button" && n.props["aria-label"] === name, swatches()).props.onClick();
+} else hexField().props.onChange({target: {value: ownFill}});
+await save();
+assert.equal(model("outside").fill, ownFill);
 await press("Free"); await save();
 assert.equal(model("outside").backgroundMode, "free");
 assert.equal(prop("class", "node-surface", graphic("outside")), undefined);
@@ -896,7 +915,11 @@ snapSwitch().props.onClick(); await tick();
 const start = model("auto").position;
 await drag(graphic("auto"), start.x, start.y, 121, -83);
 await save();
-assert.deepEqual(model("auto").position, {x:128, y:-96});
+// Rácsra illesztésnél a doboz bal felső sarka kerül rácspontra (32-es rácsköz).
+const snappedBox = model("auto");
+assert.deepEqual([snappedBox.width, snappedBox.height], [160, 90]);
+assert.deepEqual(snappedBox.position, {x:112, y:-83});
+assert.deepEqual({x: snappedBox.position.x - snappedBox.width / 2, y: snappedBox.position.y - snappedBox.height / 2}, {x:32, y:-128});
 const freeCableStart = event(canvas(), -593, -352, {ctrlKey: true, target: {closest: () => null}});
 canvas().props.onPointerdownCapture(freeCableStart);
 canvas().props.onPointermove(event(canvas(), -492, -357));

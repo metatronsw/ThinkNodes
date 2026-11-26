@@ -1,5 +1,5 @@
 {
- "about": "Gyors eszközök leírója (jobb kattintás objektumon: gombok a kattintás pontjától terjeszkedve; editor.js quickRows / renderFlyout). Kézzel szerkeszthető; a változás a lap újratöltése után él. 'noMenu': true = a hagyományos (szöveges) helyi menü minden objektumon ki van kapcsolva (a vászon üres részén megmarad); megadható típusnevek listája is (vonalnál 'edge'), vagy false. 'groups': lenyíló csoportok – label: felirat; open: 'row' (sor), 'column' (oszlop) vagy 'grid' (rács, 'columns' oszloppal); items: a csoport gombjai; icon (nem kötelező): állandó ikon neve az icons.svg-ből, nélküle az aktuális érték ikonja látszik. 'layouts': objektumtípusonként (node-types.json típusnév, vonalnál 'edge'; '*' = minden más típus) az elrendezés: 'rows' – a sorok, soronként gomb- vagy csoportnevek (ha nincs megadva, a tulajdonságpanel csoportjai, csoportonként egy sor); 'before' / 'after' – a sorok előtt, illetve után álló további sorok (az itt megnevezett gombok a panel automatikus soraiból kimaradnak); 'opposite' – a kattintás túloldalán megjelenő sorok. Ami egy objektumon éppen nem érvényes (pl. link-open link nélkül), kimarad. 'tools': a használható gombazonosítók jegyzéke (csak tájékoztató, a program nem olvassa).",
+ "about": "Gyors eszközök leírója (jobb kattintás objektumon: gombok a kattintás pontjától terjeszkedve; editor.js quickRows / renderFlyout). Kézzel szerkeszthető; a változás a lap újratöltése után él. 'noMenu': true = a hagyományos (szöveges) helyi menü minden objektumon ki van kapcsolva (a vászon üres részén megmarad); megadható típusnevek listája is (vonalnál 'edge'), vagy false. 'groups': lenyíló csoportok – label: felirat; open: 'row' (sor), 'column' (oszlop) vagy 'grid' (rács, 'columns' oszloppal); items: a csoport gombjai; icon (nem kötelező): állandó ikon neve az icons.svg-ből, nélküle az aktuális érték ikonja látszik. 'layouts': objektumtípusonként (node-types.json típusnév, vonalnál 'edge', csoportos kijelölésnél 'batch'; '*' = minden más típus) az elrendezés: 'rows' – a sorok, soronként gomb- vagy csoportnevek (ha nincs megadva, a tulajdonságpanel csoportjai, csoportonként egy sor); 'before' / 'after' – a sorok előtt, illetve után álló további sorok (az itt megnevezett gombok a panel automatikus soraiból kimaradnak); 'opposite' – a kattintás túloldalán megjelenő sorok. Ami egy objektumon éppen nem érvényes (pl. link-open link nélkül), kimarad. 'tools': a használható gombazonosítók jegyzéke (csak tájékoztató, a program nem olvassa).",
  "noMenu": true,
  "groups": {
   "font": {
@@ -59,8 +59,7 @@
    "items": [
     "background-free",
     "background-empty",
-    "background-translucent",
-    "background-canvas"
+    "background-translucent"
    ]
   },
   "lineSize": {
@@ -92,6 +91,28 @@
     "lineAppearance-thick",
     "lineAppearance-dashed",
     "lineAppearance-dotted"
+   ]
+  },
+  "arrange": {
+   "label": "Dobozok igazítása",
+   "open": "row",
+   "icon": "box-align-left",
+   "items": [
+    "arrange-left",
+    "arrange-center",
+    "arrange-right",
+    "arrange-top",
+    "arrange-middle",
+    "arrange-bottom"
+   ]
+  },
+  "distribute": {
+   "label": "Dobozok egyenlő elosztása",
+   "open": "row",
+   "icon": "distribute-x",
+   "items": [
+    "distribute-x",
+    "distribute-y"
    ]
   }
  },
@@ -197,6 +218,14 @@
      "ping"
     ]
    ]
+  },
+  "batch": {
+   "before": [
+    [
+     "arrange",
+     "distribute"
+    ]
+   ]
   }
  },
  "tools": {
@@ -209,8 +238,7 @@
   "align-<top|middle|bottom>-<left|center|right>": "Szöveg igazítása (9 hely)",
   "shape-<forma>": "Forma (rounded, rectangle, ellipse, diamond, triangle, pentagon, hexagon, parallelogram)",
   "animation-<none|pulse|blink|rock|hop>": "Animáció",
-  "fill": "Háttérszín (színválasztó)",
-  "background-<free|empty|translucent|canvas>": "Háttér mód",
+  "fill": "Háttérszín (színválasztó; a 0. szín a vászonszín: a rács nem látszik át, textúrás vásznon átlátszó)",
   "elevation": "Kiemelés",
   "lock": "Tartalom rögzítése (csak konténeren)",
   "text-flow": "Szöveg körbefuttatása (csak konténeren)",
@@ -224,6 +252,9 @@
   "edit-name": "Név szerkesztése a vásznon: doboz szövege, fájlnév (a doboz fölötti felirat), vonal és csomópont címkéje",
   "edit-comment": "Megjegyzés szerkesztése a vásznon (fájldoboz, előnézetes doboz, grafikon)",
   "hide-name, hide-comment": "Fájlnév, illetve megjegyzés elrejtése / megjelenítése (ahol a panelen is van ilyen)",
-  "lineSize-<1|2|3>": "Vonalméret (vékony, közepes, vastag; a vastagság a téma szorzóitól függ: themes/*.json graphics.lineScale)"
+  "lineSize-<1|2|3>": "Vonalméret (vékony, közepes, vastag; a vastagság a téma szorzóitól függ: themes/*.json graphics.lineScale)",
+  "arrange-<left|center|right|top|middle|bottom>": "Csoportos kijelölés: dobozok igazítása oszlopba (bal / közép / jobb) vagy sorba (felső / közép / alsó); csak több kijelölt doboznál",
+  "distribute-<x|y>": "Csoportos kijelölés: egyenlő elosztás vízszintesen / függőlegesen a két legszélső doboz között; legalább három doboznál",
+  "background-<free|empty|translucent>": "Háttér mód"
  }
 }

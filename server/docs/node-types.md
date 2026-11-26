@@ -52,7 +52,7 @@ A mai tulajdonságpanelekből kigyűjtve. Minden képesség egy panelelem és a 
 |---|---|
 | `text` | Text (markdown) szerkesztő, tipográfia, igazítás, sorkizárás, összecsukás (lásd: Text képesség). A külön Cím megszűnt. |
 | `shape` | Forma |
-| `surface` | Háttér mód (Free / Üres / Áttetsző / Vászonszín) és háttérszín |
+| `surface` | Háttér mód (Free / Üres / Áttetsző) és háttérszín (a paletta 0. színe a vászonszín: a rács nem látszik át, textúrás vásznon átlátszó) |
 | `elevation` | Kiemelés (árnyék) |
 | `motion` | Animáció |
 | `size` | Méretezés (dobozon fogók, csomópontnál átmérő) |
@@ -102,7 +102,7 @@ Alap doboz; ha belehúznak valamit, konténer lesz (`has-children`).
 **Tulajdonságpanel (sorrend):** Cím + tipográfia → Doboz (forma, animáció, háttér, kiemelés, rögzítés) → Text + tipográfia → Link.
 
 **Megjelenés a vásznon:** 8 forma (rounded, rectangle, ellipse, diamond, triangle, pentagon, hexagon, parallelogram);
-háttér: kitöltött / Free / Üres / Áttetsző / Vászonszín; automatikus keretszín; árnyék kiemeléskor; animáció
+háttér: kitöltött / Free / Üres / Áttetsző, vászonszín a paletta 0. színével; automatikus keretszín; árnyék kiemeléskor; animáció
 (pulse, blink, rock, hop); cím lehet a dobozon kívül; szöveg elrejthető vagy automatikusan méretezett;
 linkes doboznál szaggatott keret és hivatkozásjel (új helye: alul középen).
 
@@ -197,7 +197,7 @@ Importált szöveges fájl: minden nem bináris fájl (UTF-8, NUL bájt nélkül
 7. **Panel:** Fájlnév (+ mutatás) → Text → Megjegyzés → Megjelenés (háttér, kiemelés).
 8. **Színek és keret:** a tartalom szövegszíne a doboz szövegszíne (`textColor`, alapból a paletta 1-es színe), a háttér a doboz
    kitöltése (`fill`, alapból a paletta 2-es színe), így a világos/sötét mód követi a témát. A Megjelenés panelen a háttérmódok
-   (Free, Üres, Áttetsző, Vászonszín) mellett külön kapcsolható a keret (`frame: false` = keret nélkül), bármelyik móddal együtt.
+   (Free, Üres, Áttetsző; vászonszín: a paletta 0. színe) mellett külön kapcsolható a keret (`frame: false` = keret nélkül), bármelyik móddal együtt.
    A táblázat (`table`) szövegszíne is itt állítható; a táblázat szerkesztési módja (képletsor, fejlécek, kijelölés) a doboz
    hátteréből és szövegszínéből kevert színeket használ (`--tn-paper`, `Public/app.css`).
 

@@ -205,7 +205,8 @@ package enum BoxAnimation: String, Codable, Sendable {
 }
 
 package enum BoxBackgroundMode: String, Codable, Sendable {
-    /// canvas: a háttér a munkalap háttérszíne, a vászon rácsa nélkül (bármelyik dobozon).
+    /// canvas: a háttér a munkalap háttérszíne, a vászon rácsa nélkül. Tárolva nem fordul elő (betöltéskor 0. színű
+    /// kitöltés lesz belőle); a rajzolás jelzi vele a 0. színű, kitöltött dobozt (Worksheet.painted).
     case solid, free, empty, translucent, canvas
 }
 
@@ -2734,6 +2735,8 @@ extension Idea {
         fill = (try? fields.decode(StoredPaint.self, forKey: .fill).wrappedValue) ?? "#dce9ff"
         // Ismeretlen mód (pl. a megszűnt "blurred") kitöltött háttérként töltődik be.
         backgroundMode = (try? fields.decodeIfPresent(String.self, forKey: .backgroundMode)).flatMap { $0 }.flatMap(BoxBackgroundMode.init(rawValue:))
+        // A régi, külön „vászonszín” háttérmód helyett a paletta 0. színe (a téma vászonszíne) a vászonszínű felület.
+        if backgroundMode == .canvas { backgroundMode = nil; fill = "@0" }
         animation = try? fields.decode(BoxAnimation.self, forKey: .animation)
         textColor = (try? fields.decode(StoredPaint.self, forKey: .textColor).wrappedValue) ?? "#182335"
         fitText = try? fields.decode(Bool.self, forKey: .fitText)

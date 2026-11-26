@@ -93,6 +93,8 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 + A „kinyíló rész semmit nem tol el” szabály bevezetése a tulajdonságpanelen is: a színválasztó listája ott még eltolja a többi gombot (a gyors eszközökben már rögzített réteg: `ColorPicker floating`, `placePopup`).
 + A többi típus (fájldobozok, kép, vonal, csomópont) elrendezése a `quick-tools.json`-ban; a tulajdonságpanel kiváltása (szöveg- és számmezők helye).
 
++ Igazítás / elosztás (2026-11-26): lehetőség a vonalak szabad végpontjainak és a csomópontoknak a bevonására, illetve „rácsra igazítás” gombra a kijelölésen; billentyűparancsok.
+
 # TÉMÁK
 
 + Kész (2026-11-25): dobozkeret a témából (`graphics.frame`: vastagság, szín, felület-átlátszatlanság, fényudvar). Hátra: élénk kitöltésű doboz szövegszíne nem igazodik magától; a keretszín csak „auto” vagy a doboz színe lehet.

@@ -572,6 +572,9 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .node-file { box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; height: 100%; padding: 10px; overflow: hidden; font: 14px/1.4 system-ui, sans-serif; color: #182335; }
 .node-file strong, .node-file small { flex: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .node-file pre, .node-file .formatted-text { margin: 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Formázott szövegben a sortörés <br> (cmark HARDBREAKS); a pre-wrap a mögötte álló \n-t második sortörésként mutatná. */
+.node-file .formatted-text { white-space: normal; }
+.node-file .formatted-text pre { white-space: pre-wrap; }
 .node-audio { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .node-audio .button { flex: none; width: 34px; height: 34px; padding: 4px; justify-content: center; }
 .node-audio input { flex: 1; width: auto; padding: 0; cursor: pointer; accent-color: var(--accent); }
@@ -1348,3 +1351,30 @@ svg text { text-rendering: geometricPrecision; }
 .paper-notebook .formatted-text > * + * { margin-top: var(--rule); }
 /* Cetli: a táblázat a papír színén, sötét tintával. */
 .paper-sticky .node-note { background: transparent; }
+
+/* .md fájldoboz (editor.js renderFileText / renderTextEditor, Rendering.swift fileBox): szerkesztéskor és megjelenítéskor
+   ugyanaz a betű és sormagasság; a blokkok között nincs saját térköz, csak a forrás üres sorai (data-gap, markdownHTML
+   exactLines). A szerkesztő a nyers szöveget mutatja (md-input), egy sortörés = egy új sor. */
+.md-lines { --md-line: 20px; font-family: system-ui, sans-serif; font-size: 14px; line-height: var(--md-line); }
+.paper-notebook .md-lines { --md-line: var(--rule); }
+.md-lines :is(h1, h2, h3, h4, h5, h6, p, ul, ol, li, pre, blockquote, table, hr), .paper-notebook .md-lines > * + * { margin-block: 0; }
+.md-lines :is(h1, h2, h3, h4, h5, h6) { line-height: max(var(--md-line), 1.2em); }
+.md-lines.md-input { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.md-lines [data-gap="1"], .paper-notebook .md-lines [data-gap="1"] { margin-top: calc(var(--md-line) * 1); }
+.md-lines [data-gap="2"], .paper-notebook .md-lines [data-gap="2"] { margin-top: calc(var(--md-line) * 2); }
+.md-lines [data-gap="3"], .paper-notebook .md-lines [data-gap="3"] { margin-top: calc(var(--md-line) * 3); }
+.md-lines [data-gap="4"], .paper-notebook .md-lines [data-gap="4"] { margin-top: calc(var(--md-line) * 4); }
+.md-lines [data-gap="5"], .paper-notebook .md-lines [data-gap="5"] { margin-top: calc(var(--md-line) * 5); }
+.md-lines [data-gap="6"], .paper-notebook .md-lines [data-gap="6"] { margin-top: calc(var(--md-line) * 6); }
+.md-lines [data-gap="7"], .paper-notebook .md-lines [data-gap="7"] { margin-top: calc(var(--md-line) * 7); }
+.md-lines [data-gap="8"], .paper-notebook .md-lines [data-gap="8"] { margin-top: calc(var(--md-line) * 8); }
+.md-lines [data-gap="9"], .paper-notebook .md-lines [data-gap="9"] { margin-top: calc(var(--md-line) * 9); }
+.md-lines [data-gap="10"], .paper-notebook .md-lines [data-gap="10"] { margin-top: calc(var(--md-line) * 10); }
+.md-lines [data-gap="11"], .paper-notebook .md-lines [data-gap="11"] { margin-top: calc(var(--md-line) * 11); }
+.md-lines [data-gap="12"], .paper-notebook .md-lines [data-gap="12"] { margin-top: calc(var(--md-line) * 12); }
+
+/* Színválasztó: közvetlen szín (rendszer színválasztó + #hex), a 0. szín (vászonszín) jelölése. */
+.color-direct { grid-column: 1 / -1; display: flex; gap: 4px; align-items: center; }
+.color-direct input[type=color] { flex: none; inline-size: 32px; block-size: 32px; padding: 2px; border: 1px solid #bbc8d8; border-radius: 7px; background: white; cursor: pointer; }
+.color-direct .color-hex { flex: 1; min-width: 0; inline-size: 7.5em; block-size: 32px; box-sizing: border-box; padding: 0 6px; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.color-presets button.canvas-swatch .palette-tile { box-shadow: inset 0 0 0 1px #8a94a680; }

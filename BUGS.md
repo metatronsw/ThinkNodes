@@ -4,6 +4,14 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 ## Nyitott
 
+- **Igazítás, sarokfogó, vászonszín, színválasztó, .md szerkesztő: nyitott és kézzel nézendő tételek** (2026-11-26)
+  - Textúrás vásznon (Liquid Glass, WhiteBoard) a vászonszínű doboz valóban átlátszó: a rács és a saját árnyéka nem látszik benne, de az alatta álló dobozok és vonalak átlátszanak. Ha ezeket is takarnia kell, a vászon textúráját kellene a dobozba másolni (a Liquid Glass fényfoltjai a szerkesztőben mozognak, ezért ez nem egyszerű). Döntés kell.
+  - A megtekintő oldal és az SVG-export a vászonszínű dobozt textúrás vásznon is átlátszatlan vászonszínnel rajzolja (a szerkesztőben átlátszó).
+  - Csoportos húzás közben a rács kivágása a húzás eltolásával követi a dobozt; a pásztázás / nagyítás közbeni követés és sok vászonszínű doboz költsége Safariban nincs mérve.
+  - A .md szerkesztőben a címsor nyersen, alapméretben látszik (megjelenítéskor nagyobb), ezért a címsor alatti sorok szerkesztésbe lépve a címsor magasságkülönbségével feljebb kerülnek; a sorok közti távolság egyezik. Kézzel nézendő: holt billentyűs ékezet a nyilak után, nagyított vászon, füzetlapos (WhiteBoard) .md doboz.
+  - Kézzel nézendő: a sarokfogó érintéssel, ellipszis / rombusz alakú dobozon (a fogó a befoglaló téglalap sarkán áll), a rendszer színválasztójának élő húzása (minden mozdulat ment), a színválasztó a tulajdonságpanelen (ott a lista még eltolja a gombokat).
+  - A próbaprojekt (`projects/proba-igazitas`, a próba Liquid Glass témára állította) és a teszthez a scratchpadban létrehozott git worktree (`git worktree list`) törlése engedélyre vár.
+
 - **Közös munka (színek, avatarok, kurzorcímke, ping nyila): kézzel nézendő és döntésre váró tételek** (2026-11-26)
   - Kézzel nézendő két valódi böngészővel / eszközzel: a kurzorcímke olvashatósága világos és sötét vásznon, a ping nyila az ablak sarkaiban és teljes képernyőn, a nyíl fölötti megállás és a kattintás, a megtekintő oldal görgetett állapotban. Az automatizált Safari ablaka nincs fókuszban, ezért ott a saját résztvevő mindig „nem aktív”.
   - A kurzorcímke választása böngészőnként tárolódik (localStorage), nem a fiókhoz; ha fiókszintű kell, a `UserPreferences`-be tehető.

@@ -114,6 +114,17 @@ const ColorPicker = {
   setup(props, {emit}) {
     const expanded = ref(false);
     const tile = value => h("span", {class: "palette-tile", style: {backgroundColor: paint(value, props.role)}});
+    const paletteOrder = () => { const colors = activePalette.value?.colors ?? []; return [...colors.filter(c => c.id === 0), ...colors.filter(c => c.id !== 0)]; };
+    const hexValue = () => { const value = paint(props.color, props.role); return /^#[0-9a-f]{6}$/i.test(value) ? value.toLowerCase() : "#000000"; };
+    // #abc, abc, #aabbcc vagy aabbcc → #aabbcc; más bevitelnél a mező visszaáll.
+    function acceptHex(field) {
+      const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(field.value.trim());
+      if (!match) { field.value = hexValue(); return; }
+      const digits = match[1].length === 3 ? [...match[1]].map(d => d + d).join("") : match[1];
+      field.value = "#" + digits.toLowerCase();
+      // Változatlan érték (a megjelenített szín kódja) nem ment: a palettaszín palettaszín marad.
+      if (field.value !== hexValue()) emit("update", field.value);
+    }
     return () => h("div", {class: ["color-field", {"compact-color": props.compact}]}, [
       props.compact ? null : h("span", props.label),
       h("button", {type: "button", class: "color-sample", "aria-label": props.label + " színválasztó",
@@ -125,9 +136,24 @@ const ColorPicker = {
         onVnodeMounted: props.floating ? ({el}) => placePopup(el, el.parentNode?.querySelector?.(".color-sample"), quickDirection(el)) : undefined}, [
         h("button", {type: "button", ...controlName(props.clear ? "Háttér törlése" : "Alapértelmezett szín"),
           onClick: () => props.clear ? props.clear() : emit("update", props.role)}, [icon("clear-color")]),
-        ...(activePalette.value?.colors ?? []).map(c => h("button", {type: "button", key: c.id, title: c.name,
+        // A 0. szín (a téma vászonszíne) mindig elöl: dobozháttérként vászonszínű felület (canvasSurface).
+        ...paletteOrder().map(c => h("button", {type: "button", key: c.id, title: c.id === 0 ? c.name + " – vászonszín" : c.name,
           "aria-label": c.name, "aria-pressed": !props.transparent && c.id === props.color,
+          class: c.id === 0 ? "canvas-swatch" : undefined,
           onClick: () => { emit("update", c.id); }}, [tile(c.id)])),
+        // Közvetlen szín: a rendszer színválasztója és a #hex mező. A közvetlen szín (#rrggbb) témaváltáskor is megmarad.
+        h("div", {class: "color-direct", key: "custom"}, [
+          h("input", {type: "color", ...controlName("Egyéni szín (rendszer színválasztó)"), value: hexValue(),
+            onInput: event => emit("update", event.target.value.toLowerCase()), onChange: event => emit("update", event.target.value.toLowerCase())}),
+          h("input", {type: "text", class: "color-hex", ...controlName("Szín #hex kódja"), value: props.transparent ? "" : hexValue(),
+            placeholder: "#rrggbb", maxlength: 7, spellcheck: false, autocomplete: "off",
+            onKeydown: event => {
+              event.stopPropagation();
+              if (event.key === "Enter") { event.preventDefault(); acceptHex(event.target); }
+              if (event.key === "Escape") { event.target.value = hexValue(); event.target.blur(); }
+            },
+            onChange: event => acceptHex(event.target)}),
+        ]),
       ]) : null,
     ]);
   },
@@ -275,7 +301,8 @@ function parseCSV(source, separator = ",") {
 }
 
 const FormattedText = {
-  props: {source: String, justified: Boolean},
+  // `lines`: a forrás sorai pontosan (.md fájldoboz; Rendering.swift markdownHTML exactLines, app.css .md-lines).
+  props: {source: String, justified: Boolean, lines: Boolean},
   setup(props) {
     const html = ref(""), error = ref("");
     watch(() => props.source, (source, _, cleanup) => {
@@ -285,14 +312,14 @@ const FormattedText = {
       const timer = setTimeout(async () => {
         try {
           const response = await checked(await fetch("/api/text", {method: "POST", signal: controller.signal,
-            headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify({text: source})}));
+            headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify(props.lines ? {text: source, lines: true} : {text: source})}));
           const rendered = await response.text();
           if (!controller.signal.aborted) html.value = rendered;
         } catch (failure) { if (!controller.signal.aborted) error.value = failure.message; }
       }, 80);
       cleanup(() => { clearTimeout(timer); controller.abort(); });
     }, {immediate: true});
-    return () => error.value ? h("p", {class: "error"}, error.value) : h("div", {class: ["formatted-text", {"justified-text": props.justified}], innerHTML: html.value});
+    return () => error.value ? h("p", {class: "error"}, error.value) : h("div", {class: ["formatted-text", {"justified-text": props.justified, "md-lines": props.lines}], innerHTML: html.value});
   },
 };
 
@@ -360,9 +387,32 @@ function backgroundMode(node) {
   // A megszűnt "blurred" (elmosott) mód kitöltött háttérként jelenik meg.
   return node.backgroundMode && node.backgroundMode !== "blurred" ? node.backgroundMode : "solid";
 }
-// A doboz felületének színe: vászonszín módban a munkalap háttere, egyébként a doboz saját színe.
+// Vászonszínű felület: a paletta 0. színe (a téma vászonszíne) kitöltésként, kitöltött háttérmóddal; a régi, külön
+// „vászonszín” háttérmód (backgroundMode "canvas") ugyanígy. A felület a munkalap háttere, a rács nem látszik át.
+// Textúrás / effektes vásznon (texturedCanvas) a felület átlátszó: a vászon textúrája látszik, a rács és a doboz saját
+// árnyéka nem (gridHoles, shadowMask). Szerveroldali pár: Theme.swift painted, Rendering.swift renderWorksheetCanvas.
+function canvasSurface(node) {
+  const mode = backgroundMode(node);
+  return mode === "canvas" || (node.fill === 0 && (mode === "solid" || mode === "translucent"));
+}
+const texturedCanvas = () => graphics.value.effects === "liquid" || !!graphics.value.sketch;
+const seeThrough = node => !isJunction(node) && canvasSurface(node) && texturedCanvas() && !paperKind(node);
+// A doboz felületének színe: vászonszínű felületnél a munkalap háttere, egyébként a doboz saját színe.
 function surfaceColor(node) {
-  return backgroundMode(node) === "canvas" ? paint(currentBoard.value?.background, 0) : paint(node.fill, 2);
+  return canvasSurface(node) ? paint(currentBoard.value?.background, 0) : paint(node.fill, 2);
+}
+// Átlátszó vászonszínű doboz: a saját árnyéka a dobozon belül nem látszik (maszk: a doboz alakja kivágva).
+function shadowMask(node, shadow) {
+  if (!shadow || !seeThrough(node)) return shadow;
+  const id = "see-through-" + node.id, reach = 200, w = node.width, hgt = node.height;
+  const hole = sketchedBox(node) ? ["path", {d: boxSketch(node).fill}] : boxShapeGeometry(node);
+  return h("g", {class: "see-through-shadow", "pointer-events": "none", "aria-hidden": "true"}, [
+    h("mask", {id, maskUnits: "userSpaceOnUse", x: -w / 2 - reach, y: -hgt / 2 - reach, width: w + 2 * reach, height: hgt + 2 * reach}, [
+      h("rect", {x: -w / 2 - reach, y: -hgt / 2 - reach, width: w + 2 * reach, height: hgt + 2 * reach, fill: "#fff"}),
+      h(hole[0], {...hole[1], fill: "#000"}),
+    ]),
+    h("g", {mask: "url(#" + id + ")"}, [shadow]),
+  ]);
 }
 
 // Látványcsomag (graphics.effects = "liquid"): áttetsző dobozfelület fénylő peremmel és csillogással, a doboz alatt puha
@@ -451,7 +501,7 @@ function paperSurface(node, kind) {
   ];
 }
 
-function sketchSurface(node, tag, geometry, {fill, frame, empty, mode, locked, frameWidth}) {
+function sketchSurface(node, tag, geometry, {fill, frame, empty, mode, locked, frameWidth, canvas, clear}) {
   const paths = boxSketch(node), quiet = {"pointer-events": "none", "aria-hidden": "true"};
   const width = locked ? frameWidth + 3 : frameWidth, tint = graphics.value.frame?.fillOpacity ?? .18;
   const strokes = frame === "none" ? [] : paths.strokes.map((d, pass) => h("path", {class: "sketch-stroke", d, fill: "none", stroke: frame,
@@ -461,14 +511,17 @@ function sketchSurface(node, tag, geometry, {fill, frame, empty, mode, locked, f
     h(tag, {...geometry, class: "node-surface", fill: empty ? "none" : fill, "fill-opacity": 0, stroke: "none",
       "pointer-events": empty ? "fill" : undefined, "data-locked-outline": locked ? "" : undefined}),
     // Kiemelt doboz: tábla színű alap a tónus alatt, hogy az árnyéka ne látsszon át.
-    node.elevated && !empty ? h("path", {class: "sketch-base", d: paths.fill, fill: paint(currentBoard.value?.background, 0), ...quiet}) : null,
-    empty ? null : h("path", {class: "sketch-fill", d: paths.fill, fill,
-      "fill-opacity": mode === "canvas" ? 1 : mode === "translucent" ? tint / 2 : tint, ...quiet}),
+    node.elevated && !empty && !clear ? h("path", {class: "sketch-base", d: paths.fill, fill: paint(currentBoard.value?.background, 0), ...quiet}) : null,
+    empty || clear ? null : h("path", {class: "sketch-fill", d: paths.fill, fill,
+      "fill-opacity": canvas ? 1 : mode === "translucent" ? tint / 2 : tint, ...quiet}),
     ...strokes,
   ];
 }
 
 function elevationShadow(node) {
+  return shadowMask(node, castShadow(node));
+}
+function castShadow(node) {
   if (liquid()) return liquidShadow(node);
   if (node.elevated && sketchedBox(node) && !["free", "empty"].includes(backgroundMode(node))) {
     return h("g", {class: "node-shadow", "pointer-events": "none", "aria-hidden": "true"},
@@ -508,34 +561,36 @@ function shape(node, linked, dropTarget = false) {
   const image = isImage(node) ? node.file : null;
   const mode = backgroundMode(node);
   const empty = mode === "empty";
-  // Vászonszín: a doboz háttere a munkalap háttérszíne (a rács nem látszik át). Bármelyik dobozon választható.
-  const canvasTint = mode === "canvas";
+  // Vászonszín (a paletta 0. színe): a doboz háttere a munkalap háttérszíne (a rács nem látszik át); textúrás vásznon
+  // átlátszó (`clear`): a textúra látszik, a rács ki van vágva alatta (gridHoles). Bármelyik dobozon választható.
+  const canvasTint = canvasSurface(node), clear = seeThrough(node);
   const free = mode === "free" || (!!image && !canvasTint);  // a kép egyébként háttér nélkül, a saját átlátszóságával jelenik meg
   if (dropTarget) return h(tag, {...geometry, class: "drop-target", "data-container-candidate": "",
     fill: empty || free ? "none" : paint(node.fill, 2), "pointer-events": "fill",
     stroke: "#08796c", "stroke-width": 3, "stroke-dasharray": "10 7",
     "vector-effect": "non-scaling-stroke"});
   if (free) return h(tag, {...geometry, "data-editor-only": "", fill: "none", stroke: "none", "pointer-events": "fill"});
-  if (canvasTint && image) return h(tag, {...geometry, class: "node-surface", fill: surfaceColor(node), stroke: "none"});
+  if (canvasTint && image) return clear ? h(tag, {...geometry, "data-editor-only": "", fill: "none", stroke: "none", "pointer-events": "fill"})
+    : h(tag, {...geometry, class: "node-surface", fill: surfaceColor(node), stroke: "none"});
   const locked = isBox(node) && node.locked;
-  const glazed = liquid() && (mode === "solid" || mode === "translucent");
-  const glass = !glazed && graphics.value.glass && mode === "solid" && !image;
+  const glazed = liquid() && !canvasTint && (mode === "solid" || mode === "translucent");
+  const glass = !glazed && graphics.value.glass && mode === "solid" && !image && !canvasTint;
   const fill = surfaceColor(node);
   // A téma kerete (graphics.frame; Rendering.swift boxSurface): vastagság, a doboz saját színe, felület-átlátszatlanság, fényudvar.
   const themed = graphics.value.frame ?? {};
   // Üres doboz: csak a keret látszik, a keret színe a doboz színe.
   const frame = node.type === "preview" || frameless(node) ? "none" : empty ? paint(node.fill, 2) : image && !empty ? "none" : themed.color === "fill" ? fill : glass ? "url(#glass-rim)" : glazed ? "url(#fx-rim)" : automaticBorder(fill);
-  const translucent = mode === "translucent";
+  const translucent = mode === "translucent" && !canvasTint;
   const frameWidth = themed.width ?? boxFrameWidth;
-  const opacity = themed.fillOpacity == null ? undefined : mode === "solid" ? themed.fillOpacity : translucent ? themed.fillOpacity / 2 : undefined;
+  const opacity = themed.fillOpacity == null || canvasTint ? undefined : mode === "solid" ? themed.fillOpacity : translucent ? themed.fillOpacity / 2 : undefined;
   // Fényudvar: a keret alatt háromszoros vastagságú, áttetsző körvonal (szűrő nélkül).
   const halo = themed.halo > 0 && frame !== "none" ? h(tag, {...geometry, class: "node-halo", fill: "none", stroke: frame,
     "stroke-width": frameWidth * 3, "stroke-opacity": themed.halo, "stroke-linejoin": "round", "pointer-events": "none", "aria-hidden": "true"}) : null;
   const paperType = paperKind(node);
   if (paperType) return paperSurface(node, paperType);
-  if (sketchedBox(node)) return sketchSurface(node, tag, geometry, {fill, frame, empty, mode, locked, frameWidth});
-  const style = {fill: empty ? "none" : fill, stroke: frame, "fill-opacity": opacity ?? (translucent ? .75 : undefined),
-    "pointer-events": empty ? "fill" : undefined, class: "node-surface",
+  if (sketchedBox(node)) return sketchSurface(node, tag, geometry, {fill, frame, empty, mode, locked, frameWidth, canvas: canvasTint, clear});
+  const style = {fill: empty || clear ? "none" : fill, stroke: frame, "fill-opacity": opacity ?? (translucent ? .75 : undefined),
+    "pointer-events": empty || clear ? "fill" : undefined, class: "node-surface",
     "stroke-width": locked ? Math.max(6.4, frameWidth + 3) : frameWidth,
     "data-locked-outline": locked ? "" : undefined};
   if (glazed) return [
@@ -816,7 +871,7 @@ createApp({
     // kulcsnak szól, amelyiknek a jelzői tényleg megváltoztak; a rajzolás a saját kulcsára iratkozik fel.
     const nodeUi = reactive(new Map()), edgeUi = reactive(new Map());
     const idleNodeUi = markRaw({claimed: false, peerColor: null, own: false, occupied: false, snap: false, candidate: false, editing: false, texting: false,
-      container: false, drop: false, resize: false, textDrag: false, resizing: false, shifted: false});
+      container: false, drop: false, resize: false, single: false, textDrag: false, resizing: false, shifted: false});
     const idleEdgeUi = markRaw({mine: false, local: false, peerColor: null, candidate: false, editing: false, dragged: false});
     const nodeUiOf = id => nodeUi.get(id) ?? idleNodeUi;
     const edgeUiOf = id => edgeUi.get(id) ?? idleEdgeUi;
@@ -1856,8 +1911,46 @@ createApp({
       context.fillStyle = pattern;
       context.fillRect(0, 0, w, h);
     }
+    // Átlátszó vászonszínű dobozok (seeThrough) alatt a rács ki van vágva: a doboz alakja (vászonegységben, a doboz
+    // közepéhez képest) SVG-útvonalként; a húzott csoport a húzás eltolásával.
+    const noHoles = [];
+    const gridHoles = computed(() => {
+      const nodes = board.value && texturedCanvas() ? board.value.nodes.filter(seeThrough) : [];
+      if (!nodes.length) return noHoles;
+      const drag = gesture.value, delta = drag?.type === "batch" && drag.delta ? drag.delta : null;
+      return nodes.map(node => {
+        const [tag, a] = sketchedBox(node) ? ["path", {d: boxSketch(node).fill}] : boxShapeGeometry(node);
+        const d = tag === "path" ? a.d : tag === "polygon" ? "M" + a.points + "Z"
+          : tag === "ellipse" ? `M${-a.rx} 0A${a.rx} ${a.ry} 0 1 0 ${a.rx} 0A${a.rx} ${a.ry} 0 1 0 ${-a.rx} 0Z`
+          : roundedRectPath(a.x, a.y, a.width, a.height, Math.min(a.rx ?? 0, a.width / 2, a.height / 2));
+        const shift = delta && drag.members?.has(node.id) ? delta : {x: 0, y: 0};
+        return {x: node.position.x + shift.x, y: node.position.y + shift.y, d};
+      });
+    });
+    const roundedRectPath = (x, y, w, h, r) => r > 0
+      ? `M${x + r} ${y}H${x + w - r}A${r} ${r} 0 0 1 ${x + w} ${y + r}V${y + h - r}A${r} ${r} 0 0 1 ${x + w - r} ${y + h}H${x + r}A${r} ${r} 0 0 1 ${x} ${y + h - r}V${y + r}A${r} ${r} 0 0 1 ${x + r} ${y}Z`
+      : `M${x} ${y}H${x + w}V${y + h}H${x}Z`;
+    const holePaths = new Map();
+    function cutGridHoles(context, transform) {
+      const holes = gridHoles.value;
+      if (!holes.length) return;
+      const [centerX, centerY] = center(), ratio = window.devicePixelRatio || 1, k = transform.k;
+      context.save();
+      context.globalCompositeOperation = "destination-out";
+      context.fillStyle = "#000";
+      for (const hole of holes) {
+        let path = holePaths.get(hole.d);
+        if (!path) {
+          if (holePaths.size > 500) holePaths.clear();
+          holePaths.set(hole.d, path = new Path2D(hole.d));
+        }
+        context.setTransform(k * ratio, 0, 0, k * ratio, (transform.x + k * (centerX + hole.x)) * ratio, (transform.y + k * (centerY + hole.y)) * ratio);
+        context.fill(path);
+      }
+      context.restore();
+    }
     function applyGrid(transform) {
-      if (gridElement.value?.getContext) { drawGrid(gridElement.value, transform); return; }
+      if (gridElement.value?.getContext) { drawGrid(gridElement.value, transform); cutGridHoles(gridElement.value.getContext("2d"), transform); return; }
       const style = gridElement.value?.style;
       if (!style) return;
       if (!gridVisible.value) { style.backgroundImage = "none"; return; }
@@ -2412,6 +2505,18 @@ createApp({
       if (node) return {node: node.id};
     }
 
+    // Rácsra illesztés: a doboz bal felső sarka kerül rácspontra (csomópontnál a közepe). `center`: a doboz kívánt közepe.
+    function cornerOffset(node) {
+      if (!node || isJunction(node)) return {x: 0, y: 0};
+      const drawn = drawnNode(node.id);
+      return {x: -drawn.width / 2, y: -drawn.height / 2};
+    }
+    const nodeCorner = node => shifted(node.position, cornerOffset(node));
+    function snapNodePosition(node, center) {
+      if (!snapToGrid.value) return clampPoint(center);
+      const offset = cornerOffset(node), corner = gridPoint(shifted(center, offset));
+      return clampPoint({x: corner.x - offset.x, y: corner.y - offset.y});
+    }
     function gridPoint(point) {
       if (!snapToGrid.value) return clampPoint(point);
       const spacing = gridSpacing.value;
@@ -2607,9 +2712,10 @@ createApp({
       return target ?? {point: gridPoint(point)};
     }
 
-    function pressCorner(event, node, sx, sy) {
+    // `direct`: az egyedül kijelölt doboz jobb alsó fogója (Alt nélkül).
+    function pressCorner(event, node, sx, sy, direct = false) {
       finishField();
-      if (!event.altKey || event.button !== 0 || occupied(node.id) || ancestors(node, nodeMap.value).some(n => n.locked)) return;
+      if ((!direct && !event.altKey) || event.button !== 0 || occupied(node.id) || ancestors(node, nodeMap.value).some(n => n.locked)) return;
       event.preventDefault();
       event.stopPropagation();
       lastClick = null;
@@ -2652,8 +2758,16 @@ createApp({
       const node = nodeMap.value.get(operation.nodeID);
       // Felső korlát 4096 × 4096; kép és külső megosztási kép legfeljebb az eredeti pixelmérete (1 egység = 1 CSS-pixel a 0-s szinten).
       const natural = naturalSize(node);
-      const w = limit(width + sx * (point.x-operation.initial.x), 64, Math.min(4096, natural?.width ?? 4096));
-      const h = limit(height + sy * (point.y-operation.initial.y), 40, Math.min(4096, natural?.height ?? 4096));
+      // Rácsra illesztésnél a húzott sarok rácspontra kerül (a szemközti sarok helyben marad).
+      let dx = point.x - operation.initial.x, dy = point.y - operation.initial.y;
+      if (snapToGrid.value) {
+        const corner = {x: original.position.x + sx * width / 2, y: original.position.y + sy * height / 2};
+        const snapped = gridPoint({x: corner.x + dx, y: corner.y + dy});
+        dx = snapped.x - corner.x;
+        dy = snapped.y - corner.y;
+      }
+      const w = limit(width + sx * dx, 64, Math.min(4096, natural?.width ?? 4096));
+      const h = limit(height + sy * dy, 40, Math.min(4096, natural?.height ?? 4096));
       node.width = w;
       node.height = h;
       const drawn = drawnNode(node.id);
@@ -2726,7 +2840,7 @@ createApp({
             y: operation.position.y + point.y - operation.initial.y});
           if (operation.type === "move") {
             if (!operation.locked && !operation.group.some(member => occupied(member.id))) {
-              const snapped = gridPoint(position);
+              const snapped = snapNodePosition(nodeMap.value.get(operation.nodeID), position);
               translateGroup(operation.group, snapped.x-operation.position.x, snapped.y-operation.position.y);
               const current = nodeMap.value.get(operation.nodeID).position;
               live.motion({node: operation.nodeID, revision: baseline.revision,
@@ -3008,6 +3122,70 @@ createApp({
       modified();
     }
 
+    // Csoportos kijelölés igazítása (gyors eszközök, „Dobozok igazítása”): a dobozok bal / jobb széle, illetve függőleges
+    // közepe egy vonalba (oszlop), vagy a felső / alsó szélük, illetve vízszintes közepük egy vonalba (sor). A mérce a
+    // kijelölés befoglaló téglalapja. A dobozok a tartalmukkal együtt mozdulnak; a kijelölt konténer belsejében kijelölt
+    // doboz a konténerrel mozog, külön nem igazodik. A konténerbe tartozás nem változik.
+    function arrangedBoxes() {
+      const ids = new Set(batch.value?.nodes ?? []);
+      if (ids.size < 2 || batchBlocked(ids)) return null;
+      const nodes = [...ids].map(id => nodeMap.value.get(id)).filter(node => node && !ancestors(node, nodeMap.value).some(parent => ids.has(parent.id)));
+      return nodes.length < 2 ? null : nodes.map(node => {
+        const drawn = drawnNode(node.id);
+        return {node, left: node.position.x - drawn.width / 2, right: node.position.x + drawn.width / 2,
+          top: node.position.y - drawn.height / 2, bottom: node.position.y + drawn.height / 2, width: drawn.width, height: drawn.height};
+      });
+    }
+    function placeArranged(boxes, place) {
+      const moved = new Set();
+      for (const box of boxes) {
+        const target = place(box);
+        if (!target) continue;
+        const dx = target.x - box.node.position.x, dy = target.y - box.node.position.y;
+        if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) continue;
+        const group = moveGroup(box.node);
+        translateGroup(group, dx, dy);
+        for (const member of group) moved.add(member.id);
+      }
+      // A konténerbe tartozás nem változik (húzással ellentétben): az egymásra igazított dobozok nem ágyazódnak egymásba.
+      if (moved.size) modified();
+    }
+    function arrangeBoxes(how) {
+      const boxes = arrangedBoxes();
+      if (!boxes) return;
+      const min = key => Math.min(...boxes.map(box => box[key])), max = key => Math.max(...boxes.map(box => box[key]));
+      const left = min("left"), right = max("right"), top = min("top"), bottom = max("bottom");
+      placeArranged(boxes, box => {
+        const {x, y} = box.node.position;
+        switch (how) {
+          case "left": return {x: left + box.width / 2, y};
+          case "center": return {x: (left + right) / 2, y};
+          case "right": return {x: right - box.width / 2, y};
+          case "top": return {x, y: top + box.height / 2};
+          case "middle": return {x, y: (top + bottom) / 2};
+          case "bottom": return {x, y: bottom - box.height / 2};
+        }
+      });
+    }
+    // Egyenlő elosztás: a két legszélső doboz helyben marad, a többi közéjük kerül egyenlő hézagokkal (a dobozok
+    // közepének sorrendjében). `axis`: "x" vízszintesen, "y" függőlegesen.
+    function distributeBoxes(axis) {
+      const boxes = arrangedBoxes();
+      if (!boxes || boxes.length < 3) return;
+      const [start, end, size] = axis === "x" ? ["left", "right", "width"] : ["top", "bottom", "height"];
+      const sorted = [...boxes].sort((a, b) => (a[start] + a[end]) - (b[start] + b[end]));
+      const first = sorted[0], last = sorted.at(-1);
+      const gap = (last[end] - first[start] - sorted.reduce((sum, box) => sum + box[size], 0)) / (sorted.length - 1);
+      const places = new Map();
+      let cursor = first[end] + gap;
+      for (const box of sorted.slice(1, -1)) {
+        places.set(box, cursor + box[size] / 2);
+        cursor += box[size] + gap;
+      }
+      placeArranged(boxes, box => places.has(box)
+        ? axis === "x" ? {x: places.get(box), y: box.node.position.y} : {x: box.node.position.x, y: places.get(box)} : null);
+    }
+
     function deleteBatch(preserve = false) {
       const group = batch.value;
       if (!group || batchBlocked(group.nodes)) return;
@@ -3120,8 +3298,9 @@ createApp({
         if (!event.altKey && !event.ctrlKey && batch.value && (batch.value.nodes.has(hit?.dataset?.node) || batch.value.edges.has(hit?.dataset?.edge))) {
           const members = new Set([...batch.value.nodes].flatMap(id => moveGroup(nodeMap.value.get(id)).map(n => n.id)));
           const hitEdge = edgeMap.value.get(hit.dataset.edge);
-          const snapAnchor = nodeMap.value.get(hit.dataset.node)?.position ?? hitEdge?.sourcePoint ?? hitEdge?.target.point ??
-            nodeMap.value.get(members.values().next().value)?.position;
+          // A rácsra a megfogott doboz bal felső sarka illeszkedik (snapNodePosition).
+          const anchorNode = nodeMap.value.get(hit.dataset.node) ?? (hitEdge ? null : nodeMap.value.get(members.values().next().value));
+          const snapAnchor = anchorNode ? nodeCorner(anchorNode) : hitEdge?.sourcePoint ?? hitEdge?.target.point;
           beginDrag(event, "batch", {members, snapAnchor, hitID: hit.dataset.node ?? hit.dataset.edge, hitKind: hit.dataset.node ? "node" : "edge"});
           return;
         }
@@ -3728,7 +3907,8 @@ createApp({
     // összetett bevitel (holt billentyű, IME): az a DOM-ba ír, a végén onnan olvassuk vissza. A visszavonás saját
     // (a tartalom cseréje a böngésző visszavonási listáját törli).
     // `code`: kódfájl (`<code>` elemben, Tab és behúzás); `coloured`: van hozzá színező nyelv.
-    const codeEdit = {el: null, id: null, ext: "", code: false, coloured: false, box: false, text: "", nodes: null, undo: [], redo: [], kind: null, stamp: 0, composing: false};
+    // `goalX`: egymást követő fel / le nyilaknál a megjegyzett vízszintes hely (moveCodeLine).
+    const codeEdit = {el: null, id: null, ext: "", code: false, coloured: false, box: false, text: "", nodes: null, undo: [], redo: [], kind: null, stamp: 0, composing: false, goalX: null};
     const plainHTML = text => text.replace(/[&<>]/g, character => character === "&" ? "&amp;" : character === "<" ? "&lt;" : "&gt;");
     function codeOffset(container, offset) {
       const range = document.createRange();
@@ -3851,6 +4031,7 @@ createApp({
       if (!point) return;
       codeEdit.el.focus({preventScroll: true});
       const offset = codeOffsetAt(point), now = performance.now();
+      codeEdit.goalX = null;
       const repeated = now - codeDrag.at < 450 && Math.hypot(event.clientX - codeDrag.x, event.clientY - codeDrag.y) < 5;
       Object.assign(codeDrag, {pointer: event.pointerId, at: now, x: event.clientX, y: event.clientY, clicks: repeated ? codeDrag.clicks + 1 : 1});
       if (codeDrag.clicks === 2) {
@@ -4018,11 +4199,41 @@ createApp({
       const data = event.data ?? event.dataTransfer?.getData("text/plain") ?? "";
       if (data || start !== end) replaceCode(start, end, plainClip(data), type === "insertText" ? "type" : "insert");
     }
+    // Fel / le nyíl: a kurzor a fölötte / alatta álló (megjelenített) sorba kerül, a sor elején megjegyzett vízszintes
+    // helyhez legközelebb. A böngésző saját függőleges léptetése a foreignObject-ben (Safari) a sor helyét tévesen
+    // méri, a kurzor ugrált; itt a karakterpozíciók saját mérése (codeCaretRect) dönt, mint az egérkattintásnál.
+    function moveCodeLine(up, extend) {
+      const [anchor, focus] = codeSelectionEnds(), [start, end] = codeSelection();
+      const from = extend ? focus : up ? start : end, length = codeEdit.text.length;
+      const rect = offset => codeCaretRect(offset) ?? {x: 0, top: 0, bottom: 0};
+      const caret = rect(from), x = codeEdit.goalX ?? caret.x;
+      let target;
+      if (up) {
+        // A kurzor sorának első pozíciója; előtte az előző sor utolsó pozíciója áll.
+        let low = 0, high = from;
+        while (low < high) { const middle = (low + high) >> 1; if (rect(middle).top >= caret.top - 1) high = middle; else low = middle + 1; }
+        target = low === 0 ? 0 : codeOffsetAt({x, y: rect(low - 1).top + 1});
+      } else {
+        // A következő sor első pozíciója.
+        let low = from + 1, high = length + 1;
+        while (low < high) { const middle = (low + high) >> 1; if (rect(middle).top > caret.top + 1) high = middle; else low = middle + 1; }
+        target = low > length ? length : codeOffsetAt({x, y: rect(low).top + 1});
+      }
+      setCodeSelection(extend ? anchor : target, target);
+      codeEdit.goalX = x;
+      codeEdit.kind = null;
+    }
     function codeEditKey(event) {
       event.stopPropagation();
       if (event.key === "Escape") { event.preventDefault(); stopTextEdit(); return; }
       if (event.isComposing) return;
       const command = event.metaKey || event.ctrlKey, key = event.key.toLowerCase();
+      if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !command && !event.altKey) {
+        event.preventDefault();
+        moveCodeLine(event.key === "ArrowUp", event.shiftKey);
+        return;
+      }
+      if (!["Shift", "Meta", "Control", "Alt"].includes(event.key)) codeEdit.goalX = null;
       if (command && !event.altKey && (key === "z" || key === "y")) {
         event.preventDefault();
         stepCodeHistory(key === "y" || event.shiftKey);
@@ -4038,7 +4249,9 @@ createApp({
       const ext = box ? "" : (node.file.filename ?? "").split(".").pop().toLowerCase();
       const code = !box && node.type === "code", coloured = code && supportsHighlight(ext);
       // Ugyanazok az osztályok, mint megjelenítéskor (renderFileText): a betű és a tördelés nem változik.
-      const look = box ? "node-box-input" : code ? "node-code" : ["node-plain", {"justified-text": node.justified}];
+      // A .md fájl a megjelenítés betűjével és sormagasságával (app.css .md-lines): a sorok szerkesztésbe lépve nem mozdulnak.
+      const markdown = ext === "md" || ext === "markdown";
+      const look = box ? "node-box-input" : code ? "node-code" : [markdown ? "md-lines md-input" : "node-plain", {"justified-text": node.justified}];
       // Doboz szövege: a megjelenítés betűje, színe és igazítása (sorkizárt szöveg szerkesztéskor balra zárt).
       const style = box ? {fontFamily: fontFamily(node.font), color: paint(node.textColor, 1),
         textAlign: node.justified ? "left" : node.alignment ?? "center", textTransform: node.uppercase ? "uppercase" : undefined} : undefined;
@@ -4073,7 +4286,7 @@ createApp({
         // A billentyűzettel mozgatott kurzor után a doboz görgetését is mi igazítjuk (a böngészőé itt nem megbízható).
         onKeyup: event => { if (/^(Arrow|Page|Home|End)/.test(event.key) && codeEdit.el) revealCodeCaret(codeSelectionEnds()[1]); },
         onVnodeMounted: ({el}) => {
-          Object.assign(codeEdit, {el, id: node.id, ext, code, coloured, box, text, nodes: null, undo: [], redo: [], kind: null, stamp: 0, composing: false});
+          Object.assign(codeEdit, {el, id: node.id, ext, code, coloured, box, text, nodes: null, undo: [], redo: [], kind: null, stamp: 0, composing: false, goalX: null});
           renderCodeEdit();
           el.focus({preventScroll: true});
           // Doboz szövege: belépéskor a teljes szöveg kijelölve (a gépelés felülírja), fájlnál a kurzor az elején.
@@ -4609,7 +4822,7 @@ createApp({
         const html = codeHighlight(node, ext);
         return h("pre", {class: "node-code"}, [html ? h("code", {key: "colour", innerHTML: html}) : h("code", {key: "plain"}, preview)]);
       }
-      if (ext === "md" || ext === "markdown") return h(FormattedText, {source: preview, justified: node.justified});
+      if (ext === "md" || ext === "markdown") return h(FormattedText, {source: preview, justified: node.justified, lines: true});
       return h("pre", {class: ["node-plain", {"justified-text": node.justified}]}, preview);
     }
 
@@ -4894,6 +5107,19 @@ createApp({
               width: 2*r, height: 2*r, fill: "#ffffff", stroke: "#4168e9", "stroke-width": 1 / zoomScale.value,
               cursor: sx === sy ? "nwse-resize" : "nesw-resize", onPointerdown: e => pressCorner(e, node, sx, sy)});
           }) : []),
+        // Egyedül kijelölt doboz: a jobb alsó sarka billentyű nélkül is fogható (átméretezés, mint Alt+húzással); a fogó
+        // látszik, a fogható terület a jelnél nagyobb.
+        // Alt lenyomva az Alt+húzásos fogók látszanak (a mutató alatti dobozon), ez a fogó nem.
+        ...(ui.single && !ui.resize && !alt.value && !junction && !ui.occupied && !ui.texting && !ui.editing && gesture.value?.type !== "rectangle"
+          && !(gesture.value?.type === "move" && gesture.value.moved) && !ancestors(node, nodeMap.value).some(n => n.locked) ? (() => {
+            const k = zoomScale.value, r = 5 / k, reach = 11 / k, x = drawn.width / 2, y = drawn.height / 2;
+            return [
+              h("rect", {key: "grip-hit", "data-editor-only": "", class: "node-grip-hit", x: x - reach, y: y - reach, width: 2 * reach, height: 2 * reach,
+                fill: "transparent", cursor: "nwse-resize", onPointerdown: e => pressCorner(e, node, 1, 1, true)}),
+              h("rect", {key: "grip", "data-editor-only": "", class: "node-handle node-grip", x: x - r, y: y - r, width: 2 * r, height: 2 * r,
+                rx: 1.5 / k, fill: "#ffffff", stroke: "#4168e9", "stroke-width": 1.4 / k, "pointer-events": "none"}),
+            ];
+          })() : []),
       ]);
     }
 
@@ -5541,6 +5767,18 @@ createApp({
         const nodes = board.value.nodes.filter(n => batch.value.nodes.has(n.id) && !occupied(n.id));
         const edges = board.value.edges.filter(e => batch.value.edges.has(e.id));
         panels = [...(nodes.length ? nodePanels(nodes) : []), ...(edges.length ? edgePanels(edges) : [])];
+        type = "batch";
+        // Több kijelölt doboz: igazítás (sor / oszlop) és egyenlő elosztás (quick-tools.json „arrange”, „distribute”).
+        if (batch.value.nodes.size > 1) {
+          const blocked = !online.value || nodes.length < batch.value.nodes.size;
+          for (const [how, title] of [["left", "Bal szélük egy vonalba"], ["center", "Függőleges közepük egy vonalba"], ["right", "Jobb szélük egy vonalba"],
+            ["top", "Felső szélük egy vonalba"], ["middle", "Vízszintes közepük egy vonalba"], ["bottom", "Alsó szélük egy vonalba"]])
+            action("arrange-" + how, title, "box-align-" + how, () => arrangeBoxes(how), {disabled: blocked});
+          if (batch.value.nodes.size > 2) {
+            action("distribute-x", "Egyenlő elosztás vízszintesen", "distribute-x", () => distributeBoxes("x"), {disabled: blocked});
+            action("distribute-y", "Egyenlő elosztás függőlegesen", "distribute-y", () => distributeBoxes("y"), {disabled: blocked});
+          }
+        }
       } else if (inspector.value?.kind === "edge") {
         const edge = board.value.edges.find(item => item.id === inspector.value.id);
         if (edge) {
@@ -5902,16 +6140,14 @@ createApp({
       };
       const backgroundTools = () => [
         nodes.some(isImage) ? null : tool("fill", colorPicker("Háttér", value("fill", 2),
-          v => setBackground(mode === "free" ? "solid" : mode, v), nodes.map(n => n.id).join(",") + "/fill", false, true, 2,
+          v => setBackground(mode === "free" || mode === "canvas" ? "solid" : mode, v), nodes.map(n => n.id).join(",") + "/fill", false, true, 2,
           {transparent: mode === "free"})),
         // Képnél a Free és az Üres értelmetlen.
         nodes.some(isImage) ? null : tool("background-free", iconToggle("Free", mode === "free", () => setBackground(mode === "free" ? "solid" : "free"), icon("box-free"))),
         nodes.some(isImage) ? null : tool("background-empty", iconToggle("Üres", mode === "empty", () => setBackground(mode === "empty" ? "solid" : "empty"), icon("box-empty"))),
         tool("background-translucent", iconToggle("Áttetsző", mode === "translucent", () => setBackground(mode === "translucent" ? "solid" : "translucent"), icon("box-background"))),
-        canvasTintTool(),
       ];
-      // Vászonszín: a háttér a munkalap háttérszíne, a vászon rácsa nélkül (minden dobozon).
-      const canvasTintTool = () => tool("background-canvas", iconToggle("Vászonszín (a rács nem látszik át)", mode === "canvas", () => setBackground(mode === "canvas" ? "solid" : "canvas"), icon("box-canvas")));
+      // A vászonszín nem külön háttérmód: a paletta 0. színe (canvasSurface). A régi "canvas" mód színválasztáskor megszűnik.
       const elevation = () => tool("elevation", single ? elevationButton(single) : iconToggle("Kiemelés", nodes.every(n => n.elevated === true), () => {
         const raise = !nodes.every(n => n.elevated === true);
         change("elevated", node => { if (raise) node.parent = undefined; return raise ? true : undefined; });
@@ -6171,7 +6407,8 @@ createApp({
         ] : [];
         panels.push(group("Megjelenés", [
           h("div", {class: "property-options property-tools box-effect-options"}, [
-            ...(nodes.some(isImage) ? [color("Szín (keret, súgó)", "fill", 2), canvasTintTool()] : backgroundTools()),
+            ...(nodes.some(isImage) ? [tool("fill", colorPicker("Szín (keret, súgó; a 0. szín: vászonszínű háttér)", value("fill", 2),
+              v => setBackground(mode === "canvas" ? "solid" : mode, v), nodes.map(n => n.id).join(",") + "/fill", false, true, 2))] : backgroundTools()),
             ...frameTools, elevation(), ...imageSizeButtons(), linkButton()]),
         ]));
       }
@@ -6353,6 +6590,7 @@ createApp({
           occupied: present.some(p => !p.mine && !p.viewing),
           snap: snap === id, candidate: found.has("node/" + id), editing: editing === id, texting: texting === id,
           container: containers.has(id), drop: drops.has(id), resize: resize === id,
+          single: !group && item?.kind === "node" && item.id === id && held.value === id,
           textDrag: drag?.type === "text" && drag.nodeID === id, resizing: drag?.type === "resize" && drag.nodeID === id,
           shifted: !!members?.has(id) || (moving.size > 0 && (moving.has(id) || (!!node.parent && ancestors(node, index).some(parent => moving.has(parent.id))))),
         });
@@ -6381,7 +6619,7 @@ createApp({
     // A nagyítási lépcső CSS-változóban: a fogantyúk és a vonalak találati szélessége ebből számol (app.css),
     // így lépcsőváltáskor egyetlen stílusérték változik, nem rajzolódik újra minden vonal.
     // A CSS-rács a rögzített nézetet, a rácsbeállításokat és a méretet követi (mozdulat közben a previewView frissíti).
-    watchEffect(() => { size.value; gridSpacing.value; gridColor.value; graphics.value; gridVisible.value; applyGrid(pendingView ?? view.value); }, {flush: "post"});
+    watchEffect(() => { size.value; gridSpacing.value; gridColor.value; graphics.value; gridVisible.value; gridHoles.value; applyGrid(pendingView ?? view.value); }, {flush: "post"});
 
     return () => timed("rootRender", () => {
       if (!board.value) return h("p", {class: problem.value ? "error editor-loading" : "editor-loading"}, problem.value || "Szerkesztő betöltése…");

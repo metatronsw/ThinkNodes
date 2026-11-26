@@ -12,13 +12,42 @@ package func escaped(_ value: String) -> String {
         .replacingOccurrences(of: "'", with: "&#39;")
 }
 
-package func markdownHTML(_ source: String) -> String {
-    let source = preservingBlankLines(source)
-    return source.withCString { bytes in
-        guard let html = cmark_markdown_to_html(bytes, source.utf8.count, CMARK_OPT_DEFAULT | CMARK_OPT_HARDBREAKS) else { return "" }
+/// - Parameter exactLines: a forrás sorai pontosan (a .md fájldoboz, ahol a szerkesztő nyers szöveget mutat): a blokkok
+///   között nincs saját térköz, csak annyi üres sor, ahány a forrásban áll (`data-gap`, app.css `.md-lines`); a sima
+///   sortörés új sor. Így szerkesztéskor és megjelenítéskor egyforma a sorok és az üres sorok távolsága.
+package func markdownHTML(_ source: String, exactLines: Bool = false) -> String {
+    let source = exactLines ? source : preservingBlankLines(source)
+    let html = source.withCString { bytes -> String in
+        guard let html = cmark_markdown_to_html(bytes, source.utf8.count, CMARK_OPT_DEFAULT | CMARK_OPT_HARDBREAKS | (exactLines ? CMARK_OPT_SOURCEPOS : 0)) else { return "" }
         defer { free(html) }
         return String(cString: html)
     }
+    return exactLines ? markdownGaps(html) : html
+}
+
+/// A `data-sourcepos="a:b-c:d"` jelölések helyén `data-gap="n"`: hány üres sor áll a blokk előtt a forrásban (az előző,
+/// már lezárult blokk vége óta). A tartalmazó blokk és az első gyermeke ugyanabban a sorban kezdődik: csak a külső kapja.
+func markdownGaps(_ html: String) -> String {
+    let marker = " data-sourcepos=\""
+    var result = "", rest = Substring(html)
+    var ends: [Int] = [], lastStart = -1
+    while let range = rest.range(of: marker) {
+        result += rest[..<range.lowerBound]
+        let tail = rest[range.upperBound...]
+        guard let close = tail.firstIndex(of: "\"") else { rest = tail; break }
+        let parts = tail[..<close].split(whereSeparator: { $0 == ":" || $0 == "-" }).compactMap { Int($0) }
+        rest = tail[tail.index(after: close)...]
+        guard parts.count == 4 else { continue }
+        let start = parts[0], end = parts[2]
+        if start != lastStart {
+            let previous = ends.filter { $0 < start }.max() ?? 0
+            let gap = min(12, max(0, start - previous - 1))
+            if gap > 0 { result += " data-gap=\"\(gap)\"" }
+        }
+        lastStart = start
+        ends.append(end)
+    }
+    return result + rest
 }
 
 /// A markdown a több üres sort egyetlen bekezdéshatárrá vonja össze. Hogy ahány üres sor van a forrásban,
@@ -48,7 +77,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/lib/d3-zoom.js?v=1"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=95"></script>
+        <script type="module" src="/editor.js?v=96"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -59,7 +88,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=64">
+          <link rel="stylesheet" href="/app.css?v=65">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -1180,7 +1209,7 @@ func fileTextHTML(_ node: Idea, text: String?) -> String {
         return "<pre class=\"node-code\"><code>\(highlightedCode(preview, ext: ext) ?? escaped(preview))</code></pre>"
     default:
         if ext == "md" || ext == "markdown" {
-            return "<div class=\"formatted-text\(node.justified == true ? " justified-text" : "")\">\(markdownHTML(preview))</div>"
+            return "<div class=\"formatted-text md-lines\(node.justified == true ? " justified-text" : "")\">\(markdownHTML(preview, exactLines: true))</div>"
         }
         return "<pre class=\"node-plain\(node.justified == true ? " justified-text" : "")\">\(escaped(preview))</pre>"
     }

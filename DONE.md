@@ -6,6 +6,10 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **.md fájldoboz: megjelenítéskor minden sortörés dupla volt, szerkesztéskor a fel / le nyíl ugrált** (2026-11-26)
+  - Ok: a `.node-file .formatted-text` `white-space: pre-wrap` szabálya a cmark `<br />` utáni sortörését is megjelenítette; a nyilaknál a böngésző saját függőleges léptetése a foreignObject-ben (Safari) téves sorhelyet mért.
+  - Javítás: formázott szövegben `white-space: normal`; a .md doboz a forrás sorait pontosan követi (`markdownHTML(exactLines:)`, `.md-lines`), a szerkesztő ugyanazzal a betűvel és sormagassággal; fel / le nyíl saját kezeléssel (`moveCodeLine`). Safariban ellenőrizve.
+
 - **A képernyőn kívüli ping nyila sokszor nem jelent meg** (2026-11-26)
   - Ok: a látható terület a teljes ablak volt (a vászon a puffer miatt nagyobb az ablaknál), így a fejléc / nyitott panel alá eső vagy a szélén épp belógó ping „láthatónak” számított.
   - Javítás: a vászonterület az ablakra vágva, a nyitott panelek nélkül; nyíl jár, ha a ping közepe nincs 24 px-re a széleken belül (`ping.js`, `editor.js pingBounds`). Safari + Chromium próbával ellenőrizve.
