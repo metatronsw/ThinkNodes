@@ -1205,9 +1205,11 @@ package final class WorksheetStore: @unchecked Sendable {
         }
     }
 
-    /// Az előnézet gyorsítótár-fájlja a lap mellett (`.<lap>.preview-v12[-dark].<ext>`).
+    /// Az előnézet gyorsítótár-fájlja a lap mellett: `.<lap>.preview.<ext>`, sötét módban `.<lap>.preview-dark.<ext>`
+    /// (svg: a rajz, webp: a főoldali kártya képe). Verziószám nem kell: a fájl csak akkor érvényes, ha újabb a lapnál és
+    /// a szerver indulásánál (a rajzolás minden változása új build és újraindítás).
     private func previewCache(_ url: URL, path: WorksheetPath, mode: String?, ext: String) -> URL {
-        url.deletingLastPathComponent().appendingPathComponent("." + path.name + ".preview-v12" + (mode == "dark" ? "-dark" : "") + "." + ext)
+        url.deletingLastPathComponent().appendingPathComponent("." + path.name + ".preview" + (mode == "dark" ? "-dark" : "") + "." + ext)
     }
 
     /// A főoldali kártya háttérképe (PreviewRaster): az előnézet (rajz vagy a szerkesztőben beállított előnézeti kép)
@@ -1220,8 +1222,8 @@ package final class WorksheetStore: @unchecked Sendable {
         let drawing = try preview(path, user: user, unlocks: unlocks, mode: mode)
         let (source, target, sheet) = try lock.withLock { () throws -> (URL, URL, URL) in
             let url = try worksheetURL(path)
-            // Állandó név (verziószám nélkül), mindig felülírva: `.<lap>.preview.webp`, sötét módban `.<lap>.preview-dark.webp`.
-            let target = url.deletingLastPathComponent().appendingPathComponent("." + path.name + ".preview" + (mode == "dark" ? "-dark" : "") + ".webp")
+            // Mindig felülírva: `.<lap>.preview.webp`, sötét módban `.<lap>.preview-dark.webp`.
+            let target = previewCache(url, path: path, mode: mode, ext: "webp")
             try rejectLink(target)
             switch drawing {
             case .image(let file, _): return (file, target, url)

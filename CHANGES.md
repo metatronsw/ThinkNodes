@@ -1,5 +1,13 @@
 # Változások
 
+## 2026-11-26 – Sötét módú kártyaárnyék, „Új projekt” / „Importálás” keret, előnézet-fájlnevek verziószám nélkül
+
+- **Projektkártya sötét módban:** a kiemelkedés árnyéka sokkal erősebb (két, közel fekete árnyék: `0 30px 56px 6px` és `0 10px 18px 2px`), hogy a sötét háttéren is látsszon.
+- **Új projekt / Projekt importálása (.zip):** rámutatáskor kiemelő színű keret (a kártyák gyors, 0,09 mp-es áttűnésével). Safariban ellenőrizve.
+- **Előnézet-fájlnevek:** a `-v12` utótag kikerült: `.<lap>.preview.svg` / `.<lap>.preview-dark.svg` (rajz) és `.<lap>.preview.webp` / `.<lap>.preview-dark.webp` (főoldali kép). Verziószám nem kell: a gyorsítótár csak akkor érvényes, ha újabb a lapnál és a szerver indulásánál, a rajzolás minden változása pedig új build és újraindítás.
+- Az `.svg` előnézet használati helyei: a `.webp` forrása; a főoldali kártyák tartaléka (eszközök nélkül, illetve `?previews=svg`); a projekt- és megtekintő oldal „További munkalapok” kártyái; a munkalapra mutató linkes doboz kitöltő képe (`?fill=1`, szerkesztő és megtekintő); a vászonpanel Megjelenés bélyegképe.
+- Teszt: minden Swift-teszt átmegy (a gyorsítótár-fájlnevek a tesztekben is frissítve). Verzió: `app.css?v=72`; a helyi tesztszerver (8888) újraindítva.
+
 ## 2026-11-26 – Projektkártya rámutatás: kivilágosodás nélkül, kétszer gyorsabb kiemelkedés
 
 - A felhasználó jelezte: Safariban a kártya kivilágosodása miatt a többi kártya is felvillant. A kivilágosodás (a felület áttetsző fehér rétege, a keret és a háttérkép világosodása) kikerült – a szabály közös, így a régi SVG-s változatra (`?previews=svg`) is érvényes. Marad: 4 px kiemelkedés és árnyék, 0,18 helyett 0,09 mp alatt. A kártyák saját rétegen állnak (`will-change: transform`), hogy a kiemelkedés ne fesse újra a szomszédokat. Safariban ellenőrizve (mindkét változat): emelkedés és árnyék van, a keret, a háttérkép és a felület változatlan. Verzió: `app.css?v=71`; a helyi tesztszerver (8888) újraindítva.

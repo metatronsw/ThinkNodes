@@ -180,7 +180,7 @@ import VaporTesting
         #expect(throws: Abort.self) { try withArchive.validate() }
         let preview = try await browser.sendRequest(.GET, "/api/preview/" + path + "/terv")
         #expect(preview.status == .ok && preview.body.string.contains("<svg"))
-        #expect(FileManager.default.fileExists(atPath: file.deletingLastPathComponent().appendingPathComponent("terv/.terv.preview-v12.svg").path))
+        #expect(FileManager.default.fileExists(atPath: file.deletingLastPathComponent().appendingPathComponent("terv/.terv.preview.svg").path))
         // A főoldali kártya háttere: fix méretű, elmosott .webp (PreviewRaster); eszköz nélkül SVG jön helyette.
         let raster = try await browser.sendRequest(.GET, "/api/preview/" + path + "/terv?format=webp")
         #expect(raster.status == .ok)

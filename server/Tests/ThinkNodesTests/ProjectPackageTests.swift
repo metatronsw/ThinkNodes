@@ -29,7 +29,7 @@ private func entries(_ zip: URL) throws -> Set<String> { Set(try WebArchive.entr
     try Data("ékezet".utf8).write(to: root.appendingPathComponent("proj/sub/árvíztűrő.txt"))
     try FileManager.default.createDirectory(at: root.appendingPathComponent("proj/w.web"), withIntermediateDirectories: true)
     try Data("<title>web</title>".utf8).write(to: root.appendingPathComponent("proj/w.web/index.html"))
-    try Data("cache".utf8).write(to: root.appendingPathComponent("proj/.proj.preview-v11.svg"))
+    try Data("cache".utf8).write(to: root.appendingPathComponent("proj/.proj.preview.svg"))
     board.nodes = [
         Idea(id: "tosub", text: "Allap", position: Point(x: 0, y: 0), link: NodeLink(kind: .sheet, target: "/proj/sub")),
         Idea(id: "toweb", text: "Web", position: Point(x: 0, y: 200), link: NodeLink(kind: .web, target: "w.web")),
@@ -42,7 +42,7 @@ private func entries(_ zip: URL) throws -> Set<String> { Set(try WebArchive.entr
     let zip = try store.exportPackage(project, options: PackageExportRequest(), user: member, unlocks: [])
     let listed = try entries(zip)
     #expect(listed.isSuperset(of: ["proj/proj.thnode", "proj/.settings.json", "proj/sub/sub.thnode", "proj/sub/note.txt", "proj/w.web/index.html"]))
-    #expect(!listed.contains("proj/.proj.preview-v11.svg"))
+    #expect(!listed.contains("proj/.proj.preview.svg"))
     let bytes = try Data(contentsOf: zip)
     try FileManager.default.removeItem(at: zip)
     #expect(throws: Abort.self) { try store.exportPackage(project, options: PackageExportRequest(), user: nil, unlocks: []) }

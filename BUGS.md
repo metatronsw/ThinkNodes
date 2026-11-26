@@ -10,6 +10,9 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
   - Ha egy lap képe nem készíthető el (pl. sérült egyedi előnézeti kép), arra a lapra SVG jön, de a kártya már elmosás nélkül mutatja.
   - A lap átnevezésekor / törlésekor a `.preview*.webp` (mint eddig az SVG-gyorsítótár) a régi néven a mappában marad.
   - Kézzel nézendő: a rámutatás-effekt világos módban és érintőképernyőn; Safariban, hogy a kivilágosodás kivétele után a többi kártya már nem villan fel (a vezérelt Safariban a villanás képernyőképen nem mérhető).
+  - A sötét módú, megerősített kiemelkedés-árnyék képernyőképen nincs megnézve (a vezérelt Safari mérése időtúllépéssel megszakadt); a CSS kint van.
+  - A régi gyorsítótár-fájlok (`projects/**/.*.preview-v12*.svg`, 12 db) a verziószám nélküli nevek bevezetése óta nem használtak; törlésük engedélyre vár.
+  - Ötlet: a „További munkalapok” kártyái és a linkes dobozok képe is kaphatna `.webp` változatot (most a teljes SVG-t töltik).
 
 - **Táblázat-szerkesztés, „Tartalom a dobozhoz”, kurzorcsoport: kézzel nézendő / nyitott** (2026-11-26)
   - A skálázott táblázat szerkesztőjében a valódi egérkattintást a vezérelt Safariban nem lehetett végigpróbálni (az ablak közben elvesztette a fókuszt); a cellaválasztás kódja JS-eseménnyel és a találatvizsgálattal (a kattintott pont alatt a jó cella áll) ellenőrizve. Kézzel nézendő: kattintás, húzásos kijelölés, oszlopszélesség húzása, sor / oszlop kijelölése skálázott táblázatban, nagyított vásznon is.

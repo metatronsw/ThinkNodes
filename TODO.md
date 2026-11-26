@@ -28,8 +28,7 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 
 # Kódszínezés (server/Sources/ThinkHighlight) és dobozon szerkesztés
 
-+ Kész (2026-11-25): JSON és CSS színezés, tördelés, dobozon szerkesztés szövegfájlokra (CHANGES.md).
-+ Kész (2026-11-25): JavaScript, Swift, HTML színezés.
+
 - Ismert egyszerűsítések: JS-ben a `)` / `]` / `}` utáni `/` mindig osztás, az objektumkulcsok és a JSX nem kapnak külön színt; Swiftben a `/…/` reguláris kifejezés nincs felismerve; HTML-ben a `style="…"` attribútum és az eseménykezelők tartalma sima szöveg.
 - További nyelvek igény szerint (`.ts`, `.py`, `.xml` / `.svg` – az utóbbi a HTML elemzővel).
 + Kész (2026-11-25): szerkesztés közbeni színezés a böngészőben (`Public/highlight`, a Swift-modul pontos mása, közös tesztkészlettel).
