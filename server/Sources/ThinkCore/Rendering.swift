@@ -88,7 +88,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=70">
+          <link rel="stylesheet" href="/app.css?v=71">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>

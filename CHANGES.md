@@ -1,5 +1,9 @@
 # Változások
 
+## 2026-11-26 – Projektkártya rámutatás: kivilágosodás nélkül, kétszer gyorsabb kiemelkedés
+
+- A felhasználó jelezte: Safariban a kártya kivilágosodása miatt a többi kártya is felvillant. A kivilágosodás (a felület áttetsző fehér rétege, a keret és a háttérkép világosodása) kikerült – a szabály közös, így a régi SVG-s változatra (`?previews=svg`) is érvényes. Marad: 4 px kiemelkedés és árnyék, 0,18 helyett 0,09 mp alatt. A kártyák saját rétegen állnak (`will-change: transform`), hogy a kiemelkedés ne fesse újra a szomszédokat. Safariban ellenőrizve (mindkét változat): emelkedés és árnyék van, a keret, a háttérkép és a felület változatlan. Verzió: `app.css?v=71`; a helyi tesztszerver (8888) újraindítva.
+
 ## 2026-11-26 – Főoldal: fix méretű, elmosott .webp előnézetek; kártya rámutatás-effekt
 
 - **Előnézeti képek:** a projektkártyák háttere fix 320 × 180-as, már elmosott `.webp` (`PreviewRaster.swift`; a kártya csak méretezi, CSS-szűrő nélkül). Folyamat: forrás a munkalap SVG-előnézete vagy a szerkesztőben beállított előnézeti kép (PNG, JPG, GIF, WebP, SVG; data URI-ként egy burkoló SVG-ben) → `rsvg-convert` 336 × 196-os vásznon, 1 px elmosással (8 px túlnyúlás) → csövön `cwebp`, amely a közepéből kivágja a 320 × 180-at (minőség 70). Egyetlen statikus képkocka, átlátszóság nélkül; nincs ideiglenes fájl. Mentés: `.<lap>.preview.webp` / `.<lap>.preview-dark.webp`, mindig felülírva; elavult képnél egyszer még a meglévő megy ki, az új a háttérben készül. Eszközök nélkül a régi SVG-előnézet marad. API: `/api/preview/<lap>?format=webp`; a főoldal `?previews=svg` kapcsolója a régi változatot mutatja (méréshez).
