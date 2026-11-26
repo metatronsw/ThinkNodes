@@ -96,7 +96,8 @@ elif [[ -f /etc/fedora-release ]]; then
     packages=(git curl unzip tar gzip python3 nodejs
               binutils gcc gcc-c++ glibc-devel glibc-static libstdc++-devel libstdc++-static
               libcurl-devel libxml2-devel libuuid-devel libedit-devel sqlite-devel zlib-devel libicu tzdata
-              chromium-headless)
+              chromium-headless
+              librsvg2-tools libwebp-tools)  # főoldali előnézeti képek: rsvg-convert, cwebp (PreviewRaster.swift)
     missing=()
     for package in "${packages[@]}"; do
         rpm -q "$package" >/dev/null 2>&1 && [[ "$force" == false ]] || missing+=("$package")
@@ -132,6 +133,18 @@ else
     swift_bin="$(find_swift)"
     [[ -n "$swift_bin" ]] || { printf 'Swift 6 is still not available.\n' >&2; exit 1; }
     ok "$("$swift_bin" --version 2>&1 | grep -m1 'Swift version') ($swift_bin)"
+fi
+
+printf '== Preview images (rsvg-convert, cwebp) ==\n'
+# A főoldali projektkártyák elmosott .webp háttérképe (Sources/ThinkCore/PreviewRaster.swift). Nélkülük a szerver
+# az SVG-előnézetet adja (lassabb főoldal), ezért csak figyelmeztetünk.
+if command -v rsvg-convert >/dev/null && command -v cwebp >/dev/null; then
+    ok "rsvg-convert, cwebp"
+elif [[ "$(uname -s)" == Darwin ]] && command -v brew >/dev/null; then
+    doing "librsvg, webp (Homebrew)"
+    brew install librsvg webp
+else
+    printf '  missing  rsvg-convert / cwebp (Fedora: librsvg2-tools libwebp-tools; MacPorts: librsvg webp)\n'
 fi
 
 printf '== Node.js and Python ==\n'

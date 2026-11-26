@@ -649,3 +649,34 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     let parsed = parser.parse()
     #expect(parsed, "Az önálló SVG nem érvényes XML: \(parser.parserError.map(String.init(describing:)) ?? "?") (sor \(parser.lineNumber))")
 }
+
+/// A projektkártya háttere (PreviewRaster): fix 640 × 360-as, elmosott .webp az előnézeti SVG-ből. Csak ha a gépen van
+/// `rsvg-convert` és `cwebp` (különben a szerver az SVG-előnézetet adja).
+@Test(.enabled(if: PreviewRaster.available)) func previewRasterIsAFixedSizeWebP() throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("raster-" + UUID().uuidString)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appendingPathComponent("lap.svg"), target = folder.appendingPathComponent("lap.webp")
+    // Szándékosan más arányú (magas) rajz: a kép kitölti a 16:9-et, levágva.
+    try Data(boardSVG(Worksheet(title: "Raszter", nodes: [Idea(id: "a", text: "Doboz", position: Point(x: 0, y: 0)),
+        Idea(id: "b", text: "Másik", position: Point(x: 0, y: 900))])).utf8).write(to: source)
+    #expect(PreviewRaster.render(source: source, to: target))
+    let data = try Data(contentsOf: target)
+    #expect(String(decoding: data.prefix(4), as: UTF8.self) == "RIFF" && String(decoding: data[8..<12], as: UTF8.self) == "WEBP")
+    #expect(data.count < 60_000)
+    // A WebP mérete a fejlécből (VP8X: 24 bites szélesség-1 / magasság-1; VP8L: 14 bites mezők; VP8: 14 bites mezők).
+    let chunk = String(decoding: data[12..<16], as: UTF8.self)
+    func le(_ at: Int, _ count: Int) -> Int { (0..<count).reduce(0) { $0 | Int(data[at + $1]) << (8 * $1) } }
+    let size: (Int, Int) = switch chunk {
+    case "VP8X": (le(24, 3) + 1, le(27, 3) + 1)
+    case "VP8L": { let bits = le(21, 4); return ((bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1) }()
+    default: (le(26, 2) & 0x3FFF, le(28, 2) & 0x3FFF)
+    }
+    #expect(size.0 == PreviewRaster.width && size.1 == PreviewRaster.height)
+    // Egyetlen statikus képkocka: nincs animációs blokk (ANIM / ANMF), és a VP8X animáció-jelzője (0x02) sincs beállítva.
+    #expect(data.range(of: Data("ANIM".utf8)) == nil && data.range(of: Data("ANMF".utf8)) == nil)
+    if chunk == "VP8X" { #expect(data[20] & 0x02 == 0) }
+    // A rajz teljesen fedi a képet (az elmosás pereme a képen kívül): nincs átlátszósági réteg.
+    #expect(data.range(of: Data("ALPH".utf8)) == nil)
+    if chunk == "VP8X" { #expect(data[20] & 0x10 == 0) }
+}

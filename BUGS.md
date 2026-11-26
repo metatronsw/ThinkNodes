@@ -4,6 +4,13 @@ Minden munkamenet elején át kell nézni, és a nyitott hibákkal foglalkozni k
 
 ## Nyitott
 
+- **Főoldali .webp előnézetek: nyitott / kézzel nézendő** (2026-11-26)
+  - A librsvg a dobozokba ágyazott HTML-t (táblázat, szövegfájl, .md tartalma) nem rajzolja ki: a háttérképen ezek a dobozok üresek. Ha zavaró, a szerver a raszteres változathoz egyszerű helyettesítő vonalakat rajzolhat a szöveg helyére.
+  - Élesben (Fedora) a `librsvg2-tools` és `libwebp-tools` csomag kell (az install.sh telepíti); a meglévő szerveren kézzel: `dnf install librsvg2-tools libwebp-tools`, utána szerver-újraindítás. Nélkülük a régi SVG-előnézet megy.
+  - Ha egy lap képe nem készíthető el (pl. sérült egyedi előnézeti kép), arra a lapra SVG jön, de a kártya már elmosás nélkül mutatja.
+  - A lap átnevezésekor / törlésekor a `.preview*.webp` (mint eddig az SVG-gyorsítótár) a régi néven a mappában marad.
+  - Kézzel nézendő: a rámutatás-effekt világos módban és érintőképernyőn.
+
 - **Táblázat-szerkesztés, „Tartalom a dobozhoz”, kurzorcsoport: kézzel nézendő / nyitott** (2026-11-26)
   - A skálázott táblázat szerkesztőjében a valódi egérkattintást a vezérelt Safariban nem lehetett végigpróbálni (az ablak közben elvesztette a fókuszt); a cellaválasztás kódja JS-eseménnyel és a találatvizsgálattal (a kattintott pont alatt a jó cella áll) ellenőrizve. Kézzel nézendő: kattintás, húzásos kijelölés, oszlopszélesség húzása, sor / oszlop kijelölése skálázott táblázatban, nagyított vásznon is.
   - Skálázott szerkesztésnél a fejlécsávok és a képletsor is a táblázattal együtt kicsinyül, és a doboz belső margóján (részben a dobozon belül) állnak; nagy kicsinyítésnél a képletsor nehezen olvasható.

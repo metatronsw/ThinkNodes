@@ -498,7 +498,9 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
                                    count: access.readable ? try store.list(user: identity.user, childrenOf: item.path, recursive: true, unlocks: identity.unlocks).count : 0)
             }
         }
-        return indexPage(projects, session: identity, dataFolder: store.dataDirectoryPath, updates: updates)
+        // `?previews=svg`: a régi háttérkép (SVG-előnézet + CSS-elmosás) – a betöltési idő összehasonlításához (Tests/Perf/main-page.py).
+        let raster = PreviewRaster.available && req.query[String.self, at: "previews"] != "svg"
+        return indexPage(projects, session: identity, dataFolder: store.dataDirectoryPath, updates: updates, raster: raster)
     }
 
     app.get("open") { req -> Response in
@@ -856,6 +858,14 @@ func configure(_ application: Application, store: WorksheetStore, secureCookies:
     app.get("api", "preview", "**") { req async throws -> Response in
         let identity = try session(req, store: store)
         let path = try WorksheetPath(req.parameters.getCatchall())
+        // `format=webp`: a főoldali kártya háttere – fix méretű, elmosott kép (PreviewRaster); ha nem készíthető, SVG jön.
+        if req.query[String.self, at: "format"] == "webp",
+           let file = try await req.application.threadPool.runIfActive({ try store.previewWebP(path, user: identity.user, unlocks: identity.unlocks, mode: siteMode(req)) }) {
+            let result = try await req.fileio.asyncStreamFile(at: file.path)
+            result.headers.replaceOrAdd(name: .contentType, value: "image/webp")
+            result.headers.replaceOrAdd(name: .cacheControl, value: "no-store")
+            return result
+        }
         switch try await req.application.threadPool.runIfActive({ try store.preview(path, user: identity.user, unlocks: identity.unlocks, mode: siteMode(req)) }) {
         case .drawing(let svg):
             // `fill=1`: az előnézetes doboz teljesen kitöltése (levágva), a rajz saját arányától függetlenül.
@@ -1624,12 +1634,12 @@ private func projectBadges(_ access: DocumentAccess) -> String {
     }.joined()
 }
 
-private func indexPage(_ items: [ProjectCard], session: SessionInfo, dataFolder: String, updates: PageUpdates.Subscription) -> Response {
+private func indexPage(_ items: [ProjectCard], session: SessionInfo, dataFolder: String, updates: PageUpdates.Subscription, raster: Bool) -> Response {
     let cards = items.map { item in
         let count = item.count
         return """
         <a class="project-card panel layers-\(min(count, 2))" data-scope="project" \(editorMembership(item.access)) \(menuState(item.access.projectRule)) data-manage="\(item.access.manageable)" data-color-light="\(escaped(item.worksheet.resolvedBackground(mode: "light")))" data-color-dark="\(escaped(item.worksheet.resolvedBackground(mode: "dark")))" data-revision="\(item.worksheet.revision)" href="/\(item.path.url)">
-          \(item.access.readable ? "<img class=\"project-background\" loading=\"lazy\" alt=\"\" src=\"/api/preview/\(item.path.url)?v=\(item.worksheet.revision)\">" : "")
+          \(item.access.readable ? "<img class=\"project-background\(raster ? " is-raster" : "")\" loading=\"lazy\" alt=\"\" width=\"\(PreviewRaster.width)\" height=\"\(PreviewRaster.height)\" src=\"/api/preview/\(item.path.url)?v=\(item.worksheet.revision)\(raster ? "&amp;format=webp" : "")\">" : "")
           <div class="project-summary"><h2>\(escaped(item.worksheet.title))</h2>
           <span class="muted">/\(escaped(item.path.parts.joined(separator: "/")))</span> · \(count + 1) munkalap\(credits(item.worksheet, item.access))<div class="project-badges">\(projectBadges(item.access))</div></div>
         </a>

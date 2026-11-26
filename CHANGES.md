@@ -1,5 +1,23 @@
 # Változások
 
+## 2026-11-26 – Főoldal: fix méretű, elmosott .webp előnézetek; kártya rámutatás-effekt
+
+- **Előnézeti képek:** a projektkártyák háttere fix 320 × 180-as, már elmosott `.webp` (`PreviewRaster.swift`; a kártya csak méretezi, CSS-szűrő nélkül). Folyamat: forrás a munkalap SVG-előnézete vagy a szerkesztőben beállított előnézeti kép (PNG, JPG, GIF, WebP, SVG; data URI-ként egy burkoló SVG-ben) → `rsvg-convert` 336 × 196-os vásznon, 1 px elmosással (8 px túlnyúlás) → csövön `cwebp`, amely a közepéből kivágja a 320 × 180-at (minőség 70). Egyetlen statikus képkocka, átlátszóság nélkül; nincs ideiglenes fájl. Mentés: `.<lap>.preview.webp` / `.<lap>.preview-dark.webp`, mindig felülírva; elavult képnél egyszer még a meglévő megy ki, az új a háttérben készül. Eszközök nélkül a régi SVG-előnézet marad. API: `/api/preview/<lap>?format=webp`; a főoldal `?previews=svg` kapcsolója a régi változatot mutatja (méréshez).
+- **Mérés** (`Tests/Perf/main-page.py`, Safari, 10 betöltés mediánja, 5 projekt, csendes gépen, két független kör):
+
+  | | régi (SVG + CSS-elmosás) | új (.webp) | különbség |
+  |---|---|---|---|
+  | `load` esemény | 379 / 368 ms | 66 / 63 ms | −83 % |
+  | képek letöltve és dekódolva | 502 / 365 ms | 70 / 70 ms | −81–86 % |
+  | utána az első képkockák (festés) | 113 / 70 ms | 20 / 16 ms | −78–82 % |
+  | **képek a képernyőn** | **595 / 518 ms** | **90 / 84 ms** | **−84–85 %** |
+  | letöltött méret | 563 KB | 11 KB | −98 % |
+
+  A képek egyenként 0,6–3,8 KB-osak; az első, egyszeri elkészítés lapként ~0,8–1,9 mp (a szerveren, a főoldal ezt csak a legelső alkalommal várja meg).
+- **Rámutatás a projektkártyán:** a kártya 4 px-t emelkedik, alatta árnyék, a felülete (áttetsző fehér belső réteg, minden témában) és a kerete kivilágosodik, a háttérkép erősebb; csökkentett mozgásnál nincs emelkedés. A rétegzett „papírlap” árnyék megmarad.
+- Telepítés: a `deploy/install.sh` Fedorán telepíti a `librsvg2-tools libwebp-tools` csomagot, macOS-en Homebrew-val (ha hiányzik); README „Főoldali előnézeti képek”.
+- Teszt: `previewRasterIsAFixedSizeWebP` (320 × 180, egy statikus képkocka, nincs átlátszósági réteg, kicsi), a munkalap-integrációs teszt a `format=webp` választ és a `.preview.webp` fájlt is ellenőrzi; minden Swift- és JS-teszt átmegy. Verzió: `app.css?v=70`. Szerverkód változott: a helyi tesztszerver (8888) újraindítva.
+
 ## 2026-11-26 – Takarítás (a felhasználó engedélyével)
 
 - Törölve: a próbaprojekt (`projects/proba-igazitas`: próbalap, `jegyzet.md`, `tabla.tntable`, előnézetek), a 12 régi, hibás előnézeti gyorsítótár-fájl (`projects/**/.*.preview-v11*.svg`, a `.trash` kivételével; a v12-es fájlok újrakészülnek), és a teszthez a scratchpadban létrehozott ideiglenes git worktree. A főoldal a próbaprojekt nélkül töltődik be.

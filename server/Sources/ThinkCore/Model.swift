@@ -1193,8 +1193,7 @@ package final class WorksheetStore: @unchecked Sendable {
             if let name = sheet.previewImage,
                let file = try attachments(at: url, named: name, metadata: ctx.local).first,
                let mime = previewType(file) { return .image(file, mime) }
-            let suffix = mode == "dark" ? ".preview-v12-dark.svg" : ".preview-v12.svg"
-            let cache = url.deletingLastPathComponent().appendingPathComponent("." + path.name + suffix)
+            let cache = previewCache(url, path: path, mode: mode, ext: "svg")
             try rejectLink(cache)
             let modified = try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
             if let modified, let cached = try? cache.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
@@ -1204,6 +1203,37 @@ package final class WorksheetStore: @unchecked Sendable {
             try Data(svg.utf8).write(to: cache, options: .atomic)
             return .drawing(svg)
         }
+    }
+
+    /// Az előnézet gyorsítótár-fájlja a lap mellett (`.<lap>.preview-v12[-dark].<ext>`).
+    private func previewCache(_ url: URL, path: WorksheetPath, mode: String?, ext: String) -> URL {
+        url.deletingLastPathComponent().appendingPathComponent("." + path.name + ".preview-v12" + (mode == "dark" ? "-dark" : "") + "." + ext)
+    }
+
+    /// A főoldali kártya háttérképe (PreviewRaster): az előnézet (rajz vagy a szerkesztőben beállított előnézeti kép)
+    /// elmosott, 320 × 180-as `.webp` változata, a lap mellett (`.<lap>.preview[-dark].webp`); újrakészül (felülírva), ha
+    /// a lap, a forrás vagy a szerver indulása (témák, a raszterező beállításai) újabb.
+    /// nil: nincs hozzá eszköz, vagy nem sikerült – ilyenkor a hívó az SVG-előnézetet adja. A konvertálás a zárolás
+    /// nélkül fut (a külső programok ideje alatt a tároló többi kérése nem vár).
+    package func previewWebP(_ path: WorksheetPath, user: User?, unlocks: Set<String> = [], mode: String? = nil) throws -> URL? {
+        guard PreviewRaster.available else { return nil }
+        let drawing = try preview(path, user: user, unlocks: unlocks, mode: mode)
+        let (source, target, sheet) = try lock.withLock { () throws -> (URL, URL, URL) in
+            let url = try worksheetURL(path)
+            // Állandó név (verziószám nélkül), mindig felülírva: `.<lap>.preview.webp`, sötét módban `.<lap>.preview-dark.webp`.
+            let target = url.deletingLastPathComponent().appendingPathComponent("." + path.name + ".preview" + (mode == "dark" ? "-dark" : "") + ".webp")
+            try rejectLink(target)
+            switch drawing {
+            case .image(let file, _): return (file, target, url)
+            case .drawing: return (previewCache(url, path: path, mode: mode, ext: "svg"), target, url)
+            }
+        }
+        let date = { (file: URL) in try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
+        guard let made = date(target) else { return PreviewRaster.render(source: source, to: target) ? target : nil }
+        // Elavult kép: azonnal a meglévő megy (a főoldal nem vár a ~1 mp-es konvertálásra), az új a háttérben készül.
+        if let from = date(source), let changed = date(sheet), made > from, made > changed, made > Themes.loadedAt { return target }
+        PreviewRaster.refresh(source: source, to: target)
+        return target
     }
 
     /// Szövegfájl-objektumok tartalma (asset → szöveg) a vászon rendereléséhez; legfeljebb 200 KB fájlonként.
