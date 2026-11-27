@@ -2,7 +2,7 @@
 
 - **Szerver Fedora 45-ön (2026-11-27): nyitott tételek**
   - A szerver Swift 6.3.3-mal fut (swift.org, `/opt/swift-6.3.3`), a fejlesztőgép 6.0.3-mal: a két fordító eltérhet (a 6.3.3 két Linux-hibát mutatott meg, ezek javítva). Ha a Mac is 6.3.3-ra áll, újra egyezik.
-  - A szerver jelenleg két helyben alkalmazott javítással fut (ProjectPackage.swift, LinkPreview.swift), amíg a commit nincs pusholva és lehúzva; utána a `git status` tiszta lesz.
+  - A szerveren a szokásos frissítés (`build.sh`, `THINKNODES_SWIFT` nélkül) végigment (2026-11-27): a swift.env alapján a 6.3.3-at veszi fel; a `server/Package.resolved` a 6.3.3 miatt helyben módosul (a build.sh pull előtt eldobja).
   - Az új Fedora-telepítés teljes folyamata (`git clone` → `install.sh` → `daemon.sh`) tiszta gépen nincs végigpróbálva; a lépései külön-külön a szerveren futottak.
   - A régi `thinknodes.service.d/chromium.conf` drop-in megmaradt (a daemon.sh a unitba is beírja a Chromium útját); ártalmatlan.
 

@@ -80,7 +80,9 @@ if [[ "$pull" == true ]] && git rev-parse --git-dir >/dev/null 2>&1; then
     printf 'Updating from origin/%s...\n' "$branch"
     GIT_TERMINAL_PROMPT=0 git fetch --no-tags origin "refs/heads/$branch"
     before="$(git rev-parse HEAD)"
-    if [[ -n "$(git status --porcelain)" ]] || ! git merge --ff-only --quiet FETCH_HEAD; then
+    # Csak a követett fájlok helyi változása akadály; a nem követett (pl. a régi mappaszerkezet maradványa) csak akkor, ha
+    # a frissítés felülírná – akkor a fast-forward úgyis elbukik, és jön a visszaállítás.
+    if [[ -n "$(git status --porcelain --untracked-files=no)" ]] || ! git merge --ff-only --quiet FETCH_HEAD; then
         reset_to_remote "$branch"
     fi
     if [[ "$(git rev-parse HEAD)" != "$before" ]]; then

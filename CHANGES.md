@@ -6,6 +6,7 @@
 - **`server/deploy/swift.env`:** egy helyen a verziók (`SWIFT_LINUX`, `SWIFT_LINUX_PLATFORM`, `SWIFT_MACOS`, `SWIFT_RELEASE_KEY`); az `install.sh`, a `build.sh` és a `daemon.sh` ebből dolgozik.
 - **`install.sh`:** a swift.env szerinti toolchain letöltése és aláírás-ellenőrzése, utána **C++-fejléc-próba** a toolchain clangjával (`<memory>`, `<string>`, `<system_error>`): ha nem fordul, kiírja, hogy a `swift.env`-ben újabb verzió kell. A szerveren kipróbálva: 6.0.3 → hiba, 6.3.3 → rendben.
 - **Linux-javítások a kódban:** `ProjectPackage.swift` – a szabad hely a fájlrendszerből (`attributesOfFileSystem`, `systemFreeSize`; a `volumeAvailableCapacityForImportantUsage` csak Apple-en van); `LinkPreview.swift` – az `addrinfo` mezőnként (a mezősorrend macOS-en és glibc-n eltér). `run.sh`: a futó szerverek keresése `${…##*/}`-val (a `basename` a `-bash` folyamatnevet kapcsolónak vette).
+- **`build.sh`:** a frissítést csak a követett fájlok helyi változása akasztja meg; a nem követett fájlok (pl. a régi mappaszerkezet gyökérben maradt `.build/`-je) nem (`git status --untracked-files=no`), csak ha a fast-forwardot ténylegesen megakasztják.
 - A szerveren: Swift 6.3.3 telepítve, build 32 szálon, új systemd unit (`server/run.sh --project:/var/lib/thinknodes/Projects --tls-dir:/var/lib/thinknodes/tls`); a szolgáltatás fut, HTTPS 200.
 
 ## 2026-11-27 – Szerver: ugyanaz a Swift (6.0.3), mint a fejlesztőgépen
