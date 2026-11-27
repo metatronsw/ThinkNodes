@@ -1,8 +1,9 @@
 ## Nyitott
 
-- **build.sh root-ként: „invalid access to /tmp/_opt_ThinkNodes_server_.build.lock” (2026-11-27): javítva, a szerveren kipróbálandó**
-  - Ok: a `daemon.sh` a buildet a `thinknodes` felhasználóként futtatja, a SwiftPM `/tmp`-beli zárfájljai így az övéi; a közvetlenül root-ként indított `build.sh` ezeket a Fedora `fs.protected_regular` védelme miatt nem nyithatja meg. A zárfájlokat eddig csak a `daemon.sh` törölte.
-  - Javítás: a `build.sh` Linuxon root-ként törli a zárfájlokat, és ha a checkout nem a rooté, a tulajdonosnak adja át (a régi root tulajdonú fájlokat is neki adja), majd `runuser`-rel a tulajdonos nevében fut tovább (frissítés és fordítás is). Csak szintaxis-ellenőrzés volt (macOS); Linuxon root-ként nincs kipróbálva.
+- **Telepítő szkriptek szétválasztva (2026-11-27): a szerveren kipróbálandó**
+  - `update.sh`: csak `git pull` (a régi build.sh-ból); `build.sh`: csak fordít, a bináris a `.build/release/thinknodes`-ben marad; `daemon.sh`: `update.sh` + `build.sh`, és csak sikeres build után leállítás, a bináris áthelyezése a `server/thinknodes` helyre, indítás; a unit `run.sh --binary:…/server/thinknodes`-szal indít. Helyben a `run.sh` a `.build/release/thinknodes`-t indítja.
+  - A root → checkout-tulajdonos átadás egy helyen van (`deploy/as-owner.sh`, az `update.sh` és a `build.sh` használja); a `/tmp`-beli SwiftPM-zárfájlok törlése csak a `build.sh`-ban (korábban a daemon.sh-ban is), ez javítja a root-ként indított build.sh „invalid access to /tmp/_opt_ThinkNodes_server_.build.lock” hibáját.
+  - macOS-en kipróbálva: `build.sh` release build, `run.sh --help`, `--binary:`, foglalt port felismerése. Linuxon (root, runuser, systemd-csere) nincs kipróbálva.
 
 - **Jobb gombos pásztázás és helyi menü (2026-11-27, `right-mouse-pan` ág): kézzel nézendő**
   - Megszűnt: kéz gomb (vászonmozgatás-zár, a `panLocked` beállítás szerveroldalon is), szóközös és bal gombos pásztázás. Új: jobb gomb + húzás pásztáz (objektum fölött is), mozgás nélküli jobb kattintás (küszöb: 5 px, `rightClickSlop`) felengedéskor nyitja a helyi menüt.

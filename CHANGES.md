@@ -1,5 +1,14 @@
 # Változások
 
+## 2026-11-27 – Telepítő szkriptek szétválasztva: update.sh frissít, build.sh csak fordít, daemon.sh cserél
+
+- **update.sh (új):** csak `git pull` (fast-forward), a visszaállítás-ajánlattal; a régi build.sh-ból. A `daemon.sh` és a `run.sh --update` hívja.
+- **build.sh:** csak fordít, a helyi fájlokból; a bináris a `.build/release/thinknodes`-ben (`--debug`: `.build/debug/thinknodes`) marad. A `--no-pull` megszűnt.
+- **daemon.sh:** telepítés és frissítés: `update.sh`, `build.sh`, és csak sikeres build után a szolgáltatás leállítása, az új bináris áthelyezése a `server/thinknodes` helyre, indítás; sikertelen buildnél a futó szolgáltatás érintetlen. Ha a frissítéssel maga is változott, az új változattal folytatja. Új kapcsoló: `--no-pull`. A saját Swift-keresése és zárfájl-törlése kikerült (a build.sh-ban van).
+- **as-owner.sh (új):** a root → checkout-tulajdonos átadás (runuser) egy helyen; az `update.sh` és a `build.sh` használja.
+- **run.sh:** helyben a `.build/release/thinknodes`-t indítja; `--binary:PATH` kapcsoló (a systemd-unit így indítja a `server/thinknodes`-t); `--update`: `update.sh` + `build.sh`.
+- `test.sh` a `--no-pull` nélkül hívja a build.sh-t; README, PERF.md, BUGS frissítve. macOS-en kipróbálva; Linuxon (root, systemd-csere) még nem.
+
 ## 2026-11-27 – build.sh root-ként: zárfájlok törlése, fordítás a checkout tulajdonosaként
 
 - **build.sh:** Linuxon root-ként indítva törli a SwiftPM `/tmp`-beli zárfájljait (`…_.build*.lock`; a `thinknodes` felhasználó által hagyottakat a Fedora `fs.protected_regular` védelme miatt a root nem nyithatja meg: „invalid access to /tmp/_opt_ThinkNodes_server_.build.lock”). Ha a checkout nem a rooté, a tulajdonosnak adja vissza a fájlokat, és `runuser`-rel a tulajdonos nevében fut tovább (frissítés és fordítás), így a `.build`-be nem kerül root tulajdonú fájl. README frissítve.

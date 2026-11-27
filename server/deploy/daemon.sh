@@ -4,29 +4,36 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Usage: sudo server/deploy/daemon.sh [--dir:PATH] [--help]
+Usage: sudo server/deploy/daemon.sh [--dir:PATH] [--no-pull] [--help]
 
-Sets up ThinkNodes as a systemd service on Fedora Linux:
+Sets up and updates ThinkNodes as a systemd service on Fedora Linux:
   - creates the 'thinknodes' system user
   - creates the data folders /var/lib/thinknodes/Projects and /var/lib/thinknodes/tls
   - creates the settings file /var/lib/thinknodes/thinknodes.env if it is missing (an existing one is kept);
     the Google sign-in is switched on there, see server/deploy/GOOGLE.md
-  - clones the repository to the install folder (default /opt/ThinkNodes) if it is not there yet
-  - builds the release binary as the thinknodes user (deploy/build.sh)
-  - installs, enables and (re)starts thinknodes.service (HTTPS on port 443)
+  - clones the repository to the install folder (default /opt/ThinkNodes) if it is not there yet,
+    otherwise updates it from GitHub (deploy/update.sh)
+  - builds a new release binary as the thinknodes user (deploy/build.sh); if the build fails,
+    the running service and its binary are left as they are
+  - installs and enables thinknodes.service (HTTPS on port 443), then stops it, moves the new
+    binary to server/thinknodes and starts it again
 and finally prints how to add an admin account, update and follow the logs.
-Run server/deploy/install.sh first. Running it again is safe: it only updates what changed.
+Run server/deploy/install.sh first. Running it again is the update.
 
 Options:
   --dir:PATH  Install folder of the checkout (default /opt/ThinkNodes).
+  --no-pull   Skip the GitHub update and build the checkout as it is.
   --help      Show this help.
 EOF
 }
 
 install_dir=/opt/ThinkNodes
+pull=true
+original_args=("$@")
 while (($#)); do
     case "$1" in
         --dir:*) install_dir="${1#--dir:}" ;;
+        --no-pull) pull=false ;;
         -h|--help) usage; exit 0 ;;
         *) printf 'Unknown option: %s (see --help)\n' "$1" >&2; exit 1 ;;
     esac
@@ -46,22 +53,6 @@ source_dir="$(cd "$(dirname "$0")/../.." && pwd)"
 data_dir=/var/lib/thinknodes
 unit=/etc/systemd/system/thinknodes.service
 env_file="$data_dir/thinknodes.env"
-
-# A Swift a deploy/swift.env szerinti swift.org toolchain (install.sh: /opt/swift-<SWIFT_LINUX>); a Fedora swift-lang
-# csomagja nem használható. THINKNODES_SWIFT-tel más is megadható.
-source "$(dirname "$0")/swift.env"
-swift_version="$SWIFT_LINUX"
-swift_bin="${THINKNODES_SWIFT:-}"
-for candidate in "/opt/swift-$swift_version/usr/bin/swift" /usr/local/bin/swift "$(command -v swift || true)"; do
-    if [[ -z "$swift_bin" && -n "$candidate" && -x "$candidate" ]] &&
-        "$candidate" --version 2>/dev/null | grep -q "Swift version $swift_version "; then
-        swift_bin="$candidate"
-    fi
-done
-if [[ -z "$swift_bin" ]]; then
-    printf 'Swift %s not found for all users. Run server/deploy/install.sh first.\n' "$swift_version" >&2
-    exit 1
-fi
 
 printf '== User and folders ==\n'
 id thinknodes >/dev/null 2>&1 ||
@@ -90,13 +81,23 @@ if [[ ! -d "$install_dir/.git" ]]; then
     git clone "$(git -C "$source_dir" remote get-url origin)" "$install_dir"
 fi
 chown -R thinknodes:thinknodes "$install_dir"
-# SwiftPM zárfájljai a /tmp-ben (a .build útvonalából képzett előtaggal: …_.build.lock, …_.build_Package.resolved.lock,
-# …_.build_workspace-state.json.lock stb.): ha egy root-ként futtatott install.sh / build hagyta ott, a thinknodes
-# felhasználó nem fér hozzájuk („invalid access to /tmp/…lock”).
-rm -f "/tmp/$(printf '%s' "$install_dir/server/.build" | tr '/' '_')"*.lock
+# Az update.sh és a build.sh root-ként hívva maguk adják át a futást a checkout tulajdonosának (deploy/as-owner.sh).
+if [[ "$pull" == true ]]; then
+    self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+    before="$(cksum < "$self")"
+    "$install_dir/server/deploy/update.sh"
+    if [[ "$self" == "$install_dir/server/deploy/daemon.sh" && "$(cksum < "$self")" != "$before" ]]; then
+        printf 'daemon.sh changed with the update: continuing with the new version\n'
+        exec "$self" --no-pull ${original_args[@]+"${original_args[@]}"}
+    fi
+fi
 
 printf '== Build ==\n'
-runuser -u thinknodes -- env HOME="$data_dir" THINKNODES_SWIFT="$swift_bin" "$install_dir/server/deploy/build.sh"
+# Ha a fordítás nem sikerül, a futó szolgáltatás és a bináris érintetlen marad (set -e).
+"$install_dir/server/deploy/build.sh"
+built="$install_dir/server/.build/release/thinknodes"
+binary="$install_dir/server/thinknodes"
+[[ -x "$built" ]] || { printf 'Build finished, but %s is missing.\n' "$built" >&2; exit 1; }
 
 printf '== Service ==\n'
 chromium=""
@@ -118,7 +119,7 @@ Environment=HOME=$data_dir
 ${chromium:+Environment=THINKNODES_CHROMIUM=$chromium}
 # Settings and secrets, e.g. the Google sign-in (deploy/GOOGLE.md). Kept when daemon.sh runs again.
 EnvironmentFile=-$env_file
-ExecStart=$install_dir/server/run.sh --project:$data_dir/Projects --tls-dir:$data_dir/tls
+ExecStart=$install_dir/server/run.sh --binary:$binary --project:$data_dir/Projects --tls-dir:$data_dir/tls
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=30s
@@ -140,7 +141,10 @@ rm -f /etc/systemd/system/thinknodes.service.d/install.conf
 rmdir /etc/systemd/system/thinknodes.service.d 2>/dev/null || true
 systemctl daemon-reload
 systemctl enable thinknodes
-systemctl restart thinknodes
+# Csere: leállítás, az új bináris a server/thinknodes helyére, indítás.
+systemctl stop thinknodes
+mv -f "$built" "$binary" || { systemctl start thinknodes; printf 'Could not replace %s: the old binary was started again.\n' "$binary" >&2; exit 1; }
+systemctl start thinknodes
 systemctl --no-pager --lines=5 status thinknodes || true
 
 google_state="off (to switch it on: $install_dir/server/deploy/GOOGLE.md)"
@@ -156,9 +160,8 @@ ThinkNodes runs as a systemd service (HTTPS, port 443).
   Google sign-in: $google_state
   Certificates:  $data_dir/tls (trust ca.crt on client devices, or use your own: --tls-cert:/--tls-key: in $unit)
 
-Admin account:   sudo runuser -u thinknodes -- $install_dir/server/run.sh user admin admin --project:$data_dir/Projects
-Update:          sudo runuser -u thinknodes -- env THINKNODES_SWIFT=$swift_bin $install_dir/server/deploy/build.sh
-                 sudo systemctl restart thinknodes
+Admin account:   sudo runuser -u thinknodes -- $install_dir/server/run.sh --binary:$binary user admin admin --project:$data_dir/Projects
+Update:          sudo $install_dir/server/deploy/daemon.sh   (git pull, build; if it succeeds: stop, new binary, start)
 Logs:            sudo journalctl -u thinknodes -f
 Stop / start:    sudo systemctl stop thinknodes / sudo systemctl start thinknodes
 EOF

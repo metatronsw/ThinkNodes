@@ -1,31 +1,26 @@
 #!/usr/bin/env bash
-# Update the checkout from GitHub and build the ThinkNodes server (macOS or Fedora Linux).
+# Build the ThinkNodes server (macOS or Fedora Linux). Updating from GitHub: deploy/update.sh.
 set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Usage: server/deploy/build.sh [--debug] [--no-pull] [--help]
+Usage: server/deploy/build.sh [--debug] [--help]
 
-Updates the checkout from GitHub and builds the ThinkNodes server on macOS or Fedora Linux.
-The release binary is moved to server/thinknodes; a --debug build stays in
-server/.build/debug/thinknodes.
-
-Before building it runs git pull (fast-forward only). If that fails, or the checkout has
-local changes, it offers to reset the checkout to an exact copy of the GitHub branch:
-local changes and untracked files are discarded, ignored data (projects/, .build/) is kept.
-server/Package.resolved is generated: a local change to it is discarded without asking.
-
-On Linux, run as root: stale SwiftPM lock files in /tmp are removed, and if the checkout
-belongs to another user (on the server: thinknodes), the whole update and build runs as
-that user (runuser), so no root-owned file gets into .build.
+Builds the ThinkNodes server on macOS or Fedora Linux from the local files as they are
+(updating from GitHub is deploy/update.sh). The binary stays in the build folder:
+server/.build/release/thinknodes (--debug: server/.build/debug/thinknodes). run.sh starts
+it from there; deploy/daemon.sh moves it to server/thinknodes for the systemd service.
 
 The pinned package versions (Package.resolved) are kept; packages a newer Swift needs on
 top of them (e.g. Swift 6.2+ on Fedora: swift-configuration for async-http-client) are
 resolved before the build and written to the local Package.resolved.
 
+On Linux, run as root: stale SwiftPM lock files in /tmp are removed, and if the checkout
+belongs to another user (on the server: thinknodes), the build runs as that user
+(runuser), so no root-owned file gets into .build.
+
 Options:
   --debug     Build the debug configuration instead of release.
-  --no-pull   Skip the git update and build the local files as they are.
   --help      Show this help.
 
 Environment:
@@ -40,11 +35,9 @@ cd "$(dirname "$0")/.."
 original_args=("$@")
 
 configuration=release
-pull=true
 while (($#)); do
     case "$1" in
         --debug) configuration=debug ;;
-        --no-pull) pull=false ;;
         -h|--help) usage; exit 0 ;;
         *) printf 'Unknown option: %s (see --help)\n' "$1" >&2; exit 1 ;;
     esac
@@ -56,65 +49,19 @@ case "$(uname -s)" in
     Linux) platform=Linux; [[ -f /etc/fedora-release ]] && platform=Fedora ;;
     *) printf 'Unsupported system: %s\n' "$(uname -s)" >&2; exit 1 ;;
 esac
-printf 'Platform: %s\n' "$platform"
 
-# --- Linux, run as root: the build runs as the owner of the checkout ---------------------
+# --- Linux, run as root --------------------------------------------------------------------
 # SwiftPM zárfájljai a /tmp-ben vannak (a .build útvonalából képzett előtaggal: …_.build.lock, …_.build_Package.resolved.lock
-# stb.). Ha a thinknodes felhasználó (daemon.sh) hagyta ott őket, a root a Fedora fs.protected_regular védelme miatt nem
-# nyithatja meg őket („invalid access to /tmp/…lock”): ezek törlődnek. Ha a checkout nem a rooté (szerveren: thinknodes),
-# a frissítés és a fordítás a tulajdonos nevében fut, így a .build-be nem kerül root tulajdonú fájl.
+# stb.). Ha a thinknodes felhasználó hagyta ott őket, a root a Fedora fs.protected_regular védelme miatt nem nyithatja meg
+# őket („invalid access to /tmp/…lock”): ezek törlődnek. Ha a checkout nem a rooté, a fordítás a tulajdonos nevében fut.
 if [[ "$platform" != macOS && $EUID -eq 0 ]]; then
     for build_dir in "$PWD/.build" "$(pwd -P)/.build"; do
         rm -f "/tmp/$(printf '%s' "$build_dir" | tr '/' '_')"*.lock
     done
-    owner="$(stat -c %U "$PWD")"
-    if [[ "$owner" != root ]]; then
-        command -v runuser >/dev/null || { printf 'runuser not found: run it as %s.\n' "$owner" >&2; exit 1; }
-        owner_home="$(getent passwd "$owner" | cut -d: -f6)"
-        # Root által korábban itt hagyott fájlok (pl. egy régebbi build.sh-futásból) a tulajdonoshoz kerülnek.
-        chown -R "$owner:$(stat -c %G "$PWD")" "$(dirname "$PWD")"
-        printf 'Running as %s (owner of the checkout)\n' "$owner"
-        exec runuser -u "$owner" -- env HOME="${owner_home:-/tmp}" ${THINKNODES_SWIFT:+THINKNODES_SWIFT="$THINKNODES_SWIFT"} \
-            "$script" ${original_args[@]+"${original_args[@]}"}
-    fi
 fi
-
-# --- Update from GitHub ------------------------------------------------------------------
-reset_to_remote() {
-    local branch="$1"
-    printf '\nThe checkout differs from origin/%s:\n' "$branch"
-    git status --short | sed 's/^/  /'
-    git log --oneline FETCH_HEAD..HEAD 2>/dev/null | sed 's/^/  local commit: /'
-    if [[ ! -t 0 ]]; then
-        printf 'Not interactive: run it in a terminal to reset, or use --no-pull.\n' >&2
-        exit 1
-    fi
-    read -r -p "Discard all of the above and make an exact copy of origin/$branch? [y/N] " answer
-    if [[ "$answer" != [yY]* ]]; then
-        printf 'Stopped. Use --no-pull to build the local files.\n' >&2
-        exit 1
-    fi
-    git reset --hard FETCH_HEAD
-    git clean -fd -- "$(git rev-parse --show-toplevel)"
-}
-
-if [[ "$pull" == true ]] && git rev-parse --git-dir >/dev/null 2>&1; then
-    branch="$(git symbolic-ref --quiet --short HEAD)" || { printf 'No active git branch; use --no-pull.\n' >&2; exit 1; }
-    # Package.resolved is regenerated by the package resolution below (other Swift versions add pins): not a real change.
-    git diff --quiet -- Package.resolved || git checkout -- Package.resolved
-    printf 'Updating from origin/%s...\n' "$branch"
-    GIT_TERMINAL_PROMPT=0 git fetch --no-tags origin "refs/heads/$branch"
-    before="$(git rev-parse HEAD)"
-    # Csak a követett fájlok helyi változása akadály; a nem követett (pl. a régi mappaszerkezet maradványa) csak akkor, ha
-    # a frissítés felülírná – akkor a fast-forward úgyis elbukik, és jön a visszaállítás.
-    if [[ -n "$(git status --porcelain --untracked-files=no)" ]] || ! git merge --ff-only --quiet FETCH_HEAD; then
-        reset_to_remote "$branch"
-    fi
-    if [[ "$(git rev-parse HEAD)" != "$before" ]]; then
-        # This script may have changed as well: continue with the updated version.
-        exec "$script" --no-pull ${original_args[@]+"${original_args[@]}"}
-    fi
-fi
+source deploy/as-owner.sh
+run_as_checkout_owner "$script" ${original_args[@]+"${original_args[@]}"}
+printf 'Platform: %s\n' "$platform"
 
 # --- Swift toolchain ---------------------------------------------------------------------
 # A Swift-verzió a deploy/swift.env-ből (Linux: a swift.org toolchainje /opt/swift-<verzió>, install.sh telepíti; macOS:
@@ -201,11 +148,6 @@ jobs="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
 
 built=".build/$configuration/thinknodes"
 [[ -x "$built" ]] || { printf 'Build finished, but %s is missing.\n' "$built" >&2; exit 1; }
-if [[ "$configuration" == release ]]; then
-    # Replacing the file keeps an already running server intact; it picks up the new binary on restart.
-    mv -f "$built" thinknodes
-    built=thinknodes
-fi
 if [[ "$platform" != macOS ]] && command -v ldd >/dev/null && ldd "$built" | grep -q 'not found'; then
     printf 'Missing shared libraries:\n' >&2
     ldd "$built" | grep 'not found' >&2

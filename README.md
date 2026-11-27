@@ -16,9 +16,10 @@ Mindegyik önállóan futtatható, és a `--help` kiírja a kapcsolóit.
 | Szkript | Feladat |
 | --- | --- |
 | `server/deploy/install.sh` | Ellenőrzi és telepíti a fejlesztéshez és futtatáshoz szükséges környezetet (Swift – a verzió a `server/deploy/swift.env`-ben; Linuxon a swift.org hivatalos csomagja a `/opt/swift-<verzió>` mappában, aláírás-ellenőrzéssel és C++-fejléc-próbával –, rendszerkönyvtárak, Node.js, Python, Chromium, Vapor-csomagok). Csak a hiányzót telepíti; `--force`: mindent újra. |
-| `server/deploy/build.sh` | `git pull`, majd build macOS-en vagy Fedorán. Ha a frissítés nem megy, vagy helyi változás van, felajánlja a GitHub-ág pontos másolatára állítást. A release bináris a `server/thinknodes` helyre kerül. Linuxon root-ként indítva törli a SwiftPM régi `/tmp`-beli zárfájljait, és ha a checkout nem a rooté (szerveren: `thinknodes`), a frissítést és a fordítást a tulajdonos nevében futtatja (`runuser`). `--debug`, `--no-pull`. |
-| `server/deploy/daemon.sh` | Fedorán: `thinknodes` felhasználó, adatmappák, checkout a `/opt/ThinkNodes` alá, build, systemd szolgáltatás; végül kiírja a teendőket. |
-| `server/run.sh` | A szerver indítása (helyben és élesben). `--update`: előtte `deploy/build.sh`; `--debug`: a debug bináris. A többi kapcsoló a `thinknodes` binárisé. Indítás előtt kiírja a gépen már futó ThinkNodes-szervereket (bármely felhasználóét, a systemd-szolgáltatást is), és nem indul, ha a port foglalt, vagy egy másik példány ugyanazt az adatmappát használja. A szolgáltatás mellett tesztszerver más porton és más adatmappával futtatható (pl. `--port:8888 --project:DIR`). |
+| `server/deploy/update.sh` | `git pull` (csak fast-forward). Ha a frissítés nem megy, vagy a követett fájlokban helyi változás van, felajánlja a GitHub-ág pontos másolatára állítást. Linuxon root-ként a checkout tulajdonosa nevében fut (`runuser`). |
+| `server/deploy/build.sh` | Csak fordít, a helyi fájlokból (macOS, Fedora). A bináris a build mappában marad: `server/.build/release/thinknodes` (`--debug`: `.build/debug/thinknodes`). Linuxon root-ként indítva törli a SwiftPM régi `/tmp`-beli zárfájljait, és ha a checkout nem a rooté (szerveren: `thinknodes`), a tulajdonos nevében fordít (`runuser`). |
+| `server/deploy/daemon.sh` | Fedorán telepítés és frissítés: `thinknodes` felhasználó, adatmappák, checkout a `/opt/ThinkNodes` alá (vagy frissítése: `update.sh`), új build (`build.sh`). Ha a build sikerült: a szolgáltatás leáll, az új bináris a `server/thinknodes` helyére kerül, a szolgáltatás újraindul; ha nem, a futó szolgáltatás érintetlen. Végül kiírja a teendőket. `--no-pull`: frissítés nélkül. |
+| `server/run.sh` | A szerver indítása (helyben és élesben). Alapból a `.build/release/thinknodes` binárist indítja; `--debug`: a debug bináris; `--binary:PATH`: megadott bináris (a systemd szolgáltatás így indítja a `server/thinknodes`-t); `--update`: előtte `deploy/update.sh` és `deploy/build.sh`. A többi kapcsoló a `thinknodes` binárisé. Indítás előtt kiírja a gépen már futó ThinkNodes-szervereket (bármely felhasználóét, a systemd-szolgáltatást is), és nem indul, ha a port foglalt, vagy egy másik példány ugyanazt az adatmappát használja. A szolgáltatás mellett tesztszerver más porton és más adatmappával futtatható (pl. `--port:8888 --project:DIR`). |
 | `server/test.sh` | Témakörönkénti tesztfuttatás: téma nélkül a commitolatlan módosításokból választja ki az érintett Swift- és JS-teszteket. `--all`: minden teszt; `--list`: csak kiírja, mit futtatna; témák (pl. `table`, `render`, `editor`): `--help`. Mindig debug buildet használ. |
 
 Fejlesztés közben a debug build sokkal gyorsabb: egy Swift-fájl módosítása után kb. 10 s, a release build ehhez képest 25–65 s. Helyben ezért elég a `server/test.sh` (ez elkészíti a debug binárist is) és a `server/run.sh --debug --port:8888`; release build csak élesítés előtt kell.
@@ -37,11 +38,11 @@ A `ThinkCore` deklarációi, amelyeket a szerver használ, `package` láthatós�
 
 ~~~sh
 server/deploy/install.sh
-server/deploy/build.sh --no-pull     # helyben, ha vannak még nem commitolt változások
+server/deploy/build.sh               # release build a helyi fájlokból (.build/release/thinknodes)
 server/run.sh --http --port:8888 --test
 ~~~
 
-A `thinknodes` bináris kapcsolói (a `server/run.sh` ugyanezeket adja tovább; teljes lista: `server/thinknodes --help`):
+A `thinknodes` bináris kapcsolói (a `server/run.sh` ugyanezeket adja tovább; teljes lista: `server/.build/release/thinknodes --help`):
 
 | Kapcsoló | Jelentés |
 | --- | --- |
@@ -74,7 +75,7 @@ Nem kötelező. Ha a szerver környezetében mindkét változó meg van adva, a 
 - Tesztmódban (`--test`) a Google-bejelentkezés ki van kapcsolva.
 - Élesben a `daemon.sh` által telepített szolgáltatás a `/var/lib/thinknodes/thinknodes.env` fájlból olvassa a változókat; a fájlt a `daemon.sh` hozza létre. A teljes beállítás lépésről lépésre (Google Cloud Console, hozzárendelés, hibakeresés): `server/deploy/GOOGLE.md`.
 
-Élesben (Fedora), új gépen root-ként: `git clone https://github.com/metatronsw/ThinkNodes.git /opt/ThinkNodes`, majd `/opt/ThinkNodes/server/deploy/install.sh` és `/opt/ThinkNodes/server/deploy/daemon.sh`. A Swift-verziókat a `server/deploy/swift.env` adja: Linuxon a swift.org hivatalos toolchainje (jelenleg 6.3.3, `fedora41` építés, `/opt/swift-6.3.3`), macOS-en a fejlesztőgépé (6.0.3). A Fedora `swift-lang` csomagja telepítve maradhat, de nem használja (a 6.3.2 egy függőség fordításakor összeomlott). Az `install.sh` telepítés után kipróbálja, hogy a toolchain clangja lefordítja-e a rendszer C++ fejléceit (a 6.0.3 a Fedora 45 GCC 16-os fejléceit már nem); ha nem, kiírja, hogy a `swift.env`-ben újabb verzió kell. Más Swift a `THINKNODES_SWIFT` változóval adható meg. Frissítés: a `daemon.sh` által kiírt `build.sh` parancs, majd `sudo systemctl restart thinknodes`.
+Élesben (Fedora), új gépen root-ként: `git clone https://github.com/metatronsw/ThinkNodes.git /opt/ThinkNodes`, majd `/opt/ThinkNodes/server/deploy/install.sh` és `/opt/ThinkNodes/server/deploy/daemon.sh`. A Swift-verziókat a `server/deploy/swift.env` adja: Linuxon a swift.org hivatalos toolchainje (jelenleg 6.3.3, `fedora41` építés, `/opt/swift-6.3.3`), macOS-en a fejlesztőgépé (6.0.3). A Fedora `swift-lang` csomagja telepítve maradhat, de nem használja (a 6.3.2 egy függőség fordításakor összeomlott). Az `install.sh` telepítés után kipróbálja, hogy a toolchain clangja lefordítja-e a rendszer C++ fejléceit (a 6.0.3 a Fedora 45 GCC 16-os fejléceit már nem); ha nem, kiírja, hogy a `swift.env`-ben újabb verzió kell. Más Swift a `THINKNODES_SWIFT` változóval adható meg. Frissítés: újra a `daemon.sh` (root-ként): GitHub-frissítés, build, és csak sikeres build után leállítás, a bináris cseréje, indítás.
 
 ## Munkalapok és fájlok
 

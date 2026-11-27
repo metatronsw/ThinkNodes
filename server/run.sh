@@ -4,10 +4,11 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Usage: server/run.sh [--update] [--debug] [server options]
+Usage: server/run.sh [--update] [--debug] [--binary:PATH] [server options]
 
-Starts the ThinkNodes server (server/thinknodes). Every option it does not handle itself
-is passed to the binary, so ./thinknodes accepts the same server options.
+Starts the ThinkNodes server (default: the release build, .build/release/thinknodes; the systemd
+service starts server/thinknodes with --binary:). Every option it does not handle itself is
+passed to the binary, so the binary accepts the same server options.
 
 Before starting it lists the ThinkNodes servers already running on this machine (any user,
 e.g. the systemd service), and stops if the port is taken or another server uses the same
@@ -15,8 +16,9 @@ data folder. A test server can run next to the service on another port and data 
 Relative paths (--project:, --tls-*) are relative to the folder you start from.
 
 Run script options:
-  --update          Update from GitHub and build first (deploy/build.sh).
+  --update          Update from GitHub and build first (deploy/update.sh, deploy/build.sh).
   --debug           Use the debug build (.build/debug/thinknodes); with --update, build it.
+  --binary:PATH     Start this binary instead (e.g. server/thinknodes of the systemd service).
   --help            Show this help and the server options.
 
 Server options (most used):
@@ -56,16 +58,18 @@ cd "$(dirname "$0")"
 
 update=false
 configuration=release
+binary=""
 server_args=()
 while (($#)); do
     case "$1" in
         --update) update=true ;;
         --debug) configuration=debug ;;
+        --binary[:=]*) binary="${1#--binary?}"; [[ "$binary" == /* ]] || binary="$caller_dir/$binary" ;;
         --project[:=]*|--tls-dir[:=]*|--tls-cert[:=]*|--tls-key[:=]*) server_args+=("$(absolute_option "$1")") ;;
         -h|--help)
             usage
-            for binary in ./thinknodes .build/debug/thinknodes; do
-                if [[ -x "$binary" ]]; then printf '\nAll server options (%s --help):\n\n' "$binary"; "$binary" --help; break; fi
+            for candidate in "$binary" .build/release/thinknodes .build/debug/thinknodes ./thinknodes; do
+                if [[ -n "$candidate" && -x "$candidate" ]]; then printf '\nAll server options (%s --help):\n\n' "$candidate"; "$candidate" --help; break; fi
             done
             exit 0 ;;
         --) server_args+=("$@"); break ;;
@@ -77,11 +81,11 @@ done
 build_args=()
 [[ "$configuration" == debug ]] && build_args+=(--debug)
 if [[ "$update" == true ]]; then
+    ./deploy/update.sh
     ./deploy/build.sh ${build_args[@]+"${build_args[@]}"}
 fi
 
-binary=./thinknodes
-[[ "$configuration" == debug ]] && binary=.build/debug/thinknodes
+[[ -n "$binary" ]] || binary=".build/$configuration/thinknodes"
 if [[ ! -x "$binary" ]]; then
     printf 'Not built yet: %s. Run ./run.sh --update or deploy/build.sh%s.\n' "$binary" \
         "$([[ "$configuration" == debug ]] && echo ' --debug')" >&2

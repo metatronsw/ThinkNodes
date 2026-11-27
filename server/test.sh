@@ -221,8 +221,8 @@ if ((swift_all || ${#swift_list[@]})); then
     else
         # Ugyanazok a cache-útvonalak, mint a deploy/build.sh-ban, különben minden futás újrafordítana.
         if [[ ! -d .build/checkouts ]]; then
-            echo "Első build: deploy/build.sh --no-pull --debug (csomagok és javítások)"
-            deploy/build.sh --no-pull --debug || exit 1
+            echo "Első build: deploy/build.sh --debug (csomagok és javítások)"
+            deploy/build.sh --debug || exit 1
         fi
         export PATH="$(dirname "$swift_bin"):$PATH"
         export CLANG_MODULE_CACHE_PATH="$server_dir/.build/module-cache"

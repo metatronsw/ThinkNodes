@@ -17,7 +17,7 @@ Cél: a szerkesztő maximális teljesítménye. Olcsó témák maradjanak olcsó
 
 **Mérés – minden rajzolást, animációt, témát, effektet vagy eseménykezelőt érintő változás után:**
 - Böngésző: **valódi Chrome (elsődleges) és Safari.** Nem hiteles: a beépített böngészőpanel, a fej nélküli Chromium (szoftveres GPU), a takart ablak (a Safari ott a CSS-animációt leállítja, a SMIL-t nem).
-- Szerver: release build (`deploy/build.sh --no-pull`), `run.sh --port:8888 --test`.
+- Szerver: release build (`deploy/build.sh`), `run.sh --port:8888 --test`.
 - Lapok: a legdrágább téma sok animációval (Liquid Glass lap), valamint egy nagy lap (`p300` / `p1000`: `node Tests/Perf/make-data.mjs`).
 - **Üresjárat:** betöltés, 4 mp várakozás, 8–10 mp CPU a böngésző teljes folyamatfáján (Chrome: renderer + GPU + böngésző; Safari: WebContent + WindowServer). Elvárás: animáció nélkül ~0–2%; Liquid Glass lap ≤ ~25%; „Animációk leállítása” mellett ~0%.
 - **Akadás:** frissen indított böngésző (hideg), majd újratöltés (meleg): első kijelölés, első mozgatás, **összetett pásztázás 100%-on** (az egész vászon bejárása oda-vissza, húzásonként rántás + lassú finomhúzás). Képkockaidő rAF-ből. Elvárás: 0 képkocka 50 ms fölött, lenyomás → képkocka < 50 ms.
