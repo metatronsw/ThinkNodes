@@ -77,7 +77,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/lib/d3-zoom.js?v=1"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=108"></script>
+        <script type="module" src="/editor.js?v=109"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -401,16 +401,19 @@ let nameFontSize = 13.0, nameLineHeight = 17.0, nameGap = 4.0
 
 /// A doboz neve a doboz fölött (geometry.js nameLayout párja; pontosan egyezniük kell): félkövér, a doboz szélességére
 /// (8 képpont ráhagyással) tördelve. Struktúra-konténernél utána halvány jel: `[]` tömb, `{}` objektum.
-func nameLayout(_ node: Idea) -> (lines: [String], height: Double, marker: String?)? {
+/// Előtte halvány jel is állhat (`nameNote`, pl. Swift-forrásnál `let` / `var` / `ƒ`).
+func nameLayout(_ node: Idea) -> (lines: [String], height: Double, marker: String?, note: String?)? {
     guard node.type == "box" else { return nil }
     let name = (node.boxName ?? "").trimmingCharacters(in: .whitespaces)
+    let noteText = (node.nameNote ?? "").trimmingCharacters(in: .whitespaces)
+    let note: String? = noteText.isEmpty ? nil : noteText
     let marker: String? = node.list.map { $0 ? "[]" : "{}" }
-    guard !name.isEmpty || marker != nil else { return nil }
-    let display = name.isEmpty ? marker! : marker.map { name + " " + $0 } ?? name
+    guard !name.isEmpty || marker != nil || note != nil else { return nil }
+    let display = [note, name.isEmpty ? nil : name, marker].compactMap { $0 }.joined(separator: " ")
     let measure = letterMeasure(size: nameFontSize, bold: true, monospace: false)
     let rows = wrapMarkdown([MarkdownRun(text: display)], limit: max(24, node.width - 8), width: measure)
     let lines = rows.map { row in row.pieces.map(\.text).joined() }
-    return (lines, Double(lines.count) * nameLineHeight + nameGap, marker)
+    return (lines, Double(lines.count) * nameLineHeight + nameGap, marker, note)
 }
 
 /// A név SVG-je a doboz csoportjában (az origó a doboz közepe).
@@ -424,10 +427,12 @@ private func nameSVG(_ node: Idea) -> String {
     let count = layout.lines.count
     let spans = layout.lines.enumerated().map { index, line in
         let baseline = -node.height / 2 - nameGap - Double(count - 1 - index) * nameLineHeight - 4
-        var content = escaped(line)
-        if index == count - 1, let marker = layout.marker, line.hasSuffix(marker) {
-            content = escaped(String(line.dropLast(marker.count))) + "<tspan class=\"node-name-marker\" opacity=\"0.5\" font-weight=\"400\">\(escaped(marker))</tspan>"
-        }
+        // Halvány részek: elöl a jel (nameNote), a végén a [] / {} jel (editor.js renderBoxName).
+        let faint = { (text: String) in "<tspan class=\"node-name-marker\" opacity=\"0.5\" font-weight=\"400\">\(escaped(text))</tspan>" }
+        var head = "", rest = line, tail = ""
+        if index == 0, let note = layout.note, rest == note || rest.hasPrefix(note + " ") { head = faint(note); rest = String(rest.dropFirst(note.count)) }
+        if index == count - 1, let marker = layout.marker, rest.hasSuffix(marker) { tail = faint(marker); rest = String(rest.dropLast(marker.count)) }
+        let content = head + escaped(rest) + tail
         return "<tspan x=\"\(number(x))\" y=\"\(number(baseline))\">\(content)</tspan>"
     }.joined()
     return "<text class=\"node-name\" text-anchor=\"\(anchor)\" font-family=\"system-ui, sans-serif\" font-size=\"\(number(nameFontSize))\" font-weight=\"600\" fill=\"\(escaped(node.textColor))\">\(spans)</text>"
@@ -1013,7 +1018,8 @@ private func boxSurface(_ node: Idea, geometry: String, graphics: VisualTheme.Gr
     let stroke = frameless ? "none" : empty ? escaped(node.fill) : image ? "none" : themed ? escaped(node.fill) : glass ? "url(#glass-rim)" : liquid ? "url(#fx-rim)" : escaped(node.border)
     // Minden doboz kerete sima és egyforma vastag (a zárolt konténer jelzése kivétel).
     let width = locked ? frame?.width.map { number(max(6.4, $0 + 3)) } ?? "6.4" : frame?.width.map(number) ?? "1.6"
-    let dash = ""
+    // Számított érték (Swift-forrás, `computed`): szaggatott keret (editor.js boxShape).
+    let dash = node.computed == true ? " stroke-dasharray=\"7 5\"" : ""
     let closed = locked ? " data-locked-outline=\"\"" : ""
     let opacity = frame?.fillOpacity.flatMap { mode == .solid ? $0 : mode == .translucent ? $0 / 2 : nil }
     let effect = opacity.map { " fill-opacity=\"\(number($0))\"" } ?? (glass ? " fill-opacity=\".66\"" : liquid ? " fill-opacity=\"\(mode == .translucent ? ".4" : ".64")\"" : mode == .translucent ? " fill-opacity=\".75\"" : "")

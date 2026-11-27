@@ -319,12 +319,21 @@ package struct Idea: Codable, Equatable, Sendable {
     package var boxName: String?
     /// Struktúra-konténerben a konténer fajtája: true = tömb, false = objektum; nil = nem struktúra része.
     package var list: Bool?
+    /// A név előtt halványan álló jel (pl. Swift-forrásnál `let`, `var`, `ƒ`); legfeljebb 24 karakter, csak dobozon.
+    package var nameNote: String?
+    /// Számított érték (Swift-forrás számított változója): szaggatott keret; csak dobozon.
+    package var computed: Bool?
+    /// Struktúra-konténerben kézzel beállított szélesség (átméretezés): a konténer ehhez igazítja az oszlopai számát, a
+    /// doboz szövege ehhez tördel (Public/structure-boxes.js). 64–4096; csak dobozon.
+    package var layoutWidth: Double?
+    /// Struktúra-konténerben kézzel beállított magasság: a doboz / konténer legalább ilyen magas marad. 40–4096; csak dobozon.
+    package var layoutHeight: Double?
     var hasFrame: Bool { isImage ? frame == true : type == "preview" && frame != false }
 
     private enum CodingKeys: String, CodingKey {
         case id, type, text, file, hideText, fitText, shape, fill, backgroundMode, animation, bold, italic, underline, font, justified, link
         case angle, parent, container, locked, textFlow, elevated, staticPreview, webPublic, uppercase, frame, frameWidth, scroll, chart, contentFit
-        case structure, list
+        case structure, list, nameNote, computed, layoutWidth, layoutHeight
         case boxName = "name"
         case position = "pos", width = "w", height = "h", textColor = "textCol"
         case fontSize = "fontSz", alignment = "align", verticalAlignment = "vAlign"
@@ -343,10 +352,10 @@ package struct Idea: Codable, Equatable, Sendable {
     var isImage: Bool { root == "image" }
     var isAudio: Bool { root == "audio" }
     package var isTextFile: Bool { root == "text" }
-    /// Struktúra-konténer forrása: .json szövegfájl-doboz (geometry.js isStructureFileNode).
+    /// Struktúra-konténer forrása: .json vagy .swift szövegfájl-doboz (geometry.js isStructureFileNode).
     var isStructureSource: Bool {
         guard let file, type == "code" || type == "text" else { return false }
-        return ((file.filename ?? file.asset) as NSString).pathExtension.lowercased() == "json"
+        return ["json", "swift"].contains(((file.filename ?? file.asset) as NSString).pathExtension.lowercased())
     }
     func has(_ trait: String) -> Bool { NodeTypes.has(type, trait) }
 
@@ -368,6 +377,9 @@ package struct Idea: Codable, Equatable, Sendable {
               chart.map({ $0.isValid && type == "chart" }) ?? true,
               structure.map({ $0.isValid && type == "box" }) ?? true, list == nil || type == "box",
               boxName.map({ root == "box" && $0.count <= Self.nameLimit && !$0.contains(where: \.isNewline) }) ?? true,
+              nameNote.map({ type == "box" && $0.count <= 24 && !$0.contains(where: \.isNewline) }) ?? true, computed == nil || type == "box",
+              layoutWidth.map({ type == "box" && $0.isFinite && (64...4096).contains($0) }) ?? true,
+              layoutHeight.map({ type == "box" && $0.isFinite && (40...4096).contains($0) }) ?? true,
               (1...10000).contains(fontSize), fontSize.rounded() == fontSize, (1...3).contains(font ?? 1),
               [fill, textColor, border].allSatisfy(validColor),
               link.map({ $0.isValid && has("link") }) ?? true,
@@ -2847,6 +2859,10 @@ extension Idea {
         structure = try? fields.decode(StructureSettings.self, forKey: .structure)
         boxName = (try? fields.decode(String.self, forKey: .boxName)).flatMap { $0.isEmpty ? nil : $0 }
         list = try? fields.decode(Bool.self, forKey: .list)
+        nameNote = (try? fields.decode(String.self, forKey: .nameNote)).flatMap { $0.isEmpty ? nil : $0 }
+        computed = (try? fields.decode(Bool.self, forKey: .computed)) == true ? true : nil
+        layoutWidth = try? fields.decode(Double.self, forKey: .layoutWidth)
+        layoutHeight = try? fields.decode(Double.self, forKey: .layoutHeight)
         normalizePreview()
     }
 

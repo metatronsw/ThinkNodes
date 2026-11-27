@@ -152,6 +152,7 @@
     [
      "structure-regenerate",
      "structure-detach",
+     "structure-auto",
      "structure-list",
      "structure-save"
     ],
@@ -273,7 +274,7 @@
   "chart-type, chart-labels, chart-values, chart-header": "Grafikon: típus, kategóriák / X tengely / szeletek neve, értékoszlopok (mezőgombok), az első sor fejléc (kapcsoló)",
   "link-target, web-name": "Link célja, illetve weboldal neve (mezőgomb, szövegmező)",
   "table-name, table-csv": "Táblázat neve (mezőgomb), letöltés CSV-ként",
-  "structure-regenerate, structure-detach": "Doboz-konténer: újragenerálás a forrásból, leválasztás a forrásról",
+  "structure-regenerate, structure-detach": "Doboz-konténer: újragenerálás a forrásból, leválasztás a forrásról, automatikus elrendezés (structure-auto: a kézi szélességek törlése)",
   "copy-link, edit-cells, new-chart, new-structure": "Fájldoboz: link másolása; táblázat: cellák szerkesztése, grafikon létrehozása; .json fájl: doboz-konténer létrehozása",
   "box-name": "Doboz neve (a doboz fölött; Shift + dupla kattintás)",
   "structure-list, structure-save": "Struktúra: konténer tömb ([]) / objektum ({}); konténerből .json fájl (kétirányú kapcsolattal)"

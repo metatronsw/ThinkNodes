@@ -1,5 +1,15 @@
 ## Nyitott
 
+- **Swift-forrás, JSON-típusjelek, nil / null, elrendezés, átméretezés (2026-11-27): kézzel nézendő**
+  - .swift fájlból struktúra-konténer (csak olvasás): egyetlen felső szintű structnál maga a konténer a struct; beágyazott struct a szülőjében; tulajdonságok `let` / `var` jellel, „Típus = érték”; számított tulajdonság (ƒ, szaggatott keret) és függvény (func) dobozként, a használt tagoktól feléjük mutató pontozott nyíllal; minden konténerben egymás alatt, forrássorrendben (túl magas tartalom a következő oszlopban); nil (alapérték nélküli opcionális var, `= nil`) és JSON `null`: üres doboz, dőlt szöveg. Valódi Chrome-ban rövid próbával ellenőrizve (`projects/struktura-proba/Modell.swift`); Safariban nem.
+  - Egymás alatti elrendezésnél a konténer lefelé nő, és rátakarhat az alatta lévő dobozokra (a próbalapon a nagy.json konténere a Modell.swift-ére).
+  - Elrendezés: objektum / struct egymás alatt (túl magasnál újságszerűen több oszlop), tömb közel 1:1 rácsban soronként balról jobbra, Swift számított tagok és függvények jobb oldalt a használt tag magasságában. Átméretezéssel formázható (`layoutWidth`): valódi Chrome-ban rövid próbával ellenőrizve (`projects/struktura-meret`: 1 → 6 oszlop, 888 → 158 magas). Safariban nem.
+  - A nagyobbra húzott konténer / doboz a kézi méretét (szélesség és magasság) tartja akkor is, ha a tartalom kisebb (szándékos: a felesleges hely marad). Egyetlen belső konténer (pl. `{"tagok": [...]}`) kitölti a kézzel méretezett külsőt. Ez a két utóbbi csak egységtesztben van ellenőrizve, a böngészőben nem.
+  - A számított változó és a függvény is szaggatott keretet kap.
+  - Nem teljes Swift-elemző: szokatlan szintaxisnál (makrók, `#if`, több változó egy deklarációban, `let (a, b) = …`, operátor-függvények) kimaradhat vagy rossz lehet egy tag.
+  - JSON: szám → `Int` / `Double`, `true` / `false` → `Bool` jel és szín; a számok forrásbeli alakja (39.10, nagy egész) a böngésző JSON.parse forrásszöveg-hozzáférésével marad meg – Chrome-ban és Node-ban igen; Safariban nincs kipróbálva (ha nincs, 39.10 → 39.1).
+  - A próbalapon a korábbi mérések maradványai (nagy.json konténere, egy leválott vonal, „Tag 29.json”) megmaradtak.
+
 - **Struktúra-konténer kétirányú változat, doboz neve, konténer húzása (2026-11-27): kézzel nézendő**
   - Valódi Chrome-ban (CDP, `projects/struktura-proba`) végigpróbálva: létrehozás a gyors eszközökből, név = kulcs / szöveg = érték, `{}` / `[]` konténerek, típusszínek, vonal kötése egy generált dobozra, a .json szerkesztése (gépelés közben nincs szinkron, kilépéskor van; a vonal és az azonosító megmarad), egy doboz értékének és nevének (Shift + dupla kattintás) átírása visszaíródik a .json-ba, a nagy konténer húzása után a tartalom a helyén. Safariban nincs kipróbálva.
   - **Liquid Glass témában a nagy (151 dobozos) konténer húzása 1–2 fps** (ThinkDefault: 59 fps). Ok: GPU-raszterezés, nem JavaScript (docs/PERF.md „Konténer húzása”). A mérést a gép terhelése miatt félbehagytam; a javasolt külön rétegű megoldás nincs kész (TODO).

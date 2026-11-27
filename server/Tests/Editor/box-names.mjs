@@ -18,9 +18,14 @@ const cases = [
   {name: "  szóközök   között  ", width: 200},
   {name: "x".repeat(40) + " " + "Lorem ipsum dolor sit amet, ".repeat(8).trim(), width: 300},
   {name: "W".repeat(255), width: 4096},
+  {name: "kor", note: "let", width: 176},
+  {name: "teljesNev", note: "ƒ", width: 80},
+  {name: "hosszú tulajdonságnév sok szóval", note: "var", width: 100},
+  {name: "", note: "Int", width: 90},
+  {name: "decimal", note: "Double", width: 120},
 ];
 const actual = cases.map(item => {
-  const layout = nameLayout({type: "box", name: item.name, list: item.list, width: item.width});
+  const layout = nameLayout({type: "box", name: item.name, nameNote: item.note, list: item.list, width: item.width});
   return {...item, lines: layout?.lines ?? [], height: layout?.height ?? 0};
 });
 // Nem doboz (pl. előnézet) és üres név: nincs felirat.
@@ -31,6 +36,7 @@ for (const item of actual) {
   if (!item.lines.length) continue;
   assert.equal(item.height, item.lines.length * nameStyle.line + nameStyle.gap);
   if (item.list != null) assert.ok(item.lines.at(-1).endsWith(item.list ? "[]" : "{}"));
+  if (item.note) assert.ok(item.lines[0] === item.note || item.lines[0].startsWith(item.note + " "));
 }
 if (process.argv.includes("--write")) {
   writeFileSync(fixture, JSON.stringify(actual, null, 1) + "\n");

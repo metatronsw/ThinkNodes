@@ -427,9 +427,8 @@ export function arrowTransform(tip, toward, length) {
 // Adatvonal: táblázatot (vagy CSV-t) és grafikont, illetve struktúra-forrást (.json) és struktúra-konténert összekötő vonal. Nem tárolt
 // tulajdonság, a két végpont adja (Rendering.swift isDataLink). Nyíl helyett mindkét végén félkorong áll.
 export const isGridType = type => type === "table" || type === "csv";
-// Struktúra-forrás: szövegfájl-doboz a struktúra-konténer forrásformátumával (structure-boxes.js `formats`; ma .json,
-// később .swift). Model.swift Idea.isStructureSource párja.
-export const structureSourcePattern = /\.json$/i;
+// Struktúra-forrás: szövegfájl-doboz a struktúra-konténer forrásformátumával (structure-boxes.js `formats`: .json, .swift). Model.swift Idea.isStructureSource párja.
+export const structureSourcePattern = /\.(json|swift)$/i;
 export const isStructureFileNode = node => Boolean(node?.file) && (node.type === "code" || node.type === "text")
   && structureSourcePattern.test(node.file.filename ?? node.file.asset ?? "");
 export function isDataLink(edge, node) {
@@ -547,15 +546,16 @@ function textWidth(value, size, {bold = false, monospace = false} = {}) {
 // (8 képpont ráhagyással) tördelve, a szöveg igazításával. Struktúra-konténernél utána halvány jel: `[]` tömb, `{}`
 // objektum (`list`). Rendering.swift nameLayout párja; pontosan egyezniük kell (Tests/Fixtures/text-flow.json).
 export const nameStyle = {size: 13, line: 17, gap: 4};
+// Előtte halvány jel is állhat (`nameNote`, pl. Swift-forrásnál `let` / `var` / `ƒ`).
 export function nameLayout(node) {
   if (node?.type !== "box") return null;
-  const name = (node.name ?? "").trim();
+  const name = (node.name ?? "").trim(), note = (node.nameNote ?? "").trim() || null;
   const marker = node.list == null ? null : node.list ? "[]" : "{}";
-  if (!name && !marker) return null;
-  const display = !name ? marker : marker ? name + " " + marker : name;
+  if (!name && !marker && !note) return null;
+  const display = [note, name, marker].filter(Boolean).join(" ");
   const rows = wrapRuns([{text: display, format: undefined}], Math.max(24, node.width - 8), false, letterMeasure(nameStyle.size, true, false));
   const lines = rows.map(row => row.pieces.map(piece => piece.text).join(""));
-  return {lines, height: lines.length * nameStyle.line + nameStyle.gap, marker};
+  return {lines, height: lines.length * nameStyle.line + nameStyle.gap, marker, note};
 }
 
 // Tördelés becsült szélesség szerint: `width(betű, formátum)` adja egy betű szélességét, `limit` a sor szélessége.

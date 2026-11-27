@@ -247,11 +247,14 @@ Minden sima doboznak (`box`) lehet neve: `name` mező (Swiftben `Idea.boxName`),
 - **Szerkesztés:** Shift + dupla kattintás a dobozon, vagy a gyors eszközök „Név szerkesztése” gombja (`box-name`). A
   felirat helyén szerkeszthető, tördelődő mező (egy réteg); Enter / a mező elhagyása ment, Esc elvet.
 - **Rövid név:** ha van név, a kereső és az akadálymentes felirat azt mutatja (`nodeName`, `Idea.name`).
+- **Jel a név előtt (`nameNote`):** halványan, legfeljebb 24 karakter; a struktúra-konténer adja (JSON: `Int` / `Double` /
+  `Bool`, Swift: `let` / `var` / `ƒ`). Név nélkül (tömbelem) a jel egymagában áll. Kézzel nem szerkeszthető.
+- **Számított érték (`computed`):** szaggatott keret (Swift-forrás számított változója).
 - Előnézetes (linkes) dobozon a név tárolható, de nem látszik (ott a link felirata áll a doboz fölött).
 
-### Struktúra-konténer (doboz-konténer forrásfájlból, kétirányú)
+### Struktúra-konténer (doboz-konténer forrásfájlból: .json kétirányú, .swift csak olvasás)
 
-Sima doboz (`box`), amely a vonallal bekötött forrásfájllal (ma `.json`) kétirányúan össze van kötve: a JSON szerkezete
+Sima doboz (`box`), amely a vonallal bekötött forrásfájllal (`.json`) kétirányúan össze van kötve: a JSON szerkezete
 valódi dobozokként jelenik meg benne, és a dobozok szerkesztése visszaíródik a fájlba (`Public/structure-boxes.js`, teszt:
 `Tests/Editor/structure-boxes.mjs`). A táblázat–grafikon párosítás mintájára működik.
 
@@ -264,8 +267,14 @@ valódi dobozokként jelenik meg benne, és a dobozok szerkesztése visszaíród
   egyébként tömb. Objektumban két azonos név: a második „név (2)” kulcsot kap.
 - **Mezők:** a konténeren `structure: {digest, boxes}` – a forrás és a dobozokból írt JSON ujjlenyomata az utolsó
   szinkronkor (csak `box` típuson); a konténereken `list`.
-- **Típusszavak:** ha az érték `Int`, `Float`, `Double`, `Bool`, `String`, `Date`, `URL`, `UUID`, illetve `T?`, `[T]`,
-  `[K: V]`, a doboz kitöltése az alaptípus színe (`Public/structure-types.json`, a paletta 0–15 sorszámai, minden témában
+- **JSON-típusjelek:** a nem szöveg értékek típusa automatikus: szám → `Int` (egész alak) vagy `Double` (tizedespont vagy
+  kitevő: `39.12`, `1e3`), `true` / `false` → `Bool`; halvány jel a név előtt és típusszín. A számok a forrásbeli
+  alakjukkal jelennek meg és íródnak vissza (`39.10` marad, a 2^53 fölötti egész pontos; a böngésző JSON.parse
+  forrásszöveg-hozzáférésével, ahol nincs, a számból). Az idézőjeles szám szöveg, jel nélkül. Standard JSON-ban idézőjel
+  nélkül csak szám, `true`, `false`, `null`, objektum és tömb állhat.
+- **Típusszavak:** ha az érték `Int` (és `Int8`…`Int64`, `UInt`…`UInt64`), `Float` (`Float16`, `Float32`, `Float80`),
+  `Double` (`Float64`, `CGFloat`, `Decimal`), `Bool`, `String` (`Character`, `Substring`), `Date`, `URL`, `UUID`, illetve
+  `T?`, `[T]`, `[K: V]`, a doboz kitöltése az alaptípus (családja) színe (`Public/structure-types.json`, a paletta 0–15 sorszámai, minden témában
   megvannak; a szöveg kontrasztját a rajzolás javítja). A szín nem kerül a JSON-ba; a kézzel állított szín felülírja.
   Az adatban véletlenül ilyen szövegű érték is típusszínt kap.
 - **Létrehozás:** a `.json` fájl dobozán (gyors eszközök / helyi menü) „Doboz-konténer létrehozása”: új konténer a fájltól
@@ -275,7 +284,8 @@ valódi dobozokként jelenik meg benne, és a dobozok szerkesztése visszaíród
 - **Adatvonal:** a forrás és a konténer közti vonal adatvonal (félkorong, nyíl nélkül; `isDataLink`, `isStructureFileNode` /
   `Idea.isStructureSource`). Egy konténerbe egy forrás köthető (`tidyChartLinks`).
 - **Szinkron, csak jóváhagyáskor (gépelés közben nem):**
-  - forrás → dobozok: a kódszerkesztő elhagyásakor (Escape, kattintás máshova), illetve ha a fájlt más mentette;
+  - forrás → dobozok: a kódszerkesztő elhagyásakor (Escape, kattintás máshova), illetve ha a fájlt más mentette
+    (.json és .swift);
   - dobozok → forrás: egy doboz szövegének / nevének jóváhagyásakor, doboz hozzáadásakor / törlésekor / kihúzásakor, a
     `list` váltásakor; húzás és szerkesztés közben vár. A dobozokból írt JSON a forrás behúzását követi; utána az
     elrendezés a visszaírt forrásból frissül (a szöveg normalizálódik, pl. `3 ` → `3`).
@@ -294,10 +304,48 @@ valódi dobozokként jelenik meg benne, és a dobozok szerkesztése visszaíród
 - **Gyors eszközök:** Újragenerálás a forrásból; Leválasztás a forrásról (a dobozok maradnak); Tömb / objektum; Mentés .json
   fájlba (jelző nélküli konténeren).
 - **Megtekintő, export:** a dobozok közönséges dobozok, a nevük a szerver rajzán is látszik.
-- **Bővítés (terv):** a forrásformátum a `formats` jegyzékben bővíthető (kiterjesztés → elemző és író). Swift: csak
-  `struct` és tárolt `let` / `var` tulajdonság (számított változó nem) – struct → konténer, tulajdonság → doboz
-  (név = tulajdonság, érték = típus, így a típusszínek is érvényesek), struct típusú tulajdonság → beágyazott konténer /
-  hivatkozás. A kiterjesztés a `geometry.js` `structureSourcePattern` és a `Model.swift` `isStructureSource` listájába is kell.
+- **Swift-forrás (`.swift`, csak olvasás):** ha a fájlban egy felső szintű struct van, maga a konténer az a struct (neve
+  a struct neve, generikusnál `Doboz<T>`; szövege az átvett protokollok listája, dőlten); több felső szintű structnál
+  mindegyik külön konténer a fájl nevét viselő konténerben. A beágyazott struct (és a bővítményben, `extension A { struct
+  B }`, megadott) a szülője konténerében áll, a tagok között, a forrás sorrendjében.
+  - Tulajdonság → doboz: név = a tulajdonság neve, előtte halványan `let` / `var`; szöveg = „Típus = alapérték” (típus
+    nélküli alapértéknél a típus a literálból: `Int`, `Double`, `String`, `Bool`, `Típus(…)`).
+  - Számított tulajdonság (`var x: T { … }`, `get` / `set` is) → doboz, jel `ƒ`, szaggatott keret, szöveg =
+    „Típus = képlet” (egyetlen `return` kifejezésnél csak a kifejezés, több utasításnál a törzs soronként); az érték nincs
+    kiszámolva. Függvény (`func`, `mutating` is) → doboz, jel `func`, szaggatott keret, szöveg az aláírás (`(paraméterek) -> Típus`).
+    Minden tag lekerekített doboz (a 2026-11-27-i köztes változat rombusza betöltéskor dobozzá válik).
+  - Nyilak (halvány, pontozott, kezelt vonal): a képletben / függvénytörzsben használt testvér-tagtól **a számított
+    tulajdonság, illetve a függvény felé**; a struct típusú tulajdonságtól a struct konténeréhez. Az azonosítójuk a
+    konténerből és a két végpontból képzett hash (`structureEdgeId`); ami már nem következik a forrásból, törlődik.
+  - Nem jelenik meg: `static` / `class` tag, `init`, figyelő (`didSet` / `willSet`), más típus (class / enum / protocol)
+    tagjai. Kommentet, szövegliterált (interpolációval, többsoros, nyers) kezel, de nem teljes Swift-elemző. A dobozok
+    szerkesztése nem írja át a kódot (a forrás következő változásakor felülíródik).
+- **Üres érték (nil / null):** JSON `null`, Swift `= nil`, illetve alapérték nélküli opcionális `var` (kezdetben nil):
+  a doboz csak keretet kap (`backgroundMode: empty`, a keret a típus színe), a szövege dőlt.
+- **Automatikus megjelenés és kézi beállítás:** a kitöltés (típusszín), az alak (lekerekített doboz), az üres háttér és a
+  dőlt betű automatikus; ha a dobozon kézzel más áll (eltér a korábbi automatikustól), az megmarad. Az ujjlenyomat
+  verziója (`textDigest`, „structure:8”) a generálás szabályainak változásakor nő: a meglévő konténerek betöltéskor
+  újraépülnek (ha nem foglalja más a konténert vagy egy dobozát).
+- **Elrendezés:**
+  - objektum, struct: az elemek egymás alatt, a forrás (kód) sorrendjében; ha egy oszlop 3600 képpontnál magasabb lenne
+    (a doboz legfeljebb 4096), a sorrend a következő oszlopban folytatódik (újságszerűen);
+  - JSON-tömb (`[]`): rács, balról jobbra, majd soronként lefelé (mint az írott szöveg); az oszlopok száma, amelynél a
+    tartalom aránya a legközelebb esik az 1:1-hez; egy sorban a dobozok teteje egy vonalban;
+  - Swift-struct számított tulajdonsággal / függvénnyel: a tárolt tagok és a beágyazott structok bal oldalt egymás alatt,
+    a számított tulajdonságok és a függvények jobb oldalt, ahol lehet, a legfelső használt tag magasságában (egymást nem
+    fedve, a forrás sorrendjében);
+  - az egyszerű dobozok oszloponként egyforma szélesek; a hely és a méret mindig az elrendezésből adódik.
+- **Formázás átméretezéssel (`layoutWidth`, `layoutHeight`):** amíg a forrással fennáll a kapcsolat, a struktúrán belüli
+  konténer vagy doboz átméretezése után a mérete megmarad (`layoutWidth` 64–4096, `layoutHeight` 40–4096, csak dobozon;
+  a nagyobbra húzott doboz a felesleges helyet is megtartja, nem vágódik vissza), és az elrendezés azonnal újraépül hozzá.
+  Ha a konténer egyetlen eleme konténer (pl. `{"tagok": [...]}`), a belső (saját kézi méret nélkül) kitölti a külsőt, így
+  a külső átméretezése a belsőt is újrarendezi: a konténer annyi oszlopba rendez, amennyi elfér (objektum / struct: sorrendtartóan, kiegyensúlyozott
+  oszlopmagassággal; tömb: soronként balról jobbra; a számított tagok jobb oldali oszlopa a maradék helyen), a magasság a
+  tartalomból adódik; ha a tartalom nem fér el, a konténer szélesebb lesz. Az egyszerű doboz a megadott szélességet
+  tartja, a szövege ahhoz tördel. A forrás következő változásakor is megmarad. „Automatikus elrendezés” (gyors eszköz a
+  struktúra-konténeren, `structure-auto`): a kézi méretek törlése a konténerben és a dobozain.
+- **Bővítés:** a forrásformátum a `formats` jegyzékben bővíthető (kiterjesztés → `parse` + `write`, vagy `tree`); a
+  kiterjesztés a `geometry.js` `structureSourcePattern` és a `Model.swift` `isStructureSource` listájába is kell.
 - **Húzás:** a konténer a tartalmával közös eltolással mozog (docs/PERF.md „Konténer húzása”).
 
 ### image

@@ -1,5 +1,16 @@
 # Változások
 
+## 2026-11-27 – Struktúra-konténer: Swift-forrás, JSON-típusjelek, nil / null, új elrendezés, formázás átméretezéssel
+
+- **Swift-forrás (`.swift`, csak olvasás):** saját elemző (`swiftTree`: kommentek, szövegliterálok interpolációval / többsoros / nyers, zárójelezés). Egyetlen felső szintű struct: maga a konténer a struct (név, protokollok); több: külön konténerek. Beágyazott (és bővítményben megadott) struct a szülője konténerében. Tulajdonság → doboz `let` / `var` jellel, „Típus = alapérték” (típus nélkül a literálból); számított tulajdonság (`ƒ`) és függvény (`func`, az aláírás) szaggatott kerettel; a képletben / törzsben használt tagoktól feléjük, a struct típusú tulajdonságtól a struct konténeréhez halvány, pontozott nyíl (kezelt vonalak, `structureEdgeId`). `static`, `init`, figyelők nem jelennek meg.
+- **JSON-típusjelek:** szám → `Int` / `Double`, `true` / `false` → `Bool` (halvány jel a név előtt, típusszín); a számok forrásbeli alakja (39.10, nagy egész) megmarad és úgy íródik vissza (`RawNumber`).
+- **Swift-típusváltozatok** a típusszavak közt: `Int8`…`UInt64`, `Float16`/`32`/`64`/`80`, `CGFloat`, `Decimal`, `Character`, `Substring` (a család színével); a `structure-types.json` saját típusai is számítanak.
+- **nil / null:** JSON `null`, Swift `= nil` és alapérték nélküli opcionális `var`: üres (csak keretes) doboz, dőlt szöveg.
+- **Elrendezés:** objektum / struct egymás alatt, forrássorrendben (túl magasnál újságszerűen több oszlop); tömb közel 1:1 rácsban, soronként balról jobbra; Swift számított tagok és függvények jobb oldalt, a használt tag magasságában. A köztes rombusz alak megszűnt (automatikusan dobozzá válik).
+- **Formázás átméretezéssel:** a struktúrán belül átméretezett konténer vagy doboz megtartja a méretét (`layoutWidth`, `layoutHeight`; a felesleges hely marad), és az elrendezés azonnal újraépül hozzá (oszlopszám, tördelés); egyetlen belső konténer kitölti a külsőt. „Automatikus elrendezés” gomb (`structure-auto`): a kézi méretek törlése.
+- **Doboz neve:** halvány jel a név előtt (`nameNote`), név nélkül is; szaggatott keret (`computed`). Swift-modell: `nameNote`, `computed`, `layoutWidth`, `layoutHeight` mezők ellenőrzéssel; Rendering.swift: a jel és a szaggatott keret; `.swift` is struktúra-forrás.
+- Az ujjlenyomat verziója a generálási szabályokkal nő („structure:8”): a meglévő konténerek betöltéskor újraépülnek. Tesztek: `structure-boxes.mjs` (Swift-elemző, típusjelek, elrendezés, átméretezés), `box-names.mjs` (jellel), Swift `RenderingTests`. Valódi Chrome-ban rövid próbákkal ellenőrizve; Safariban nem. node-types.md, README, CHANGES / BUGS / TODO frissítve.
+
 ## 2026-11-27 – Struktúra-konténer kétirányú: doboz neve (kulcs) és szövege (érték), típusszínek, gyorsabb konténerhúzás
 
 - **Doboz neve (`name`, Swiftben `Idea.boxName`):** a doboz fölött, mint a fájlnév; legfeljebb 255 karakter, egy bekezdés, tördelve, a szöveg igazításával (sorkizárás nélkül). SVG-szöveg; a tördelés a szerkesztőben (geometry.js `nameLayout`) és a szerveren (Rendering.swift `nameLayout`) azonos, közös teszt: `Tests/Fixtures/box-names.json`. Szerkesztés: Shift + dupla kattintás vagy a gyors eszközök „Név szerkesztése” gombja; a kereső és az akadálymentes felirat a nevet mutatja. hotkeys.json, útmutató frissítve.

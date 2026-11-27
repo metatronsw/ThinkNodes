@@ -104,5 +104,53 @@
    "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW"
   ],
   "height": 21
+ },
+ {
+  "name": "kor",
+  "note": "let",
+  "width": 176,
+  "lines": [
+   "let kor"
+  ],
+  "height": 21
+ },
+ {
+  "name": "teljesNev",
+  "note": "ƒ",
+  "width": 80,
+  "lines": [
+   "ƒ",
+   "teljesNev"
+  ],
+  "height": 38
+ },
+ {
+  "name": "hosszú tulajdonságnév sok szóval",
+  "note": "var",
+  "width": 100,
+  "lines": [
+   "var hosszú",
+   "tulajdonságné",
+   "v sok szóval"
+  ],
+  "height": 55
+ },
+ {
+  "name": "",
+  "note": "Int",
+  "width": 90,
+  "lines": [
+   "Int"
+  ],
+  "height": 21
+ },
+ {
+  "name": "decimal",
+  "note": "Double",
+  "width": 120,
+  "lines": [
+   "Double decimal"
+  ],
+  "height": 21
  }
 ]

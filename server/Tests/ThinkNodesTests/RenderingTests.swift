@@ -639,6 +639,45 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     var long = sheet
     long.nodes[2].boxName = String(repeating: "é", count: 255)
     try long.validate()
+
+    // Swift-forrás: a .swift is forrás; a név előtti halvány jel (nameNote) és a számított érték szaggatott kerete.
+    var swift = sheet
+    swift.nodes[0].file = CanvasFile(asset: "file-1", filename: "Modell.swift")
+    swift.nodes[2].nameNote = "ƒ"; swift.nodes[2].computed = true
+    try swift.validate()
+    swift = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(swift))
+    #expect(swift.nodes[2].nameNote == "ƒ" && swift.nodes[2].computed == true)
+    let drawn = boardSVG(swift, noteBase: "/projekt/lap", fileText: text)
+    #expect(drawn.components(separatedBy: "data-plug").count == 3)
+    #expect(drawn.contains(#"<tspan class="node-name-marker" opacity="0.5" font-weight="400">ƒ</tspan> name</tspan>"#))
+    #expect(drawn.contains(#"stroke-dasharray="7 5""#))
+    bad = swift
+    bad.nodes[0].nameNote = "x"
+    #expect(throws: (any Error).self) { try bad.validate() }
+    bad = swift
+    bad.nodes[2].nameNote = String(repeating: "x", count: 25)
+    #expect(throws: (any Error).self) { try bad.validate() }
+    bad = swift
+    bad.nodes[0].computed = true
+    #expect(throws: (any Error).self) { try bad.validate() }
+
+    // Kézi szélesség (átméretezés a struktúrában): tárolódik; csak dobozon, 64–4096.
+    var sized = swift
+    sized.nodes[1].layoutWidth = 640; sized.nodes[1].layoutHeight = 480
+    try sized.validate()
+    sized = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(sized))
+    #expect(sized.nodes[1].layoutWidth == 640 && sized.nodes[1].layoutHeight == 480)
+    bad = sized
+    bad.nodes[1].layoutHeight = 20
+    #expect(throws: (any Error).self) { try bad.validate() }
+    for wrong in [10.0, 5000, .infinity] {
+        bad = sized
+        bad.nodes[1].layoutWidth = wrong
+        #expect(throws: (any Error).self) { try bad.validate() }
+    }
+    bad = sized
+    bad.nodes[0].layoutWidth = 300
+    #expect(throws: (any Error).self) { try bad.validate() }
 }
 
 /// A doboz nevének tördelése a szerveren pontosan egyezzen a szerkesztőével (Public/geometry.js nameLayout).
@@ -646,12 +685,12 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
 @Test func boxNamesMatchSharedFixtures() throws {
     let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         .appendingPathComponent("Fixtures/box-names.json")
-    struct Case: Decodable { let name: String; let list: Bool?; let width: Double; let lines: [String]; let height: Double }
+    struct Case: Decodable { let name: String; let note: String?; let list: Bool?; let width: Double; let lines: [String]; let height: Double }
     let cases = try JSONDecoder().decode([Case].self, from: Data(contentsOf: fixture))
     #expect(cases.count >= 10)
     for item in cases {
         var node = Idea(id: "n", text: "", position: Point(x: 0, y: 0))
-        node.boxName = item.name; node.list = item.list; node.width = item.width
+        node.boxName = item.name; node.nameNote = item.note; node.list = item.list; node.width = item.width
         let layout = nameLayout(node)
         #expect((layout?.lines ?? []) == item.lines, "\(item.name.prefix(30))")
         #expect((layout?.height ?? 0) == item.height, "\(item.name.prefix(30))")

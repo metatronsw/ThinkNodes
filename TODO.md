@@ -47,7 +47,7 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 
 # Struktúra-konténer (Public/structure-boxes.js)
 - Liquid Glass témában a nagy (100+ dobozos) konténer húzása 1–2 fps (GPU-raszterezés; docs/PERF.md „Konténer húzása”). Javaslat: húzás közben a mozgó csoport külön, saját rétegű SVG-ben; rövid, kis terhelésű méréssel ellenőrizni (Chrome, Safari).
-- Swift-forrás: `struct` és tárolt `let` / `var` tulajdonságok (számított változó nem) elemzője és írója a `formats` jegyzékbe; a `.swift` kiterjesztés a `geometry.js` `structureSourcePattern` és a `Model.swift` `isStructureSource` listájába. Struct → konténer, tulajdonság → doboz (név = tulajdonság, érték = típus), struct típusú tulajdonság → beágyazott konténer vagy hivatkozás (vonal) a másik konténerre (döntés: a Swifttel együtt).
+- Swift-forrás (kész, csak olvasás): kétirányú (célzott sorcserés) visszaírás, ha kell; class / enum / protocol megjelenítése; generikus típus-paraméterek színezése; `Array<T>` / `Optional<T>` alak típusszíne.
 - A dobozleíró séma (text / title / fill / children …, egyirányú, stílusokkal) a kétirányú változatban megszűnt (a stílus nem írható vissza veszteség nélkül). Ha mégis kell: külön, egyirányú forrásfajtaként.
 - Újragenerálás visszavonása: visszavonás után a forrás és a dobozok ujjlenyomata eltérhet, a szinkron ilyenkor a forrásból újraépít / visszaír.
 - Két szerkesztő egyszerre szinkronizálhat (azonos eredménnyel); lehetőség: csak a forrást vagy a dobozt szerkesztő kliens szinkronizáljon.

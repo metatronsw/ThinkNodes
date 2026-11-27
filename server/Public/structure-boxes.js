@@ -16,7 +16,7 @@
 // vonalai, kézzel állított színe és betűbeállításai nem változnak. Új doboz azonosítója a konténerből és az útvonalból
 // képzett hash. A helyet és a méretet mindig az elrendezés adja.
 
-import {nameLayout, textWidth} from "./geometry.js?v=37";
+import {nameLayout, textWidth} from "./geometry.js?v=38";
 
 export const generatedLimit = 600;
 export const depthLimit = 12;
@@ -31,20 +31,40 @@ const pad = 14, gap = 12, leafFontSize = 14;
 export const containerFill = 0, leafFill = 2, ink = 1;
 // Típusszínek (alapértelmezés; a szerkesztő a Public/structure-types.json-ból tölti): a 0–15 sorszámok minden témában
 // megvannak, a szöveg kontrasztját a rajzolás javítja.
-export const defaultTypeColors = {String: 5, Int: 4, Float: 12, Double: 15, Bool: 6, Date: 14, URL: 11, UUID: 13};
+export const defaultTypeColors = {
+  String: 5, Character: 5, Substring: 5,
+  Int: 4, Int8: 4, Int16: 4, Int32: 4, Int64: 4, UInt: 4, UInt8: 4, UInt16: 4, UInt32: 4, UInt64: 4,
+  Float: 12, Float16: 12, Float32: 12, Float80: 12,
+  Double: 15, Float64: 15, CGFloat: 15, Decimal: 15,
+  Bool: 6, Date: 14, URL: 11, UUID: 13,
+};
 const baseTypes = new Set(Object.keys(defaultTypeColors));
 
 export class StructureError extends Error {}
+// Szám a forrásbeli alakjával (a JSON-ban 39.10 és 39.1 ugyanaz az érték, de a doboz és a visszaírt fájl az eredetit mutatja).
+class RawNumber {
+  constructor(value, raw) { this.value = value; this.raw = typeof raw === "string" && numberPattern.test(raw) ? raw : String(value); }
+}
 
 // Forrásformátumok: fájlkiterjesztés → elemző (szöveg → érték) és író (érték → szöveg). Swift struct: későbbi bővítés.
 export const formats = {
   json: {
+    // A számok a forrásbeli alakjukkal (RawNumber: pl. 39.10, 1e3; a böngésző JSON.parse forrásszöveg-hozzáférésével,
+    // ahol nincs, a számból).
     parse: source => {
-      try { return JSON.parse(source); } catch (error) { throw new StructureError("Hibás JSON: " + error.message); }
+      try { return JSON.parse(source, (key, value, context) => typeof value === "number" ? new RawNumber(value, context?.source) : value); }
+      catch (error) { throw new StructureError("Hibás JSON: " + error.message); }
     },
-    // A forrás behúzását követi (szóköz vagy tabulátor, alapból 2 szóköz).
-    write: (value, previous = "") => JSON.stringify(value, null, (/\n([ \t]+)\S/.exec(previous)?.[1]) ?? 2) + "\n",
+    // A forrás behúzását követi (szóköz vagy tabulátor, alapból 2 szóköz); a számok a doboz szövegének alakjával.
+    write: (value, previous = "") => {
+      const raw = [];
+      const text = JSON.stringify(value, (key, item) => item instanceof RawNumber ? "\u0000" + (raw.push(item.raw) - 1) + "\u0000" : item,
+        (/\n([ \t]+)\S/.exec(previous)?.[1]) ?? 2);
+      return text.replace(/"\\u0000(\d+)\\u0000"/g, (match, index) => raw[index]) + "\n";
+    },
   },
+  // Swift: csak olvasás (a dobozok szerkesztése nem írja át a kódot); a fa közvetlenül a forrásból (swiftTree, lent).
+  swift: {tree: source => swiftTree(source)},
 };
 export const structureExtensions = Object.keys(formats);
 export function structureFormat(filename) {
@@ -65,8 +85,10 @@ function hash128(text) {
   return out;
 }
 export const generatedId = (containerId, path) => hash128(containerId + "\u0000" + path);
+// A szerkezetből adódó (kezelt) vonal azonosítója: konténer + két végpont.
+export const structureEdgeId = (containerId, source, target) => hash128(containerId + "\u0000edge\u0000" + source + "\u0000" + target);
 // Szöveg ujjlenyomata (a forrásé és a dobozokból írt JSON-é): ha nem változott, nincs szinkron.
-export const textDigest = (text, format = "json") => hash128("structure:2\u0000" + format + "\u0000" + text).slice(0, 24);
+export const textDigest = (text, format = "json") => hash128("structure:8\u0000" + format + "\u0000" + text).slice(0, 24);
 
 // ---- Értékek ------------------------------------------------------------------------------------------------------
 
@@ -75,7 +97,7 @@ export function escapeMarkdown(text) {
   const link = /\]\s*[([:]/.test(text);
   return String(text).split("\n").map(line => {
     let out = line.replace(link ? /[\\`*_<&[\]]/g : /[\\`*_<&]/g, "\\$&");
-    out = out.replace(/^(\s*)([#>+-])/, "$1\\$2").replace(/^(\s*\d+)([.)])/, "$1\\$2");
+    out = out.replace(/^(\s*)([#+-])(?=\s|$)/, "$1\\$2").replace(/^(\s*)>/, "$1\\>").replace(/^(\s*\d+)([.)])(?=\s|$)/, "$1\\$2");
     if (/^\s*=+\s*$/.test(out)) out = out.replace("=", "\\=");
     return out;
   }).join("\n");
@@ -104,7 +126,8 @@ export function parseValue(text) {
 }
 
 // Típusszó: alaptípus, ?-es opcionális, [T] tömb, [K: V] szótár. Eredmény: {base, collection, optional} vagy null.
-export function typeInfo(text) {
+// `known`: az alaptípusok (alapból a beépítettek; a szerkesztő a structure-types.json típusait is átadja).
+export function typeInfo(text, known = baseTypes) {
   const value = unescapeMarkdown(String(text ?? "")).trim();
   if (!value || value.length > 80) return null;
   function parse(source) {
@@ -125,26 +148,39 @@ export function typeInfo(text) {
       const item = parse(inner);
       return item ? {base: item.base, collection: "array", optional} : null;
     }
-    return baseTypes.has(s) ? {base: s, collection: null, optional} : null;
+    return known.has(s) ? {base: s, collection: null, optional} : null;
   }
   return parse(value);
 }
 
 // A doboz automatikus kitöltése: típusszónál a típus színe, egyébként doboz / konténer alapszín.
-export function automaticFill(text, leaf, typeColors = defaultTypeColors) {
+const knownTypes = new WeakMap();
+export function automaticFill(text, leaf, typeColors = defaultTypeColors, note = null) {
   if (!leaf) return containerFill;
-  const type = typeInfo(text);
+  if (!knownTypes.has(typeColors)) knownTypes.set(typeColors, new Set(Object.keys(typeColors)));
+  const known = knownTypes.get(typeColors);
+  // A típusjel (JSON-szám, -logikai érték: „Int”, „Double”, „Bool”) elsőbbséget kap.
+  const marked = note ? typeInfo(note, known) : null;
+  if (marked && typeColors[marked.base] != null) return typeColors[marked.base];
+  // „Típus = érték / képlet” alakban (Swift-forrás) a típus az első sor „ = ” előtti része.
+  const type = typeInfo(String(text ?? "").split("\n")[0].split(" = ")[0], known);
   return type && typeColors[type.base] != null ? typeColors[type.base] : leafFill;
 }
 
 // ---- Fa a forrásból -----------------------------------------------------------------------------------------------
 // Elem: {key, name, text, list, children?}. A `key` a párosítás kulcsa (testvérek közt egyedi).
 
-const isPlainObject = value => value != null && typeof value === "object" && !Array.isArray(value);
+const isPlainObject = value => value != null && typeof value === "object" && !Array.isArray(value) && !(value instanceof RawNumber);
+const isComposite = value => Array.isArray(value) || isPlainObject(value);
+const plainValue = value => value instanceof RawNumber ? value.value : value;
 const titleKeys = ["name", "title", "label", "id", "key", "név", "nev", "cím", "cim"];
 function itemTitle(value) {
   if (!isPlainObject(value)) return null;
-  for (const key of titleKeys) if (typeof value[key] === "string" || typeof value[key] === "number") return String(value[key]);
+  for (const key of titleKeys) {
+    const field = value[key];
+    if (typeof field === "string") return field;
+    if (field instanceof RawNumber) return field.raw;
+  }
   return null;
 }
 // Testvérkulcsok: a jelölt kulcs, ha egyedi, egyébként a sorszám.
@@ -166,7 +202,7 @@ function valueTree(value, budget, depth) {
     const list = Array.isArray(value);
     const entries = list ? value.map((item, i) => [i, item]) : Object.entries(value);
     const keys = list
-      ? siblingKeys(value.map(item => item !== null && typeof item === "object" ? (itemTitle(item) == null ? null : "=" + itemTitle(item)) : "=" + JSON.stringify(item)))
+      ? siblingKeys(value.map(item => isComposite(item) ? (itemTitle(item) == null ? null : "=" + itemTitle(item)) : "=" + JSON.stringify(plainValue(item))))
       : entries.map(([name]) => "." + name);
     const children = [];
     for (let i = 0; i < entries.length; i++) {
@@ -174,13 +210,16 @@ function valueTree(value, budget, depth) {
       const [name, item] = entries[i];
       const child = valueTree(item, budget, depth + 1);
       child.key = keys[i];
-      child.name = list ? (item !== null && typeof item === "object" ? itemTitle(item) ?? undefined : undefined) : checkName(name);
+      child.name = list ? (isComposite(item) ? itemTitle(item) ?? undefined : undefined) : checkName(name);
       if (child.name != null && child.name.length > nameLimit) child.name = child.name.slice(0, nameLimit);
       if (child.name != null && /[\r\n]/.test(child.name)) child.name = child.name.replace(/[\r\n]+/g, " ");
       children.push(child);
     }
     return {text: "", list, children};
   }
+  // Nem szöveg érték: a típusa halvány jelként a név előtt és típusszínként (szám: Int vagy Double az alakja szerint).
+  if (value instanceof RawNumber) return {text: value.raw, note: /[.eE]/.test(value.raw) ? "Double" : "Int"};
+  if (typeof value === "boolean") return {text: String(value), note: "Bool"};
   const text = formatValue(value);
   if (text.length > textLimit) throw new StructureError("Túl hosszú érték (legfeljebb " + textLimit + " karakter).");
   return {text};
@@ -190,6 +229,13 @@ function valueTree(value, budget, depth) {
 export function boxTree(source, format = "json") {
   const handler = formats[format];
   if (!handler) throw new StructureError("Ismeretlen forrásformátum: " + format);
+  if (handler.tree) {
+    const root = handler.tree(source);
+    let count = 0;
+    (function walk(item) { for (const child of item.children ?? []) { count++; walk(child); } })(root);
+    if (count > generatedLimit) throw new StructureError("Túl sok elem (legfeljebb " + generatedLimit + ").");
+    return {root, count, truncated: false};
+  }
   const budget = {count: 0, truncated: false};
   let root = valueTree(handler.parse(source), budget, 0);
   budget.count--;
@@ -249,86 +295,234 @@ function textSize(text, fontSize) {
   return {natural: Math.max(0, ...widths), widths};
 }
 // A név magassága a doboz fölött (geometry.js nameLayout).
-const nameSpace = (item, width) => nameLayout({type: "box", name: item.name, list: item.list, width})?.height ?? 0;
+// Gyorsítótár generálásonként (a rács-próbák sokszor kérdezik ugyanazt).
+const nameSpaces = new Map();
+function nameSpace(item, width) {
+  const key = (item.name ?? "") + "\u0000" + (item.note ?? "") + "\u0000" + item.list + "\u0000" + width;
+  if (!nameSpaces.has(key)) nameSpaces.set(key, nameLayout({type: "box", name: item.name, nameNote: item.note, list: item.list, width})?.height ?? 0);
+  return nameSpaces.get(key);
+}
 
 function measure(item) {
   const fontSize = item.fields.fontSize ?? leafFontSize;
   if (!item.children?.length) {
     const {natural, widths} = textSize(item.text, fontSize);
-    const nameWidth = item.name ? Math.min(300, textWidth(item.name, 13, {bold: true}) + 12) : 0;
-    item.width = Math.min(300, Math.max(80, Math.ceil(Math.max(natural + 30, nameWidth))));
-    // Címketerület: szélesség × 0,94 − 16, magasság × 0,94 − 12 (geometry.js labelLayout); tördelésre 15% tartalék.
-    const room = item.width * .94 - 16;
+    const nameWidth = item.name ? Math.min(300, textWidth((item.note ? item.note + " " : "") + item.name, 13, {bold: true}) + 12) : 0;
+    // Címketerület: szélesség × arány − 16, magasság × arány − 12 (geometry.js labelLayout, labelRatios); rombusznál
+    // 0,50 / 0,47, egyébként 0,94. Tördelésre 15% tartalék.
+    const diamond = (item.fields.shape ?? item.previous?.shape) === "diamond";
+    const [rw, rh] = diamond ? [.5, .47] : [.94, .94];
+    // Kézzel átméretezett doboz (`layoutWidth`): a szélessége marad, a szöveg ahhoz tördel.
+    const fixed = item.previous?.layoutWidth;
+    item.width = fixed ? Math.min(sizeLimits.width[1], Math.max(sizeLimits.width[0], Math.round(fixed)))
+      : diamond ? Math.min(420, Math.max(120, Math.ceil(Math.max((natural + 16) / rw, nameWidth))))
+      : Math.min(300, Math.max(80, Math.ceil(Math.max(natural + 30, nameWidth))));
+    const room = item.width * rw - 16;
     const rows = item.text ? widths.reduce((sum, w) => sum + Math.max(1, Math.ceil(w * 1.15 / room)), 0) : 0;
-    item.height = Math.max(40, Math.ceil((rows * lineHeight(fontSize) + 12) / .94 + 6));
+    // Kézzel nagyobbra húzott doboz (`layoutHeight`): a magassága is marad (a felesleges hely nem vész el).
+    item.height = Math.min(sizeLimits.height[1], Math.max(diamond ? 64 : 40, Math.ceil((rows * lineHeight(fontSize) + 12) / rh + 6), Math.round(item.previous?.layoutHeight ?? 0)));
+    item.naturalWidth = item.width;
     item.nameHeight = nameSpace(item, item.width);
     return item;
   }
+  // Egyetlen belső konténer (pl. {"tagok": [...]}): a kézzel méretezett külső konténert kitölti (a saját kézi mérete
+  // nélkül), így a külső átméretezése a belsőt is újrarendezi.
+  const only = item.children.length === 1 && item.children[0].children?.length ? item.children[0] : null;
+  if (only && !only.previous?.layoutWidth && item.target) {
+    only.target = item.target - 2 * pad;
+    if (item.targetHeight) only.targetHeight = item.targetHeight - (pad - 4) - pad - nameSpace(only, only.target);
+  }
   for (const child of item.children) measure(child);
-  item.rows = arrange(item.children, item.layout);
-  const innerWidth = Math.max(60, ...item.rows.map(row => row.width));
-  item.width = Math.min(sizeLimits.width[1], Math.ceil(innerWidth + 2 * pad));
+  item.layout = arrange(item);
+  const innerWidth = Math.max(60, item.layout.width);
+  // Kézzel átméretezett konténer (`target`): a szélessége marad, ha a tartalom elfér benne; ha nem, a tartalomé.
+  item.width = Math.min(sizeLimits.width[1], Math.max(Math.ceil(innerWidth + 2 * pad), item.target ? Math.round(item.target) : 0));
   // A konténer saját szövege (ha van) fölül, a körbefuttatás miatt a címketerület arányával (0,94) számolva.
   const title = item.text ? textSize(item.text, fontSize).widths.reduce((sum, w) => sum + Math.max(1, Math.ceil(w * 1.15 / (item.width * .94 - 16))), 0) * lineHeight(fontSize) : 0;
-  const body = item.rows.reduce((sum, row) => sum + row.height, 0) + gap * Math.max(0, item.rows.length - 1);
+  const body = item.layout.height;
   const k = .03, fixed = title ? 6 + title + 8 + 6 : pad - 4;
   item.header = title ? Math.ceil((k * (body + pad) + fixed) / (1 - k)) : fixed;
-  item.height = Math.min(sizeLimits.height[1], Math.max(40, Math.ceil(item.header + body + pad)));
+  // Kézzel nagyobbra húzott konténer: a magassága is marad (a felesleges hely nem vész el).
+  item.height = Math.min(sizeLimits.height[1], Math.max(40, Math.ceil(item.header + body + pad), Math.round(item.targetHeight ?? 0)));
   item.nameHeight = nameSpace(item, item.width);
   return item;
 }
 
-// Sorokba rendezés: csak egyszerű értékek → egymás alatt, egyforma szélességgel; egyébként polcos tördelés nagyjából
-// kiegyensúlyozott, legfeljebb 1400 képpont széles sorokkal. A sor magassága a nevekkel együtt (a doboz fölött).
-function arrange(children, layout) {
-  const slot = child => child.nameHeight + child.height;
-  if (layout === "column") {
-    const width = Math.max(...children.map(child => child.width));
-    for (const child of children) if (child.width < width) { child.width = width; child.nameHeight = nameSpace(child, width); }
-    return children.map(child => ({items: [child], width, height: slot(child), names: child.nameHeight}));
+// Elrendezés: a konténer elemeinek helye a konténer tartalomterületén belül ({slots: [{child, x, y}], width, height};
+// y a doboz teteje, a neve fölötte). Három mód:
+// - alap: egymás alatt, a forrás (kód) sorrendjében; ha egy oszlop túl magas lenne (a doboz legfeljebb 4096 képpont),
+//   a sorrend a következő oszlopban folytatódik (újságszerűen);
+// - JSON-tömb (`list: true`): rács, balról jobbra, majd soronként lefelé (mint az írott szöveg); az oszlopok száma a
+//   közel 1:1 arányhoz igazodik;
+// - Swift-struct számított tulajdonsággal / függvénnyel (`side`): a többi tag bal oldalt egymás alatt, ezek jobb oldalt,
+//   ahol lehet, a használt tag magasságában.
+// Oszloponként az egyszerű dobozok egyforma szélesek.
+const columnLimit = 3600;
+const slotHeight = child => child.nameHeight + child.height;
+function columnsOf(groups) {
+  return groups.map(items => {
+    const width = Math.max(...items.map(child => child.width));
+    for (const child of items) if (!child.children?.length && child.width < width) { child.width = width; child.nameHeight = nameSpace(child, width); }
+    return {items, width, height: items.reduce((sum, child) => sum + slotHeight(child), 0) + gap * (items.length - 1)};
+  });
+}
+// Oszlopok egymás mellett, oszloponként fentről lefelé.
+function stack(columns) {
+  const slots = [];
+  let x = 0;
+  for (const column of columns) {
+    let y = 0;
+    for (const child of column.items) { slots.push({child, x, y: y + child.nameHeight}); y += slotHeight(child) + gap; }
+    x += column.width + gap;
   }
-  const widest = Math.max(...children.map(child => child.width));
-  const area = children.reduce((sum, child) => sum + (child.width + gap) * (slot(child) + gap), 0);
-  const target = Math.max(widest, Math.min(1400, Math.sqrt(area) * 1.5));
-  const rows = [];
-  let row = null;
+  return {slots, width: Math.max(0, x - gap), height: Math.max(0, ...columns.map(column => column.height))};
+}
+// Sorrendtartó oszlopokra bontás `count` oszlopra (oszloponként nagyjából egyenlő elemszám), illetve magasság szerint.
+const splitEven = (children, count) => {
+  const per = Math.ceil(children.length / count), groups = [];
+  for (let i = 0; i < children.length; i += per) groups.push(children.slice(i, i + per));
+  return groups;
+};
+function splitByHeight(children) {
+  const groups = [];
+  let group = null, height = 0;
   for (const child of children) {
-    if (!row || (row.items.length && row.width + gap + child.width > target)) rows.push(row = {items: [], width: 0, names: 0, boxes: 0});
-    row.width += (row.items.length ? gap : 0) + child.width;
-    row.names = Math.max(row.names, child.nameHeight);
-    row.boxes = Math.max(row.boxes, child.height);
-    row.items.push(child);
+    if (!group || (group.length && height + gap + slotHeight(child) > columnLimit)) { groups.push(group = []); height = -gap; }
+    group.push(child);
+    height += gap + slotHeight(child);
   }
-  for (const each of rows) each.height = each.names + each.boxes;
-  return rows;
+  return groups;
+}
+// Rács `count` oszloppal, soronként balról jobbra: az oszlop szélessége a legszélesebb eleméé, egy sorban a dobozok
+// teteje egy vonalban (fölöttük a sor leghosszabb nevének helye).
+function grid(children, count) {
+  const widths = Array.from({length: count}, (_, column) => Math.max(0, ...children.filter((_, i) => i % count === column).map(child => child.width)));
+  children.forEach((child, i) => { const width = widths[i % count]; if (!child.children?.length && child.width < width) { child.width = width; child.nameHeight = nameSpace(child, width); } });
+  const offsets = widths.map((_, column) => widths.slice(0, column).reduce((sum, width) => sum + width + gap, 0));
+  const slots = [];
+  let y = 0;
+  for (let start = 0; start < children.length; start += count) {
+    const row = children.slice(start, start + count);
+    const names = Math.max(...row.map(child => child.nameHeight)), boxes = Math.max(...row.map(child => child.height));
+    row.forEach((child, i) => slots.push({child, x: offsets[i], y: y + names}));
+    y += names + boxes + gap;
+  }
+  return {slots, width: widths.reduce((sum, width) => sum + width, 0) + gap * (count - 1), height: Math.max(0, y - gap)};
+}
+// Sorrendtartó, kiegyensúlyozott bontás legfeljebb `count` oszlopra (a magasságok szerint).
+function splitBalanced(children, count) {
+  const total = children.reduce((sum, child) => sum + slotHeight(child) + gap, 0), share = total / count;
+  const groups = [];
+  let group = null, height = 0;
+  for (const child of children) {
+    const slot = slotHeight(child) + gap;
+    if (!group || (group.length && groups.length < count && height + slot / 2 > share)) { groups.push(group = []); height = 0; }
+    group.push(child);
+    height += slot;
+  }
+  return groups;
+}
+// A megadott szélességbe (`target`, a tartalomterület) férő legtöbb oszlop; ha így túl magas, több oszlop.
+function fitColumns(children, target, reset) {
+  let chosen = 1;
+  for (let count = 2; count <= children.length; count++) {
+    reset();
+    if (stack(columnsOf(splitBalanced(children, count))).width > target) break;
+    chosen = count;
+  }
+  reset();
+  let layout = stack(columnsOf(splitBalanced(children, chosen)));
+  while (layout.height > columnLimit && chosen < children.length) { reset(); layout = stack(columnsOf(splitBalanced(children, ++chosen))); }
+  return layout;
+}
+function arrange(item) {
+  const children = item.children;
+  const reset = () => { for (const child of children) if (child.naturalWidth != null) { child.width = child.naturalWidth; child.nameHeight = nameSpace(child, child.width); } };
+  // Kézzel átméretezett konténer: a tartalom a szélességéhez igazodik (az oszlopok száma).
+  const target = item.target ? Math.max(40, item.target - 2 * pad) : null;
+  if (item.list === true && children.length > 1 && target) {
+    let chosen = 1;
+    for (let count = 2; count <= children.length; count++) {
+      reset();
+      if (grid(children, count).width > target) break;
+      chosen = count;
+    }
+    reset();
+    return grid(children, chosen);
+  }
+  if (item.list === true && children.length > 1) {
+    // Rács: az oszlopszám, amelynél a tartalom aránya a legközelebb esik az 1:1-hez (és egy oszlop sem túl magas).
+    let best = null;
+    for (let count = 1; count <= children.length; count++) {
+      reset();
+      const layout = grid(children, count);
+      const tooTall = layout.height > columnLimit;
+      const score = Math.abs(Math.log(Math.max(1, layout.width) / Math.max(1, layout.height)));
+      if (!best || (best.tooTall && !tooTall) || (tooTall === best.tooTall && score < best.score)) best = {layout, tooTall, score, count};
+      if (layout.width > layout.height * 1.5 && !tooTall) break;
+      if (Math.ceil(children.length / count) === Math.ceil(children.length / (count + 1)) && count + 1 <= children.length) continue;
+    }
+    // A kiválasztott oszlopszámmal újra (a szélesítés a próbák alatt elcsúszhatott).
+    reset();
+    return grid(children, best.count);
+  }
+  const side = children.filter(child => child.side), main = children.filter(child => !child.side);
+  if (side.length && main.length) {
+    // Bal oszlop: a többi tag a forrás sorrendjében; jobb oszlop: a számított tagok, a használt tag magasságában.
+    const [right] = columnsOf([side]);
+    const resetMain = () => { for (const child of main) if (child.naturalWidth != null) { child.width = child.naturalWidth; child.nameHeight = nameSpace(child, child.width); } };
+    const left = target ? fitColumns(main, target - right.width - gap * 3, resetMain) : stack(columnsOf(splitByHeight(main)));
+    const top = new Map(left.slots.map(slot => [slot.child.name, slot.y - slot.child.nameHeight]));
+    const x = left.width + gap * 3, slots = [...left.slots];
+    let bottom = 0;
+    for (const child of right.items) {
+      const wanted = Math.min(...(child.deps ?? []).map(name => top.get(name)).filter(value => value != null));
+      const y = Math.max(Number.isFinite(wanted) ? wanted : bottom, bottom);
+      slots.push({child, x, y: y + child.nameHeight});
+      bottom = y + slotHeight(child) + gap;
+    }
+    return {slots, width: x + right.width, height: Math.max(left.height, bottom - gap)};
+  }
+  return target ? fitColumns(children, target, reset) : stack(columnsOf(splitByHeight(children)));
 }
 
-// Helyek kiosztása: a dobozok `position`-je a középpontjuk munkalap-koordinátában; egy sorban a dobozok teteje egy
-// vonalban, fölöttük a sor leghosszabb nevének helye.
+// Helyek kiosztása: a dobozok `position`-je a középpontjuk munkalap-koordinátában.
 function place(item, left, top, out) {
-  let y = top + item.header;
-  for (const row of item.rows ?? []) {
-    let x = left + pad;
-    for (const child of row.items) {
-      const boxTop = y + row.names;
-      out.push({item: child, position: {x: x + child.width / 2, y: boxTop + child.height / 2}});
-      if (child.children?.length) place(child, x, boxTop, out);
-      x += child.width + gap;
-    }
-    y += row.height + gap;
+  for (const {child, x, y} of item.layout?.slots ?? []) {
+    const boxLeft = left + pad + x, boxTop = top + item.header + y;
+    out.push({item: child, position: {x: boxLeft + child.width / 2, y: boxTop + child.height / 2}});
+    if (child.children?.length) place(child, boxLeft, boxTop, out);
   }
 }
 
 // A doboz mezői: a forrásból (név, szöveg, list) és az automatikus kitöltés; meglévő doboznál a kézi beállítások maradnak.
 const leafLayout = item => !item.children?.length && item.list == null;
+// Üres érték: JSON `null`, Swift `= nil`, illetve alapérték nélküli opcionális `var` (kezdetben nil).
+export function isNil(text, note, leaf = true) {
+  const value = String(text ?? "").trim();
+  return leaf && (value === "null" || / = nil$/.test(value) || value === "= nil" || (note === "var" && /\?$/.test(value) && !value.includes(" = ")));
+}
+// Az automatikus megjelenés: kitöltés (típusszín), alak (mindig lekerekített doboz), üres érték: csak keret (`empty`)
+// és dőlt szöveg.
+function automaticLook(text, note, leaf, typeColors, shape) {
+  const empty = isNil(text, note, leaf);
+  return {fill: automaticFill(text, leaf, typeColors, note), shape: shape ?? "rounded", backgroundMode: empty ? "empty" : undefined, italic: empty || undefined};
+}
+// A korábbi automatikus alak: a 2026-11-27-i köztes változat a számított tulajdonságot és a függvényt rombuszként
+// generálta; az ilyen rombusz automatikusnak számít (visszaáll dobozra), a kézzel állított alak marad.
+const beforeShape = node => (node.nameNote === "ƒ" || node.nameNote === "func") && node.shape === "diamond" ? "diamond" : "rounded";
 function fieldsFor(item, typeColors) {
   const leaf = leafLayout(item), before = item.previous;
-  const fill = automaticFill(item.text, leaf, typeColors);
-  if (!before) return {fill, textColor: ink, fontSize: leafFontSize, alignment: leaf ? "center" : "left", shape: "rounded"};
-  // A régi automatikus szín (a régi szövegből) helyett az új; a kézzel állított szín marad.
+  const look = automaticLook(item.text, item.note, leaf, typeColors, item.shape);
+  if (!before) return {...look, textColor: ink, fontSize: leafFontSize, alignment: item.align ?? (leaf ? "center" : "left")};
+  // A régi automatikus megjelenés (a régi szövegből) helyett az új; ami kézzel állított (eltér a régi automatikustól), marad.
   const beforeLeaf = !(before.list != null) && !item.hadChildren;
+  const old = automaticLook(before.text, before.nameNote, beforeLeaf, typeColors, beforeShape(before));
   const fields = {fontSize: before.fontSize ?? leafFontSize};
-  if (before.fill === automaticFill(before.text, beforeLeaf, typeColors) || before.fill == null) fields.fill = fill;
+  if (before.fill === old.fill || before.fill == null) fields.fill = look.fill;
+  if ((before.shape ?? "rounded") === old.shape) fields.shape = look.shape;
+  if (before.backgroundMode === old.backgroundMode) fields.backgroundMode = look.backgroundMode;
+  if (before.italic === old.italic) fields.italic = look.italic;
   return fields;
 }
 
@@ -338,6 +532,7 @@ function fieldsFor(item, typeColors) {
 //   beállítandó mezői (meglévő doboznál csak ami a generálásból adódik: név, szöveg, list, hely, méret, automatikus szín);
 // - `removed`: a megszűnő dobozok azonosítói; `patch`: a konténer módosítása (méret, hely, list).
 export function generateBoxes(source, container, {format = "json", previous = [], typeColors = defaultTypeColors} = {}) {
+  nameSpaces.clear();
   const {root, count, truncated} = boxTree(source, format);
   // Csak a sima dobozok a struktúra részei; a konténerbe tett más objektum (kép, fájl …) érintetlen marad.
   previous = previous.filter(node => node.type === "box");
@@ -353,16 +548,20 @@ export function generateBoxes(source, container, {format = "json", previous = []
   (function walk(item) {
     for (const child of item.children ?? []) {
       child.hadChildren = (byParent.get(child.previous?.id) ?? []).length > 0;
+      child.target = child.previous?.layoutWidth;
+      child.targetHeight = child.previous?.layoutHeight;
       // A konténer saját szövege nem adat: a meglévő konténeré marad.
-      if (!leafLayout(child)) child.text = child.previous?.text ?? "";
+      if (!leafLayout(child) && !child.sourceText) child.text = child.previous?.text ?? "";
       child.fields = fieldsFor(child, typeColors);
       all.push(child);
       walk(child);
     }
   })(root);
-  for (const item of [root, ...all]) item.layout = item.children?.length && item.children.every(leafLayout) ? "column" : "auto";
   root.fields = {fontSize: container.fontSize ?? 16};
-  root.text = container.text ?? "";
+  root.target = container.layoutWidth;
+  root.targetHeight = container.layoutHeight;
+  // Egyetlen Swift-struct: maga a konténer a struct (név, protokollok); egyébként a konténer saját szövege marad.
+  if (!root.sourceText) root.text = container.text ?? "";
   measure(root);
   const width = Math.max(sizeLimits.width[0], root.width), height = Math.max(sizeLimits.height[0], root.height);
   const left = container.position.x - container.width / 2, top = container.position.y - container.height / 2;
@@ -373,13 +572,29 @@ export function generateBoxes(source, container, {format = "json", previous = []
   const nodes = placed.map(({item, position}) => {
     const leaf = leafLayout(item);
     return {id: item.id, parent: parentOf.get(item), previous: item.previous,
-      fields: {...item.fields, type: "box", name: item.name, text: item.text ?? "", list: leaf ? undefined : item.list,
+      fields: {...item.fields, type: "box", name: item.name, nameNote: item.note, computed: item.computed, text: item.text ?? "", list: leaf ? undefined : item.list,
         position, width: item.width, height: item.height, ...(leaf ? {} : {verticalAlignment: "top"})}};
   });
   const kept = new Set(nodes.map(node => node.id));
   const removed = previous.filter(node => !kept.has(node.id)).map(node => node.id);
   const patch = {width, height, position: {x: left + width / 2, y: top + height / 2}, list: root.list};
-  return {nodes, removed, patch, count, truncated};
+  if (root.root) Object.assign(patch, {name: root.name, text: root.text});
+  // Kezelt vonalak (Swift): a képletben / függvénytörzsben használt testvér-tagtól a számított tulajdonsághoz, illetve
+  // függvényhez; a struct típusú tulajdonságtól a struct konténeréhez. Az azonosító a végpontokból képzett hash
+  // (structureEdgeId), így a szerkesztő felismeri őket.
+  const edges = [];
+  const containers = new Map();
+  (function collect(item, id) { if (item.ref) containers.set(item.ref, id); for (const child of item.children ?? []) collect(child, child.id); })(root, container.id);
+  const add = (source, target) => { if (source && target && source !== target) edges.push({id: structureEdgeId(container.id, source, target), source, target}); };
+  (function walk(item) {
+    const byName = new Map((item.children ?? []).map(child => [child.name, child.id]));
+    for (const child of item.children ?? []) {
+      for (const name of child.deps ?? []) add(byName.get(name), child.id);
+      for (const ref of child.refs ?? []) add(child.id, containers.get(ref));
+      walk(child);
+    }
+  })(root);
+  return {nodes, removed, patch, count, truncated, edges};
 }
 
 // ---- Visszafelé: dobozokból JSON ----------------------------------------------------------------------------------
@@ -392,7 +607,8 @@ export function inferList(children) {
 }
 
 // A konténer értéke a lap dobozaiból. `nodes`: a lap dobozai (sorrendben); `rootId`: a konténer.
-export function boxesValue(nodes, rootId) {
+// `raw`: a számok a doboz szövegének alakjával (RawNumber; a visszaíráshoz).
+export function boxesValue(nodes, rootId, {raw = false} = {}) {
   const byParent = new Map();
   for (const node of nodes) {
     if (!node.parent) continue;
@@ -406,7 +622,10 @@ export function boxesValue(nodes, rootId) {
     seen.add(node.id);
     const children = (byParent.get(node.id) ?? []).filter(child => child.type === "box");
     const list = node.list ?? (children.length || isRoot ? inferList(children) : null);
-    if (list == null) return parseValue(node.text);
+    if (list == null) {
+      const value = parseValue(node.text);
+      return raw && typeof value === "number" ? new RawNumber(value, String(node.text ?? "").trim()) : value;
+    }
     if (list) return children.map(child => value(child, false));
     const object = {};
     for (const child of children) {
@@ -421,5 +640,318 @@ export function boxesValue(nodes, rootId) {
 
 // A dobozokból írt forrásszöveg (a korábbi forrás behúzásával).
 export function boxesSource(nodes, rootId, {format = "json", previous = ""} = {}) {
-  return formats[format].write(boxesValue(nodes, rootId), previous);
+  if (!formats[format]?.write) throw new StructureError("A ." + format + " forrás csak olvasható: a dobozok változása nem íródik vissza.");
+  return formats[format].write(boxesValue(nodes, rootId, {raw: true}), previous);
+}
+// Visszaírható-e a forrásformátum (a dobozok felől).
+export const writable = format => Boolean(formats[format]?.write);
+
+// ---- Swift-forrás (csak olvasás) ----------------------------------------------------------------------------------
+// A forrás structjai (beágyazottak is, „A.B” néven) a gyökérkonténerben egymás mellett álló konténerek; a tulajdonságok
+// dobozok: név = a tulajdonság neve, előtte halványan `let` / `var` / `ƒ` (`nameNote`), szöveg = „Típus = alapérték”,
+// számított változónál „Típus = képlet” (`computed`: szaggatott keret). A képlet által használt tulajdonságokra és a
+// struct típusú tulajdonság structjára halvány nyíl mutat (`edges`). Statikus tulajdonság, metódus, init nem jelenik meg.
+// Nem teljes Swift-elemző: kommenteket, szövegliterálokat (interpolációval, többsoros, nyers), zárójelezést kezel.
+
+// A kód „maszkolva”: a kommentek (mindkét változatban) és a szövegliterálok tartalma (a kódban) szóközre cserélve, a
+// pozíciók maradnak. `code`: szöveg és komment nélkül (zárójelek, azonosítók keresése; az interpoláció kód marad);
+// `clean`: csak komment nélkül (a megjelenített képlethez).
+function maskSwift(text) {
+  const code = text.split(""), clean = text.split("");
+  const blank = (array, from, to) => { for (let i = from; i < to; i++) if (array[i] !== "\n") array[i] = " "; };
+  let i = 0;
+  // Szövegliterál a `start` helytől: a tartalma a `code` változatban szóköz, az interpolációk (`\(…)`) kódja marad.
+  // Nyers szöveg: #…"…"#, többsoros: """…""". Eredmény: a literál utáni hely.
+  function readString(start) {
+    let hashes = 0;
+    while (text[start + hashes] === "#") hashes++;
+    const multi = text.startsWith('"""', start + hashes), quote = multi ? '"""' : '"';
+    const close = quote + "#".repeat(hashes), escape = "\\" + "#".repeat(hashes);
+    let j = start + hashes + quote.length, segment = j;
+    while (j < text.length) {
+      if (text.startsWith(close, j)) { blank(code, segment, j); return j + close.length; }
+      if (!multi && text[j] === "\n") { blank(code, segment, j); return j; }
+      if (text.startsWith(escape + "(", j)) {
+        blank(code, segment, j);
+        let depth = 1, k = j + escape.length + 1;
+        while (k < text.length) {
+          if (text[k] === '"' || (text[k] === "#" && /^#+"/.test(text.slice(k, k + 8)))) { k = readString(k); continue; }
+          if (text[k] === "(") depth++;
+          else if (text[k] === ")" && --depth === 0) break;
+          k++;
+        }
+        j = k + 1; segment = j;
+        continue;
+      }
+      if (text.startsWith(escape, j)) { j += escape.length + 1; continue; }
+      j++;
+    }
+    blank(code, segment, text.length);
+    return text.length;
+  }
+  while (i < text.length) {
+    if (text.startsWith("//", i)) {
+      const end = text.indexOf("\n", i);
+      const stop = end < 0 ? text.length : end;
+      blank(code, i, stop); blank(clean, i, stop); i = stop;
+    } else if (text.startsWith("/*", i)) {
+      let depth = 1, j = i + 2;
+      while (j < text.length && depth > 0) {
+        if (text.startsWith("/*", j)) { depth++; j += 2; }
+        else if (text.startsWith("*/", j)) { depth--; j += 2; }
+        else j++;
+      }
+      blank(code, i, j); blank(clean, i, j); i = j;
+    } else if (text[i] === '"' || (text[i] === "#" && /^#+"/.test(text.slice(i, i + 8)))) {
+      i = readString(i);
+    } else i++;
+  }
+  return {code: code.join(""), clean: clean.join("")};
+}
+
+// A `from` helyen nyíló zárójel párja (a maszkolt kódban); -1, ha nincs.
+function closing(code, from) {
+  const open = code[from], close = {"{": "}", "(": ")", "[": "]", "<": ">"}[open];
+  let depth = 0;
+  for (let i = from; i < code.length; i++) {
+    if (code[i] === open) depth++;
+    else if (code[i] === close && --depth === 0) return i;
+  }
+  return -1;
+}
+
+// Kifejezés vége: sortörés, `;` vagy `}` 0-s mélységben (zárójelek, szögletes és kapcsos zárójelek számítanak).
+function expressionEnd(code, from, limit) {
+  let depth = 0;
+  for (let i = from; i < limit; i++) {
+    const c = code[i];
+    // Alapérték után álló figyelők (`{ didSet … }`): a kifejezés előttük véget ér.
+    if (c === "{" && depth === 0 && /^\{\s*(didSet|willSet)\b/.test(code.slice(i, i + 40))) return i;
+    if ("([{".includes(c)) depth++;
+    else if (")]}".includes(c)) { if (depth === 0) return i; depth--; }
+    else if (depth === 0 && (c === "\n" || c === ";")) {
+      // A következő sor operátorral vagy ponttal folytatódik: a kifejezés tart.
+      const rest = code.slice(i + 1, limit).match(/^\s*(\S)/);
+      if (c === "\n" && rest && /[.+\-*/%&|?:=<>^]/.test(rest[1]) && !/^\s*(\/\/)/.test(code.slice(i + 1, i + 6))) continue;
+      return i;
+    }
+  }
+  return limit;
+}
+
+// Megjelenítéshez: soronként levágott szóközök; `join`: a sorok egy sorba (típus, alapérték), egyébként sortöréssel (képlet).
+const compact = (text, join = true) => {
+  const lines = text.split("\n").map(line => line.trim()).filter(Boolean);
+  const joined = lines.join(join ? " " : "\n");
+  return joined.length > 600 ? joined.slice(0, 600) + "…" : joined;
+};
+// A típus nélküli alapérték típusa a literálból (ha egyértelmű).
+function literalType(value) {
+  const v = value.trim();
+  if (/^-?(0x[0-9a-fA-F_]+|0b[01_]+|0o[0-7_]+|\d[\d_]*)$/.test(v)) return "Int";
+  if (/^-?\d[\d_]*(\.\d[\d_]*)?([eE][+-]?\d+)?$/.test(v)) return "Double";
+  if (/^#*"/.test(v)) return "String";
+  if (v === "true" || v === "false") return "Bool";
+  const call = /^([A-Z][A-Za-z0-9_.]*)(<[^>]*>)?\s*\(/.exec(v);
+  if (call) return call[1] + (call[2] ?? "");
+  return null;
+}
+
+const keywordNames = new Set(["let", "var", "func", "init", "deinit", "subscript", "case", "typealias", "associatedtype", "struct", "class",
+  "enum", "extension", "actor", "protocol", "static", "private", "fileprivate", "public", "internal", "open", "lazy", "weak", "unowned",
+  "final", "override", "mutating", "nonmutating", "nonisolated", "dynamic", "required", "convenience", "indirect", "some", "any", "self",
+  "Self", "return", "if", "else", "switch", "guard", "true", "false", "nil", "try", "await", "in", "is", "as"]);
+
+// A struct törzsének 0-s mélységén álló szakaszai (a beágyazott típusok, metódusok, init-ek törzse kimarad).
+function topLevel(code, start, end) {
+  const top = [];
+  let depth = 0;
+  for (let i = start; i < end; i++) {
+    if (code[i] === "{") depth++;
+    else if (code[i] === "}") depth--;
+    top.push(depth === 0 && code[i] !== "}");
+  }
+  return top;
+}
+// A deklaráció előtti rész a sor (vagy a `;`) elejétől: módosítók, attribútumok.
+function declarationPrefix(code, index, start) {
+  const lineStart = Math.max(code.lastIndexOf("\n", index), code.lastIndexOf(";", index), code.lastIndexOf("{", index), code.lastIndexOf("}", index)) + 1;
+  return code.slice(Math.max(lineStart, start), index);
+}
+// A törzs (képlet, függvény) kiírása: egyetlen `return` kifejezésnél csak a kifejezés, egyébként soronként.
+function bodyText(clean, from, to) {
+  const text = clean.slice(from, to).trim();
+  return /^return\s/.test(text) && !text.includes("\n") ? compact(text.replace(/^return\s+/, "")) : compact(text, false);
+}
+
+// A struct tagjai a forrás sorrendjében: tulajdonságok (let / var, számított is) és függvények (func).
+function swiftMembers(code, clean, start, end) {
+  const members = [];
+  const top = topLevel(code, start, end);
+  const words = /\b(let|var|func)\b/g;
+  words.lastIndex = start;
+  let match;
+  while ((match = words.exec(code)) && match.index < end) {
+    if (!top[match.index - start]) continue;
+    const before = declarationPrefix(code, match.index, start);
+    if (!/^[\s\w@().,]*$/.test(before) || /\b(static|class)\b/.test(before) || /\b(func|init|case|if|guard|while|for|let|var)\b/.test(before)) continue;
+    let i = match.index + match[0].length;
+    if (match[1] === "func") {
+      // Függvény: név (operátor is), generikus paraméterek, paraméterlista, a `{` előtti rész (async, throws, -> típus), törzs.
+      const name = /^\s*(`?[A-Za-z_][A-Za-z0-9_]*`?|[^\s(<]+)/.exec(code.slice(i, i + 200));
+      if (!name) continue;
+      i += name[0].length;
+      const generic = /^\s*</.exec(code.slice(i, i + 4));
+      if (generic) { const close = closing(code, i + generic[0].length - 1); if (close < 0) continue; i = close + 1; }
+      const open = code.indexOf("(", i);
+      if (open < 0 || open >= end || code.slice(i, open).trim()) continue;
+      const close = closing(code, open);
+      if (close < 0) continue;
+      let j = close + 1;
+      while (j < end && code[j] !== "{" && code[j] !== "\n") j++;
+      const tail = compact(clean.slice(close + 1, j));
+      const signature = compact("(" + clean.slice(open + 1, close) + ")") + (tail ? " " + tail : "");
+      let body = null;
+      if (code[j] === "{") { const bodyClose = closing(code, j); if (bodyClose > 0) body = {start: j + 1, end: bodyClose}; }
+      members.push({kind: "function", pos: match.index, name: name[1].replace(/`/g, ""), signature,
+        code: body ? code.slice(body.start, body.end) : ""});
+      words.lastIndex = body ? body.end : j;
+      continue;
+    }
+    const name = /^\s*`?([A-Za-z_][A-Za-z0-9_]*)`?/.exec(code.slice(i, i + 200));
+    if (!name || keywordNames.has(name[1])) continue;
+    i += name[0].length;
+    let type = null, value = null, body = null;
+    const colon = /^\s*:/.exec(code.slice(i, end));
+    if (colon) {
+      // Típus: a `=` vagy `{` előttig, illetve a sor végéig (zárójelezést követve).
+      let j = i + colon[0].length, d = 0;
+      for (; j < end; j++) {
+        const c = code[j];
+        if ("([<".includes(c)) d++;
+        else if (")]>".includes(c) && !(c === ">" && code[j - 1] === "-")) d--;
+        else if (d <= 0 && (c === "=" || c === "{" || c === "\n" || c === ";" || c === ",")) break;
+      }
+      type = compact(clean.slice(i + colon[0].length, j));
+      i = j;
+    }
+    const rest = /^[ \t]*(=|\{)/.exec(code.slice(i, end));
+    if (rest?.[1] === "=") {
+      const from = i + rest[0].length, stop = expressionEnd(code, from, end);
+      value = compact(clean.slice(from, stop));
+    } else if (rest?.[1] === "{") {
+      const open = i + rest[0].length - 1, close = closing(code, open);
+      if (close < 0) continue;
+      body = {start: open + 1, end: close};
+    }
+    let computed = false, formula = null, formulaCode = "";
+    if (body && !/^\s*(willSet|didSet)\b/.test(code.slice(body.start, body.end))) {
+      computed = true;
+      const inner = code.slice(body.start, body.end), getter = /\bget\s*\{/.exec(inner);
+      let from = body.start, to = body.end;
+      if (getter && /^\s*(get|set|_read|_modify)\b/.test(inner)) { from = body.start + getter.index + getter[0].length; to = closing(code, from - 1); }
+      formula = bodyText(clean, from, to);
+      formulaCode = code.slice(body.start, body.end);
+    }
+    members.push({kind: "property", pos: match.index, name: name[1], keyword: match[1], type: type || (value != null ? literalType(value) : null),
+      value, computed, formula, code: formulaCode});
+  }
+  return members;
+}
+
+// A forrás structjai: {qualified (minősített név), name (egyszerű név + generikus paraméterek), owner (a befoglaló típus
+// minősített neve), pos, conformances, members}.
+function swiftStructs(text) {
+  const {code, clean} = maskSwift(text);
+  const structs = [];
+  (function scan(start, end, scope) {
+    const declaration = /\b(struct|class|enum|extension|actor|protocol)\s+([A-Za-z_][A-Za-z0-9_.]*)/g;
+    declaration.lastIndex = start;
+    let match, depth = 0, last = start;
+    while ((match = declaration.exec(code)) && match.index < end) {
+      // Csak a 0-s mélységű deklarációk (a törzsekben a rekurzió keres).
+      for (let i = last; i < match.index; i++) { if (code[i] === "{") depth++; else if (code[i] === "}") depth--; }
+      last = match.index;
+      if (depth !== 0) continue;
+      const open = code.indexOf("{", match.index + match[0].length);
+      if (open < 0 || open >= end) break;
+      const close = closing(code, open);
+      if (close < 0) break;
+      const kind = match[1], name = match[2];
+      const qualified = kind === "extension" ? name : [...scope, name].join(".");
+      if (kind === "struct") {
+        const header = clean.slice(match.index + match[0].length, open);
+        const generic = /^\s*<[^>]*>/.exec(header)?.[0].trim() ?? "";
+        const conformances = /:\s*([^{]*?)(\bwhere\b[^{]*)?$/s.exec(header.replace(/^\s*<[^>]*>/, ""))?.[1]?.replace(/\s+/g, " ").trim() ?? "";
+        structs.push({qualified, name: name + generic, owner: scope.join("."), pos: match.index, conformances,
+          members: swiftMembers(code, clean, open + 1, close)});
+      }
+      scan(open + 1, close, qualified.split("."));
+      declaration.lastIndex = close + 1;
+      last = close + 1;
+      depth = 0;
+    }
+  })(0, code.length, []);
+  return structs;
+}
+
+// A típus szövegében hivatkozott structok (a hatókör szerint feloldva: A.B-ben a „C” előbb A.B.C, majd A.C, majd C).
+function typeReferences(type, owner, known) {
+  const found = [];
+  for (const [name] of String(type ?? "").matchAll(/[A-Z][A-Za-z0-9_]*(\.[A-Z][A-Za-z0-9_]*)*/g)) {
+    const scope = owner.split(".");
+    for (let n = scope.length; n >= 0; n--) {
+      const candidate = [...scope.slice(0, n), name].join(".");
+      if (known.has(candidate)) { if (!found.includes(candidate)) found.push(candidate); break; }
+    }
+  }
+  return found;
+}
+
+// A törzsben használt testvér-tagok (azonosító, előtte nem pont, kivéve `self.`).
+function usedNames(code, names) {
+  const used = [];
+  for (const m of String(code).matchAll(/(self\.)?\b([A-Za-z_][A-Za-z0-9_]*)\b/g)) {
+    if ((code[m.index - 1] === "." && !m[1]) || !names.has(m[2]) || used.includes(m[2])) continue;
+    used.push(m[2]);
+  }
+  return used;
+}
+
+// A Swift-forrás fája. Egyetlen felső szintű struct: maga a konténer az a struct (név, protokollok); több: mindegyik
+// külön konténer a gyökérben. A beágyazott struct a szülője konténerében, a tagok között (a forrás sorrendjében).
+// Számított tulajdonság (ƒ) és függvény (func), mindkettő szaggatott kerettel: a használt tagoktól nyíl mutat feléjük (`deps`);
+// struct típusú tulajdonságtól a struct konténeréhez (`refs`).
+function swiftTree(source) {
+  const structs = swiftStructs(String(source));
+  const known = new Set(structs.map(item => item.qualified));
+  const byName = new Map(structs.map(item => [item.qualified, item]));
+  for (const item of structs) item.nested = [];
+  const roots = [];
+  for (const item of structs) {
+    const owner = byName.get(item.owner);
+    if (owner && owner !== item) owner.nested.push(item); else roots.push(item);
+  }
+  function structItem(item, root) {
+    const names = new Set(item.members.map(member => member.name));
+    const members = item.members.map(member => {
+      const others = new Set([...names].filter(name => name !== member.name));
+      if (member.kind === "function") {
+        return {pos: member.pos, key: "." + member.name, name: member.name, note: "func", text: escapeMarkdown(member.signature), sourceText: true,
+          computed: true, align: "left", side: true, deps: usedNames(member.code, others), refs: []};
+      }
+      const typeText = member.type ? escapeMarkdown(member.type) : "";
+      const rest = member.computed ? member.formula : member.value;
+      const text = rest != null && rest !== "" ? (typeText ? typeText + " = " : "= ") + escapeMarkdown(rest) : typeText;
+      return {pos: member.pos, key: "." + member.name, name: member.name, text, sourceText: true,
+        note: member.computed ? "ƒ" : member.keyword, computed: member.computed || undefined, align: "left", side: member.computed || undefined,
+        deps: member.computed ? usedNames(member.code, others) : [], refs: typeReferences(member.type, item.qualified, known)};
+    });
+    const nested = item.nested.map(child => ({pos: child.pos, ...structItem(child, false)}));
+    return {key: "." + item.qualified, ref: item.qualified, name: root || !byName.has(item.owner) ? item.qualified.replace(/[^.]+$/, "") + item.name : item.name,
+      sourceText: true, text: item.conformances ? "*" + escapeMarkdown(item.conformances) + "*" : "",
+      children: [...members, ...nested].sort((a, b) => a.pos - b.pos)};
+  }
+  if (roots.length === 1) return {...structItem(roots[0], true), key: "", root: true};
+  return {text: "", children: roots.map(item => structItem(item, true))};
 }

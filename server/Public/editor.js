@@ -17,7 +17,7 @@ import {justifyRows, justifyShifts} from "./justify.js?v=7";
 import {canvasMarkdown, canvasMarkdownAvailable} from "./canvas-markdown.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {displayShape, useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, wireHeads, reverseWidth, wireRoutes, edgeInRectangle, edgePaint, labelLayout, editLabelLayout, limit, linkCaption, nameLayout, nameStyle, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, isStructureFileNode, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, taperedArc, lineSize, wireLabelLayout} from "./geometry.js?v=37";
+import {displayShape, useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, wireHeads, reverseWidth, wireRoutes, edgeInRectangle, edgePaint, labelLayout, editLabelLayout, limit, linkCaption, nameLayout, nameStyle, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, isStructureFileNode, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, taperedArc, lineSize, wireLabelLayout} from "./geometry.js?v=38";
 
 import {ancestors, layerOrder, overlapFraction} from "./containers.js?v=15";
 import {glowFilter, glowId, glowReach, glowVNode} from "./glow.js";
@@ -690,6 +690,8 @@ function shape(node, linked, dropTarget = false) {
   if (sketchedBox(node)) return sketchSurface(node, tag, geometry, {fill, frame, empty, mode, locked, frameWidth, canvas: canvasTint, clear});
   const style = {fill: empty || clear ? "none" : fill, stroke: frame, "fill-opacity": opacity ?? (translucent ? .75 : undefined),
     "pointer-events": empty || clear ? "fill" : undefined, class: "node-surface",
+    // Számított érték (Swift-forrás, `computed`): szaggatott keret (Rendering.swift boxSurface).
+    "stroke-dasharray": node.computed ? "7 5" : undefined,
     "stroke-width": locked ? Math.max(6.4, frameWidth + 3) : frameWidth,
     "data-locked-outline": locked ? "" : undefined};
   if (glazed) return [
@@ -3232,7 +3234,7 @@ createApp({
         if (cancel) {
           const index = board.value.nodes.findIndex(n => n.id === operation.nodeID);
           board.value.nodes[index] = operation.original;
-        } else modified();
+        } else { modified(); structureResized(operation.nodeID); }
       } else if (operation.type === "move" && operation.moved) {
         lastClick = null;
         // A közös eltolással mozgatott tartalom a modellbe (megszakításnál a translateGroup(…, 0, 0) állítja vissza).
@@ -5083,9 +5085,15 @@ createApp({
       return h("text", {key: "box-name", class: "node-name", "text-anchor": anchor, "font-family": "system-ui, sans-serif",
         "font-size": nameStyle.size, "font-weight": 600, fill: paint(node.textColor, 1)}, layout.lines.map((line, index) => {
         const y = -drawn.height / 2 - nameStyle.gap - (count - 1 - index) * nameStyle.line - 4;
-        const marked = index === count - 1 && layout.marker && line.endsWith(layout.marker);
-        return h("tspan", {x, y}, marked ? [line.slice(0, -layout.marker.length),
-          h("tspan", {class: "node-name-marker", opacity: .5, "font-weight": 400}, layout.marker)] : line);
+        // Halvány részek: elöl a jel (nameNote), a végén a [] / {} jel (Rendering.swift nameSVG).
+        const faint = text => h("tspan", {class: "node-name-marker", opacity: .5, "font-weight": 400}, text);
+        const parts = [];
+        let rest = line;
+        if (index === 0 && layout.note && (rest === layout.note || rest.startsWith(layout.note + " "))) { parts.push(faint(layout.note)); rest = rest.slice(layout.note.length); }
+        const marked = index === count - 1 && layout.marker && rest.endsWith(layout.marker) && rest.length >= layout.marker.length;
+        parts.push(marked ? rest.slice(0, -layout.marker.length) : rest);
+        if (marked) parts.push(faint(layout.marker));
+        return h("tspan", {x, y}, parts.length === 1 && typeof parts[0] === "string" ? parts[0] : parts);
       }));
     }
     // A név szerkesztése helyben: a felirat helyén szerkeszthető, tördelődő mező (egy réteg: az SVG-felirat ilyenkor nem
@@ -5295,7 +5303,7 @@ createApp({
     let structureTypeColors = null;
     function loadStructureModule() {
       structureLoading ??= Promise.all([
-        import("./structure-boxes.js?v=2"),
+        import("./structure-boxes.js?v=3"),
         fetch("/structure-types.json", {cache: "no-cache"}).then(response => response.json()).catch(() => ({})),
       ]).then(([module, types]) => {
         structureTypeColors = {...module.defaultTypeColors, ...(types?.types ?? {})};
@@ -5330,7 +5338,7 @@ createApp({
     const sameJSON = (a, b) => a === b || (a && b && typeof a === "object" && typeof b === "object" && JSON.stringify(a) === JSON.stringify(b));
     // A generálás eredményének alkalmazása helyben: csak a ténylegesen változott mezők íródnak (a többi doboz nem
     // rajzolódik újra), a sorrend csak akkor változik, ha a forrásé más.
-    function applyStructure(sheet, container, result) {
+    function applyStructure(sheet, container, result, module) {
       const byId = new Map(sheet.nodes.map(node => [node.id, node]));
       const removed = new Set(result.removed);
       let changed = false;
@@ -5358,6 +5366,17 @@ createApp({
         for (const node of sheet.nodes) if (removed.has(node.parent)) node.parent = container.id;
         sheet.edges = sheet.edges.filter(edge => !removed.has(edge.source) && !removed.has(edge.target?.node));
       }
+      // Kezelt vonalak (Swift: számított változó → használt tulajdonságok, struct típus → a struct konténere): halvány,
+      // pontozott nyilak; ami már nem következik a forrásból, törlődik (az azonosítójuk a végpontokból képzett hash).
+      const wanted = new Map((result.edges ?? []).map(edge => [edge.id, edge]));
+      const before = sheet.edges.length;
+      sheet.edges = sheet.edges.filter(edge => wanted.has(edge.id) || !edge.target?.node || edge.id !== module.structureEdgeId(container.id, edge.source, edge.target.node));
+      if (sheet.edges.length !== before) changed = true;
+      const present = new Set(sheet.edges.map(edge => edge.id));
+      for (const edge of wanted.values()) if (!present.has(edge.id)) {
+        sheet.edges.push({id: edge.id, source: edge.source, target: {node: edge.target}, type: "straight", appearance: "dotted", color: 3, endArrow: true});
+        changed = true;
+      }
       return changed;
     }
     // A forrás felől: a dobozok újraépítése (`force`: akkor is, ha a forrás nem változott – Újragenerálás gomb).
@@ -5382,8 +5401,9 @@ createApp({
         return false;
       }
       setStructureStatus(container.id, {count: result.nodes.length, truncated: result.truncated});
-      applyStructure(sheet, container, result);
-      const boxes = module.textDigest(module.boxesSource(sheet.nodes, container.id, {format, previous: text}), format);
+      applyStructure(sheet, container, result, module);
+      // Csak olvasható forrásnál (Swift) nincs visszaírás, így a dobozok ujjlenyomata sem kell.
+      const boxes = module.writable(format) ? module.textDigest(module.boxesSource(sheet.nodes, container.id, {format, previous: text}), format) : undefined;
       container.structure = {...container.structure, digest, boxes};
       modified();
       return true;
@@ -5397,7 +5417,7 @@ createApp({
       const source = structureSource(container);
       if (!source || textEdit.value === source.id || isCommonFile(source.file)) return;
       const format = module.structureFormat(source.file.filename ?? source.file.asset);
-      const current = format ? chartText(source) : null;
+      const current = format && module.writable(format) ? chartText(source) : null;
       if (current == null) return;
       let text;
       try { text = module.boxesSource(sheet.nodes, container.id, {format, previous: current}); } catch (error) {
@@ -5507,6 +5527,24 @@ createApp({
       container.structure = {digest, boxes: digest};
       fileTexts.value = new Map(fileTexts.value).set(fileTextKey(source), text);
       modified();
+    }
+    // Átméretezés a struktúrán belül (a konténer maga vagy egy doboza): a méret megmarad (`layoutWidth`, `layoutHeight`), és az
+    // elrendezés azonnal újraépül hozzá (a konténer oszlopszáma, illetve a doboz szövegének tördelése).
+    function structureResized(id) {
+      const node = board.value?.nodes.find(item => item.id === id);
+      if (!node || node.type !== "box") return;
+      const root = [node, ...ancestors(node, nodeMap.value)].find(item => item.structure);
+      if (!root || !structureSource(root)) return;
+      node.layoutWidth = Math.round(node.width);
+      node.layoutHeight = Math.round(node.height);
+      transfer(async () => { await loadStructureModule(); if (!regenerateStructure(root.id, true)) modified(); });
+    }
+    // Automatikus elrendezés: a kézi szélességek törlése a konténerben és a dobozain, majd újraépítés.
+    function resetStructureLayout(container) {
+      const sheet = board.value;
+      if (!sheet || !online.value || !container.structure) return;
+      for (const node of [container, ...structureDescendants(sheet, container.id)]) { delete node.layoutWidth; delete node.layoutHeight; }
+      transfer(async () => { await loadStructureModule(); if (!regenerateStructure(container.id, true)) modified(); });
     }
     // Leválasztás: a konténer és a dobozai megmaradnak, a forrással többé nem szinkronizál.
     function detachStructure(container) {
@@ -7227,7 +7265,9 @@ createApp({
 
       if (single?.structure) {
         const status = structureStatus.value.get(single.id), source = structureSource(single);
-        const note = !source ? "Köss be egy .json fájlt." : status?.error
+        const readOnly = source && /\.swift$/i.test(source.file?.filename ?? "");
+        const note = !source ? "Köss be egy .json vagy .swift fájlt." : status?.error
+          ?? (readOnly ? "A .swift forrás csak olvasható: a dobozok szerkesztése nem íródik vissza (a forrás következő változásakor felülíródik)." : null)
           ?? (status?.truncated ? "A forrás túl nagy, csak az első " + status.count + " elem látszik; a dobozok változása nem íródik vissza." : "");
         panels.push(group("Doboz-konténer", [
           propertyTools(
@@ -7235,6 +7275,8 @@ createApp({
               {symbol: "restore", title: note || undefined, disabled: !online.value || !source, class: ["button", note ? "danger" : null]})),
             tool("structure-detach", button("Leválasztás a forrásról (a dobozok maradnak)", () => detachStructure(single),
               {symbol: "unlink", disabled: !online.value})),
+            tool("structure-auto", button("Automatikus elrendezés (a kézi szélességek törlése)", () => resetStructureLayout(single),
+              {symbol: "fit-objects", disabled: !online.value || !source})),
           ),
           note ? h("p", {class: "muted", role: "status"}, note) : null,
         ]));

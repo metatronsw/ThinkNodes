@@ -16,7 +16,7 @@ import {justifyRows} from "./justify.js?v=7";
 import {attachScrollbars} from "./scrollbar-drag.js";
 import {liveConnection} from "./collaboration.js";
 
-import {useWorksheetGeometry, wireHeads, plugTransform, edgeGeometry, reverseWidth, wireRoutes, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireLabelLayout} from "./geometry.js?v=37";
+import {useWorksheetGeometry, wireHeads, plugTransform, edgeGeometry, reverseWidth, wireRoutes, edgePaint, maximumLineWidth, selectionOutline, taperedArc, wireLabelLayout} from "./geometry.js?v=38";
 import {ancestors} from "./containers.js?v=15";
 import {ensureGlow, glowReach} from "./glow.js";
 
