@@ -1,5 +1,37 @@
 # Változások
 
+## 2026-11-27 – A jobb oldali tulajdonságpanel megszűnt; tömör gombok; ikonos vászonmenü (`right-mouse-pan` ág)
+
+- **Tulajdonságpanel:** a panel és a jobb felső nyitó / záró gombja törölve; minden funkciója a gyors eszközökben (jobb kattintás). A csak a panelen lévő mezők mezőgombok lettek (`FieldButton`: a gombon az érték / ikon, kattintásra lebegő réteg a mezővel; mentés a mező elhagyásakor, választásnál azonnal): betűméret, kép keretvastagsága, csomópont elforgatása és átmérője, grafikon típusa / kategóriái / értékoszlopai (+ fejlécsor kapcsoló), link célja, weboldal neve, táblázat neve; a táblázat CSV-letöltése gomb. A „Szerkesztés” művelet törölve; dupla kattintás: szerkesztés a vásznon. Chrome-ban típusonként összevetve: a régi panel minden kezelőeleme elérhető. `quick-tools.json` frissítve.
+- **Tömör gombok:** a fejléc, az eszköztár, a lenyíló listák, a gyors eszközök, a vászonmenü és a lebegő mezők gombjai minden témában és állapotban tömörek (letiltva csak a tartalom halványul).
+- **Vászonmenü:** csak ikonok (súgó és akadálymentes név a felirat); a Középre állítás és az Új munkalap saját ikont kapott.
+- Útmutató és `docs/hotkeys.json` frissítve. A `Tests/Editor/gestures.mjs` panelre épülő részei még nincsenek hozzáigazítva (BUGS.md).
+
+## 2026-11-27 – Érintőképernyő: csípés előnézettel, első ujj visszatartása, kevesebb réteg; H / Ctrl+H (`right-mouse-pan` ág)
+
+- **Csípés (két ujj):** mozdulat közben csak a réteg CSS-transzformja változik (mint a görgetésnél), a nézet 400 ms nyugalom után rögzül; az ujjak helye a vászon nem mozgó tárolójához (`.canvas-area`) mérve (a mozgó jelenethez mérve kettős kép, megforduló irány volt). Csípési küszöb: a nagyítás a kezdeti távolság 15%-ánál (legalább 30 px) nagyobb változásra indul, ugrás nélkül.
+- **Egy ujj** már nem pásztáz. Az első ujj lenyomása legfeljebb 150 ms-ig visszatartva: második ujjra elvész (nincs kijelölés, panelváltás), elmozdulásra, lejáratra vagy koppintásra lefut.
+- **Rétegek mobil GPU-n:** érintőképernyőn csak a kijelölt doboz jegyzete görgethető; a húzáspajzs és az üres lézercanvas nyugalomban nem fest (a tableten 49 → 40 réteg, a végtelen méretű réteg megszűnt).
+- **Billentyűk:** H teljes vászon, Ctrl+H 100% (a Shift+1 és a Z helyett).
+- Honor tableten (Android 14, Chrome 157) mérve (csípés: 40 mozdulatra 42 → 3 újrarajzolás, 41 → 56 fps; pásztázás 0 px eltérés), a felhasználó kézzel is jóváhagyta. Útmutató, `docs/hotkeys.json`, tesztek frissítve.
+
+## 2026-11-27 – Filctoll, rajzmód, egyszeri eszköz (D), eszköztár-csoportok, LowPerformance mód (`right-mouse-pan` ág)
+
+- **Filctoll:** a lézerrel közös motoron (`Public/laser.js`, eszközleírások). Nem halványul; 3 mp-en belül kezdett vonás az előző rajzhoz adódik, később az új vonás mindenkinél törli az előzőt. Nem mentődik; a rajzoló kilépésekor a többieknél eltűnik. Pontkorlát: lézer vonásonként 48, filc rajzonként 1500 pont. Saját kurzor (`marker-cursor.svg`). A szerver a `kind` / `clear` mezőt is továbbítja (`Collaboration.swift`).
+- **Rajzeszköz csoportgomb:** kattintásra be / ki, jobb kattintásra vagy nyomva tartva lézer / filc választó.
+- **Egyszeri eszköz (`Public/one-shot.js`):** globális, billentyűvel élesíthető, egy használat után visszaálló működés. D: egy vonás a választott rajzeszközzel (a gomb csak fényes keretet kap).
+- **Rajzmód:** a rajz canvasa fogja el az egeret, a dobozok nem reagálnak (rámutatás, tooltip, kijelölés); a pásztázás, nagyítás, a vászon helyi menüje és a mutatómegosztás működik. p1000-en a váltás stílusszámítása 34–37 → 0,8 ms. Esc rajzmódban vagy vonás közben: a saját rajz törlése mindenkinél.
+- **Eszköztár:** „Rács és megjelenítés” csoport (rácsra igazítás S, saját rács G, LowPerformance mód L) és „Mind” csoport (teljes vászon Shift+1, 100% Z – új `zoom-actual` ikon –, teljes képernyő Ctrl+F). Minden csoportgomb jobb kattintásra nyílik (`groupTrigger`), a listák a vászon területére kerülnek (Teleport). A LowPerformance mód az animációk leállítását és a díszítő háttér kikapcsolását vonja össze (a régi külön beállítás egyszer átvándorol; `bench-idle.js` külön kapcsolhatja).
+- Útmutató és `docs/hotkeys.json` frissítve; TODO: a később belépő nem látja a meglévő filcrajzot.
+
+## 2026-11-27 – Jobb gombos pásztázás, helyi menü felengedéskor, új lézer pointer (`right-mouse-pan` ág)
+
+- **Pásztázás és helyi menü:** megszűnt a kéz gomb (vászonmozgatás-zár, a `panLocked` beállítás szerveroldalon is), a szóközös és a bal gombos pásztázás. Jobb gomb + húzás pásztáz (objektum fölött is); mozgás nélküli jobb kattintás (küszöb 5 px, `rightClickSlop`) felengedéskor nyitja a helyi menüt, macOS- és Windows-eseménysorrenddel is. Útmutató és `docs/hotkeys.json` frissítve; a Chrome-os mérőszkriptek jobb gombbal pásztáznak.
+- **Lézer kurzor:** fekete-fehér varázspálca (`Public/laser-cursor.svg`); a vászon CSS-ből, a mutatott doboz / vonal inline kapja (leszármazott-szabály p1000-en a váltást 50 → 100–200 ms-ra rontotta).
+- **Lézer rajz:** hibrid mintavétel (12 px, 40–100 ms, fordulópont-megőrzés 3 px tűréssel), 100 ms-os csomagküldés, centripetális Catmull-Rom görbe, elvékonyodó vég, 2,2 mp élettartam, max. 48 pont. Ugyanazon a húzáson 146 → 89 pont, az üzenetek ~fele.
+- **Lézer canvason:** a rajz a látható terület méretű `<canvas>`-on (a vászon-SVG-ben képkockánként festést és rétegezést okozott): p1000-en rajzolás 38 → 60 fps. Részletek: `server/docs/PERF.md`.
+- **Safari zoom-hiba:** a Safari `getScreenCTM`-je nem tartalmazza a vászon burkolójának CSS-transzformját (görgős nagyítás / pásztázás előnézete), ezért a lézer elcsúszott, a közben kezdett vonal rossz helyről indult, és a megosztott egérmutató is rossz helyet küldött. Közös javítás: `Public/screen-matrix.js` (a vászon valódi téglalapjából számolt korrekció). A bennragadt rajzot (elveszett felengedés) a lézer lezárja.
+
 ## 2026-11-27 – Szerver Fedora 45-ön: swift.org Swift 6.3.3, Swift-verziók a swift.env-ben, Linux-javítások
 
 - **Miért nem a 6.0.3:** a swift.org 6.0.3-as toolchainjének clangja (LLVM 17) a Fedora 45 C++ fejléceit (GCC 16) nem fordítja (a swift-crypto BoringSSL-je C++); a Fedora `swift-lang` 6.3.2 pedig assertionnel épült, és egy függőségen összeomlott. A szerver ezért a swift.org hivatalos 6.3.3-át használja (`fedora41` építés, `/opt/swift-6.3.3`), a fejlesztőgép marad 6.0.3.

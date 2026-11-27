@@ -122,6 +122,7 @@
     [
      "edit-name",
      "autosize",
+     "font-size",
      "font",
      "text-color",
      "justify",
@@ -140,13 +141,14 @@
     ],
     [
      "link-add",
+     "link-target",
+     "web-name",
      "link-preview",
      "link-public",
      "link-open",
      "link-remove"
     ],
     [
-     "properties",
      "delete"
     ]
    ],
@@ -186,7 +188,6 @@
      "endpoint-target"
     ],
     [
-     "properties",
      "delete"
     ]
    ],
@@ -212,7 +213,6 @@
      "new-chart"
     ],
     [
-     "properties",
      "delete"
     ]
    ],
@@ -248,7 +248,6 @@
   "link-add": "Link hozzáadása (ha még nincs link)",
   "link-preview, link-public, link-open, link-remove": "Link: előnézet, publikus, megnyitás, törlés (ha van link)",
   "lineType-<típus>, lineAppearance-<megjelenés>": "Vonal típusa és megjelenése",
-  "properties": "Szerkesztés: a tulajdonságpanel megnyitása (dobozon, csomóponton és vonalon)",
   "delete": "Törlés (minden objektumon)",
   "ping": "Ping (minden objektumon; vonalnál a kattintás pontja)",
   "copy-link, edit-cells, new-chart": "Fájldoboz: link másolása; táblázat: cellák szerkesztése, grafikon létrehozása",
@@ -260,6 +259,12 @@
   "arrange-<left|center|right|top|middle|bottom>": "Csoportos kijelölés: dobozok igazítása oszlopba (bal / közép / jobb) vagy sorba (felső / közép / alsó); csak több kijelölt doboznál",
   "distribute-<x|y>": "Csoportos kijelölés: egyenlő elosztás vízszintesen / függőlegesen a két legszélső doboz között; legalább három doboznál",
   "background-<free|empty|translucent>": "Háttér mód",
-  "content-fit": "Táblázat és CSV: a tartalom a dobozhoz igazítva (arányos nagyítás, torzítás nélkül)"
+  "content-fit": "Táblázat és CSV: a tartalom a dobozhoz igazítva (arányos nagyítás, torzítás nélkül)",
+  "font-size": "Betűméret (mezőgomb: a gombon az érték, kattintásra számmező)",
+  "frame-width": "Kép: keret vastagsága (mezőgomb)",
+  "rotation, diameter": "Csomópont: elforgatás (fok), átmérő (mezőgomb)",
+  "chart-type, chart-labels, chart-values, chart-header": "Grafikon: típus, kategóriák / X tengely / szeletek neve, értékoszlopok (mezőgombok), az első sor fejléc (kapcsoló)",
+  "link-target, web-name": "Link célja, illetve weboldal neve (mezőgomb, szövegmező)",
+  "table-name, table-csv": "Táblázat neve (mezőgomb), letöltés CSV-ként"
  }
 }

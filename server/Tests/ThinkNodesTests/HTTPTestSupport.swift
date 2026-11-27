@@ -58,7 +58,7 @@ func checkPreviewAndPreferences(_ browser: some TestingApplicationTester, path: 
     selected.previewImage = "hiányzó.svg"
     #expect(try await save(browser, path: path, worksheet: selected, session: session).status == .ok)
     #expect(try await browser.sendRequest(.GET, "/api/preview/" + path).body.string.contains("<svg"))
-    let preferences = UserPreferences(snap: true, showGrid: false, panLocked: true, avatar: 12)
+    let preferences = UserPreferences(snap: true, showGrid: false, avatar: 12)
     let result = try await browser.sendRequest(.POST, "/api/preferences", headers: headers) { request in
         try request.content.encode(preferences)
     }

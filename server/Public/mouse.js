@@ -1,11 +1,12 @@
 import {avatarSymbol, cursorLabelMode, setCursorLabelMode} from "./presence.js";
+import {screenMatrix} from "./screen-matrix.js";
 
 // The layer's coordinate system is the worksheet, including the editor's pan and zoom. The markers keep their
 // screen size (counter-scaled by the zoom), so the name or avatar beside them stays readable at any zoom level.
 export function sharedMouse(send) {
   const ns = "http://www.w3.org/2000/svg";
   const cursors = new Map();
-  let layer, enabled = false, pending, timer, listeners, modeList = null;
+  let layer, root, enabled = false, pending, timer, listeners, modeList = null;
   let labelMode = cursorLabelMode();
   function hide() {
     clearTimeout(timer);
@@ -14,7 +15,8 @@ export function sharedMouse(send) {
     pending = null;
   }
   function screenScale() {
-    const matrix = layer?.isConnected ? layer.getScreenCTM() : null;
+    // A jelölők a vászonnal együtt skálázódnak; a képernyő-lépték a Safari-biztos leképezésből (screen-matrix.js).
+    const matrix = screenMatrix(layer, root);
     return matrix?.a ? 1 / matrix.a : 1;
   }
   function place(marker, scale = screenScale()) {
@@ -131,6 +133,7 @@ export function sharedMouse(send) {
     hide();
     listeners = new AbortController();
     const options = {signal: listeners.signal};
+    root = svg;
     layer?.remove();
     layer = document.createElementNS(ns, "g");
     layer.setAttribute("data-editor-only", "");
@@ -171,16 +174,20 @@ export function sharedMouse(send) {
       if (modeList && !modeList.contains(event.target) && event.target !== button && !button.contains(event.target)) closeModes();
     }, {...options, capture: true});
     document.addEventListener("keydown", event => { if (event.key === "Escape" && modeList) closeModes(); }, options);
-    svg.addEventListener("pointermove", event => {
+    // A vászon tárolóját figyeljük: rajzmódban (lézer / filc) a rajz canvasa fogja el az egeret (laser.js), az is a vászon.
+    const area = svg.closest(".canvas-area, .passive-frame") ?? svg;
+    const overCanvas = event => svg.contains(event.target) || !!event.target?.classList?.contains?.("laser-overlay");
+    area.addEventListener("pointermove", event => {
       // Nem aktív ablak fölött is jön pointermove (macOS): ilyenkor a kurzor nem látszik a többieknél.
       if (!enabled || event.pointerType === "touch" || document.hidden || !document.hasFocus()) return;
-      const matrix = layer.getScreenCTM();
+      if (!overCanvas(event)) { hide(); return; }
+      const matrix = screenMatrix(layer, root);
       if (!matrix) return;
       const {x, y} = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
       pending = {x, y};
       if (!timer) timer = setTimeout(() => { timer = undefined; send(pending); }, 50);
     }, options);
-    svg.addEventListener("pointerleave", hide, options);
+    area.addEventListener("pointerleave", hide, options);
     window.addEventListener("blur", hide, options);
     document.addEventListener("visibilitychange", () => { if (document.hidden) hide(); }, options);
     window.addEventListener("pagehide", hide, options);

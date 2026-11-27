@@ -74,6 +74,11 @@ function button(label, onClick, props = {}) {
   return h("button", {type: "button", class: "button", onClick, ...attributes}, [icon(symbol), label]);
 }
 
+// Csak ikonos gomb: a felirat súgó (title) és akadálymentes név (aria-label).
+function iconButton(title, onClick, props = {}) {
+  return button("", onClick, {title, "aria-label": title, ...props, class: ["button option-icon", props.class]});
+}
+
 const headerButtonClass = "button header-button";
 function headerButton(onClick, {class: modifiers, ...props}) {
   return button("", onClick, {...props, class: [headerButtonClass, modifiers]});
@@ -1061,8 +1066,6 @@ createApp({
     const fullscreen = ref(!!document.fullscreenElement);
     document.addEventListener?.("fullscreenchange", () => { fullscreen.value = !!document.fullscreenElement; });
     const snapToGrid = ref(preferences.snap ?? false);
-    const panLocked = ref(preferences.panLocked ?? false);
-    const spacePan = ref(false);
     const previewImages = ref([]);
     async function loadPreviewImages() {
       try {
@@ -1072,8 +1075,7 @@ createApp({
     let preferenceWrite = Promise.resolve();
     function savePreferences() {
       if (!user) return;
-      const body = JSON.stringify({theme: preferences.theme, showGrid: gridVisible.value, snap: snapToGrid.value,
-        panLocked: panLocked.value});
+      const body = JSON.stringify({theme: preferences.theme, showGrid: gridVisible.value, snap: snapToGrid.value});
       preferenceWrite = preferenceWrite.then(async () => checked(await fetch("/api/preferences", {
         method: "POST", keepalive: true, headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body
       }))).catch(error => { problem.value = error.message; });
@@ -1083,9 +1085,21 @@ createApp({
     // (app.css data-still / data-plain). Gyengébb gépen vagy akkumulátorról minimális terhelés.
     const storedFlag = key => { try { return localStorage.getItem(key) === "1"; } catch { return false; } };
     const storeFlag = (key, on) => { try { if (on) localStorage.setItem(key, "1"); else localStorage.removeItem(key); } catch {} };
-    const motionOff = ref(storedFlag("tnMotionOff")), plainBackground = ref(storedFlag("tnPlainBackground"));
-    function toggleMotion() { motionOff.value = !motionOff.value; storeFlag("tnMotionOff", motionOff.value); }
-    function togglePlainBackground() { plainBackground.value = !plainBackground.value; storeFlag("tnPlainBackground", plainBackground.value); }
+    // LowPerformance mód (L, „Rács és megjelenítés” csoport): az animációk leállítása és a díszítő háttér kikapcsolása
+    // együtt. A korábban külön tárolt két beállítás (tnMotionOff, tnPlainBackground) egyszer átvándorol; a mérőeszközök
+    // (bench-idle.js, ?bench=…) a két részt továbbra is külön kapcsolhatják.
+    const benchMode = /[?&]bench=/.test(location.search ?? "");
+    if (!benchMode && (storedFlag("tnMotionOff") || storedFlag("tnPlainBackground")) && !storedFlag("tnLowPerformance")) {
+      storeFlag("tnLowPerformance", true);
+      storeFlag("tnMotionOff", false);
+      storeFlag("tnPlainBackground", false);
+    }
+    const lowPerformance = ref(storedFlag("tnLowPerformance"));
+    const benchMotionOff = benchMode && storedFlag("tnMotionOff"), benchPlain = benchMode && storedFlag("tnPlainBackground");
+    const motionOff = computed(() => lowPerformance.value || benchMotionOff);
+    const plainBackground = computed(() => lowPerformance.value || benchPlain);
+    function toggleLowPerformance() { lowPerformance.value = !lowPerformance.value; storeFlag("tnLowPerformance", lowPerformance.value); }
+    function toggleSnap() { snapToGrid.value = !snapToGrid.value; savePreferences(); }
     const gridSpacing = computed(() => board.value?.gridSpacing ?? defaultGridSpacing);
     const gridColor = computed(() => automaticGridColor(paint(board.value?.background, 0)));
 
@@ -1103,7 +1117,9 @@ createApp({
     } catch { /* History is still available in this tab. */ }
     const toolbarOpen = ref(true);
     const editingObject = ref(null);
-    const objectPanelOpen = ref(true);
+    // A jobb oldali tulajdonságpanel megszűnt (2026-11-27): a mezői a gyors eszközökben vannak (FieldButton); a nevek a
+    // vásznon szerkeszthetők. Az állapot mindig „zárt”, így minden szerkesztés a helyben szerkesztés útját járja.
+    const objectPanelOpen = ref(false);
     const canvasPanelOpen = ref(false);
     // A munkalap megjelenése (téma, paletta, háttér, rácsköz, előnézeti kép): a vászonpanel gombjára a vászon közepén
     // felugró panelben (renderAppearancePopup).
@@ -1135,7 +1151,10 @@ createApp({
     let resizeObserver;
     let lastClick;
     let canDeselectOnClick = false;
-    let rightPress = false;
+    // Jobb egérgomb: nyomva tartva és mozgatva pásztáz (d3-zoom, initializeZoom), mozgás nélküli felengedésre a helyi
+    // menü nyílik (context). A rightClickSlop képpontnál nagyobb elmozdulás már pásztázás, nem kattintás.
+    const rightClickSlop = 5;
+    let rightPress = null;
 
     const peers = ref([]);
     const held = ref(null);
@@ -1204,6 +1223,8 @@ createApp({
 
     const mouse = sharedMouse(point => live.cursor(point));
     const laser = sharedLaser(frame => live.laser(frame), () => peers.value.find(p => p.mine)?.color);
+    // Aki kilépett a munkalapról, annak a rajza (lézer, filc) a többieknél eltűnik.
+    watch(peers, list => laser.retain(list.map(p => p.id)));
     // Csevegés: csak bejelentkezett felhasználónak (chat.js).
     const chat = user ? sharedChat({path, csrf, me: () => user, admin: () => pageRole === "admin"}) : null;
     watch(view, () => mouse?.rescale());
@@ -1704,7 +1725,7 @@ createApp({
     }
 
     const resizeTarget = computed(() => {
-      if (spacePan.value || !alt.value || ctrl.value) return;
+      if (!alt.value || ctrl.value) return;
       if (gesture.value?.type === "resize") return gesture.value.nodeID;
       if (!canvasPointer.value || !canvas.value) return;
       const point = world(canvasPointer.value);
@@ -1760,39 +1781,74 @@ createApp({
     function setView(transform) { d3.select(zoomHost()).call(zoom.transform, constrainView(transform)); }
 
     const pinchTolerance = 6; // CSS pixels between the two touch points
+    // Csípési küszöb: két ujjal pásztázva az ujjak távolsága természetesen ingadozik; a nagyítás csak akkor indul, ha a
+    // távolság a kezdetihez képest ennyinél jobban változik (a kezdeti távolság 15%-a, legalább 30 képpont). Onnan ugrás
+    // nélkül folytatódik, és a mozdulat végéig követi az ujjakat.
+    const pinchStart = distance => Math.max(30, distance * .15);
     let touchView;
+    // Az ujjak helye a vászon nem mozgó tárolójához (.canvas-area) mérve – ugyanez a koordinátarendszer, amelyben a nézet
+    // transzformja értelmezett. A jelenet csoportjához (sceneOrigin) mérve a csípés előnézete alatt (a réteg CSS-transzformja
+    // mozog) visszacsatolás lett: kettős kép, megforduló irány, végül „elszaladó” nézet.
     function touchPair(event) {
+      const frame = zoomHost() ?? sceneOrigin.value ?? canvas.value;
       const points = [...event.touches].sort((a, b) => a.identifier - b.identifier)
-        .slice(0, 2).map(touch => d3.pointer(touch, sceneOrigin.value ?? canvas.value));
+        .slice(0, 2).map(touch => d3.pointer(touch, frame));
       const [[ax, ay], [bx, by]] = points;
       return {x: (ax + bx) / 2, y: (ay + by) / 2, distance: Math.max(1, Math.hypot(ax - bx, ay - by))};
     }
     function startTouchView(event) {
       if (event.touches.length < 2) return;
       event.preventDefault();
+      dropTouch();
       const drag = gesture.value;
       if (drag) {
         if (drag.waiting) gesture.value = null;
         else finishPointer({pointerId: drag.pointer}, true);
       }
       const pair = touchPair(event);
-      touchView = {...pair, zoomDistance: pair.distance, transform: view.value};
+      clearTimeout(commitTimer);
+      touchView = {...pair, zoomDistance: pair.distance, transform: pendingView ?? view.value};
       canDeselectOnClick = false;
     }
+    // Csípés (két ujj): mozdulat közben, mint a görgetés és az egérrel pásztázás, csak a réteg CSS-transzformja változik
+    // (previewView); a nézet a mozdulat végén, rövid nyugalom után rögzül (panCommitDelay). Korábban minden érintésmozdulat
+    // rögzítette a nézetet (teljes újrarajzolás és újraraszterizálás): a tableten ettől villogtak az objektumok
+    // (40 mozdulatra 42 újrarajzolás, 41 fps). A d3-zoom állapota (__zoom) is követi, hogy a következő mozdulat innen induljon.
     function moveTouchView(event) {
       if (!touchView || event.touches.length < 2) return;
       event.preventDefault();
+      if (forcedFollow()) return;
       const pair = touchPair(event);
       const start = touchView.transform;
-      touchView.zoomDistance = limit(touchView.zoomDistance, pair.distance - pinchTolerance, pair.distance + pinchTolerance);
+      const spread = pair.distance - touchView.distance, threshold = pinchStart(touchView.distance);
+      if (!touchView.zooming && Math.abs(spread) > threshold) { touchView.zooming = true; touchView.offset = Math.sign(spread) * threshold; }
+      const effective = touchView.zooming ? pair.distance - touchView.offset : touchView.distance;
+      touchView.zoomDistance = limit(touchView.zoomDistance, effective - pinchTolerance, effective + pinchTolerance);
       const k = limit(start.k * touchView.zoomDistance / touchView.distance, Math.min(minScale(), start.k), maxScale);
       const [x, y] = start.invert([touchView.x, touchView.y]);
-      setView(d3.zoomIdentity.translate(pair.x - x*k, pair.y - y*k).scale(k));
+      const transform = constrainView(d3.zoomIdentity.translate(pair.x - x*k, pair.y - y*k).scale(k));
+      const host = zoomHost();
+      if (host) host.__zoom = transform;
+      if (!touchView.moving) {
+        touchView.moving = true;
+        menu.value = null;
+        lastClick = null;
+        if (presentation.value && !presenting.value) following.value = false;
+        markMoving("zoom", true);
+      }
+      if (presenting.value) sendPresentRect(transform);
+      showZoomLevel(transform.k);
+      previewView(transform);
+    }
+    function settleTouchView() {
+      if (!touchView?.moving) return;
+      markMoving("zoom", false);
+      if (pendingView) commitTimer = setTimeout(() => commitView(pendingView), panCommitDelay);
     }
     function endTouchView(event) {
       if (!touchView) return;
-      if (event.touches.length >= 2) startTouchView(event);
-      else if (!event.touches.length) touchView = null;
+      if (event.touches.length >= 2) { settleTouchView(); startTouchView(event); }
+      else if (!event.touches.length) { settleTouchView(); touchView = null; }
     }
     function scrollsSelectedText(event) {
       if (event.ctrlKey || selected.value?.kind !== "node") return false;
@@ -1809,15 +1865,16 @@ createApp({
         .filter(event => {
           // A legkisebb nagyítás a kompozíció méretétől függ; a jelenleginél nagyobbra nem ugrik (pl. törlés után).
           zoom.scaleExtent([Math.min(minScale(), (pendingView ?? view.value).k), maxScale]);
-          // A vezérlők és jelenlévők (a vászon szülőjének többi gyereke) fölötti események nem nagyítanak/pásztáznak.
-          if (canvas.value?.contains && event.target && !canvas.value.contains(event.target)) return false;
+          // A vezérlők és jelenlévők (a vászon szülőjének többi gyereke) fölötti események nem nagyítanak/pásztáznak. A
+          // rajzeszközök canvasa (rajzmódban ez fogja el az egeret, laser.js) a vászon része.
+          if (canvas.value?.contains && event.target && !canvas.value.contains(event.target) && !onDrawingOverlay(event)) return false;
           // Kötelező követésnél (előadás) a nézetet csak az előadó mozgatja.
           if (forcedFollow()) return false;
           if (event.type === "wheel") return !gesture.value && !scrollsSelectedText(event);
           if (event.type === "touchstart") return false;
-          if (spacePan.value) return !event.button && !gesture.value;
-          return !panLocked.value && !event.button && !event.altKey && !event.ctrlKey && !reconnect.value && !gesture.value
-            && !event.target.closest("[data-node], [data-edge]");
+          // Egérrel csak a jobb gomb pásztáz, objektum fölött is; a bal gomb nem mozgatja a vásznat. Ctrl+jobb gomb a
+          // vonalhúzásé (pressCanvas, pressNode). Mozgás nélküli felengedésre a helyi menü nyílik (rightPress, context).
+          return event.button === 2 && !event.ctrlKey && !gesture.value;
         })
         .on("start", event => {
           menu.value = null;
@@ -1925,6 +1982,8 @@ createApp({
       if (!covered) { commitView(transform); return; }
       svg.style.transformOrigin = marginX + "px " + marginY + "px";
       svg.style.transform = `matrix(${scale},0,0,${scale},${shiftX},${shiftY})`;
+      // A rajzeszközök (filc) canvasa a vászon fölött van: a nézettel együtt újrarajzolódik (csak ha van mit).
+      laser.invalidate();
       // A rács nem skálázódik a réteggel: a mintája közvetlenül az élő nézetet követi.
       const [centerX, centerY] = center();
       if (perfOptions.grid === "separate") for (const id of ["#worksheet-grid", "#worksheet-texture"]) zoomHost()?.querySelector?.(id)?.setAttribute("patternTransform", transform + " translate(" + centerX + " " + centerY + ")");
@@ -2173,6 +2232,8 @@ createApp({
       // (none ↔ matrix) 40–70 ms-os megakadás, a mátrixról mátrixra váltás viszont ingyen van.
       restLayer((transform ?? view.value).k);
       if (transform && (transform.k !== view.value.k || transform.x !== view.value.x || transform.y !== view.value.y)) view.value = transform;
+      // A rögzített nézet a következő képkockában érvényes (Vue): a rajzeszközök canvasa utána rajzol újra.
+      nextTick(() => laser.invalidate());
     }
 
     function fit() {
@@ -2412,16 +2473,16 @@ createApp({
       selected.value = {kind, id: itemID};
       inspector.value = {kind, id: itemID};
       menu.value = null;
-      if (focusLabel) {
-        objectPanelOpen.value = true;
+      // A tulajdonságpanel megszűnt (a mezők a gyors eszközökben vannak): a név a vásznon, helyben szerkeszthető.
+      if (focusLabel && showCanvasInput && selected.value?.id === itemID) {
+        editKey.value = kind === "edge" ? "label" : "text";
+        const item = kind === "edge" ? edgeMap.value.get(itemID) : nodeMap.value.get(itemID);
+        inlineDraft.value = item?.[editKey.value] ?? "";
+        editingObject.value = itemID;
         await nextTick();
-        const field = mount.querySelector?.(".object-inspector [data-object-label]");
-        if (selected.value?.id === itemID && field) {
-          field.focus();
-          editKey.value = kind === "edge" ? "label" : "text";
-          editingObject.value = showCanvasInput ? itemID : null;
-          field.select();
-        }
+        const input = mount.querySelector?.(".inline-edit input, .inline-edit textarea");
+        input?.focus?.();
+        input?.select?.();
       }
     }
 
@@ -2990,12 +3051,6 @@ createApp({
       const operation = gesture.value;
       if (!operation && !reconnect.value) return;
       if (operation && operation.pointer !== event.pointerId) return;
-      if (operation?.type === "pan") {
-        const [x, y] = operation.screen;
-        const start = operation.startView;
-        setView(start.translate((event.clientX - x) / start.k, (event.clientY - y) / start.k));
-        return;
-      }
       if (operation?.waiting) {
         operation.latest = event;
         operation.moved ||= Math.hypot(event.clientX-operation.screen[0], event.clientY-operation.screen[1]) > 3;
@@ -3466,20 +3521,54 @@ createApp({
       capturePointer((type === "clone" ? event.currentTarget : canvas.value), event.pointerId);
     }
 
+    // Érintés: az első ujj lenyomását rövid ideig visszatartjuk (touchHoldDelay). Ha közben leér a második ujj, a
+    // lenyomás elvész – csak pásztázás / nagyítás lesz (startTouchView), kijelölés nem. Korábban az első ujj azonnal
+    // kijelölte, ami alatta volt: minden kétujjas mozdulatnál megnyílt / átváltott a tulajdonságpanel, felengedéskor újra –
+    // a tableten ez villogott, „szétesett” a kép. Ha az ujj elindul (touchHoldSlop), lejár az idő vagy felengedik
+    // (koppintás), a lenyomás az eredeti elemen lefut, mintha akkor történt volna.
+    const touchHoldDelay = 150, touchHoldSlop = 8;
+    const replayedTouches = new WeakSet();
+    let touchHold = null;
+    function holdTouch(event) {
+      const init = {};
+      for (const key of ["pointerId", "pointerType", "isPrimary", "clientX", "clientY", "screenX", "screenY", "button", "buttons",
+        "pressure", "width", "height", "tiltX", "tiltY", "ctrlKey", "altKey", "shiftKey", "metaKey"]) init[key] = event[key];
+      clearTimeout(touchHold?.timer);
+      touchHold = {init, target: event.target, timer: setTimeout(releaseTouch, touchHoldDelay)};
+    }
+    function releaseTouch() {
+      const held = touchHold;
+      if (!held) return;
+      touchHold = null;
+      clearTimeout(held.timer);
+      if (!held.target.isConnected) return;
+      const replay = new PointerEvent("pointerdown", {...held.init, bubbles: true, cancelable: true, composed: true});
+      replayedTouches.add(replay);
+      held.target.dispatchEvent(replay);
+    }
+    function dropTouch() { clearTimeout(touchHold?.timer); touchHold = null; }
+    // A visszatartott érintés sorsa: elmozdulásnál és felengedésnél előbb lefut (a mozdulat / felengedés utána jön).
+    function touchMoveCapture(event) {
+      if (touchHold && event.pointerId === touchHold.init.pointerId &&
+          Math.hypot(event.clientX - touchHold.init.clientX, event.clientY - touchHold.init.clientY) > touchHoldSlop) releaseTouch();
+    }
+    function touchUpCapture(event) { if (touchHold && event.pointerId === touchHold.init.pointerId) releaseTouch(); }
+
     function pressCanvas(event) {
+      if (event.pointerType === "touch" && event.isPrimary && !replayedTouches.has(event) && !reconnect.value) {
+        event.stopPropagation();
+        holdTouch(event);
+        return;
+      }
       flushView();
+      rightPress = null;
       // Szerkesztett táblázaton belül a táblázat kezeli a kattintást (cellakijelölés, Shift+kattintás tartomány).
       if (event.target?.closest?.("[data-table-editor]")) return;
       if (event.pointerType === "touch" && (!event.isPrimary || touchView)) {
         event.stopPropagation();
         return;
       }
-      const touchPan = event.pointerType === "touch" && !panLocked.value && !reconnect.value &&
-        !event.target.closest("[data-node], [data-edge]");
-      if ((spacePan.value || touchPan) && event.button === 0) {
-        beginDrag(event, "pan", {startView: view.value});
-        return;
-      }
+      // Érintésen a vászon csak két ujjal mozog (csípés: startTouchView); az egy ujj nem pásztáz.
       finishField();
       canDeselectOnClick = false;
       if (event.target.closest?.("[data-audio-player]")) return;
@@ -3511,7 +3600,9 @@ createApp({
           return;
         }
       }
-      rightPress = event.button === 2 && !event.ctrlKey;
+      if (event.button === 2 && !event.ctrlKey) {
+        rightPress = {pointer: event.pointerId, screen: [event.clientX, event.clientY], moved: false, released: false, pending: null};
+      }
       if (!reconnect.value && !hit) {
         if (event.ctrlKey && !event.altKey && [0, 2].includes(event.button) && online.value) {
           event.preventDefault();
@@ -3541,11 +3632,39 @@ createApp({
       if (endpoint.createdJunction) openProperties("node", endpoint.node);
     }
 
+    // A jobb gombos lenyomás követése ablakszintű, elfogó figyelőkkel (a pásztázás a vásznon kívül is végződhet).
+    // A felengedéskor dől el, kattintás volt-e: ha a mutató rightClickSlop-nál messzebbre ment, pásztázás volt, menü nincs.
+    function trackRightPress(event) {
+      const press = rightPress;
+      if (!press || press.released || event.pointerId !== press.pointer) return;
+      press.moved ||= Math.hypot(event.clientX - press.screen[0], event.clientY - press.screen[1]) > rightClickSlop;
+      if (event.type === "pointermove") return;
+      if (event.type === "pointercancel" || press.moved) { rightPress = null; return; }
+      // macOS-en (és Linuxon) a contextmenu esemény már a lenyomáskor megjött: a menü most, a felengedéskor nyílik.
+      if (press.pending) { rightPress = null; openContext(...press.pending); return; }
+      // Windowson a contextmenu a felengedés után érkezik, és azonnal nyit (context).
+      press.released = true;
+    }
+
+    // A böngésző helyi menüje sosem jelenik meg a vásznon; a sajátunk csak mozgás nélküli jobb kattintásra nyílik.
+    // Rajzmódban (lézer / filc) az egér a rajz canvasán van, a vászon elemei nem kapják meg: a jobb gomb (pásztázás,
+    // helyi menü) innen jut a vászonhoz – a dobozok ilyenkor nem aktívak, a menü a vászoné. A bal gombot a laser.js rajzolja.
+    const onDrawingOverlay = event => !!event.target?.classList?.contains?.("laser-overlay");
+    function overlayPress(event) { if (onDrawingOverlay(event) && event.button === 2 && !event.ctrlKey) pressCanvas(event); }
+    function overlayContext(event) { if (onDrawingOverlay(event)) context(event); }
+
     function context(event, kind = "canvas", itemID) {
       event.preventDefault();
       event.stopPropagation();
-      if (!rightPress || event.ctrlKey || event.button !== 2 || gesture.value?.type === "cable") return;
-      rightPress = false;
+      const press = rightPress;
+      if (!press || press.pending || event.ctrlKey || event.button !== 2 || gesture.value?.type === "cable") return;
+      if (!press.released) { press.pending = [event, kind, itemID]; return; }
+      rightPress = null;
+      openContext(event, kind, itemID);
+    }
+
+    function openContext(event, kind, itemID) {
+      if (gesture.value?.type === "cable") return;
       lastClick = null;
       // Objektum fölött a helyi menü mellett a tulajdonságpanel gombjai is megjelennek (quickTools, renderQuickTools).
       if (quickTools && kind !== "canvas") { openQuickTools(event, kind, itemID); return; }
@@ -3774,33 +3893,17 @@ createApp({
     }
 
     function modifiers(event) {
-      if (event.type === "keyup" && event.code === "Space") {
-        spacePan.value = false;
-        if (gesture.value?.type === "pan") gesture.value = null;
-      }
       ctrl.value = event.ctrlKey;
       alt.value = event.altKey;
       shift.value = event.shiftKey;
     }
-    function clearModifiers() { spacePan.value = false; ctrl.value = false; alt.value = false; shift.value = false; panning.value = false; }
+    function clearModifiers() { ctrl.value = false; alt.value = false; shift.value = false; panning.value = false; }
 
     function keyboard(event) {
       modifiers(event);
       // Előadás: Esc megszakítja a keret rajzolását.
       if (event.key === "Escape" && drawingFrame.value) { drawingFrame.value = false; event.preventDefault(); return; }
       if (event.key === "Escape" && appearanceOpen.value) { appearanceOpen.value = false; event.preventDefault?.(); return; }
-      if (event.code === "Space" && !editingText(event.target) && (canvasPointer.value || !event.target?.closest?.("button, a"))) {
-        event.preventDefault();
-        spacePan.value = true;
-        const drag = gesture.value;
-        if (drag && drag.type !== "pan") {
-          const screen = canvasPointer.value ? [canvasPointer.value.clientX, canvasPointer.value.clientY] : drag.screen;
-          finishPointer({pointerId: drag.pointer}, true);
-          gesture.value = {type: "pan", pointer: drag.pointer, screen, startView: view.value};
-          capturePointer(canvas.value, drag.pointer);
-        }
-        return;
-      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
         if (!event.repeat) saveVersion();
@@ -3850,6 +3953,20 @@ createApp({
         return;
       }
       if (event.key !== "Escape" && event.target?.closest?.("input, textarea, select, [contenteditable=true]")) return;
+      // Eszköztár-csoportok billentyűi. „Rács és megjelenítés”: S rácsra igazítás, G rács, L LowPerformance mód.
+      // „Mind”: H a teljes vászon, Ctrl+H 100%, Ctrl+F teljes képernyő (Macen a keresés a ⌘F; Windowson a Ctrl+F a
+      // böngésző keresőjét, a Ctrl+H az előzményeket írja felül).
+      if (!event.metaKey && !event.altKey && !event.repeat) {
+        const key = event.key?.toLowerCase?.();
+        if (event.ctrlKey && !event.shiftKey && (key === "f" || key === "h")) {
+          event.preventDefault?.();
+          if (key === "f") toggleFullscreen(); else zoomActual();
+          return;
+        }
+        const toggle = event.ctrlKey || event.shiftKey ? null
+          : {s: toggleSnap, g: toggleGrid, l: toggleLowPerformance, h: fit}[key];
+        if (toggle) { event.preventDefault?.(); toggle(); return; }
+      }
       if (event.key === "Enter" && !event.shiftKey && (canvasPointer.value || !event.target?.closest?.("button, a"))) {
         event.preventDefault?.();
         if (!event.repeat) {
@@ -3892,6 +4009,7 @@ createApp({
     function cancelGesture() {
       touchView = null;
       if (gesture.value) finishPointer({pointerId: gesture.value.pointer}, true);
+      rightPress = null;
       canvasPointer.value = null;
       clearModifiers();
     }
@@ -3920,6 +4038,7 @@ createApp({
       window.addEventListener("blur", cancelGesture);
       window.addEventListener("pointermove", outsideMove);
       window.addEventListener("pointerup", outsideUp);
+      for (const type of ["pointermove", "pointerup", "pointercancel"]) window.addEventListener(type, trackRightPress, true);
       window.addEventListener("beforeunload", beforeUnload);
       window.addEventListener("pagehide", live.stop);
       window.addEventListener("pageshow", restore);
@@ -3963,6 +4082,8 @@ createApp({
           laser.bind(canvas.value, canvas.value.querySelector("[data-mouse-layer]"), canvas.value.closest(".canvas-area") ?? mount,
             controls, controls?.querySelector("[data-canvas-fullscreen]"));
           chat?.bind(canvas.value.closest(".canvas-area") ?? mount, controls, controls?.querySelector("[data-canvas-fullscreen]"));
+          zoomHost()?.addEventListener("pointerdown", overlayPress, true);
+          zoomHost()?.addEventListener("contextmenu", overlayContext);
         }
       } catch (error) {
         problem.value = error.message;
@@ -3987,6 +4108,9 @@ createApp({
       window.removeEventListener("blur", cancelGesture);
       window.removeEventListener("pointermove", outsideMove);
       window.removeEventListener("pointerup", outsideUp);
+      for (const type of ["pointermove", "pointerup", "pointercancel"]) window.removeEventListener(type, trackRightPress, true);
+      zoomHost()?.removeEventListener("pointerdown", overlayPress, true);
+      zoomHost()?.removeEventListener("contextmenu", overlayContext);
       window.removeEventListener("beforeunload", beforeUnload);
     });
 
@@ -5481,7 +5605,7 @@ createApp({
       const mine = ui.mine;
       // Húzás közben (doboz, végpont, csoport, átméretezés) a vonal animációja szünetel: a futó animáció (pötty, lüktető
       // nyíl) Safariban a régi helyén maradt és megállt. Csak az animált vonal figyeli a húzást.
-      const still = !!edge.animated && !!gesture.value?.moved && gesture.value.type !== "pan";
+      const still = !!edge.animated && !!gesture.value?.moved;
       const animatedArrows = !still && edge.animated && edge.appearance === "thick";
       // Saját kijelölés: világosabb és vastagabb vonal; más felhasználó kijelölése: az ő színű glow.
       const local = mine || ui.local;
@@ -5675,19 +5799,21 @@ createApp({
     // A mutatót elfogó elem: ahol a böngésző elfogás közben ennek a kurzorát mutatja, ott ezen állítjuk be a húzás kurzorát.
     let capturing = null;
     function capturePointer(element, pointer) {
-      element.setPointerCapture(pointer);
+      // Koppintásnál a visszatartott érintés a felengedéskor fut le; ott az ujj már nem fogható meg (nem hiba).
+      try { element.setPointerCapture(pointer); } catch {}
       capturing = element;
     }
     const DragShield = {
       setup: () => () => {
-        const cursor = spacePan.value && gesture.value?.type !== "pan" ? undefined : dragCursor();
+        const cursor = dragCursor();
         return h("div", {class: "drag-shield", "aria-hidden": "true", "data-editor-only": "",
-          style: {cursor: cursor ?? "auto", pointerEvents: cursor ? "auto" : "none"}});
+          // Nyugalomban láthatatlan (nem fest; a teljes képernyős átlátszó réteg mobil GPU-n minden képkockában munka), de a
+          // helyén marad: a megjelenítése / eltávolítása minden húzás elején újrarétegezést okozna.
+          style: {cursor: cursor ?? "auto", pointerEvents: cursor ? "auto" : "none", visibility: cursor ? "visible" : "hidden"}});
       },
     };
     function dragCursor() {
       if (perfOptions.debugNoCursor) return undefined;
-      if (spacePan.value) return gesture.value?.type === "pan" ? "grabbing" : "grab";
       const active = gesture.value;
       if (active?.type === "resize") return active.sx === active.sy ? "nwse-resize" : "nesw-resize";
       if (active?.type === "rectangle") return "crosshair";
@@ -5787,17 +5913,15 @@ createApp({
         // A mozdulat közbeni CSS-transzform a vásznat körülvevő rétegen van ("wrapper", alap), nem magán az SVG-n: a
         // transzformált SVG-gyökérben Safari minden HTML-változásra (táblázat, szövegfájl) a teljes réteget újrafestette.
         h("div", {class: ["canvas-layer", {"is-layer": perfOptions.layer !== "svg"}]}, [h("svg", {ref: canvas, class: ["canvas", "editor-canvas", {"is-layer": perfOptions.layer === "svg", "ctrl-held": ctrl.value, "alt-held": alt.value}],
-          "data-drag-cursor": perfOptions.shield ? (spacePan.value && gesture.value?.type !== "pan" ? "grab" : undefined) : dragCursor(), "aria-label": "Ötletvászon",
+          "data-drag-cursor": perfOptions.shield ? undefined : dragCursor(), "aria-label": "Ötletvászon",
           onContextmenu: event => context(event),
-          onClickCapture: event => { if (spacePan.value) { event.preventDefault(); event.stopPropagation(); } },
           onClick: event => {
             // D3 suppresses the click after a pan.
             if (canDeselectOnClick && !event.target.closest("[data-node], [data-edge]")) clearSelection();
             canDeselectOnClick = false;
           },
-          onDblclickCapture: event => { if (spacePan.value) { event.preventDefault(); event.stopPropagation(); } },
           onDblclick: event => {
-            if (spacePan.value || event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
+            if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
                 gesture.value || reconnect.value || event.target.closest("[data-node], [data-edge]")) return;
             addNode(world(event));
           },
@@ -5819,11 +5943,13 @@ createApp({
           onTouchendCapture: endTouchView,
           onTouchcancelCapture: endTouchView,
           onPointerdownCapture: pressCanvas,
+          onPointermoveCapture: touchMoveCapture,
+          onPointerupCapture: touchUpCapture,
           onPointerenter: rememberCanvasPointer,
           onPointermove: event => { rememberCanvasPointer(event); queuePointer(event); },
           onPointerleave: () => { canvasPointer.value = null; },
           onPointerup: event => finishPointer(event),
-          onPointercancel: event => finishPointer(event, true),
+          onPointercancel: event => { dropTouch(); finishPointer(event, true); },
 
 
         }, [
@@ -5846,8 +5972,6 @@ createApp({
             ] : []),
           ]),
           h("g", {ref: sceneOrigin, transform: "translate(" + margin().join(" ") + ")"}, [perfOptions.grid === "canvas" || perfOptions.grid === "none" ? h(GridLayer) : null, h(ViewLayer)]),
-          spacePan.value ? h("rect", {width: "100%", height: "100%", fill: "none",
-            "pointer-events": "all", "aria-hidden": "true", "data-editor-only": ""}) : null,
         ])]),
         // A pajzs mindig a DOM-ban van (beszúrása és eltávolítása is megakadást okozna a nagy vászonréteg fölött);
         // nyugalomban nem kap egéreseményt, húzáskor csak a saját stílusa változik.
@@ -5873,25 +5997,12 @@ createApp({
         h("div", {class: "canvas-controls", "data-open": toolbarOpen.value}, [
           button("", () => { toolbarOpen.value = !toolbarOpen.value; }, {symbol: toolbarOpen.value ? "left" : "right",
             "aria-label": "Eszköztár", "aria-expanded": toolbarOpen.value}),
-          button("", toggleGrid, {
-            title: lined ? "Saját rács megjelenítése" : "Saját pontrács megjelenítése",
-            "aria-label": lined ? "Rács" : "Pontrács", "aria-pressed": gridVisible.value, symbol: "grid"}),
-          button("", () => { snapToGrid.value = !snapToGrid.value; savePreferences(); }, {title: "Rácsra igazítás", "aria-label": "Rácsra igazítás", "aria-pressed": snapToGrid.value, symbol: "snap"}),
-          button("", () => { panLocked.value = !panLocked.value; savePreferences(); },
-            {symbol: "hand", title: "Vászonmozgatás zárolása", "aria-label": "Vászonmozgatás zárolása", "aria-pressed": panLocked.value}),
-          button("", fit, {"aria-label": "Mind", title: "A teljes vászon megjelenítése", symbol: "fit-objects"}),
-          button("", toggleMotion, {title: motionOff.value ? "Animációk bekapcsolása" : "Animációk leállítása (minimális terhelés)",
-            "aria-label": "Animációk leállítása", "aria-pressed": motionOff.value, symbol: "pause"}),
-          button("", togglePlainBackground, {title: plainBackground.value ? "Díszítő háttér bekapcsolása" : "Díszítő háttér kikapcsolása (fények, textúrák)",
-            "aria-label": "Díszítő háttér kikapcsolása", "aria-pressed": plainBackground.value, symbol: "box-background"}),
+          renderViewGroup(lined),
+          renderFitGroup(),
           button("", () => { if (presenting.value) stopPresentation(); else presentChooser.value = !presentChooser.value; }, {
             class: "button present-tool", symbol: "play", disabled: !online.value || (!!presentation.value && !presenting.value && pageRole !== "admin"),
             title: presenting.value ? "Előadás befejezése" : "Előadás indítása (a többiek a te nézetedet követik)",
             "aria-label": "Előadás", "aria-pressed": presenting.value}),
-          button("", () => transfer(async () => {
-            if (document.fullscreenElement) await document.exitFullscreen();
-            else await document.documentElement.requestFullscreen();
-          }), {symbol: "fit", title: "Teljes képernyő", "aria-label": "Teljes képernyő", "data-canvas-fullscreen": "", "aria-pressed": fullscreen.value}),
         ]),
         h(ZoomLabel),
         board.value && !board.value.nodes.length ? h("p", {class: "canvas-empty"}, "Új dobozhoz kattints duplán az üres vászonra.") : null,
@@ -5964,15 +6075,17 @@ createApp({
         ...endpointActions(edge),
         button("Kapcsolat törlése", () => removeEdge(edge), {class: "button danger", symbol: "trash"}),
       ] : [
-        button("Ping", () => ping({point: clampPoint(open.position)}), {symbol: "center", disabled: !online.value}),
-        button("Objektum létrehozása", () => {
+        // A vászon menüje: csak ikonok, a felirat súgóként (title) és akadálymentes névként marad.
+        iconButton("Ping", () => ping({point: clampPoint(open.position)}), {symbol: "center", disabled: !online.value}),
+        iconButton("Objektum létrehozása", () => {
           menu.value = null;
           addNode(open.position);
         }, {disabled: !board.value, symbol: "plus"}),
-        button("Táblázat létrehozása", () => { menu.value = null; transfer(() => newTable(open.position)); }, {disabled: !board.value || !online.value, symbol: "grid"}),
-        button("Új munkalap", addSubworksheet, {symbol: "plus", disabled: !online.value}),
-        button("Középre állítás", () => { menu.value = null; centerOrigin(); }, {symbol: "center"}),
+        iconButton("Táblázat létrehozása", () => { menu.value = null; transfer(() => newTable(open.position)); }, {disabled: !board.value || !online.value, symbol: "table-grid"}),
+        iconButton("Új munkalap", addSubworksheet, {symbol: "file", disabled: !online.value}),
+        iconButton("Középre állítás", () => { menu.value = null; centerOrigin(); }, {symbol: "fit-content"}),
       ];
+      const iconMenu = type !== "node" && type !== "edge";
       // A menü mindig a böngészőablakon belül marad (jobbra/lent kilógás helyett eltolódik).
       const fit = ({el}) => {
         if (!el?.getBoundingClientRect || typeof innerWidth !== "number") return;
@@ -5984,13 +6097,42 @@ createApp({
       // A leíró `noMenu` típusain (pl. doboz) a hagyományos menü ki van kapcsolva: csak a gombok jelennek meg.
       if (open.tools) return renderQuickTools(open, menuDisabled(type, open.id)
         ? null : h("div", {class: "context-menu panel", "data-effects": graphics.value.effects, "aria-label": "Műveletek"}, entries));
-      return h("div", {class: "context-menu panel", "data-effects": graphics.value.effects, "aria-label": "Műveletek",
-        style: {left: open.x + "px", top: open.y + "px"}, onVnodeMounted: fit, onVnodeUpdated: fit}, entries);
+      return h("div", {class: ["context-menu panel", {"icon-menu": iconMenu}], "data-effects": graphics.value.effects, "aria-label": "Műveletek",
+        role: iconMenu ? "toolbar" : undefined, style: {left: open.x + "px", top: open.y + "px"}, onVnodeMounted: fit, onVnodeUpdated: fit}, entries);
     }
 
     // A tulajdonságpanel csoportjaiból csak a gombok (és a színválasztók), a panel sorai szerint: a szövegmezők,
     // számmezők, listák és feliratok kimaradnak (azok a panelen érhetők el). Eredmény: a sorok listája (egy sor = a
     // panel egy gombsora); ami nem gombsorban áll (pl. az igazítás gombjai), a csoportja végére kerül.
+    // Mezőgomb (a gyors eszközökben, a tulajdonságpanel helyett): ikon vagy érték a gombon, kattintásra lebegő réteg nyílik
+    // a mezővel (számmező, lista, szövegmező, jelölőnégyzetek). A szerkesztés lezárása ugyanúgy történik, mint a panelen
+    // volt: a mező elhagyásakor, választásnál azonnal (finishField). Kívülre kattintásra és Esc-re bezárul.
+    const FieldButton = {
+      props: {label: String, symbol: String, value: [String, Number], disabled: Boolean},
+      setup(props, {slots}) {
+        const open = ref(false), root = ref(null);
+        const outside = event => { if (!root.value?.contains(event.target)) open.value = false; };
+        watch(open, now => { if (now) addEventListener("pointerdown", outside, true); else removeEventListener("pointerdown", outside, true); });
+        onUnmounted(() => removeEventListener("pointerdown", outside, true));
+        return () => h("div", {class: "field-button", ref: root}, [
+          h("button", {type: "button", class: "button option-icon", ...controlName(props.label), disabled: props.disabled,
+            "aria-haspopup": "dialog", "aria-expanded": open.value, onClick: () => { open.value = !open.value; }},
+            [props.symbol ? icon(props.symbol) : null, props.value != null ? h("span", {class: "field-value"}, String(props.value)) : null]),
+          open.value ? h("div", {class: "color-tools floating field-popup stack", role: "dialog", "aria-label": props.label,
+            onVnodeMounted: ({el}) => { placePopup(el, el.parentNode?.querySelector?.("button"), quickDirection(el)); el.querySelector("input, select, textarea")?.focus(); },
+            onFocusin: event => { editingField = event.target.matches("textarea,input,select"); },
+            onFocusout: () => { editingObject.value = null; finishField(); },
+            onChange: event => { if (event.target.matches("select,input[type=checkbox],input[type=radio]")) finishField(); },
+            onInputCapture: () => { editingField = true; },
+            onKeydown: event => {
+              if (event.key === "Escape") { event.stopPropagation(); open.value = false; }
+              else if (event.key === "Enter" && !event.isComposing && event.target.matches("input")) { event.preventDefault(); event.target.blur(); }
+            }}, [h("span", {class: "field-popup-title"}, props.label), slots.default?.()]) : null,
+        ]);
+      },
+    };
+    const fieldButton = (label, options, content) => h(FieldButton, {label, ...options}, {default: () => content});
+
     function toolRows(panels) {
       const skipped = new Set(["input", "textarea", "select", "legend", "p", "small", "label"]);
       const named = (vnode, name) => [vnode.props?.class].flat().some(value => typeof value === "string" && value.split(" ").includes(name));
@@ -5999,7 +6141,7 @@ createApp({
         const collect = (vnode, row) => {
           if (Array.isArray(vnode)) { for (const child of vnode) collect(child, row); return; }
           if (!vnode || typeof vnode !== "object") return;
-          if (vnode.type === ColorPicker || vnode.type === "button") { row.push(vnode); return; }
+          if (vnode.type === ColorPicker || vnode.type === FieldButton || vnode.type === "button") { row.push(vnode); return; }
           if (typeof vnode.type !== "string" || skipped.has(vnode.type)) return;
           const own = named(vnode, "property-options") || named(vnode, "link-row") ? [] : row;
           if (own !== row) rows.push(own);
@@ -6052,6 +6194,7 @@ createApp({
     // Csak ikon: a feliratos gombokról a szöveg lekerül (súgóként megmarad), ha van mellette ikon.
     function quickButton(vnode) {
       if (vnode.type === ColorPicker) return cloneVNode(vnode, {floating: true});
+      if (vnode.type === FieldButton) return vnode;
       const children = [vnode.children].flat(), words = children.filter(child => typeof child === "string" && child.trim().length > 2);
       if (words.length && children.some(child => child && typeof child === "object")) {
         const name = words.join(" ").trim();
@@ -6067,7 +6210,7 @@ createApp({
     // a listát zárja, a gyors eszközöket nem). Egyszerre egy lehet nyitva.
     const openFlyout = ref(null);
     watch(menu, () => { openFlyout.value = null; });
-    const flyoutOutside = event => { if (!event.target?.closest?.(".quick-flyout")) openFlyout.value = null; };
+    const flyoutOutside = event => { if (!event.target?.closest?.(".quick-flyout, .toolbar-group-list")) openFlyout.value = null; };
     const flyoutEscape = event => {
       if (event.key !== "Escape") return;
       openFlyout.value = null;
@@ -6090,13 +6233,76 @@ createApp({
       const place = ({el}) => placePopup(el, el.parentNode?.querySelector?.(".quick-flyout-trigger"), quickDirection(el));
       return h("div", {class: "quick-flyout", key: "flyout-" + name}, [
         h("button", {type: "button", class: ["button option-icon quick-flyout-trigger", {idle: !current && !group.icon}], title, "aria-label": title,
-          "aria-haspopup": "true", "aria-expanded": open, onClick: () => { openFlyout.value = open ? null : name; }},
+          ...groupTrigger(name)},
           [...face, h("span", {class: "quick-flyout-mark", "aria-hidden": "true"})]),
         open ? h("div", {class: ["quick-flyout-list", "open-" + mode], role: "group", "aria-label": label,
           style: mode === "grid" ? {gridTemplateColumns: "repeat(" + Math.max(1, group.columns ?? 3) + ", 32px)"} : undefined,
           onVnodeMounted: place, onVnodeUpdated: place, onClick: () => { openFlyout.value = null; }}, buttons.map(quickButton)) : null,
       ]);
     }
+    // Csoportgomb (minden lenyíló csoport közös viselkedése, a lézer és az egérmutató választójával egyezően): jobb
+    // kattintásra mindig kinyílik; a bal kattintás a csoport fő művelete (`primary`), ha van – ilyenkor hosszú nyomásra
+    // (0,45 mp, érintéshez) is kinyílik –, különben nyit / zár. Az állapot csoportonként a renderelések között megmarad.
+    const groupPresses = new Map();
+    function groupTrigger(name, primary) {
+      const open = openFlyout.value === name;
+      const state = groupPresses.get(name) ?? groupPresses.set(name, {timer: null, opened: false}).get(name);
+      const cancel = () => clearTimeout(state.timer);
+      return {"aria-haspopup": "true", "aria-expanded": open,
+        onPointerdown: event => {
+          if (event.button !== 0 || !primary) return;
+          state.opened = false;
+          cancel();
+          state.timer = setTimeout(() => { state.opened = true; openFlyout.value = name; }, 450);
+        },
+        onPointerup: cancel, onPointerleave: cancel, onPointercancel: cancel,
+        onClick: () => {
+          if (state.opened) { state.opened = false; return; }
+          if (primary) { openFlyout.value = null; primary(); } else openFlyout.value = open ? null : name;
+        },
+        onContextmenu: event => { event.preventDefault(); event.stopPropagation(); openFlyout.value = name; }};
+    }
+    // Eszköztár-csoport: a gomb és a felfelé nyíló lista. A lista a vászon területére kerül (Teleport), nem az
+    // eszköztárba: annak görgethető sávja levágná / elcsúsztatná. A kapcsolók állapota a listában látszik, kapcsoláskor
+    // a lista nyitva marad; kívülre kattintásra vagy Esc-re bezárul (openFlyout).
+    function renderToolbarGroup({name, label, title, symbol, primary, options}) {
+      const open = openFlyout.value === name;
+      const place = ({el}) => placePopup(el, document.querySelector?.('.toolbar-group[data-group="' + name + '"] > .quick-flyout-trigger'), {y: "up"});
+      return h("div", {class: "quick-flyout toolbar-group", "data-group": name, key: name}, [
+        h("button", {type: "button", class: "button quick-flyout-trigger", title, "aria-label": label, ...groupTrigger(name, primary)},
+          [icon(symbol), h("span", {class: "quick-flyout-mark", "aria-hidden": "true"})]),
+        open ? h(window.Vue.Teleport, {to: zoomHost() ?? "body", disabled: !zoomHost()?.isConnected}, [h("div", {class: "quick-flyout-list open-column toolbar-group-list",
+          role: "group", "aria-label": label, onVnodeMounted: place, onVnodeUpdated: place},
+          options.map(([title, pressed, onClick, symbol, extra]) =>
+            button("", onClick, {class: "button option-icon", title, "aria-label": title, "aria-pressed": pressed, symbol, ...extra})))]) : null,
+      ]);
+    }
+    // „Rács és megjelenítés”: rácsra igazítás (S), saját (pont)rács (G), LowPerformance mód (L).
+    const renderViewGroup = lined => renderToolbarGroup({name: "toolbar-view", label: "Rács és megjelenítés", symbol: "grid",
+      title: "Rács és megjelenítés (rácsra igazítás: S, rács: G, LowPerformance: L; kattintásra nyílik)",
+      options: [
+        ["Rácsra igazítás (S)", snapToGrid.value, toggleSnap, "snap"],
+        [(lined ? "Saját rács megjelenítése" : "Saját pontrács megjelenítése") + " (G)", gridVisible.value, toggleGrid, "grid"],
+        ["LowPerformance mód (L): animációk és díszítő háttér ki, minimális terhelés", lowPerformance.value, toggleLowPerformance, "pause"],
+      ]});
+    // „Teljes vászon”: a gomb a teljes vásznat mutatja (H); a listában még a 100%-os nagyítás (Ctrl+H) és a teljes
+    // képernyő (Ctrl+F).
+    const renderFitGroup = () => renderToolbarGroup({name: "toolbar-fit", label: "Mind", symbol: "fit-objects", primary: fit,
+      title: "A teljes vászon megjelenítése (H); jobb kattintásra vagy nyomva tartva: 100% (Ctrl+H), teljes képernyő (Ctrl+F)",
+      options: [
+        ["A teljes vászon megjelenítése (H)", undefined, fit, "fit-objects"],
+        ["Nagyítás 100%-ra (Ctrl+H)", undefined, zoomActual, "zoom-actual"],
+        ["Teljes képernyő (Ctrl+F)", fullscreen.value, toggleFullscreen, "fit", {"data-canvas-fullscreen": ""}],
+      ]});
+    // 100%-os nagyítás (a nagyítási szint 0): a látható terület közepe helyben marad.
+    function zoomActual() { if (zoom) d3.select(zoomHost()).call(zoom.scaleTo, 1); }
+    function toggleFullscreen() {
+      transfer(async () => {
+        if (document.fullscreenElement) await document.exitFullscreen();
+        else await document.documentElement.requestFullscreen();
+      });
+    }
+
     // `list`: a helyi menü (vagy null, ha ki van kapcsolva). Elrendezés: a kattintás pontja az origó, onnan terjeszkedik
     // a blokk egy síknegyedbe: alapból jobbra és lefelé; ha jobbra nem fér el, balra, ha lefelé nem, felfelé (a
     // tengelyek külön döntenek). Az első sor első gombja mindig 5 képpontra áll a kattintástól: balra terjeszkedve a
@@ -6129,7 +6335,6 @@ createApp({
         const edge = board.value.edges.find(item => item.id === inspector.value.id);
         if (edge) {
           panels = edgePanels([edge]); type = "edge";
-          action("properties", "Szerkesztés", "property-panel", () => { menu.value = null; objectPanelOpen.value = true; openProperties("edge", edge.id); });
           action("delete", "Kapcsolat törlése", "trash", () => { menu.value = null; removeEdge(edge); }, {class: "danger"});
           action("ping", "Ping", "center", () => ping({point: clampPoint(open.position)}), {disabled: !online.value});
           action("edit-name", "Címke szerkesztése", "edit", () => editInline("edge", edge.id));
@@ -6139,7 +6344,6 @@ createApp({
         if (node && held.value === node.id && !occupied(node.id)) {
           panels = nodePanels([node]); type = node.type;
           // A hagyományos menü műveletei gombként (a menü kikapcsolása miatt itt érhetők el).
-          action("properties", "Szerkesztés", "property-panel", () => { menu.value = null; objectPanelOpen.value = true; openProperties("node", node.id); });
           action("delete", "Törlés", "trash", () => { menu.value = null; deleteNode(node); }, {class: "danger"});
           action("ping", "Ping", "center", () => ping({node: node.id}), {disabled: !online.value});
           // Név / megjegyzés szerkesztése a vásznon, a meglévő módon: doboz szövege a dobozon, fájlnév a doboz fölötti
@@ -6521,8 +6725,8 @@ createApp({
 
       if (common.has("label")) panels.push(group("Címke", [
         single ? input(single.text ?? "", v => change("text", v), {"aria-label": "Címke", "data-object-label": "", maxlength: 120}) : null,
-        propertyTools(h("span", {class: "muted"}, [icon("rotate")]),
-          numeric(value("angle", 0), v => change("angle", v ? Math.round(v) : undefined), -360, 360, {...controlName("Elforgatás (fok)"), step: 1})),
+        propertyTools(tool("rotation", fieldButton("Elforgatás (fok)", {symbol: "rotate", value: value("angle", 0) + "°"}, [
+          numeric(value("angle", 0), v => change("angle", v ? Math.round(v) : undefined), -360, 360, {...controlName("Elforgatás (fok)"), step: 1})]))),
       ]));
 
       if (common.has("file") && single) {
@@ -6557,7 +6761,8 @@ createApp({
             h("div", {class: "typography-rows"}, [propertyTools(
               tool("autosize", iconToggle("AutoSize", nodes.every(n => n.fitText), () => change("fitText", !nodes.every(n => n.fitText) || undefined),
                 optionSymbol("path", {d: "M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M8 16l4-8 4 8m-6.5-3h5"}))),
-              fontSize,
+              tool("font-size", fieldButton("Betűméret", {value: nodes.every(n => n.fitText) ? "A" : value("fontSize", 16),
+                disabled: nodes.every(n => n.fitText)}, [fontSize])),
               fontButton(1, "Alap betűtípus"), fontButton(2, "Második betűtípus"), fontButton(3, "Harmadik betűtípus"),
             ), propertyTools(
               tool("text-color", color("Szövegszín", "textColor", 1)),
@@ -6599,7 +6804,8 @@ createApp({
               h("p", {class: "muted"}, "Szerkesztés: dupla kattintás a dobozon, befejezés: Esc."),
             ]),
           propertyTools(
-            numeric(single.fontSize ?? 14, v => change("fontSize", Math.round(v)), 6, 72, {...controlName("Betűméret"), step: 1, clampValue: true}),
+            tool("font-size", fieldButton("Betűméret", {value: single.fontSize ?? 14},
+              [numeric(single.fontSize ?? 14, v => change("fontSize", Math.round(v)), 6, 72, {...controlName("Betűméret"), step: 1, clampValue: true})])),
             color("Szövegszín", "textColor", 1),
             single.type === "code" ? null : uppercaseToggle(nodes, change),
             single.type === "csv" ? null : fitContentButton(single),
@@ -6628,8 +6834,9 @@ createApp({
         const doc = tableOf(single);
         const editing = tableEdit.value?.id === single.id;
         panels.push(group("Táblázat", [
-          doc ? h("input", {class: "input", "aria-label": "Táblázat neve", placeholder: "Táblázat neve", value: doc.name ?? "",
-              onChange: e => modifyTable(single, next => { next.name = e.target.value.trim() || undefined; })}) : h("p", {class: "muted"}, "Betöltés…"),
+          doc ? propertyTools(tool("table-name", fieldButton("Táblázat neve", {symbol: "edit"}, [
+              h("input", {class: "input", "aria-label": "Táblázat neve", placeholder: "Táblázat neve", value: doc.name ?? "",
+                onChange: e => modifyTable(single, next => { next.name = e.target.value.trim() || undefined; })})]))) : h("p", {class: "muted"}, "Betöltés…"),
           propertyTools(
             button(editing ? "Szerkesztés vége" : "Cellák szerkesztése", () => editing ? stopTableEdit() : startTableEdit(single), {symbol: "table-grid", disabled: !doc}),
             iconToggle("Fejlécsor rögzítése", (doc?.header?.rows ?? 0) > 0,
@@ -6643,7 +6850,11 @@ createApp({
           propertyTools(button("Grafikon létrehozása", () => addChartBox(single), {symbol: "chart", disabled: !online.value})),
           propertyTools(
             button("Tartalom cseréje fájlból…", () => transfer(() => reimportTable(single)), {symbol: "restore", disabled: !online.value || !!occupied(single.id)}),
-            h("a", {class: "button", href: exportURL(fileSheet(path, single.file), single.file.asset, "csv"), download: ""}, [icon("download"), "CSV"]),
+            tool("table-csv", button("", () => {
+              const link = document.createElement("a");
+              link.href = exportURL(fileSheet(path, single.file), single.file.asset, "csv"); link.download = "";
+              document.body.append(link); link.click(); link.remove();
+            }, {class: "button option-icon", symbol: "download", ...controlName("Letöltés CSV-ként")})),
             h("small", {class: "muted", role: "status"}, fileSaveState.value.get(single.id) ?? ""),
           ),
         ]));
@@ -6666,19 +6877,22 @@ createApp({
         const scatter = chart.kind === "scatter", pie = chart.kind === "pie";
         const numericColumns = data?.columns.filter(column => column.numeric && column.index !== data.labelColumn) ?? [];
         const limitReached = data && data.valueColumns.length >= (pie ? 1 : scatter ? 3 : module.maximumSeries);
-        panels.push(group("Grafikon", [
+        const sourceNote = source ? h("p", {class: "muted"}, "Forrás: " + nodeName(source))
+          : h("p", {class: "muted"}, "Nincs bekötött táblázat. Húzz vonalat egy táblázatból vagy CSV-ből a grafikonra (Ctrl+húzás).");
+        const labelName = scatter ? "X tengely" : pie ? "Szeletek neve" : "Kategóriák";
+        panels.push(group("Grafikon", [propertyTools(
           // A sorozatok kiosztása típusonként más (kör: egy, pont: szám az x tengelyen), ezért váltáskor újra automatikus.
-          picker("Típus", chart.kind, Object.entries(kinds).map(([id, name]) => [id, name + "diagram"]),
-            kind => change("chart", {kind, ...(chart.header === false ? {header: false} : {})})),
-          source ? h("p", {class: "muted"}, "Forrás: " + nodeName(source))
-            : h("p", {class: "muted"}, "Nincs bekötött táblázat. Húzz vonalat egy táblázatból vagy CSV-ből a grafikonra (Ctrl+húzás)."),
-          source && !data ? h("p", {class: "muted"}, rows === null ? "A táblázat nem olvasható." : "Betöltés…") : null,
-          data ? picker(scatter ? "X tengely" : pie ? "Szeletek neve" : "Kategóriák", chart.labels == null ? "auto" : String(chart.labels), [
+          tool("chart-type", fieldButton("Grafikon típusa", {symbol: "chart", value: kinds[chart.kind] ?? chart.kind}, [
+            picker("Típus", chart.kind, Object.entries(kinds).map(([id, name]) => [id, name + "diagram"]),
+              kind => change("chart", {kind, ...(chart.header === false ? {header: false} : {})})),
+            sourceNote,
+            source && !data ? h("p", {class: "muted"}, rows === null ? "A táblázat nem olvasható." : "Betöltés…") : null])),
+          data ? tool("chart-labels", fieldButton(labelName, {symbol: "list"}, [picker(labelName, chart.labels == null ? "auto" : String(chart.labels), [
             ["auto", "Automatikus" + (data.labelColumn != null && chart.labels == null ? " (" + data.columns[data.labelColumn].name + ")" : "")],
             ...(scatter ? [] : [["-1", "Sorszám"]]),
             ...data.columns.filter(column => column.used && (!scatter || column.numeric)).map(column => [String(column.index), column.name]),
-          ], value => update({labels: value === "auto" ? undefined : Number(value), values: undefined})) : null,
-          data ? h("div", {class: "chart-columns", role: "group", "aria-label": "Értékoszlopok"}, [
+          ], value => update({labels: value === "auto" ? undefined : Number(value), values: undefined})), sourceNote])) : null,
+          data ? tool("chart-values", fieldButton(pie ? "Értékek" : "Értékoszlopok", {symbol: "table-grid"}, [h("div", {class: "chart-columns", role: "group", "aria-label": "Értékoszlopok"}, [
             h("span", pie ? "Értékek" : "Értékoszlopok"),
             numericColumns.length ? numericColumns.map(column => {
               const on = data.valueColumns.includes(column.index);
@@ -6692,14 +6906,10 @@ createApp({
                 h("span", column.name),
               ]);
             }) : h("small", {class: "muted"}, "Nincs számoszlop."),
-          ]) : null,
-          source ? h("label", {class: "check"}, [
-            h("input", {type: "checkbox", checked: chart.header !== false, disabled: !online.value,
-              onChange: event => update({header: event.target.checked ? undefined : false})}),
-            h("span", "Az első sor fejléc"),
-          ]) : null,
-          data?.truncated ? h("p", {class: "muted"}, "A grafikon a táblázat elejét mutatja (" + data.labels.length + " sor).") : null,
-        ]));
+          ]), data?.truncated ? h("p", {class: "muted"}, "A grafikon a táblázat elejét mutatja (" + data.labels.length + " sor).") : null])) : null,
+          source ? tool("chart-header", iconToggle("Az első sor fejléc", chart.header !== false,
+            () => update({header: chart.header !== false ? false : undefined}), icon("heading"), !online.value)) : null,
+        )]));
       }
 
       if (common.has("comment")) {
@@ -6768,8 +6978,9 @@ createApp({
         ] : framed ? [
           iconToggle(framing ? "Keret: be" : "Keret: ki", framing,
             () => change("frame", node => isImage(node) ? (framing ? undefined : true) : (framing ? false : undefined)), icon("box-empty")),
-          numeric(value("frameWidth", boxFrameWidth), v => change("frameWidth", v === boxFrameWidth ? undefined : v), .5, 32,
-            {...controlName("Keret vastagsága"), step: .5, clampValue: true, disabled: !framing}),
+          tool("frame-width", fieldButton("Keret vastagsága", {value: value("frameWidth", boxFrameWidth), disabled: !framing}, [
+            numeric(value("frameWidth", boxFrameWidth), v => change("frameWidth", v === boxFrameWidth ? undefined : v), .5, 32,
+              {...controlName("Keret vastagsága"), step: .5, clampValue: true, disabled: !framing})])),
         ] : [];
         panels.push(group("Megjelenés", [
           h("div", {class: "property-options property-tools box-effect-options"}, [
@@ -6780,7 +6991,8 @@ createApp({
       }
 
       if (common.has("diameter")) panels.push(group("Megjelenés", [propertyTools(
-        numeric(value("width", 12), size => change("width", node => { node.height = size; return size; }), 4, 128, controlName("Átmérő")),
+        tool("diameter", fieldButton("Átmérő", {value: value("width", 12)}, [
+          numeric(value("width", 12), size => change("width", node => { node.height = size; return size; }), 4, 128, controlName("Átmérő"))])),
         color("Szín", "fill", 2),
       )]));
 
@@ -6799,7 +7011,7 @@ createApp({
         panels.unshift(h("fieldset", {class: "property-group stack link-group"}, [
           h("legend", [h("span", "Link · " + kindLabel)]),
           h("div", {class: "link-row"}, [
-            single.link.kind === "web" ? h("input", {"aria-label": "Weboldal neve (a mappa is átnevezve)", value: linkCaption(single.link), maxlength: 80,
+            single.link.kind === "web" ? tool("web-name", fieldButton("Weboldal neve (a mappa is átnevezve)", {symbol: "edit"}, [h("input", {"aria-label": "Weboldal neve (a mappa is átnevezve)", value: linkCaption(single.link), maxlength: 80,
                 onChange: event => {
                   const field = event.target, name = field.value.trim(), previous = linkCaption(single.link);
                   if (name === previous) return;
@@ -6818,13 +7030,13 @@ createApp({
                       modified();
                     } catch (error) { field.value = previous; throw error; }
                   });
-                }}) : h("input", {"aria-label": "Link célja", value: single.link.target, maxlength: 2048,
+                }})])) : tool("link-target", fieldButton("Link célja", {symbol: "link"}, [h("input", {"aria-label": "Link célja", value: single.link.target, maxlength: 2048,
                 onChange: event => {
                   const raw = event.target.value.trim();
                   const target = single.link.kind === "url" ? externalURL(raw) : worksheetLink(raw, path)?.kind === "worksheet" ? raw : null;
                   if (!target) { problem.value = "Érvénytelen hivatkozás."; event.target.value = single.link.target; return; }
                   change("link", {kind: single.link.kind, target});
-                }}),
+                }})])),
             destination ? tool("link-open", button("", () => followBoxLink(destination), {symbol: single.link.kind === "url" ? "website" : "right", class: "button option-icon", ...controlName("Megnyitás")})) : null,
           ]),
           // Második sor: a többi gomb.
@@ -6877,30 +7089,6 @@ createApp({
           single ? h("span", {class: "endpoint-actions"}, endpointActions(single, true)) : null,
         ])]),
       ];
-    }
-
-    function renderInspector() {
-      tally("inspector");
-      if (!objectPanelOpen.value || !selected.value && !batch.value) return null;
-      if (batch.value) {
-        const nodes = board.value.nodes.filter(n => batch.value.nodes.has(n.id) && !occupied(n.id));
-        const edges = board.value.edges.filter(e => batch.value.edges.has(e.id));
-        const joints = nodes.filter(isJunction).length;
-        const summary = (nodes.length-joints)+" doboz, "+edges.length+" vonal, "+joints+" csomópont";
-        return sidebar("Objektumok", [
-          h("p", {class: "muted"}, summary),
-          ...(nodes.length ? nodePanels(nodes) : []),
-          ...(edges.length ? edgePanels(edges) : []),
-        ]);
-      }
-      if (!inspector.value) return null;
-      if (inspector.value.kind === "edge") {
-        const edge = board.value.edges.find(item => item.id === inspector.value.id);
-        return edge ? sidebar("Vonal szerkesztése", edgePanels([edge])) : null;
-      }
-      const node = nodeMap.value.get(inspector.value.id);
-      if (!node || held.value !== node.id || occupied(node.id)) return null;
-      return sidebar(isJunction(node) ? typeLabel(node.type) : typeLabel(node.type) + " szerkesztése", nodePanels([node]));
     }
 
     const topRow = mount.closest?.(".editor-root")?.querySelector(".worksheet-nav");
@@ -7006,19 +7194,12 @@ createApp({
         }}, [
           renderCanvas(),
           problem.value || currentStatus ? h("p", {class: ["canvas-status", {error: problem.value}], role: "status"}, problem.value || currentStatus) : null,
-          h("div", {class: "inspector-column"}, [renderInspector()]),
           canvasPanelOpen.value ? h("div", {class: "inspector-column canvas-inspector-column"}, [renderCanvasInspector()]) : null,
           renderAppearancePopup(),
           renderSearch(),
           h(topRow ? window.Vue.Teleport : "div", topRow ? {to: topRow} : {}, [
           renderHeader(),
           h("a", {class: [headerButtonClass, "worksheet-close"], href: "/" + path, title: "Szerkesztő bezárása", "aria-label": "Bezárás", onClick: switchToViewer}, [icon("close")]),
-          headerButton(() => { finishField(); editingObject.value = null; objectPanelOpen.value = !objectPanelOpen.value; }, {
-            class: ["sidebar-open", {active: (selected.value || batch.value) && !objectPanelOpen.value}],
-            "aria-expanded": objectPanelOpen.value,
-            "aria-label": objectPanelOpen.value ? "Oldalsáv bezárása" : "Oldalsáv megnyitása",
-            symbol: "property-panel",
-          }),
           headerButton(() => { finishField(); canvasPanelOpen.value = !canvasPanelOpen.value; if (canvasPanelOpen.value) loadPreviewImages(); }, {
             class: "sidebar-open sidebar-open-canvas",
             "aria-expanded": canvasPanelOpen.value,

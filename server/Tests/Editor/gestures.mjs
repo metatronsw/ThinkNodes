@@ -61,7 +61,7 @@ globalThis.document = {documentElement: {dataset: {display: "light"}}, querySele
   createTreeWalker: () => ({nextNode: () => null})};
 const storage = new Map();
 globalThis.window = {getSelection: () => ({rangeCount: 0, setBaseAndExtent() {}}), localStorage: {getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value)},
-  Vue: {...Vue, createApp: renderer.createApp}, addEventListener(key, fn) { listeners[key] = fn; },
+  Vue: {...Vue, createApp: renderer.createApp}, addEventListener(key, fn) { listeners[key] = fn; }, removeEventListener() {},
   d3: {...d3, zoom, pointer: e => [e.clientX, e.clientY],
     select: () => ({call(fn, ...args) { fn(this, ...args); return this; }, on() { return this; }})}};
 globalThis.NodeFilter = {SHOW_TEXT: 4};
@@ -258,38 +258,82 @@ assert.ok(find(n => n.tag === "input" && n.props.value === sheet.title, canvasPa
 assert.equal(find(n => n.tag === "button" && text(n) === "Sorkizárás", canvasPanel()), undefined);
 assert.ok(button("Fájl feltöltése"));
 const emptyCanvasEvent = (x, y) => event(canvas(), x, y, {target: {closest: () => null}});
-const panLock = prop("aria-label", "Vászonmozgatás zárolása");
+// Egérrel csak a jobb gomb pásztáz (objektum fölött is); a bal gomb, a szóköz és a vászonmozgatás-zár megszűnt.
+assert.equal(prop("aria-label", "Vászonmozgatás zárolása"), undefined, "no pan-lock toolbar button");
 const plainPress = {button: 0, type: "mousedown", target: {closest: () => null}};
-panLock.props.onClick(); await tick();
-assert.equal(zoomEvents.filter(plainPress), false);
+const rightPan = {...plainPress, button: 2};
+assert.equal(zoomEvents.filter(plainPress), false, "the left button does not pan");
+assert.equal(zoomEvents.filter({...plainPress, target: {closest: () => graphic("outer")}}), false);
+assert.equal(zoomEvents.filter(rightPan), true, "the right button pans the empty canvas");
+assert.equal(zoomEvents.filter({...rightPan, target: {closest: () => graphic("outer")}}), true, "the right button pans over objects too");
+assert.equal(zoomEvents.filter({...rightPan, ctrlKey: true}), false, "Ctrl + right button is left for cables");
 const touches = (coordinates) => ({preventDefault() {}, touches: coordinates.map(([clientX, clientY], identifier) =>
   ({identifier, clientX, clientY}))});
-canvas().props.onTouchstartCapture(touches([[10, 10], [30, 10]]));
-canvas().props.onTouchmoveCapture(touches([[18, 16], [38, 16]]));
-assert.deepEqual([requestedZoom.x, requestedZoom.y, requestedZoom.k], [8, 6, 1]);
-canvas().props.onTouchmoveCapture(touches([[17, 16], [43, 16]]));
-assert.deepEqual([requestedZoom.x, requestedZoom.y, requestedZoom.k], [10, 6, 1]);
-canvas().props.onTouchmoveCapture(touches([[0, 10], [40, 10]]));
-assert.equal(requestedZoom.k, 1.7);
-canvas().props.onTouchmoveCapture(touches([[2, 10], [40, 10]]));
-assert.equal(requestedZoom.k, 1.7);
-canvas().props.onTouchendCapture(touches([]));
+// Csípés: mozdulat közben csak előnézet (nincs nézet-rögzítés, zoom.transform), a felengedés után rövid nyugalommal rögzül.
+const committedView = () => {
+  const g = find(n => n.tag === "g" && /^translate\([^)]*\) scale\(/.test(String(n.props?.transform ?? "")));
+  const [, x, y, k] = String(g.props.transform).match(/^translate\(([-\d.e]+),([-\d.e]+)\) scale\(([-\d.e]+)\)/);
+  return [+(+x).toFixed(3), +(+y).toFixed(3), +(+k).toFixed(3)];
+};
+const pinchStart = requestedZoom;
+const pinch = async (moves) => {
+  canvas().props.onTouchstartCapture(touches(moves[0]));
+  for (const move of moves.slice(1)) canvas().props.onTouchmoveCapture(touches(move));
+  assert.equal(requestedZoom, pinchStart, "no view commit while pinching");
+  canvas().props.onTouchendCapture(touches([]));
+  await new Promise(resolve => setTimeout(resolve, 450)); await tick();
+};
+const before = committedView();
+await pinch([[[10, 10], [30, 10]], [[18, 16], [38, 16]]]);
+assert.deepEqual(committedView(), [before[0] + 8, before[1] + 6, before[2]], "a two finger move pans");
+const panned = committedView();
+await pinch([[[0, 10], [200, 10]], [[10, 20], [228, 20]], [[20, 30], [238, 30]]]);
+assert.equal(committedView()[2], panned[2], "a slightly changing finger distance only pans (pinch threshold)");
+await pinch([[[0, 10], [100, 10]], [[-100, 10], [200, 10]], [[-98, 10], [200, 10]]]);
+// 100 → 300 képpont: a 30 képpontos küszöb után ugrás nélkül indul ((300 − 30 − 6 tűrés) / 100).
+assert.equal(committedView()[2], 2.64, "pinching zooms beyond the threshold without a jump");
 assert.equal(zoomEvents.filter({...plainPress, type: "wheel"}), true);
 listeners.keydown({key: " ", code: "Space", preventDefault() {}});
 await tick();
-assert.equal(canvas().props["data-drag-cursor"], "grab");
-assert.equal(zoomEvents.filter({...plainPress, target: {closest: () => graphic("outer")}}), true);
-canvas().props.onPointerdownCapture(event(canvas(), 0, 0, {target: graphic("outer")}));
-canvas().props.onPointermove(event(canvas(), 35, -12));
+assert.equal(canvas().props["data-drag-cursor"], undefined, "Space no longer switches to panning");
+listeners.keyup({type: "keyup", key: " ", code: "Space"});
+// Jobb kattintás: a helyi menü a felengedéskor nyílik, ha közben nem volt (küszöb fölötti) mozgás.
+globalThis.innerWidth = 1200;
+globalThis.innerHeight = 800;
+const contextMenuOpen = () => !!button("Objektum létrehozása");
+const rightAt = (x, y, extra = {}) => event(canvas(), x, y, {button: 2, target: {closest: () => null}, ...extra});
+const rightRelease = (x, y, type = "pointerup") => listeners[type]({...rightAt(x, y), type});
+// macOS: a contextmenu már a lenyomáskor jön; a menü csak felengedéskor nyílik.
+canvas().props.onPointerdownCapture(rightAt(300, -100));
+canvas().props.onContextmenu(rightAt(300, -100));
 await tick();
-assert.deepEqual([requestedZoom.x, requestedZoom.y], [35, -12]);
-// Húzás közben a kurzort a vászon fölötti pajzs adja (editor.js DragShield), a vászon attribútuma nem változik:
-// az attribútum váltása Safariban a teljes vászon stílusát újraszámoltatta (docs/PERF.md).
-assert.equal(canvas().props["data-drag-cursor"], undefined);
-canvas().props.onPointerup(event(canvas(), 35, -12));
-listeners.keyup({type: "keyup", code: "Space"});
-panLock.props.onClick(); await tick();
-assert.equal(zoomEvents.filter(plainPress), true);
+assert.ok(!contextMenuOpen(), "the menu waits for the release");
+rightRelease(302, -98);
+await tick();
+assert.ok(contextMenuOpen(), "a still right click opens the menu on release");
+toggle("Escape", true); await tick();
+// Mozgással (pásztázás) nincs menü, akármikor jön a contextmenu.
+canvas().props.onPointerdownCapture(rightAt(300, -100));
+canvas().props.onContextmenu(rightAt(300, -100));
+listeners.pointermove({...rightAt(340, -60), type: "pointermove"});
+rightRelease(300, -100);
+await tick();
+assert.ok(!contextMenuOpen(), "a right drag pans without opening the menu");
+// Windows: a contextmenu a felengedés után jön.
+canvas().props.onPointerdownCapture(rightAt(300, -100));
+rightRelease(301, -100);
+canvas().props.onContextmenu(rightAt(301, -100));
+await tick();
+assert.ok(contextMenuOpen(), "contextmenu after a still release opens the menu");
+toggle("Escape", true); await tick();
+canvas().props.onPointerdownCapture(rightAt(300, -100));
+listeners.pointermove({...rightAt(300, -140), type: "pointermove"});
+rightRelease(300, -100);
+canvas().props.onContextmenu(rightAt(300, -100));
+await tick();
+assert.ok(!contextMenuOpen(), "contextmenu after a right drag is ignored");
+oneWire().props.onClick(); await tick();
+assert.ok(panel() && canvasPanel());
 const wirePointerHandler = oneWire().props.onPointerdown;
 canvas().props.onPointerdownCapture(emptyCanvasEvent(280, 180));
 zoomEvents.zoom({transform: d3.zoomIdentity.translate(25, 15), sourceEvent: {type: "mousemove"}});
@@ -920,8 +964,30 @@ assert.equal(automaticGridColor("#ffffff"), "#808080");
 assert.equal(automaticGridColor("#000000"), "#808080");
 assert.equal(automaticGridColor("#112233"), "#889199");
 assert.equal(automaticGridColor("#ddeeff"), "#6f7780");
-const snapSwitch = () => prop("aria-label", "Rácsra igazítás");
+// A rácsra igazítás, a rács és a LowPerformance mód a „Rács és megjelenítés” csoportban van (S, G, L billentyűvel is).
+// A tesztkörnyezet típusonként egy figyelőt tárol: a csoport megnyitásakor a lenyíló Esc-figyelője felülírná.
+const editorKeys = listeners.keydown;
+const viewGroup = () => prop("aria-label", "Rács és megjelenítés");
+const openView = async () => { if (viewGroup().props["aria-expanded"] !== true) { viewGroup().props.onClick(); await tick(); } };
+const labelled = prefix => find(n => n.tag === "button" && String(n.props["aria-label"] ?? "").startsWith(prefix));
+const snapSwitch = () => labelled("Rácsra igazítás");
+assert.equal(labelled("Rácsra igazítás"), undefined, "the view settings are inside the closed group");
+viewGroup().props.onContextmenu({preventDefault() {}, stopPropagation() {}}); await tick();
+assert.equal(viewGroup().props["aria-expanded"], true, "right click opens a group");
+await openView();
 assert.equal(snapSwitch().props["aria-pressed"], false);
+editorKeys({key: "s"}); await tick();
+assert.equal(snapSwitch().props["aria-pressed"], true, "S toggles snapping");
+editorKeys({key: "s"}); await tick();
+assert.equal(snapSwitch().props["aria-pressed"], false);
+editorKeys({key: "s", target: {closest: selector => selector.includes("input") ? {} : null}}); await tick();
+assert.equal(snapSwitch().props["aria-pressed"], false, "S does nothing while typing");
+const lowSwitch = () => labelled("LowPerformance mód");
+assert.equal(lowSwitch().props["aria-pressed"], false);
+editorKeys({key: "l"}); await tick();
+assert.equal(lowSwitch().props["aria-pressed"], true, "L toggles the low performance mode");
+editorKeys({key: "l"}); await tick();
+assert.equal(lowSwitch().props["aria-pressed"], false);
 snapSwitch().props.onClick(); await tick();
 const start = model("auto").position;
 await drag(graphic("auto"), start.x, start.y, 121, -83);
@@ -946,15 +1012,20 @@ await press("Visszavonás"); await save();
 await press("Visszavonás"); await save();
 assert.equal(edge(snappedWire), undefined);
 
+await openView();
 snapSwitch().props.onClick(); await tick();
 const transform = d3.zoomIdentity.translate(35, 75).scale(2);
 zoomEvents.zoom({transform}); await tick();
 const gridWrites = writes;
-prop("aria-label", "Pontrács").props.onClick(); await tick();
+await openView();
+assert.equal(labelled("Saját pontrács").props["aria-pressed"], true);
+editorKeys({key: "g"}); await tick();
 await new Promise(resolve => setTimeout(resolve, 100));
 assert.equal(writes, gridWrites);
 assert.equal(sheet.gridVisible, undefined);
 assert.equal(savedPreferences.showGrid, false);
+viewGroup().props.onClick(); await tick();
+listeners.keydown = editorKeys;
 toggle("Enter", true); await tick();
 const search = prop("aria-label", "Keresés a munkalapon");
 assert.ok(search);
@@ -1214,6 +1285,7 @@ globalThis.innerHeight = 800;
 const contextClick = event(canvas(), 310, -130, {button: 2, target: {closest: () => null}});
 canvas().props.onPointerdownCapture(contextClick);
 canvas().props.onContextmenu(contextClick);
+listeners.pointerup({...contextClick, type: "pointerup"});
 await tick();
 await press("Objektum létrehozása"); await save();
 assert.deepEqual(sheet.nodes.at(-1).position, {x: 310, y: -130});
@@ -1221,6 +1293,7 @@ assert.deepEqual(titleActions, ["focus", "", "focus", ""]);
 window.prompt = () => "jegyzet";
 canvas().props.onPointerdownCapture(contextClick);
 canvas().props.onContextmenu(contextClick);
+listeners.pointerup({...contextClick, type: "pointerup"});
 await tick();
 titleActions.length = 0;
 const beforeCreatingWorksheet = sheet.nodes.length;

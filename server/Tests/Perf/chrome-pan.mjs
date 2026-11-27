@@ -23,15 +23,16 @@ async function zoomTo100() {
   }
   return js("document.querySelector('.canvas-area').__zoom.k");
 }
+const right = {button: "right"};
 async function pan(dx, dy) {
   const p = await js("__perf.emptyPoint()");
   if (!p) return false;
-  // Hirtelen rántás (60% / 4 képkocka), majd lassú finomhúzás (40% / 40 képkocka).
-  await mouse("mouseMoved", p.x, p.y); await mouse("mousePressed", p.x, p.y, 1); await sleep(30);
+  // Hirtelen rántás (60% / 4 képkocka), majd lassú finomhúzás (40% / 40 képkocka). A vásznat a jobb gomb pásztázza.
+  await mouse("mouseMoved", p.x, p.y); await mouse("mousePressed", p.x, p.y, 2, right); await sleep(30);
   let x = p.x, y = p.y;
-  for (let i = 1; i <= 4; i++) { x = p.x + dx * .6 * i / 4; y = p.y + dy * .6 * i / 4; await mouse("mouseMoved", x, y, 1); await sleep(16); }
-  for (let i = 1; i <= 40; i++) { await mouse("mouseMoved", x + dx * .4 * i / 40, y + dy * .4 * i / 40, 1); await sleep(16); }
-  await mouse("mouseReleased", p.x + dx, p.y + dy, 0);
+  for (let i = 1; i <= 4; i++) { x = p.x + dx * .6 * i / 4; y = p.y + dy * .6 * i / 4; await mouse("mouseMoved", x, y, 2, right); await sleep(16); }
+  for (let i = 1; i <= 40; i++) { await mouse("mouseMoved", x + dx * .4 * i / 40, y + dy * .4 * i / 40, 2, right); await sleep(16); }
+  await mouse("mouseReleased", p.x + dx, p.y + dy, 0, right);
   await sleep(120);
   return true;
 }

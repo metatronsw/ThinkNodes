@@ -272,3 +272,15 @@ kijelöléskor és mozgatáskor „véletlenszerű” akadások.
   elrendezés) – Safariban minden betöltés után az első húzások végén 55–72 ms, Chrome-ban hidegen 83–118 ms. Most a görgős
   nagyításhoz hasonlóan 400 ms nyugalom után rögzül (`perfOptions.panCommit`); egymás utáni húzások között nincs rögzítés.
 - Összetett pásztázás 100%-on (34 húzás): Chrome meleg körben hibátlan (60 fps, max 17,9 ms).
+
+## Lézer pointer: SVG helyett canvas – 2026-11-27 (Chrome, p1000, animációk ki)
+
+- A vászon-SVG-ben képkockánként változó elem (lézervonal) minden képkockában festést (~10 ms) és rétegezést
+  (`Layerize` / `PaintArtifactCompositor::Update`, ~9 ms) okoz a 20 ezer elemes lapon: rajzolás közben 38–44 fps.
+- Külön SVG a vászon fölött (akár `will-change`-dzsel, akár anélkül) rosszabb: a rétegezés képkockánként a teljes lapon
+  újrafut (~39 ms), 18 fps.
+- `<canvas>` a látható terület méretében: a tartalom változása nem jár festéssel és rétegezéssel, 60 fps. A canvas a
+  munkalap képernyő-mátrixával (`getScreenCTM`, a mozdulat közbeni CSS-transzformmal együtt) rajzol, így követi a
+  pásztázást; vonal nélkül nincs háttértára és nincs rAF.
+- Tanulság: képkockánként változó, nem mentett rajz (lézer, ideiglenes jelölés) canvasra kerüljön, ne a vászon-SVG-be.
+

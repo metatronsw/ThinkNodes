@@ -536,6 +536,8 @@ const live = liveConnection(path, csrf, async state => {
   scheduleMotion();
   const previousMine = peers.find(peer => peer.mine);
   peers = state.participants;
+  // Aki kilépett, annak a rajza (lézer, filc) eltűnik.
+  laser.retain(peers.map(peer => peer.id));
   const mine = peers.find(peer => peer.mine);
   if (selection && main.dataset.member === "true" && !mine?.node && !previousMine) {
     selectBox(main.querySelector('[data-node="' + CSS.escape(selection) + '"]'), true);

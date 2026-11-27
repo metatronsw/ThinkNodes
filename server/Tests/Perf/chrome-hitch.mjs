@@ -8,14 +8,16 @@ const [sheet = "LiquidGlass", rounds = "2", query = ""] = process.argv.slice(2);
 const chrome = await launch();
 const {send, js} = chrome;
 const recorder = readFileSync(new URL("./recorder.js", import.meta.url), "utf8");
-const mouse = (type, x, y, buttons = 0) => send("Input.dispatchMouseEvent", {type, x: Math.round(x), y: Math.round(y), button: type === "mouseMoved" && !buttons ? "none" : "left", buttons, clickCount: type === "mouseMoved" ? 0 : 1});
-async function drag(points, steps, hold = 120) {
-  await mouse("mouseMoved", ...points[0]); await mouse("mousePressed", ...points[0], 1); await sleep(hold);
+const mouse = (type, x, y, buttons = 0, button = "left") => send("Input.dispatchMouseEvent", {type, x: Math.round(x), y: Math.round(y), button: type === "mouseMoved" && !buttons ? "none" : button, buttons, clickCount: type === "mouseMoved" ? 0 : 1});
+// A vásznat a jobb gomb pásztázza (button = "right"), a dobozt a bal gomb mozgatja.
+async function drag(points, steps, hold = 120, button = "left") {
+  const held = button === "right" ? 2 : 1;
+  await mouse("mouseMoved", ...points[0]); await mouse("mousePressed", ...points[0], held, button); await sleep(hold);
   for (let k = 1; k < points.length; k++) {
     const [x0, y0] = points[k - 1], [x1, y1] = points[k];
-    for (let i = 1; i <= steps; i++) { await mouse("mouseMoved", x0 + (x1 - x0) * i / steps, y0 + (y1 - y0) * i / steps, 1); await sleep(16); }
+    for (let i = 1; i <= steps; i++) { await mouse("mouseMoved", x0 + (x1 - x0) * i / steps, y0 + (y1 - y0) * i / steps, held, button); await sleep(16); }
   }
-  await sleep(60); await mouse("mouseReleased", ...points.at(-1), 0);
+  await sleep(60); await mouse("mouseReleased", ...points.at(-1), 0, button);
 }
 async function click(x, y) { await mouse("mouseMoved", x, y); await mouse("mousePressed", x, y, 1); await sleep(40); await mouse("mouseReleased", x, y, 0); }
 async function recorded(run) {
@@ -41,9 +43,9 @@ try {
     await sleep(1500);
     show("második mozg.", await recorded(() => drag([[box.x, box.y], [box.x + 220, box.y + 140], [box.x, box.y]], 30)));
     await sleep(1500);
-    show("első pásztázás", await recorded(() => drag([[empty.x, empty.y], [empty.x + 500, empty.y + 250], [empty.x, empty.y]], 40)));
+    show("első pásztázás", await recorded(() => drag([[empty.x, empty.y], [empty.x + 500, empty.y + 250], [empty.x, empty.y]], 40, 120, "right")));
     await sleep(1500);
-    show("második pászt.", await recorded(() => drag([[empty.x, empty.y], [empty.x + 500, empty.y + 250], [empty.x, empty.y]], 40)));
+    show("második pászt.", await recorded(() => drag([[empty.x, empty.y], [empty.x + 500, empty.y + 250], [empty.x, empty.y]], 40, 120, "right")));
     await sleep(1500);
     show("kijelölések", await recorded(async () => { for (const b of boxes.slice(1)) { await click(b.x, b.y); await sleep(260); } }));
   }
