@@ -573,10 +573,12 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .passive-frame > .laser-tool { position: absolute; bottom: 6px; left: 46px; z-index: 2; min-height: var(--tool-button-size, 32px); height: var(--tool-button-size, 32px); padding: 4px 9px; }
 .passive-frame:has(> .laser-tool):not(:has(> .chat-tool)) > .fullscreen { left: 86px; }
 .laser-tool[aria-pressed="true"] { background: var(--accent); color: white; }
-/* Bekapcsolt lézer pointer: varázspálca-kurzor (laser-cursor.svg, forrópont a csillag közepe). Itt csak a vászon kapja (a
-   váltás ugyanannyi, mint egy kulcsszavas kurzoré); a saját kurzort adó dobozt / vonalat a laser.js rámutatáskor egyenként
-   írja felül. Leszármazott-szabály (`*` vagy elemlista) p1000-en a váltás képkockáját 50 → 100–200 ms-ra növelte. */
-:is(.canvas-area, .passive-frame)[data-laser] :is(svg.editor-canvas, .passive-canvas) { cursor: url("/laser-cursor.svg") 5 5, crosshair; }
+/* Rajzmód (lézer / filc aktív, laser.js): a rajz canvasa fogja el az egeret a vászon fölött, így a dobozok nem kapnak
+   egéreseményt (nincs rámutatási effekt), és a kurzort is ő adja – a váltás csak ezt az egy elemet érinti. */
+.laser-overlay[data-tool] { pointer-events: auto; cursor: url("/laser-cursor.svg") 5 5, crosshair; }
+.laser-overlay[data-tool="marker"] { cursor: url("/marker-cursor.svg") 3 29, crosshair; }
+/* Egyszeri eszköz (one-shot.js, pl. D: egyszeri rajz): a gomb csak fényes keretet kap, a bekapcsolt (kitöltött) állapot nem. */
+.one-shot-armed { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--accent), 0 0 12px 3px var(--accent); }
 .passive-frame > .participants { position: absolute; right: 12px; bottom: 8px; z-index: 2; max-width: min(47%, calc(100% - 110px)); padding: 4px 7px; border-radius: 5px; background: #fffffff0; white-space: nowrap; }
 .passive-frame > .participants:empty { display: none; }
 .mouse-share[aria-pressed="true"] { background: var(--accent); color: white; }
@@ -1461,7 +1463,7 @@ svg text { text-rendering: geometricPrecision; }
 .node-grip-hit:hover + .node-grip { opacity: 1; }
 
 /* A kurzorgomb csoportja (mouse.js openModes): rögzített réteg a gomb fölött. */
-.cursor-modes { z-index: 30; }
+.cursor-modes, .draw-tools { z-index: 30; }
 
 /* ===== Táblázat szerkesztése: fejlécsávok és képletsor a dobozon kívül =====
    A görgethető rács pontosan az olvasó nézet helyén áll (a .node-note belső térközével, azonos betűvel és görgetéssel),

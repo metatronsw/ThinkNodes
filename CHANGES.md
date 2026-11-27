@@ -1,5 +1,14 @@
 # Változások
 
+## 2026-11-27 – Filctoll, rajzmód, egyszeri eszköz (D), eszköztár-csoportok, LowPerformance mód (`right-mouse-pan` ág)
+
+- **Filctoll:** a lézerrel közös motoron (`Public/laser.js`, eszközleírások). Nem halványul; 3 mp-en belül kezdett vonás az előző rajzhoz adódik, később az új vonás mindenkinél törli az előzőt. Nem mentődik; a rajzoló kilépésekor a többieknél eltűnik. Pontkorlát: lézer vonásonként 48, filc rajzonként 1500 pont. Saját kurzor (`marker-cursor.svg`). A szerver a `kind` / `clear` mezőt is továbbítja (`Collaboration.swift`).
+- **Rajzeszköz csoportgomb:** kattintásra be / ki, jobb kattintásra vagy nyomva tartva lézer / filc választó.
+- **Egyszeri eszköz (`Public/one-shot.js`):** globális, billentyűvel élesíthető, egy használat után visszaálló működés. D: egy vonás a választott rajzeszközzel (a gomb csak fényes keretet kap).
+- **Rajzmód:** a rajz canvasa fogja el az egeret, a dobozok nem reagálnak (rámutatás, tooltip, kijelölés); a pásztázás, nagyítás, a vászon helyi menüje és a mutatómegosztás működik. p1000-en a váltás stílusszámítása 34–37 → 0,8 ms. Esc rajzmódban vagy vonás közben: a saját rajz törlése mindenkinél.
+- **Eszköztár:** „Rács és megjelenítés” csoport (rácsra igazítás S, saját rács G, LowPerformance mód L) és „Mind” csoport (teljes vászon Shift+1, 100% Z – új `zoom-actual` ikon –, teljes képernyő Ctrl+F). Minden csoportgomb jobb kattintásra nyílik (`groupTrigger`), a listák a vászon területére kerülnek (Teleport). A LowPerformance mód az animációk leállítását és a díszítő háttér kikapcsolását vonja össze (a régi külön beállítás egyszer átvándorol; `bench-idle.js` külön kapcsolhatja).
+- Útmutató és `docs/hotkeys.json` frissítve; TODO: a később belépő nem látja a meglévő filcrajzot.
+
 ## 2026-11-27 – Jobb gombos pásztázás, helyi menü felengedéskor, új lézer pointer (`right-mouse-pan` ág)
 
 - **Pásztázás és helyi menü:** megszűnt a kéz gomb (vászonmozgatás-zár, a `panLocked` beállítás szerveroldalon is), a szóközös és a bal gombos pásztázás. Jobb gomb + húzás pásztáz (objektum fölött is); mozgás nélküli jobb kattintás (küszöb 5 px, `rightClickSlop`) felengedéskor nyitja a helyi menüt, macOS- és Windows-eseménysorrenddel is. Útmutató és `docs/hotkeys.json` frissítve; a Chrome-os mérőszkriptek jobb gombbal pásztáznak.

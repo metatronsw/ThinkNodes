@@ -61,7 +61,7 @@ globalThis.document = {documentElement: {dataset: {display: "light"}}, querySele
   createTreeWalker: () => ({nextNode: () => null})};
 const storage = new Map();
 globalThis.window = {getSelection: () => ({rangeCount: 0, setBaseAndExtent() {}}), localStorage: {getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value)},
-  Vue: {...Vue, createApp: renderer.createApp}, addEventListener(key, fn) { listeners[key] = fn; },
+  Vue: {...Vue, createApp: renderer.createApp}, addEventListener(key, fn) { listeners[key] = fn; }, removeEventListener() {},
   d3: {...d3, zoom, pointer: e => [e.clientX, e.clientY],
     select: () => ({call(fn, ...args) { fn(this, ...args); return this; }, on() { return this; }})}};
 globalThis.NodeFilter = {SHOW_TEXT: 4};
@@ -951,8 +951,30 @@ assert.equal(automaticGridColor("#ffffff"), "#808080");
 assert.equal(automaticGridColor("#000000"), "#808080");
 assert.equal(automaticGridColor("#112233"), "#889199");
 assert.equal(automaticGridColor("#ddeeff"), "#6f7780");
-const snapSwitch = () => prop("aria-label", "Rácsra igazítás");
+// A rácsra igazítás, a rács és a LowPerformance mód a „Rács és megjelenítés” csoportban van (S, G, L billentyűvel is).
+// A tesztkörnyezet típusonként egy figyelőt tárol: a csoport megnyitásakor a lenyíló Esc-figyelője felülírná.
+const editorKeys = listeners.keydown;
+const viewGroup = () => prop("aria-label", "Rács és megjelenítés");
+const openView = async () => { if (viewGroup().props["aria-expanded"] !== true) { viewGroup().props.onClick(); await tick(); } };
+const labelled = prefix => find(n => n.tag === "button" && String(n.props["aria-label"] ?? "").startsWith(prefix));
+const snapSwitch = () => labelled("Rácsra igazítás");
+assert.equal(labelled("Rácsra igazítás"), undefined, "the view settings are inside the closed group");
+viewGroup().props.onContextmenu({preventDefault() {}, stopPropagation() {}}); await tick();
+assert.equal(viewGroup().props["aria-expanded"], true, "right click opens a group");
+await openView();
 assert.equal(snapSwitch().props["aria-pressed"], false);
+editorKeys({key: "s"}); await tick();
+assert.equal(snapSwitch().props["aria-pressed"], true, "S toggles snapping");
+editorKeys({key: "s"}); await tick();
+assert.equal(snapSwitch().props["aria-pressed"], false);
+editorKeys({key: "s", target: {closest: selector => selector.includes("input") ? {} : null}}); await tick();
+assert.equal(snapSwitch().props["aria-pressed"], false, "S does nothing while typing");
+const lowSwitch = () => labelled("LowPerformance mód");
+assert.equal(lowSwitch().props["aria-pressed"], false);
+editorKeys({key: "l"}); await tick();
+assert.equal(lowSwitch().props["aria-pressed"], true, "L toggles the low performance mode");
+editorKeys({key: "l"}); await tick();
+assert.equal(lowSwitch().props["aria-pressed"], false);
 snapSwitch().props.onClick(); await tick();
 const start = model("auto").position;
 await drag(graphic("auto"), start.x, start.y, 121, -83);
@@ -977,15 +999,20 @@ await press("Visszavonás"); await save();
 await press("Visszavonás"); await save();
 assert.equal(edge(snappedWire), undefined);
 
+await openView();
 snapSwitch().props.onClick(); await tick();
 const transform = d3.zoomIdentity.translate(35, 75).scale(2);
 zoomEvents.zoom({transform}); await tick();
 const gridWrites = writes;
-prop("aria-label", "Pontrács").props.onClick(); await tick();
+await openView();
+assert.equal(labelled("Saját pontrács").props["aria-pressed"], true);
+editorKeys({key: "g"}); await tick();
 await new Promise(resolve => setTimeout(resolve, 100));
 assert.equal(writes, gridWrites);
 assert.equal(sheet.gridVisible, undefined);
 assert.equal(savedPreferences.showGrid, false);
+viewGroup().props.onClick(); await tick();
+listeners.keydown = editorKeys;
 toggle("Enter", true); await tick();
 const search = prop("aria-label", "Keresés a munkalapon");
 assert.ok(search);

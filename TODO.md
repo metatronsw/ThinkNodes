@@ -81,3 +81,6 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 + A „kinyíló rész semmit nem tol el” szabály bevezetése a tulajdonságpanelen is: a színválasztó listája ott még eltolja a többi gombot (a gyors eszközökben már rögzített réteg: `ColorPicker floating`, `placePopup`).
 + A többi típus (fájldobozok, kép, vonal, csomópont) elrendezése a `quick-tools.json`-ban; a tulajdonságpanel kiváltása (szöveg- és számmezők helye).
 
+
+# RAJZESZKÖZÖK (lézer, filctoll – Public/laser.js)
+- A később belépő nem látja a már meglévő filcrajzot (a szerver csak továbbít, nem tárol). Ha kell: a szobában a résztvevőnkénti utolsó filcrajz tárolása a pontkorlátig, és átadása belépéskor (mint az előadás kerete).

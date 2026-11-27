@@ -174,16 +174,20 @@ export function sharedMouse(send) {
       if (modeList && !modeList.contains(event.target) && event.target !== button && !button.contains(event.target)) closeModes();
     }, {...options, capture: true});
     document.addEventListener("keydown", event => { if (event.key === "Escape" && modeList) closeModes(); }, options);
-    svg.addEventListener("pointermove", event => {
+    // A vászon tárolóját figyeljük: rajzmódban (lézer / filc) a rajz canvasa fogja el az egeret (laser.js), az is a vászon.
+    const area = svg.closest(".canvas-area, .passive-frame") ?? svg;
+    const overCanvas = event => svg.contains(event.target) || !!event.target?.classList?.contains?.("laser-overlay");
+    area.addEventListener("pointermove", event => {
       // Nem aktív ablak fölött is jön pointermove (macOS): ilyenkor a kurzor nem látszik a többieknél.
       if (!enabled || event.pointerType === "touch" || document.hidden || !document.hasFocus()) return;
+      if (!overCanvas(event)) { hide(); return; }
       const matrix = screenMatrix(layer, root);
       if (!matrix) return;
       const {x, y} = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
       pending = {x, y};
       if (!timer) timer = setTimeout(() => { timer = undefined; send(pending); }, 50);
     }, options);
-    svg.addEventListener("pointerleave", hide, options);
+    area.addEventListener("pointerleave", hide, options);
     window.addEventListener("blur", hide, options);
     document.addEventListener("visibilitychange", () => { if (document.hidden) hide(); }, options);
     window.addEventListener("pagehide", hide, options);
