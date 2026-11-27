@@ -625,8 +625,10 @@ extension WorksheetStore {
         guard size <= Int64(Self.maximumPackage) else { throw Abort(.payloadTooLarge, reason: Self.packageTooLarge) }
         cleanPackageStaging()
         let staging = try stagingDirectory()
-        if let free = try? staging.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage,
-           free > 0, free < size * 5 / 2 + 256 * 1024 * 1024 {
+        // Szabad hely a kötet fájlrendszeréből (statvfs; macOS-en és Linuxon is: a volumeAvailableCapacityForImportantUsage
+        // csak Apple-rendszereken létezik).
+        if let number = (try? files.attributesOfFileSystem(forPath: staging.path))?[.systemFreeSize] as? NSNumber,
+           case let free = number.int64Value, free > 0, free < size * 5 / 2 + 256 * 1024 * 1024 {
             throw Abort(.insufficientStorage, reason: "Nincs elég szabad hely a szerveren ehhez a csomaghoz.")
         }
         // Felhasználónként néhány félbemaradt feltöltés maradhat; a legrégebbiek törlődnek.

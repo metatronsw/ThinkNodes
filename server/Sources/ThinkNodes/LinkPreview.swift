@@ -104,8 +104,10 @@ actor LinkPreviews {
     static func checkPublic(_ url: URL) throws {
         guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme), let host = url.host, !host.isEmpty,
               [nil, 80, 443].contains(url.port) else { throw Abort(.forbidden) }
-        var hints = addrinfo(ai_flags: 0, ai_family: AF_UNSPEC, ai_socktype: Self.streamSocket, ai_protocol: 0,
-                             ai_addrlen: 0, ai_canonname: nil, ai_addr: nil, ai_next: nil)
+        // Mezőnként: az addrinfo mezősorrendje macOS-en és Linuxon (glibc) eltér, a tagonkénti inicializáló nem hordozható.
+        var hints = addrinfo()
+        hints.ai_family = AF_UNSPEC
+        hints.ai_socktype = Self.streamSocket
         var result: UnsafeMutablePointer<addrinfo>?
         guard getaddrinfo(host, nil, &hints, &result) == 0, let first = result else { throw Abort(.forbidden) }
         defer { freeaddrinfo(first) }

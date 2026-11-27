@@ -1,5 +1,13 @@
 # Változások
 
+## 2026-11-27 – Szerver Fedora 45-ön: swift.org Swift 6.3.3, Swift-verziók a swift.env-ben, Linux-javítások
+
+- **Miért nem a 6.0.3:** a swift.org 6.0.3-as toolchainjének clangja (LLVM 17) a Fedora 45 C++ fejléceit (GCC 16) nem fordítja (a swift-crypto BoringSSL-je C++); a Fedora `swift-lang` 6.3.2 pedig assertionnel épült, és egy függőségen összeomlott. A szerver ezért a swift.org hivatalos 6.3.3-át használja (`fedora41` építés, `/opt/swift-6.3.3`), a fejlesztőgép marad 6.0.3.
+- **`server/deploy/swift.env`:** egy helyen a verziók (`SWIFT_LINUX`, `SWIFT_LINUX_PLATFORM`, `SWIFT_MACOS`, `SWIFT_RELEASE_KEY`); az `install.sh`, a `build.sh` és a `daemon.sh` ebből dolgozik.
+- **`install.sh`:** a swift.env szerinti toolchain letöltése és aláírás-ellenőrzése, utána **C++-fejléc-próba** a toolchain clangjával (`<memory>`, `<string>`, `<system_error>`): ha nem fordul, kiírja, hogy a `swift.env`-ben újabb verzió kell. A szerveren kipróbálva: 6.0.3 → hiba, 6.3.3 → rendben.
+- **Linux-javítások a kódban:** `ProjectPackage.swift` – a szabad hely a fájlrendszerből (`attributesOfFileSystem`, `systemFreeSize`; a `volumeAvailableCapacityForImportantUsage` csak Apple-en van); `LinkPreview.swift` – az `addrinfo` mezőnként (a mezősorrend macOS-en és glibc-n eltér). `run.sh`: a futó szerverek keresése `${…##*/}`-val (a `basename` a `-bash` folyamatnevet kapcsolónak vette).
+- A szerveren: Swift 6.3.3 telepítve, build 32 szálon, új systemd unit (`server/run.sh --project:/var/lib/thinknodes/Projects --tls-dir:/var/lib/thinknodes/tls`); a szolgáltatás fut, HTTPS 200.
+
 ## 2026-11-27 – Szerver: ugyanaz a Swift (6.0.3), mint a fejlesztőgépen
 
 - A Fedora `swift-lang` 6.3.2 (6.3.2-7.fc45) fordítója a tiszta buildben a `swift-service-context` függőségen összeomlott (LLVM-ellenőrzés: `createUniquePath: Model must contain at least one '%'`, IRGen; egyszálú fordítással is).

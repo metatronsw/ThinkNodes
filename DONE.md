@@ -6,6 +6,10 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **Szerver: a frissítés után nem indult el, a build nem fordult Fedora 45-ön (2026-11-27)**
+  - Okok: a régi unit a már nem létező `/opt/ThinkNodes/run.sh`-t indította; a Fedora `swift-lang` 6.3.2 fordítója egy függőségen összeomlott; a swift.org 6.0.3 clangja a Fedora 45 C++ fejléceit (GCC 16) nem fordítja; két kódrész csak macOS-en fordult (`volumeAvailableCapacityForImportantUsage`, `addrinfo` tagonkénti inicializálója).
+  - Javítás: swift.org Swift 6.3.3 (`/opt/swift-6.3.3`, aláírás-ellenőrzéssel), a két kódrész hordozható (statvfs alapú `systemFreeSize`, mezőnkénti `addrinfo`), új unit (`server/run.sh`). A szerver fut (HTTPS 443, a régi adatokkal). A szkriptek a verziót a `server/deploy/swift.env`-ből veszik, az `install.sh` C++-fejléc-próbát végez. A `run.sh` futó szerverkeresése nem akad meg a `-bash` folyamatnéven.
+
 - **Szerver Swift-verziója (2026-11-27):** a Fedora `swift-lang` 6.3.2 fordítója a `swift-service-context` függőségen összeomlott; a szerver mostantól ugyanazzal a Swifttel fordul, mint a fejlesztőgép (6.0.3, swift.org hivatalos csomag, `/opt/swift-6.0.3`). A `build.sh` csak a 6.0.3-at veszi fel magától, és fordítóváltáskor a lefordított részeket újrafordítja (a letöltött csomagforrások maradnak).
 
 - **daemon.sh: „invalid access to /tmp/_opt_ThinkNodes_server_.build.lock” (2026-11-27):** a root-ként futtatott install.sh zárfájljai (`…_.build*.lock`, köztük a `Package.resolved`-é) a thinknodes felhasználónak nem elérhetők; a daemon.sh a build előtt mindet törli, az install.sh root-ként maga után is.

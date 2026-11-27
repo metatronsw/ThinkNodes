@@ -25,8 +25,9 @@ Options:
   --help      Show this help.
 
 Environment:
-  THINKNODES_SWIFT   Swift executable to use as it is (default: Swift 6.0.3 from ~/X-Code/RunTime/Swift/6.0.3,
-                     /opt/swift-6.0.3, swiftly or the PATH; another version is not picked up automatically).
+  THINKNODES_SWIFT   Swift executable to use as it is (default: the version in deploy/swift.env – Linux:
+                     /opt/swift-<SWIFT_LINUX>; macOS: ~/X-Code/RunTime/Swift/<SWIFT_MACOS>, swiftly or the
+                     PATH; another version is not picked up automatically).
 EOF
 }
 
@@ -89,9 +90,11 @@ if [[ "$pull" == true ]] && git rev-parse --git-dir >/dev/null 2>&1; then
 fi
 
 # --- Swift toolchain ---------------------------------------------------------------------
-# Mindenhol ugyanaz a Swift (6.0.3), mint a fejlesztői gépen: a Package.resolved, a csomagleírások és a fordító így
-# egyezik (a Fedora swift-lang 6.3.2-je pl. egy függőség fordításakor összeomlott). THINKNODES_SWIFT-tel más is megadható.
-swift_version=6.0.3
+# A Swift-verzió a deploy/swift.env-ből (Linux: a swift.org toolchainje /opt/swift-<verzió>, install.sh telepíti; macOS:
+# a fejlesztőgépé). A Fedora swift-lang csomagját nem veszi fel (a 6.3.2-je egy függőség fordításakor összeomlott).
+# THINKNODES_SWIFT-tel más is megadható.
+source deploy/swift.env
+if [[ "$platform" == macOS ]]; then swift_version="$SWIFT_MACOS"; else swift_version="$SWIFT_LINUX"; fi
 swift_bin="${THINKNODES_SWIFT:-}"
 if [[ -z "$swift_bin" ]]; then
     for candidate in "$HOME/X-Code/RunTime/Swift/$swift_version/usr/bin/swift" "/opt/swift-$swift_version/usr/bin/swift" \

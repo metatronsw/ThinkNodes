@@ -158,7 +158,8 @@ port_owner="" data_owner="" listed=0
 while read -r pid user args; do
     [[ -z "$pid" ]] && continue
     read -r -a words <<<"$args"
-    [[ "$(basename "${words[0]}")" == thinknodes ]] || continue
+    # ${…##*/} a basename helyett: a "-bash"-hez hasonló (kötőjellel kezdődő) folyamatnevet a basename kapcsolónak venné.
+    [[ "${words[0]##*/}" == thinknodes ]] || continue
     [[ "${words[1]:-}" == user || "${words[1]:-}" == --help || "${words[1]:-}" == -h ]] && continue
     port="$(effective_port "${words[@]:1}")"
     data="$(data_folder "$(process_dir "$pid")" "${words[0]}" "${words[@]:1}")"

@@ -1,9 +1,10 @@
 ## Nyitott
 
-- **Szerver: Swift 6.0.3 Fedorán (2026-11-27): kipróbálandó a szerveren**
-  - Az `install.sh` Linuxon a swift.org hivatalos 6.0.3-as csomagját (fedora39 építés) telepíti a `/opt/swift-6.0.3` mappába, aláírás-ellenőrzéssel; a `build.sh` és a `daemon.sh` csak ezt (vagy a `THINKNODES_SWIFT`-et) használja. Helyben csak macOS-en kipróbálva: a letöltési cím, az aláírás-ellenőrzés és a fedora39 építés futása újabb Fedorán (45) a szerveren derül ki.
-  - A Fedora `swift-lang` 6.3.2 (6.3.2-7.fc45) a `swift-service-context` függőség fordításakor (IRGen) egy LLVM-ellenőrzésen összeomlik (`createUniquePath: Model must contain at least one '%'`); egyszálú fordítással is. Pontos bejelentést nem találtunk; a swift.org 6.3.3 nem volt kipróbálva.
-  - A szerver repó gyökerében a régi mappaszerkezet maradványai (`.build/`, `Public/`, `Projects/`, `.thinknodes-tls/`) nem követettek; a szolgáltatás nem használja őket, törölhetők.
+- **Szerver Fedora 45-ön (2026-11-27): nyitott tételek**
+  - A szerver Swift 6.3.3-mal fut (swift.org, `/opt/swift-6.3.3`), a fejlesztőgép 6.0.3-mal: a két fordító eltérhet (a 6.3.3 két Linux-hibát mutatott meg, ezek javítva). Ha a Mac is 6.3.3-ra áll, újra egyezik.
+  - A szerver jelenleg két helyben alkalmazott javítással fut (ProjectPackage.swift, LinkPreview.swift), amíg a commit nincs pusholva és lehúzva; utána a `git status` tiszta lesz.
+  - Az új Fedora-telepítés teljes folyamata (`git clone` → `install.sh` → `daemon.sh`) tiszta gépen nincs végigpróbálva; a lépései külön-külön a szerveren futottak.
+  - A régi `thinknodes.service.d/chromium.conf` drop-in megmaradt (a daemon.sh a unitba is beírja a Chromium útját); ártalmatlan.
 
 - **WhiteBoard textúrák és füzetlap (2026-11-26): nyitott és kézzel nézendő**
   - Chrome-ban (képernyőkép három nagyításon, a sorvonalak mérése) és Safari 18.6-ban (a sorvonalak mérése, képernyőkép) ellenőrizve. Nincs mérve: a vászontextúra kétszintes kitöltésének költsége mozdulat közben sok dobozos lapon (p300), főleg Safariban.

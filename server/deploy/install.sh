@@ -10,9 +10,10 @@ Usage: server/deploy/install.sh [--force] [--help]
 
 Checks the development and runtime environment of ThinkNodes and installs what is missing:
   - system tools and libraries (git, curl, unzip, compilers and libraries Swift needs on Linux)
-  - Swift 6.0.3, the same version everywhere (Linux: the official swift.org toolchain in
-    /opt/swift-6.0.3, signature checked; macOS: Xcode Command Line Tools + swiftly). Another Swift
-    (e.g. Fedora's swift-lang 6.3) may stay installed, it is not used.
+  - Swift, version from server/deploy/swift.env (Linux: the official swift.org toolchain in
+    /opt/swift-<version>, signature checked, then tested against the system C++ headers;
+    macOS: Xcode Command Line Tools + swiftly). Fedora's own swift-lang may stay installed, it is
+    not used.
   - Node.js 22+ (editor tests) and Python 3 (tools/)
   - headless Chromium on Fedora (web presentation previews)
   - the Swift packages of the server (Vapor and its dependencies), resolved into server/.build
@@ -38,15 +39,17 @@ while (($#)); do
 done
 
 cd "$(dirname "$0")/.."
-swift_version=6.0.3
+# A Swift-verziók egy helyen: deploy/swift.env (SWIFT_LINUX, SWIFT_LINUX_PLATFORM, SWIFT_MACOS, SWIFT_RELEASE_KEY).
+source deploy/swift.env
+if [[ "$(uname -s)" == Linux ]]; then swift_version="$SWIFT_LINUX"; else swift_version="$SWIFT_MACOS"; fi
 ok() { printf '  ok       %s\n' "$*"; }
 doing() { printf '  install  %s\n' "$*"; }
 
 sudo_cmd=()
 [[ $EUID -ne 0 ]] && sudo_cmd=(sudo)
 
-# A szerver mindenhol ugyanazzal a Swifttel fordul, mint a fejlesztői gép (Package.resolved, a csomagok leírásai és a
-# fordító viselkedése így egyezik); THINKNODES_SWIFT-tel bármelyik megadható.
+# A deploy/swift.env szerinti Swift (Linuxon a swift.org toolchainje a /opt/swift-<verzió> mappában); THINKNODES_SWIFT-tel
+# bármelyik megadható.
 linux_swift_dir=/opt/swift-$swift_version
 find_swift() {
     local candidate
@@ -65,21 +68,22 @@ find_swift() {
 }
 
 install_linux_toolchain() {
-    # A swift.org hivatalos Fedora-csomagja ($swift_version, fedora39 építés, újabb Fedorán is fut), aláírás-ellenőrzéssel,
-    # rendszerszinten (/opt), hogy a thinknodes szolgáltatás-felhasználó is használhassa.
+    # A swift.org hivatalos csomagja (deploy/swift.env: verzió és platform), aláírás-ellenőrzéssel, rendszerszinten (/opt),
+    # hogy a thinknodes szolgáltatás-felhasználó is használhassa.
     local work arch platform name url
     work="$(mktemp -d)"
     trap 'rm -rf "$work"' RETURN
     arch="$(uname -m)"
-    platform=fedora39
-    [[ "$arch" == aarch64 ]] && platform=fedora39-aarch64
+    platform="$SWIFT_LINUX_PLATFORM"
+    [[ "$arch" == aarch64 ]] && platform="$SWIFT_LINUX_PLATFORM-aarch64"
     name="swift-$swift_version-RELEASE-$platform"
     url="https://download.swift.org/swift-$swift_version-release/$platform/swift-$swift_version-RELEASE/$name.tar.gz"
     curl --fail --location --silent --show-error -o "$work/$name.tar.gz" "$url"
     curl --fail --location --silent --show-error -o "$work/$name.tar.gz.sig" "$url.sig"
-    # A Swift 6.x release kulcsa (https://swift.org/keys/active/): csak az ezzel az ujjlenyomattal aláírt csomag fogadható el.
-    # A kulcs a swift.org fájljából, ha onnan nem jön meg, kulcsszerverről; a hitelességet az ujjlenyomat adja.
-    local release_key=52BB7E3DE28A71BE22EC05FFEF80A866B47A981F keys_url
+    # A Swift release kulcsa (deploy/swift.env, https://swift.org/keys/active/): csak az ezzel az ujjlenyomattal aláírt csomag
+    # fogadható el. A kulcs a swift.org fájljából, ha onnan nem jön meg, kulcsszerverről; a hitelességet az ujjlenyomat adja.
+    local release_key="$SWIFT_RELEASE_KEY" keys_url
+    printf '  download https://download.swift.org/…/%s.tar.gz\n' "$name"
     mkdir -m 0700 "$work/gnupg"
     for keys_url in https://www.swift.org/keys/release-key-swift-6.x.asc https://swift.org/keys/release-key-swift-6.x.asc \
                     https://swift.org/keys/all-keys.asc; do
@@ -96,7 +100,7 @@ install_linux_toolchain() {
         printf 'The signature of %s could not be verified with the Swift 6.x release key %s (%s).\n' "$name.tar.gz" "$release_key" "$url" >&2
         exit 1
     fi
-    printf '  ok       signature (Swift 6.x release key %s)\n' "$release_key"
+    printf '  ok       signature (Swift release key %s)\n' "$release_key"
     "${sudo_cmd[@]}" rm -rf "$linux_swift_dir"
     "${sudo_cmd[@]}" mkdir -p "$linux_swift_dir"
     "${sudo_cmd[@]}" tar -xzf "$work/$name.tar.gz" -C "$linux_swift_dir" --strip-components=1
@@ -105,6 +109,16 @@ install_linux_toolchain() {
 node_ok() {
     [[ -f "$HOME/X-Code/RunTime/NodeJS/env.sh" ]] && source "$HOME/X-Code/RunTime/NodeJS/env.sh"
     command -v node >/dev/null && [[ "$(node -p 'process.versions.node.split(".")[0]')" -ge 22 ]]
+}
+
+# A toolchain beépített clangja lefordítja-e a rendszer C++ fejléceit (a swift-crypto BoringSSL-je C++): a túl régi clang
+# az újabb GCC fejléceinél elakad (Fedora 45 / GCC 16 és Swift 6.0.3). Linuxon fut.
+check_cxx_headers() {
+    local clang
+    clang="$(dirname "$1")/clang++"
+    [[ -x "$clang" ]] || return 0
+    printf '#include <memory>\n#include <string>\n#include <system_error>\nint main() { return 0; }\n' |
+        "$clang" -fsyntax-only -x c++ - 2>"${TMPDIR:-/tmp}/thinknodes-cxx-check.log"
 }
 
 install_swiftly_toolchain() {
@@ -171,6 +185,18 @@ else
     swift_bin="$(find_swift)"
     [[ -n "$swift_bin" ]] || { printf 'Swift %s is still not available.\n' "$swift_version" >&2; exit 1; }
     ok "$("$swift_bin" --version 2>&1 | grep -m1 'Swift version') ($swift_bin)"
+fi
+if [[ "$(uname -s)" == Linux ]]; then
+    if check_cxx_headers "$swift_bin"; then
+        ok "C++ headers of the system compile with this Swift's clang"
+    else
+        head -5 "${TMPDIR:-/tmp}/thinknodes-cxx-check.log" >&2
+        printf '\nThe clang of Swift %s cannot compile the C++ headers of this system (gcc %s).\n' \
+            "$swift_version" "$(gcc -dumpversion 2>/dev/null || echo '?')" >&2
+        printf 'Set a newer SWIFT_LINUX (and SWIFT_LINUX_PLATFORM) in server/deploy/swift.env, then run install.sh again.\n' >&2
+        printf 'Versions: https://www.swift.org/install/linux/\n' >&2
+        exit 1
+    fi
 fi
 
 printf '== Preview images (rsvg-convert, cwebp) ==\n'
