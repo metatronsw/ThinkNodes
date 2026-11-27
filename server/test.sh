@@ -36,6 +36,8 @@ Témák:
   files      Csatolmányok, közös fájlok
   web        .web prezentációk
   package    Projektcsomag (ZIP export/import)
+  chart      Grafikon (Public/chart.js)
+  structure  Struktúra-konténer (Public/structure-boxes.js)
   link       Linkelőnézet
   core       Minden Swift-teszt (Model.swift, Server.swift, Package.swift … módosításakor)
 
@@ -70,8 +72,9 @@ swift_files[web]="ThinkNodesTests/WebPresentationTests.swift"
 swift_files[package]="ThinkNodesTests/ProjectPackageTests.swift"
 js_files[package]="package-upload.mjs"
 js_files[chart]="chart.mjs"
+js_files[structure]="structure-boxes.mjs"
 swift_files[link]="ThinkNodesTests/LinkPreviewTests.swift"
-all_topics="table highlight markdown editor render worksheet collab access files web package chart link core"
+all_topics="table highlight markdown editor render worksheet collab access files web package chart structure link core"
 
 # Módosított fájl (a server/ mappához képest) → témák. Üres eredmény: nincs hozzá teszt (dokumentáció, ikonok…).
 topics_for() {
@@ -82,6 +85,7 @@ topics_for() {
         Tests/Editor/canvas-markdown.mjs|Tests/ThinkNodesTests/CanvasMarkdownTests.swift|Tests/ThinkNodesTests/TextNoteTests.swift) echo markdown ;;
         Public/package.js|Tests/Editor/package-upload.mjs) echo "package editor" ;;
         Public/chart.js|Public/lib/d3-chart.js|Tests/Editor/chart.mjs) echo "chart editor" ;;
+        Public/structure-boxes.js|Tests/Editor/structure-boxes.mjs) echo "structure editor" ;;
         Public/geometry.js|Public/sketch.js|Tests/Fixtures/text-flow.json|Tests/Editor/text-flow.mjs|Tests/Fixtures/wires.json|Tests/Editor/wires.mjs|Tests/Fixtures/sketch.json|Tests/Editor/sketch.mjs) echo "editor render" ;;
         Tests/Editor/*|Public/*.js) echo editor ;;
         Sources/*/Rendering.swift|Sources/*/Theme.swift|Sources/*/Sketch.swift|Public/themes/*|docs/theme.schema.json) echo render ;;

@@ -149,6 +149,10 @@
      "link-remove"
     ],
     [
+     "structure-regenerate",
+     "structure-detach"
+    ],
+    [
      "delete"
     ]
    ],
@@ -210,7 +214,8 @@
     [
      "copy-link",
      "edit-cells",
-     "new-chart"
+     "new-chart",
+     "new-structure"
     ],
     [
      "delete"
@@ -250,7 +255,6 @@
   "lineType-<típus>, lineAppearance-<megjelenés>": "Vonal típusa és megjelenése",
   "delete": "Törlés (minden objektumon)",
   "ping": "Ping (minden objektumon; vonalnál a kattintás pontja)",
-  "copy-link, edit-cells, new-chart": "Fájldoboz: link másolása; táblázat: cellák szerkesztése, grafikon létrehozása",
   "line-color, label-in-line, line-animation, arrow-start, arrow-end, endpoint-source, endpoint-target": "Vonal: szín, felirat a vonalban, animáció, nyilak, végpontok leválasztása / lekötése",
   "edit-name": "Név szerkesztése a vásznon: doboz szövege, fájlnév (a doboz fölötti felirat), vonal és csomópont címkéje",
   "edit-comment": "Megjegyzés szerkesztése a vásznon (fájldoboz, előnézetes doboz, grafikon)",
@@ -265,6 +269,8 @@
   "rotation, diameter": "Csomópont: elforgatás (fok), átmérő (mezőgomb)",
   "chart-type, chart-labels, chart-values, chart-header": "Grafikon: típus, kategóriák / X tengely / szeletek neve, értékoszlopok (mezőgombok), az első sor fejléc (kapcsoló)",
   "link-target, web-name": "Link célja, illetve weboldal neve (mezőgomb, szövegmező)",
-  "table-name, table-csv": "Táblázat neve (mezőgomb), letöltés CSV-ként"
+  "table-name, table-csv": "Táblázat neve (mezőgomb), letöltés CSV-ként",
+  "structure-regenerate, structure-detach": "Doboz-konténer: újragenerálás a forrásból, leválasztás a forrásról",
+  "copy-link, edit-cells, new-chart, new-structure": "Fájldoboz: link másolása; táblázat: cellák szerkesztése, grafikon létrehozása; .json fájl: doboz-konténer létrehozása"
  }
 }

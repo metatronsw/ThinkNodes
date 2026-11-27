@@ -584,6 +584,43 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     #expect(throws: (any Error).self) { try bad.validate() }
 }
 
+@Test func structureContainerStoresGeneratedBoxesAndDrawsADataLink() throws {
+    var source = Idea(id: "forras", type: "code", file: CanvasFile(asset: "file-1", filename: "adat.json"), position: Point(x: 0, y: 0))
+    source.width = 200; source.height = 120
+    var box = Idea(id: "kontener", text: "**adat.json**", position: Point(x: 400, y: 0))
+    box.width = 300; box.height = 200; box.container = true
+    box.structure = StructureSettings(digest: "0123456789abcdef01234567")
+    var item = Idea(id: "0123456789abcdef0123456789abcdef", text: "**name**\nteszt", position: Point(x: 400, y: 20))
+    item.parent = "kontener"; item.generated = "abcdef0123456789abcdef01"
+    let link = Connection(id: "adatvonal", source: "forras", target: ConnectionTarget(node: "kontener", point: nil))
+    var sheet = Worksheet(title: "Struktúra", nodes: [source, box, item], edges: [link])
+    try sheet.validate()
+    sheet = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(sheet))
+    #expect(sheet.nodes[1].structure == box.structure && sheet.nodes[2].generated == item.generated)
+
+    // A .json forrás és a konténer közti vonal adatvonal (félkorong, nyíl nélkül); más kiterjesztésnél közönséges vonal.
+    let text: (Idea) -> String? = { _ in "{\"name\": \"teszt\"}" }
+    let viewer = boardSVG(sheet, noteBase: "/projekt/lap", fileText: text)
+    #expect(viewer.components(separatedBy: "data-plug").count == 3 && !viewer.contains("id=\"arrow-adatvonal\""))
+    var plain = sheet
+    plain.nodes[0].file = CanvasFile(asset: "file-1", filename: "adat.css")
+    #expect(!boardSVG(plain, noteBase: "/projekt/lap", fileText: text).contains("data-plug"))
+    plain = sheet
+    plain.nodes[1].structure = nil
+    #expect(!boardSVG(plain, noteBase: "/projekt/lap", fileText: text).contains("data-plug"))
+
+    // Struktúra-beállítás csak sima dobozon; az ujjlenyomatok azonosító-formájúak.
+    var bad = sheet
+    bad.nodes[0].structure = StructureSettings()
+    #expect(throws: (any Error).self) { try bad.validate() }
+    bad = sheet
+    bad.nodes[1].structure = StructureSettings(digest: "Nem jó")
+    #expect(throws: (any Error).self) { try bad.validate() }
+    bad = sheet
+    bad.nodes[2].generated = "Nagybetű"
+    #expect(throws: (any Error).self) { try bad.validate() }
+}
+
 /// Színezett kódfájl: az önálló SVG-be (letöltés, előnézeti kép) a színszabályok beágyazódnak; a megtekintő oldalon
 /// (ott az app.css adja) és színezhető kódfájl nélkül nincs beágyazott stílus.
 @Test func standaloneSVGEmbedsCodeColours() throws {

@@ -1327,11 +1327,13 @@ private func chartBox(_ node: Idea, source: Idea?, base: String, interactive: Bo
         """
 }
 
-/// Adatvonal: táblázatot (vagy CSV-t) és grafikont összekötő vonal. Nem tárolt tulajdonság, a két végpont típusa adja;
-/// nyíl helyett a két végén félkorong áll (geometry.js isDataLink, plugTransform).
+/// Adatvonal: táblázatot (vagy CSV-t) és grafikont, illetve struktúra-forrást (.json) és struktúra-konténert összekötő
+/// vonal. Nem tárolt tulajdonság, a két végpont adja; nyíl helyett a két végén félkorong áll (geometry.js isDataLink,
+/// plugTransform).
 func isDataLink(_ edge: Connection, nodes: [String: Idea]) -> Bool {
     guard let a = edge.source.flatMap({ nodes[$0] }), let b = edge.target.node.flatMap({ nodes[$0] }) else { return false }
     return (a.type == "chart" && b.isGrid) || (b.type == "chart" && a.isGrid)
+        || (a.structure != nil && b.isStructureSource) || (b.structure != nil && a.isStructureSource)
 }
 
 /// A doboz `toward` felé eső oldalának közepe (geometry.js sideMidpoint).
@@ -1545,7 +1547,7 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
         board.edges[index].startArrow = false
         board.edges[index].endArrow = false
         if let a = edge.source.flatMap({ nodes[$0] }), let b = edge.target.node.flatMap({ nodes[$0] }) {
-            if a.type == "chart" { chartSources[a.id] = b } else { chartSources[b.id] = a }
+            if a.type == "chart" { chartSources[a.id] = b } else if b.type == "chart" { chartSources[b.id] = a }
         }
     }
     // A kép kerete a tartalom tényleges széleihez igazodik (nem az origó köré szimmetrikus).

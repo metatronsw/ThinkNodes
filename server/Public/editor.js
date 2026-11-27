@@ -17,7 +17,7 @@ import {justifyRows, justifyShifts} from "./justify.js?v=7";
 import {canvasMarkdown, canvasMarkdownAvailable} from "./canvas-markdown.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {displayShape, useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, wireHeads, reverseWidth, wireRoutes, edgeInRectangle, edgePaint, labelLayout, editLabelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, taperedArc, lineSize, wireLabelLayout} from "./geometry.js?v=36";
+import {displayShape, useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, wireHeads, reverseWidth, wireRoutes, edgeInRectangle, edgePaint, labelLayout, editLabelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, isStructureFileNode, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, taperedArc, lineSize, wireLabelLayout} from "./geometry.js?v=37";
 
 import {ancestors, layerOrder, overlapFraction} from "./containers.js?v=15";
 import {glowFilter, glowId, glowReach, glowVNode} from "./glow.js";
@@ -1655,7 +1655,9 @@ createApp({
       const nodes = new Map(sheet.nodes.map(node => [node.id, node])), found = new Map();
       for (const edge of sheet.edges) {
         const a = nodes.get(edge.source), b = nodes.get(edge.target?.node);
-        const chart = a?.type === "chart" && isGridType(b?.type) ? a : b?.type === "chart" && isGridType(a?.type) ? b : null;
+        // Struktúra-konténerbe is egy forrás (.json fájl) köthető (structure-boxes.js).
+        const chart = a?.type === "chart" && isGridType(b?.type) ? a : b?.type === "chart" && isGridType(a?.type) ? b
+          : a?.structure && isStructureFileNode(b) ? a : b?.structure && isStructureFileNode(a) ? b : null;
         if (!chart) continue;
         if (!found.has(chart.id)) found.set(chart.id, []);
         found.get(chart.id).push({edge: edge.id, table: (chart === a ? b : a).id});
@@ -5161,6 +5163,136 @@ createApp({
       ]);
     }
 
+    // Struktúra-konténer (structure-boxes.js, docs/node-types.md „Struktúra-konténer”): a vonallal bekötött forrásfájlból
+    // (.json) valódi dobozok készülnek a konténerben (`generated`: az elem ujjlenyomata). A forrás minden változására
+    // (gépelés közben is, rövid késleltetéssel) újraépül; a változatlan elemek azonosítója, vonalai, kézzel állított színe
+    // és szövege megmarad.
+    const structureModule = shallowRef(null);
+    let structureLoading = null;
+    function loadStructureModule() {
+      structureLoading ??= import("./structure-boxes.js?v=1").then(module => { structureModule.value = markRaw(module); })
+        .catch(() => { structureLoading = null; problem.value = "A struktúra-konténer modulja nem tölthető be."; });
+    }
+    // Konténerenként az utolsó generálás eredménye: {error} vagy {count, truncated, schema}.
+    const structureStatus = shallowRef(new Map());
+    function structureSource(node) {
+      let source = null;
+      for (const edge of board.value?.edges ?? []) {
+        const other = edge.source === node.id ? edge.target?.node : edge.target?.node === node.id ? edge.source : null;
+        const candidate = other && nodeMap.value.get(other);
+        if (isStructureFileNode(candidate)) source = candidate;
+      }
+      return source;
+    }
+    // A konténer generált leszármazottai (generált konténeren belül is).
+    function generatedDescendants(sheet, containerID) {
+      const byParent = new Map();
+      for (const node of sheet.nodes) if (node.parent) (byParent.get(node.parent) ?? byParent.set(node.parent, []).get(node.parent)).push(node);
+      const found = new Map(), stack = [containerID];
+      while (stack.length) for (const child of byParent.get(stack.pop()) ?? []) {
+        if (child.generated && !found.has(child.id)) { found.set(child.id, child); stack.push(child.id); }
+      }
+      return found;
+    }
+    function setStructureStatus(id, status) {
+      const next = new Map(structureStatus.value);
+      if (status) next.set(id, status); else next.delete(id);
+      structureStatus.value = next;
+    }
+    // `force`: akkor is újraépül, ha a forrás nem változott (Újragenerálás gomb). Igaz, ha a lap megváltozott.
+    function regenerateStructure(id, force = false) {
+      const sheet = board.value, module = structureModule.value;
+      const container = sheet?.nodes.find(node => node.id === id);
+      if (!container?.structure || !module || !online.value) return false;
+      const source = structureSource(container);
+      if (!source) return false;
+      const format = module.structureFormat(source.file.filename ?? source.file.asset);
+      const text = format ? chartText(source) : null;
+      if (text == null) return false;
+      const digest = module.textDigest(text, format);
+      if (!force && container.structure.digest === digest) return false;
+      const old = generatedDescendants(sheet, container.id);
+      if ([container.id, ...old.keys()].some(item => occupied(item))) return false;
+      let result;
+      try { result = module.generateBoxes(text, container, {format, previous: old}); } catch (error) {
+        if (!(error instanceof module.StructureError)) throw error;
+        // Hibás forrás (pl. gépelés közben félkész JSON): a meglévő dobozok maradnak.
+        setStructureStatus(container.id, {error: error.message});
+        return false;
+      }
+      setStructureStatus(container.id, {count: result.nodes.length, truncated: result.truncated, schema: result.schema});
+      const nodes = sheet.nodes.filter(node => !old.has(node.id));
+      nodes.splice(nodes.indexOf(container) + 1, 0, ...result.nodes);
+      sheet.nodes = nodes;
+      Object.assign(container, result.patch, {position: clampPoint(result.patch.position), structure: {...container.structure, digest}});
+      // A megszűnt elemek vonalai törlődnek; a generált dobozba kézzel tett doboz a konténerbe kerül.
+      const ids = new Set(nodes.map(node => node.id));
+      for (const node of nodes) if (node.parent && !ids.has(node.parent)) node.parent = container.id;
+      sheet.edges = sheet.edges.filter(edge => (!edge.source || ids.has(edge.source)) && (!edge.target?.node || ids.has(edge.target.node)));
+      modified();
+      return true;
+    }
+    // Figyelő: a forrás szövege (gépelés közben a még mentetlen is), a bekötés vagy a tárolt ujjlenyomat változik →
+    // újragenerálás rövid késleltetéssel (gépelésnél nem minden leütésre).
+    let structureTimer = null;
+    watch(() => {
+      const containers = (board.value?.nodes ?? []).filter(node => node.structure);
+      if (!containers.length || !online.value) return null;
+      if (!structureModule.value) { loadStructureModule(); return null; }
+      return containers.map(node => {
+        const source = structureSource(node);
+        return [node.id, node.structure.digest, source?.id, source ? chartText(source) : null];
+      });
+    }, list => {
+      clearTimeout(structureTimer);
+      if (!list?.length) return;
+      const run = () => {
+        // Húzás, átméretezés közben nem épül át a lap: a mozdulat végén próbálja újra.
+        if (gesture.value) { structureTimer = setTimeout(run, 250); return; }
+        transfer(() => { for (const [id] of list) regenerateStructure(id); });
+      };
+      structureTimer = setTimeout(run, 150);
+    });
+    // Struktúra-konténer létrehozása forrásfájlból: új konténer a fájl mellett, adatvonallal bekötve. A végső méretet
+    // előre kiszámolja, és a fájltól jobbra lefelé haladva az első olyan helyre teszi, ahol nem takar más dobozt.
+    async function addStructureBox(source) {
+      if (!board.value || !online.value) return;
+      finishField();
+      loadStructureModule();
+      await structureLoading;
+      const module = structureModule.value, sheet = board.value;
+      if (!sheet || !online.value) return;
+      const name = (source.file.filename ?? "Struktúra").replace(/[\\`*_[\]<>#~|&]/g, "\\$&");
+      let width = 240, height = 120;
+      const text = module ? chartText(source) : null, format = module?.structureFormat(source.file.filename ?? source.file.asset);
+      if (text != null && format) {
+        try {
+          ({width, height} = module.generateBoxes(text, {id: "elozetes", position: {x: 0, y: 0}, width, height, text: "**" + name + "**",
+            fontSize: 16, shape: "rounded"}, {format}).patch);
+        } catch {}
+      }
+      const x = source.position.x + source.width / 2 + 80 + width / 2, gap = 40;
+      const others = sheet.nodes.filter(node => !node.parent);
+      const free = top => others.every(node => Math.abs(node.position.x - x) * 2 >= node.width + width + gap
+        || Math.abs(node.position.y - (top + height / 2)) * 2 >= node.height + height + gap);
+      let top = source.position.y - source.height / 2;
+      for (let i = 0; i < 400 && !free(top); i++) top += gap;
+      const node = {...makeNode({x, y: top + height / 2}, "box"),
+        width, height, text: "**" + name + "**", fill: 0, alignment: "left", verticalAlignment: "top", structure: {}};
+      sheet.nodes.push(node);
+      sheet.edges.push({id: id(), source: source.id, target: {node: node.id}, type: "straight", appearance: "plain"});
+      modified();
+    }
+    // Leválasztás: a konténer és a dobozai megmaradnak, de a forrás többé nem írja felül őket (sima dobozok lesznek).
+    function detachStructure(container) {
+      const sheet = board.value;
+      if (!sheet || !online.value || !container.structure) return;
+      for (const node of generatedDescendants(sheet, container.id).values()) delete node.generated;
+      delete container.structure;
+      setStructureStatus(container.id, null);
+      modified();
+    }
+
     function renderFileText(node) {
       let text = fileTexts.value.get(fileTextKey(node));
       if (text == null) {
@@ -6067,6 +6199,7 @@ createApp({
         }, {symbol: "link", disabled: !!occupied(node.id)}) : null,
         isGrid(node) ? button("Cellák szerkesztése", () => { menu.value = null; startTableEdit(node); }, {symbol: "table-grid", disabled: !!occupied(node.id)}) : null,
         isGrid(node) ? button("Grafikon létrehozása", () => { menu.value = null; addChartBox(node); }, {symbol: "chart", disabled: !online.value}) : null,
+        isStructureFileNode(node) ? button("Doboz-konténer létrehozása", () => { menu.value = null; transfer(() => addStructureBox(node)); }, {symbol: "structure", disabled: !online.value}) : null,
         button("Szerkesztés", () => openProperties("node", node.id), {symbol: "edit", disabled: !!occupied(node.id)}),
         // Egyetlen törlés: fájl- és linkes doboznál a közös kérdőablak jön fel (deleteObjects).
         button("Törlés", () => { menu.value = null; deleteNode(node); }, {class: "button danger", symbol: "trash", disabled: !!occupied(node.id)}),
@@ -6357,6 +6490,7 @@ createApp({
           if (node.file) action("copy-link", "Link másolása", "link", () => { menu.value = null; transfer(() => writeText(objectURL(path, node.id))); });
           if (isGrid(node)) action("edit-cells", "Cellák szerkesztése", "table-grid", () => { menu.value = null; startTableEdit(node); });
           if (isGrid(node)) action("new-chart", "Grafikon létrehozása", "chart", () => { menu.value = null; addChartBox(node); }, {disabled: !online.value});
+          if (isStructureFileNode(node)) action("new-structure", "Doboz-konténer létrehozása", "structure", () => { menu.value = null; transfer(() => addStructureBox(node)); }, {disabled: !online.value});
         }
       }
       const {main, opposite} = quickRows(panels, type, actions);
@@ -6857,6 +6991,20 @@ createApp({
             }, {class: "button option-icon", symbol: "download", ...controlName("Letöltés CSV-ként")})),
             h("small", {class: "muted", role: "status"}, fileSaveState.value.get(single.id) ?? ""),
           ),
+        ]));
+      }
+
+      if (single?.structure) {
+        const status = structureStatus.value.get(single.id), source = structureSource(single);
+        const note = !source ? "Köss be egy .json fájlt." : status?.error ?? (status ? status.count + " doboz" + (status.truncated ? " (a forrás rövidítve)" : "") : "");
+        panels.push(group("Doboz-konténer", [
+          propertyTools(
+            tool("structure-regenerate", button("Újragenerálás a forrásból", () => transfer(() => regenerateStructure(single.id, true)),
+              {symbol: "restore", title: note, disabled: !online.value || !source, class: ["button", status?.error ? "danger" : null]})),
+            tool("structure-detach", button("Leválasztás a forrásról (sima dobozok maradnak)", () => detachStructure(single),
+              {symbol: "unlink", disabled: !online.value})),
+          ),
+          h("p", {class: "muted", role: "status"}, note),
         ]));
       }
 

@@ -424,12 +424,18 @@ export function arrowTransform(tip, toward, length) {
   return `translate(${tip.x} ${tip.y}) rotate(${angle}) scale(${length})`;
 }
 
-// Adatvonal: táblázatot (vagy CSV-t) és grafikont összekötő vonal. Nem tárolt tulajdonság, a két végpont típusa adja
-// (Rendering.swift isDataLink). Nyíl helyett mindkét végén félkorong áll.
+// Adatvonal: táblázatot (vagy CSV-t) és grafikont, illetve struktúra-forrást (.json) és struktúra-konténert összekötő vonal. Nem tárolt
+// tulajdonság, a két végpont adja (Rendering.swift isDataLink). Nyíl helyett mindkét végén félkorong áll.
 export const isGridType = type => type === "table" || type === "csv";
+// Struktúra-forrás: szövegfájl-doboz a struktúra-konténer forrásformátumával (structure-boxes.js `formats`; ma .json,
+// később .swift). Model.swift Idea.isStructureSource párja.
+export const structureSourcePattern = /\.json$/i;
+export const isStructureFileNode = node => Boolean(node?.file) && (node.type === "code" || node.type === "text")
+  && structureSourcePattern.test(node.file.filename ?? node.file.asset ?? "");
 export function isDataLink(edge, node) {
   const a = node(edge.source), b = node(edge.target?.node);
-  return Boolean(a && b) && ((a.type === "chart" && isGridType(b.type)) || (b.type === "chart" && isGridType(a.type)));
+  return Boolean(a && b) && ((a.type === "chart" && isGridType(b.type)) || (b.type === "chart" && isGridType(a.type))
+    || (Boolean(a.structure) && isStructureFileNode(b)) || (Boolean(b.structure) && isStructureFileNode(a)));
 }
 // A félkorong az egységnyi nyíl koordinátáiban (a csúcs az origó): a lapos oldala a doboz oldalára simul, a domború
 // a vonal felé néz. A doboznak azt az oldalát követi, amelyiken a végpont van, nem a vonal irányát.

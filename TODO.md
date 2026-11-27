@@ -45,6 +45,15 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 - A grafikon buboréksúgója a böngésző saját `<title>` súgója; a szerkesztő közös buboréksúgójára (tooltip.js) érdemes átállni.
 - A helyi próbalap (`projects/a/grafikon`) törölhető, ha már nem kell.
 
+# Struktúra-konténer (Public/structure-boxes.js)
+- Swift-forrás: `struct` és tárolt `let` / `var` tulajdonságok (számított változó nem) elemzője a `formats` jegyzékbe; a `.swift` kiterjesztés a `geometry.js` `structureSourcePattern` és a `Model.swift` `isStructureSource` listájába. Struct → konténer, tulajdonság → doboz (név: típus), struct típusú tulajdonság → beágyazott konténer (a típus definíciója szerint).
+- Újragenerálás visszavonása: a visszavont generálás után a forrás ujjlenyomata eltér, ezért a figyelő azonnal újraépíti (a forrásfájl szerkesztése nincs a visszavonási lépésekben).
+- Gépelés közben minden újragenerálás külön visszavonási lépés és mentés; lehetőség: összevonás a gépelés végéig.
+- Két szerkesztő egyszerre generálhat (azonos eredménnyel); lehetőség: csak a forrást szerkesztő kliens generáljon.
+- A dobozméret becsült szövegszélességből számol (nem a szerkesztő mérőjéből): szélsőséges betűtípusnál a szöveg kilóghat vagy sok hely marad.
+- Újragenerálás után a megnőtt konténer rátakarhat a mellette / alatta lévő dobozokra (a bal felső sarka marad, jobbra-lefelé nő); lehetőség: a szomszédok eltolása vagy jelzés.
+- A konténer 4096 képpontos legnagyobb méretén túl a tartalom kilóg (nagy forrásnál); lehetőség: kisebb betű / tömörebb elrendezés.
+
 # Konténer – szöveg körbefuttatása
 
 - Automatikus teszt a körbefuttatásra (JS–Swift egyezés: `textSlot`, körbefuttatott `labelLayout`).

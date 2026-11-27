@@ -96,6 +96,8 @@ Helyben a **projects/.settings.json** tartalmazza az alkalmazás beállításait
 
 A fájldoboz alján a csomagikonra duplán kattintva lehet letölteni a fájlt. Új fájloknál a név alapból rejtett. A tulajdonságpanel **Megjelenés** részében kapcsolható be, a **Fájlnév** mezőben pedig a kiterjesztés előtti rész szerkeszthető. A jóváhagyott törlés a projekt **.trash/** mappájába helyezi a fájlt az eredeti projektbeli alkönyvtárral együtt. A törölt projektek a projektmappa gyökerének **.trash/** mappájába kerülnek; az adminisztrátor a **Beállítások** oldal **Törölt projektek** részében visszaállíthatja vagy véglegesen törölheti őket.
 
+A **.json** fájl dobozából **doboz-konténer** hozható létre (jobb kattintás → Doboz-konténer létrehozása): a fájl szerkezetéből valódi dobozok készülnek egy konténerben (objektum és tömb → konténer, egyszerű érték → doboz, vagy saját dobozleíró séma szerint), és a forrás minden változását gépelés közben is követik. A változatlan elemekre kötött vonalak, a kézzel állított színek és a dobozba írt megjegyzések újrageneráláskor megmaradnak. Részletek: [node-types.md](server/docs/node-types.md), „Struktúra-konténer”.
+
 A mentés atomi fájlcserét és revízióellenőrzést használ. Egy adatkönyvtárhoz egy futó szerverpéldány tartozik.
 
 ### Főoldali előnézeti képek

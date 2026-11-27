@@ -1,5 +1,10 @@
 ## Nyitott
 
+- **Struktúra-konténer (2026-11-27, `Public/structure-boxes.js`): kézzel nézendő**
+  - Valódi Chrome-ban (CDP, `projects/struktura-proba`) ellenőrizve: betöltés, a .json szerkesztése a dobozon (félkész JSON-nál a dobozok maradnak, kész JSON-nál mentés előtt frissül), mentés után a lemezen: a változatlan elemre kötött vonal és kézi szín megmaradt, a változott elem tartalma új; létrehozás a gyors eszközökből (szabad helyre, adatvonallal). Safariban nincs kipróbálva; több résztvevős szerkesztés (két kliens egyszerre generál) nincs kipróbálva.
+  - Hirtelen leállított böngésző (a Chrome folyamatának kilövése a próba végén) résztvevője a lapon maradt, és a kijelölt dobozt foglaltnak mutatta a következő kliensnek a szerver újraindításáig. Nem a struktúra-konténer hibája; nem vizsgálva, lehet, hogy csak a jelenlét lejárati ideje hosszú.
+  - A `Tests/Editor/gestures.mjs` továbbra is elbukik (lásd lent: a panelre épülő részei); a többi érintett teszt (Swift 43, structure-boxes, chart, text-flow, wires, sketch) átment.
+
 - **Telepítő szkriptek szétválasztva (2026-11-27): a szerveren kipróbálandó**
   - `update.sh`: csak `git pull` (a régi build.sh-ból); `build.sh`: csak fordít, a bináris a `.build/release/thinknodes`-ben marad; `daemon.sh`: `update.sh` + `build.sh`, és csak sikeres build után leállítás, a bináris áthelyezése a `server/thinknodes` helyre, indítás; a unit `run.sh --binary:…/server/thinknodes`-szal indít. Helyben a `run.sh` a `.build/release/thinknodes`-t indítja.
   - A root → checkout-tulajdonos átadás egy helyen van (`deploy/as-owner.sh`, az `update.sh` és a `build.sh` használja); a `/tmp`-beli SwiftPM-zárfájlok törlése csak a `build.sh`-ban (korábban a daemon.sh-ban is), ez javítja a root-ként indított build.sh „invalid access to /tmp/_opt_ThinkNodes_server_.build.lock” hibáját.

@@ -234,6 +234,46 @@ Importált szöveges fájl: minden nem bináris fájl (UTF-8, NUL bájt nélkül
 
 **Táblázat és CSV doboza:** 5 px-es lekerekítésű téglalap (mint a kép és az előnézet); a grafikoné a szokásos.
 
+### Struktúra-konténer (doboz-konténer forrásfájlból)
+
+Sima doboz (`box`), amelynek tartalmát a vonallal bekötött forrásfájl (ma `.json`) generálja: a struktúra elemei valódi
+dobozok lesznek a konténerben (`Public/structure-boxes.js`, teszt: `Tests/Editor/structure-boxes.mjs`). A táblázat–grafikon
+párosítás mintájára működik, de a kimenet nem rajz, hanem szerkeszthető, köthető, exportálható doboz.
+
+- **Mezők:** a konténeren `structure: {digest}` – a forrás ujjlenyomata az utolsó generáláskor (csak `box` típuson érvényes);
+  a generált dobozokon `generated` – az elem ujjlenyomata (a forrásból jövő szöveg és stílus hash-e). Mindkettő azonosító-formájú.
+- **Létrehozás:** a `.json` fájl dobozán (gyors eszközök / helyi menü) „Doboz-konténer létrehozása”: új konténer a fájltól
+  jobbra, az első olyan helyen (lefelé haladva), ahol a már kiszámolt végső méretével nem takar más dobozt; bekötve. A konténer
+  szövege a fájlnév (szerkeszthető); a gyermekdobozok a cím alatt kezdődnek. A fejléc magassága a doboz címketerületéhez
+  igazodik (alakonként más arány, `labelRatios`), különben a körbefuttatott cím a gyermekek alá csúszna.
+- **Adatvonal:** a forrás és a konténer közti vonal adatvonal (félkorong, nyíl nélkül; `isDataLink`, `isStructureFileNode` /
+  `Idea.isStructureSource`). Egy konténerbe egy forrás köthető; újabb bekötéskor a korábbi adatvonal törlődik (`tidyChartLinks`).
+- **Leképezés:**
+  - Dobozleíró séma (ha a gyökér vagy a gyökértömb minden eleme ilyen): `{text | title, fill, textColor, shape, width, height,
+    fontSize, bold, italic, align, layout: auto | row | column, id, children: [...]}`. A gyökér maga a konténer (szövege,
+    stílusa); a `title` félkövér.
+  - Minden más JSON: objektum és tömb → konténer, egyszerű érték → doboz (**kulcs**, alatta az érték). Csak egyszerű
+    értékeket tartalmazó objektum / tömb elemei egymás alá kerülnek, a többi polcos tördeléssel.
+  - A forrásból jövő szöveg markdown-jelei semlegesek (visszaper). Korlát: 400 generált doboz, 8 szint mélység, elemenként
+    600 karakter; ami kimarad, azt egy „… további N elem” doboz jelzi.
+- **Azonosítók:** a konténer azonosítójából és az elem útvonalából képzett hash. Az útvonal szegmense objektumban a kulcs,
+  tömbben az elem neve (`name`, `title`, `label`, `id`, `key`, … – sémában az `id`, majd a szöveg), egyszerű értéknél maga
+  az érték, ha a testvérek közt egyedi; egyébként a sorszám. Beszúrás, törlés, átrendezés után is ugyanaz az elem ugyanazt
+  az azonosítót kapja, így **a rá kötött vonal megmarad**; a megszűnt elem vonalai törlődnek.
+- **Megőrzés:** ha az elem a forrásban nem változott (`generated` azonos), a kézzel állított megjelenése (szín, háttér,
+  alak, betű, igazítás) és a szövegébe írt megjegyzés megmarad, a doboz mérete ehhez a szöveghez igazodik. Ha az elem
+  változott, a szöveg az új; a kézzel állított színek és betűbeállítások akkor is megmaradnak, kivéve amit a forrás (séma)
+  maga ad meg. A helyet és a méretet mindig az elrendezés adja; a generált dobozba kézzel húzott doboz a konténerbe kerül.
+- **Frissülés:** a szerkesztő figyeli a forrás szövegét (a még mentetlen, gépelés közbeni állapotot is) és 150 ms késleltetéssel
+  újragenerál; húzás közben nem, hanem a mozdulat után. Hibás (pl. félkész) forrásnál a meglévő dobozok maradnak, a hiba a
+  konténer „Újragenerálás” gombjának súgójában látszik. Ha a forrás ujjlenyomata a tárolttal egyezik, nincs újragenerálás.
+- **Gyors eszközök (konténer):** Újragenerálás a forrásból; Leválasztás a forrásról (a dobozok sima dobozok maradnak).
+- **Megtekintő, export:** a generált dobozok közönséges dobozok, a szerver ugyanúgy rajzolja őket (szkript sem kell).
+- **Bővítés (terv):** a forrásformátum a `formats` jegyzékben bővíthető (fájlkiterjesztés → elemző). Swift: csak `struct` és
+  tárolt `let` / `var` tulajdonság (számított változó nem) – struct → konténer, tulajdonság → doboz (név: típus), struct típusú
+  tulajdonság → beágyazott konténer. A kiterjesztés a `geometry.js` `structureSourcePattern` és a `Model.swift`
+  `isStructureSource` listájába is kell.
+
 ### image
 
 Importált kép: .png, .jpg, .gif, .webp, .svg (legfeljebb 12 MiB, tartalom-ellenőrzéssel).

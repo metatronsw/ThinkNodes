@@ -229,6 +229,15 @@ package struct ChartSettings: Codable, Equatable, Sendable {
     }
 }
 
+/// Struktúra-konténer beállítása (Public/structure-boxes.js): a vonallal bekötött forrásfájlból (.json) generált dobozok
+/// konténere. A generált dobozok valódi dobozok (`Idea.generated`); a szerkesztő építi újra őket a forrás változásakor.
+package struct StructureSettings: Codable, Equatable, Sendable {
+    /// A forrás ujjlenyomata az utolsó generáláskor (structure-boxes.js textDigest); nil: még nem generált.
+    package var digest: String?
+
+    var isValid: Bool { digest.map(validSlug) ?? true }
+}
+
 package struct Idea: Codable, Equatable, Sendable {
     package var id: String
     /// Típus a regiszterből (`Public/node-types.json`): box, text, code, csv, image, audio, document, junction.
@@ -300,11 +309,17 @@ package struct Idea: Codable, Equatable, Sendable {
     package var scroll: Point?
     /// Grafikon (`chart` típus) beállítása: fajta, kategória- és értékoszlopok.
     package var chart: ChartSettings?
+    /// Struktúra-konténer (sima doboz): a bekötött forrásfájlból generált tartalom beállítása.
+    package var structure: StructureSettings?
+    /// Struktúra-konténerben generált doboz: az elem ujjlenyomata a forrásban (structure-boxes.js itemSignature).
+    /// Újrageneráláskor ebből tudja a szerkesztő, hogy az elem változatlan-e (ekkor a kézi beállítások megmaradnak).
+    package var generated: String?
     var hasFrame: Bool { isImage ? frame == true : type == "preview" && frame != false }
 
     private enum CodingKeys: String, CodingKey {
         case id, type, text, file, hideText, fitText, shape, fill, backgroundMode, animation, bold, italic, underline, font, justified, link
         case angle, parent, container, locked, textFlow, elevated, staticPreview, webPublic, uppercase, frame, frameWidth, scroll, chart, contentFit
+        case structure, generated
         case position = "pos", width = "w", height = "h", textColor = "textCol"
         case fontSize = "fontSz", alignment = "align", verticalAlignment = "vAlign"
     }
@@ -322,6 +337,11 @@ package struct Idea: Codable, Equatable, Sendable {
     var isImage: Bool { root == "image" }
     var isAudio: Bool { root == "audio" }
     package var isTextFile: Bool { root == "text" }
+    /// Struktúra-konténer forrása: .json szövegfájl-doboz (geometry.js isStructureFileNode).
+    var isStructureSource: Bool {
+        guard let file, type == "code" || type == "text" else { return false }
+        return ((file.filename ?? file.asset) as NSString).pathExtension.lowercased() == "json"
+    }
     func has(_ trait: String) -> Bool { NodeTypes.has(type, trait) }
 
     /// Rövid név (kereső, akadálymentes felirat, listák): fájlnév, illetve a szöveg első sora formázójelek nélkül.
@@ -337,6 +357,7 @@ package struct Idea: Codable, Equatable, Sendable {
               frameWidth.map({ (0.5...32).contains($0) }) ?? true,
               scroll.map({ $0.isValid && $0.x >= 0 && $0.y >= 0 }) ?? true,
               chart.map({ $0.isValid && type == "chart" }) ?? true,
+              structure.map({ $0.isValid && type == "box" }) ?? true, generated.map(validSlug) ?? true,
               (1...10000).contains(fontSize), fontSize.rounded() == fontSize, (1...3).contains(font ?? 1),
               [fill, textColor, border].allSatisfy(validColor),
               link.map({ $0.isValid && has("link") }) ?? true,
@@ -2813,6 +2834,8 @@ extension Idea {
         contentFit = (try? fields.decode(Bool.self, forKey: .contentFit)) == true ? true : nil
         scroll = try? fields.decode(Point.self, forKey: .scroll)
         chart = try? fields.decode(ChartSettings.self, forKey: .chart)
+        structure = try? fields.decode(StructureSettings.self, forKey: .structure)
+        generated = try? fields.decode(String.self, forKey: .generated)
         normalizePreview()
     }
 

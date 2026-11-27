@@ -1,5 +1,13 @@
 # Változások
 
+## 2026-11-27 – Struktúra-konténer: doboz-konténer .json fájlból
+
+- **Új modul (`Public/structure-boxes.js`):** a vonallal bekötött forrásfájlból valódi dobozok generálódnak a konténerben, a táblázat–grafikon párosítás mintájára. Felépítés: forrásformátum (`formats`, ma `.json`; később Swift struct) → köztes fa → elrendezés → dobozok. Bemenet: saját dobozleíró séma (`text | title, fill, textColor, shape, width, height, fontSize, bold, italic, align, layout, id, children`) vagy bármilyen JSON (objektum / tömb → konténer, egyszerű érték → doboz). Korlátok: 400 doboz, 8 szint, 600 karakter elemenként.
+- **Stabil azonosítók és megőrzés:** a doboz azonosítója a konténerből és a JSON-beli útvonalból képzett hash (tömbben az elem neve, ha egyedi), így beszúrás / átrendezés után is megmarad a rá kötött vonal. Változatlan elemen (`generated` ujjlenyomat) a kézi szín, megjelenés és a szövegbe írt megjegyzés marad; változott elemen a kézi szín marad, a tartalom az új.
+- **Szerkesztő:** „Doboz-konténer létrehozása” a .json doboz gyors eszközeiben és helyi menüjében (a konténer előre kiszámolt méretével szabad helyre kerül); gépelés közben (150 ms késleltetéssel, húzás közben nem) újragenerál, hibás forrásnál a dobozok maradnak; a konténeren Újragenerálás és Leválasztás. Egy konténerbe egy forrás köthető; a kapcsolat adatvonal (félkorong). A konténer fejléce a címketerület arányához igazodik, hogy a cím ne csússzon a gyermekek alá. Új ikon: `structure`.
+- **Szerver:** `Idea.structure` (`{digest}`, csak `box`) és `Idea.generated` mező, ellenőrzéssel; `isDataLink` a .json forrás és a struktúra-konténer közti vonalat is felismeri (`isStructureSource`). `geometry.js` v37.
+- **Tesztek:** `Tests/Editor/structure-boxes.mjs` (új `structure` téma a `test.sh`-ban), Swift `structureContainerStoresGeneratedBoxesAndDrawsADataLink`. Valódi Chrome-ban (CDP) végigpróbálva; Safariban nem. Dokumentáció: `docs/node-types.md` „Struktúra-konténer”, README; TODO / BUGS frissítve.
+
 ## 2026-11-27 – Telepítő szkriptek szétválasztva: update.sh frissít, build.sh csak fordít, daemon.sh cserél
 
 - **update.sh (új):** csak `git pull` (fast-forward), a visszaállítás-ajánlattal; a régi build.sh-ból. A `daemon.sh` és a `run.sh --update` hívja.
