@@ -1,5 +1,9 @@
 ## Nyitott
 
+- **build.sh root-ként: „invalid access to /tmp/_opt_ThinkNodes_server_.build.lock” (2026-11-27): javítva, a szerveren kipróbálandó**
+  - Ok: a `daemon.sh` a buildet a `thinknodes` felhasználóként futtatja, a SwiftPM `/tmp`-beli zárfájljai így az övéi; a közvetlenül root-ként indított `build.sh` ezeket a Fedora `fs.protected_regular` védelme miatt nem nyithatja meg. A zárfájlokat eddig csak a `daemon.sh` törölte.
+  - Javítás: a `build.sh` Linuxon root-ként törli a zárfájlokat, és ha a checkout nem a rooté, a tulajdonosnak adja át (a régi root tulajdonú fájlokat is neki adja), majd `runuser`-rel a tulajdonos nevében fut tovább (frissítés és fordítás is). Csak szintaxis-ellenőrzés volt (macOS); Linuxon root-ként nincs kipróbálva.
+
 - **Jobb gombos pásztázás és helyi menü (2026-11-27, `right-mouse-pan` ág): kézzel nézendő**
   - Megszűnt: kéz gomb (vászonmozgatás-zár, a `panLocked` beállítás szerveroldalon is), szóközös és bal gombos pásztázás. Új: jobb gomb + húzás pásztáz (objektum fölött is), mozgás nélküli jobb kattintás (küszöb: 5 px, `rightClickSlop`) felengedéskor nyitja a helyi menüt.
   - Valódi Chrome-ban (macOS, CDP) ellenőrizve: bal húzás és szóköz + húzás nem pásztáz, jobb húzás üres vásznon és dobozon pásztáz menü nélkül, jobb kattintás 3 px remegéssel menüt nyit. Safariban nincs kipróbálva.

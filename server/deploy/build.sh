@@ -15,6 +15,10 @@ local changes, it offers to reset the checkout to an exact copy of the GitHub br
 local changes and untracked files are discarded, ignored data (projects/, .build/) is kept.
 server/Package.resolved is generated: a local change to it is discarded without asking.
 
+On Linux, run as root: stale SwiftPM lock files in /tmp are removed, and if the checkout
+belongs to another user (on the server: thinknodes), the whole update and build runs as
+that user (runuser), so no root-owned file gets into .build.
+
 The pinned package versions (Package.resolved) are kept; packages a newer Swift needs on
 top of them (e.g. Swift 6.2+ on Fedora: swift-configuration for async-http-client) are
 resolved before the build and written to the local Package.resolved.
@@ -53,6 +57,27 @@ case "$(uname -s)" in
     *) printf 'Unsupported system: %s\n' "$(uname -s)" >&2; exit 1 ;;
 esac
 printf 'Platform: %s\n' "$platform"
+
+# --- Linux, run as root: the build runs as the owner of the checkout ---------------------
+# SwiftPM zárfájljai a /tmp-ben vannak (a .build útvonalából képzett előtaggal: …_.build.lock, …_.build_Package.resolved.lock
+# stb.). Ha a thinknodes felhasználó (daemon.sh) hagyta ott őket, a root a Fedora fs.protected_regular védelme miatt nem
+# nyithatja meg őket („invalid access to /tmp/…lock”): ezek törlődnek. Ha a checkout nem a rooté (szerveren: thinknodes),
+# a frissítés és a fordítás a tulajdonos nevében fut, így a .build-be nem kerül root tulajdonú fájl.
+if [[ "$platform" != macOS && $EUID -eq 0 ]]; then
+    for build_dir in "$PWD/.build" "$(pwd -P)/.build"; do
+        rm -f "/tmp/$(printf '%s' "$build_dir" | tr '/' '_')"*.lock
+    done
+    owner="$(stat -c %U "$PWD")"
+    if [[ "$owner" != root ]]; then
+        command -v runuser >/dev/null || { printf 'runuser not found: run it as %s.\n' "$owner" >&2; exit 1; }
+        owner_home="$(getent passwd "$owner" | cut -d: -f6)"
+        # Root által korábban itt hagyott fájlok (pl. egy régebbi build.sh-futásból) a tulajdonoshoz kerülnek.
+        chown -R "$owner:$(stat -c %G "$PWD")" "$(dirname "$PWD")"
+        printf 'Running as %s (owner of the checkout)\n' "$owner"
+        exec runuser -u "$owner" -- env HOME="${owner_home:-/tmp}" ${THINKNODES_SWIFT:+THINKNODES_SWIFT="$THINKNODES_SWIFT"} \
+            "$script" ${original_args[@]+"${original_args[@]}"}
+    fi
+fi
 
 # --- Update from GitHub ------------------------------------------------------------------
 reset_to_remote() {

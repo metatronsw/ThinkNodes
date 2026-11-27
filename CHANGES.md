@@ -1,5 +1,9 @@
 # Változások
 
+## 2026-11-27 – build.sh root-ként: zárfájlok törlése, fordítás a checkout tulajdonosaként
+
+- **build.sh:** Linuxon root-ként indítva törli a SwiftPM `/tmp`-beli zárfájljait (`…_.build*.lock`; a `thinknodes` felhasználó által hagyottakat a Fedora `fs.protected_regular` védelme miatt a root nem nyithatja meg: „invalid access to /tmp/_opt_ThinkNodes_server_.build.lock”). Ha a checkout nem a rooté, a tulajdonosnak adja vissza a fájlokat, és `runuser`-rel a tulajdonos nevében fut tovább (frissítés és fordítás), így a `.build`-be nem kerül root tulajdonú fájl. README frissítve.
+
 ## 2026-11-27 – A jobb oldali tulajdonságpanel megszűnt; tömör gombok; ikonos vászonmenü (`right-mouse-pan` ág)
 
 - **Tulajdonságpanel:** a panel és a jobb felső nyitó / záró gombja törölve; minden funkciója a gyors eszközökben (jobb kattintás). A csak a panelen lévő mezők mezőgombok lettek (`FieldButton`: a gombon az érték / ikon, kattintásra lebegő réteg a mezővel; mentés a mező elhagyásakor, választásnál azonnal): betűméret, kép keretvastagsága, csomópont elforgatása és átmérője, grafikon típusa / kategóriái / értékoszlopai (+ fejlécsor kapcsoló), link célja, weboldal neve, táblázat neve; a táblázat CSV-letöltése gomb. A „Szerkesztés” művelet törölve; dupla kattintás: szerkesztés a vásznon. Chrome-ban típusonként összevetve: a régi panel minden kezelőeleme elérhető. `quick-tools.json` frissítve.
