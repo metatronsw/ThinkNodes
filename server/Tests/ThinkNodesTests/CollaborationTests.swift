@@ -330,3 +330,57 @@ import VaporTesting
     #expect(throws: Abort.self) { try store.changeLog("main", action: "flag", id: id, text: nil, flag: "rossz", value: true, user: admin) }
     #expect(try store.projectLog("main", user: nil).entries.map(\.text) == ["Javított"])
 }
+
+/// Tétlen foglalás és szakadt kapcsolat: a legalább `idleHold` ideje fogott dobozt, ha a gazdája azóta nem csinált semmit,
+/// más átveheti (a régi gazda egyszer értesül); tevékenység után nem. A bezárult WebSocket után `disconnectGrace` idővel
+/// (újracsatlakozás és lekérdezés nélkül) a résztvevő kiesik, a doboza felszabadul.
+@Test func idleHoldsCanBeTakenAndDisconnectedPeersLeave() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("thinknodes-idle-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try WorksheetStore(root: root)
+    let live = Collaboration(store: store)
+    live.idleHold = .milliseconds(120)
+    live.disconnectGrace = .milliseconds(80)
+    let path = try WorksheetPath(["main", "idle"])
+    let a = User(name: "anna", role: .admin, passwordHash: "")
+    let b = User(name: "bela", role: .admin, passwordHash: "")
+    var sheet = try store.open(path, user: a)
+    sheet.nodes = [Idea(id: "box", text: "Doboz", position: Point(x: 0, y: 0)), Idea(id: "other", text: "Másik", position: Point(x: 300, y: 0))]
+    sheet = try store.update(path, worksheet: sheet, user: a)
+    let eventLoop = MultiThreadedEventLoopGroup.singleton.next()
+    func act(_ user: User, _ action: String, node: String? = nil) throws -> LiveState {
+        try live.presence(path, user: user, client: user.name, action: action, node: node, since: nil, loop: eventLoop).0
+    }
+    _ = try act(a, "select", node: "box")
+    _ = try act(b, "poll")
+    // Friss foglalás: nem vehető át.
+    #expect(throws: Abort.self) { try act(b, "select", node: "box") }
+    // Tevékenység közben (a foglalási időn túl is) nem vehető át.
+    try await Task.sleep(for: .milliseconds(80))
+    live.noteActivity(path, client: a.name)
+    try await Task.sleep(for: .milliseconds(80))
+    #expect(throws: Abort.self) { try act(b, "select", node: "box") }
+    // Tétlen: a többiek látják (idle), és átvehető.
+    try await Task.sleep(for: .milliseconds(150))
+    let seen = try act(b, "poll")
+    #expect(seen.participants.first { $0.name == "anna" }?.idle == true)
+    let taken = try act(b, "select", node: "box")
+    #expect(taken.participants.first { $0.name == "bela" }?.node == "box")
+    #expect(taken.participants.first { $0.name == "anna" }?.node == nil)
+    // A régi gazda egyszer értesül, és a dobozt már nem módosíthatja.
+    let notice = try act(a, "poll")
+    #expect(notice.participants.first { $0.mine }?.lost?.node == "box" && notice.participants.first { $0.mine }?.lost?.by == "bela")
+    #expect(try act(a, "poll").participants.first { $0.mine }?.lost == nil)
+    var moved = sheet
+    moved.nodes[0].position.x = 40
+    #expect(throws: Abort.self) { try live.update(path, sheet: moved, user: a, client: a.name) }
+
+    // Szakadt kapcsolat: a türelmi idő után (újracsatlakozás és lekérdezés nélkül) kiesik, a doboza felszabadul.
+    _ = try act(a, "select", node: "other")
+    live.markDisconnected(path, client: a.name)
+    #expect(throws: Abort.self) { try act(b, "select", node: "other") }
+    try await Task.sleep(for: .milliseconds(150))
+    let after = try act(b, "select", node: "other")
+    #expect(!after.participants.contains { $0.name == "anna" })
+    #expect(after.participants.first { $0.name == "bela" }?.node == "other")
+}

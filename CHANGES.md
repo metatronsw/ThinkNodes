@@ -1,5 +1,11 @@
 # Változások
 
+## 2026-11-27 – Közös szerkesztés: szakadt kapcsolat gyors felismerése, tétlen foglalás átvétele
+
+- **Szakadt kapcsolat:** a bezárult WebSocket után a türelmi idő (10 mp) elteltével, ha a résztvevő nem csatlakozott újra és nem kérdezett le, kiesik, és a foglalt doboza felszabadul (ütemezett ellenőrzés; a többiek hosszú lekérdezése azonnal visszatér). Eddig csak 45 mp csend után (a hirtelen bezárt / összeomlott böngésző „szellem-résztvevőként” foglalva tartotta a dobozt).
+- **Tétlen foglalás:** a szerver nyilvántartja a résztvevők utolsó tevékenységét (egér, billentyű, görgetés, érintés – a kliens legfeljebb 10 mp-enként jelzi a WebSocketen –, kijelölés, mentés, mozgatás, cellakijelölés). Aki legalább 1 perce fog egy dobozt és azóta tétlen, annak a doboza kijelöléssel átvehető; a résztvevők listájában `idle`, a szerkesztő nem tekinti foglaltnak. A régi gazda egyszer értesül (`lost`), a fogása, kijelölése és szerkesztése megszűnik.
+- Teszt: `idleHoldsCanBeTakenAndDisconnectedPeersLeave` (Swift, rövidített időkkel). Valódi Chrome-ban két böngészővel: összeomlott fül foglalása 20 mp alatt felszabadult; tétlen foglalás ~60–65 mp után átvehető, értesítéssel. README („Közös szerkesztés”), BUGS → DONE frissítve.
+
 ## 2026-11-27 – Struktúra-konténer: Swift-forrás, JSON-típusjelek, nil / null, új elrendezés, formázás átméretezéssel
 
 - **Swift-forrás (`.swift`, csak olvasás):** saját elemző (`swiftTree`: kommentek, szövegliterálok interpolációval / többsoros / nyers, zárójelezés). Egyetlen felső szintű struct: maga a konténer a struct (név, protokollok); több: külön konténerek. Beágyazott (és bővítményben megadott) struct a szülője konténerében. Tulajdonság → doboz `let` / `var` jellel, „Típus = alapérték” (típus nélkül a literálból); számított tulajdonság (`ƒ`) és függvény (`func`, az aláírás) szaggatott kerettel; a képletben / törzsben használt tagoktól feléjük, a struct típusú tulajdonságtól a struct konténeréhez halvány, pontozott nyíl (kezelt vonalak, `structureEdgeId`). `static`, `init`, figyelők nem jelennek meg.

@@ -1206,7 +1206,9 @@ createApp({
     const params = new URLSearchParams(window.location?.search);
     let initialNode = params.get("node"), initialEdge = params.get("edge");
     const copy = value => JSON.parse(JSON.stringify(value));
-    const occupied = id => peers.value.find(p => !p.mine && !p.viewing && p.node === id);
+    // Foglalt doboz: más fogja. A tétlen foglalás (1 perce fogja, és azóta nem csinált semmit) nem akadály: kijelöléskor
+    // átvehető (Collaboration.swift select).
+    const occupied = id => peers.value.find(p => !p.mine && !p.viewing && !p.idle && p.node === id);
     const groupBlocked = node => moveGroup(node).some(member => occupied(member.id));
     function enqueue(task) {
       const next = queued.then(task);
@@ -1487,6 +1489,16 @@ createApp({
       }
       online.value = true;
       receiveCheckpoint(state);
+      // A dobozomat más vette át (tétlen voltam): a fogás és a szerkesztés megszűnik, értesítés.
+      const lost = state.participants.find(p => p.mine)?.lost;
+      if (lost && held.value === lost.node) {
+        if (textEdit.value === lost.node) stopTextEdit();
+        if (nameEdit.value === lost.node) nameEdit.value = null;
+        held.value = null;
+        heldEdge = null;
+        if (selected.value?.id === lost.node) clearSelection();
+        problem.value = lost.by + " átvette a dobozt, mert több mint egy perce nem csináltál semmit.";
+      }
       peers.value = state.participants;
       receivePresentation(state.presentation);
       if (state.revision > baseline.revision) await enqueue(async () => {
@@ -7572,7 +7584,7 @@ createApp({
         nodes.set(id, {
           node: toRaw(node), claimed: !!owner, peerColor: peer?.color ?? null,
           own: id !== gridEditing && (selectors.some(p => p.mine) || !!group?.nodes.has(id) || !!hits?.nodes.has(id)),
-          occupied: present.some(p => !p.mine && !p.viewing),
+          occupied: present.some(p => !p.mine && !p.viewing && !p.idle),
           snap: snap === id, candidate: found.has("node/" + id), editing: editing === id, texting: texting === id,
           container: containers.has(id), drop: drops.has(id), resize: resize === id,
           single: !group && item?.kind === "node" && item.id === id && held.value === id,

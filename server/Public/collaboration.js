@@ -90,6 +90,15 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
     away = next;
     request("status", {away}).catch(() => {});
   }
+  // Tevékenység (egér, billentyű, görgetés, érintés a lapon): legfeljebb 10 mp-enként egy jelzés a WebSocketen. A szerver
+  // ebből tudja, hogy aki egy dobozt fog, csinál-e valamit; 1 perc tétlenség után a doboza átvehető.
+  let lastActivity = 0;
+  function noteActivity() {
+    const now = performance.now();
+    if (now - lastActivity < 10000 || socket?.readyState !== 1) return;
+    lastActivity = now;
+    socket.send('{"active":true}');
+  }
   function watchAway() {
     if (awayWatch) return;
     awayWatch = new AbortController();
@@ -97,6 +106,8 @@ export function liveConnection(path, csrf, onState, onError, {editing = false, o
     window.addEventListener("focus", checkAway, options);
     window.addEventListener("blur", () => setTimeout(checkAway), options);
     document.addEventListener("visibilitychange", checkAway, options);
+    const passive = {...options, passive: true, capture: true};
+    for (const type of ["pointermove", "pointerdown", "keydown", "wheel", "touchstart", "input"]) window.addEventListener(type, noteActivity, passive);
     away = isAway();
   }
   function cursor(point) {

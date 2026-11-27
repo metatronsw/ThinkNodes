@@ -128,7 +128,7 @@ A böngésző elkülönített környezetben futtatja a prezentációt. A prezent
 
 ## Közös szerkesztés
 
-A jelenlévők névsora a szerkesztőben a vászon jobb alsó sarkában, a megtekintőben a vászon alatt látszik. A kijelölés a szerkesztő böngészőfülhöz tartozik. Másik szerkesztő közben kábelt köthet a dobozhoz és le is választhat róla kábelt. Üres területre kattintás, az Escape vagy másik elem kiválasztása elengedi a kijelölést. Lapváltáskor és a fül bezárásakor is felszabadul a doboz. Megszakadt kapcsolat esetén a szerver időkorláttal oldja fel a zárolást.
+A jelenlévők névsora a szerkesztőben a vászon jobb alsó sarkában, a megtekintőben a vászon alatt látszik. A kijelölés a szerkesztő böngészőfülhöz tartozik. Másik szerkesztő közben kábelt köthet a dobozhoz és le is választhat róla kábelt. Üres területre kattintás, az Escape vagy másik elem kiválasztása elengedi a kijelölést. Lapváltáskor és a fül bezárásakor is felszabadul a doboz. Ha a böngésző kapcsolata megszakad (összeomlás, hálózat), és nem csatlakozik újra, a résztvevő kb. 10–20 másodperc múlva kiesik, a doboza felszabadul; egyébként 45 másodperc csend után. Akit legalább egy perce fog egy dobozt, és azóta nem csinált semmit a lapon (nem mozdult az egere, nem gépelt, nem görgetett), annak a dobozát más egyszerű kijelöléssel átveheti; a régi gazda értesítést kap, és a szerkesztése lezárul.
 
 A vászon módosításai automatikusan szinkronizálódnak. Húzáskor a saját doboz folyamatosan követi az egeret. A többi résztvevő egy WebSocket-kapcsolaton, alapból legfeljebb 100 milliszekundumonként kap pozíció-előnézetet. Az elengedés egy munkalapírást indít, az Escape megszakítja a húzást. A végleges hely WebSocket nélkül is megjelenik a többi résztvevőnél.
 

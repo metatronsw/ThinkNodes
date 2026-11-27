@@ -15,7 +15,6 @@
   - **Liquid Glass témában a nagy (151 dobozos) konténer húzása 1–2 fps** (ThinkDefault: 59 fps). Ok: GPU-raszterezés, nem JavaScript (docs/PERF.md „Konténer húzása”). A mérést a gép terhelése miatt félbehagytam; a javasolt külön rétegű megoldás nincs kész (TODO).
   - A konténerből kihúzott doboz a JSON-ból is kikerül (szándékos, kétirányú); visszavonással visszaáll. Véletlen kihúzásnál ez adatvesztésnek tűnhet.
   - A dobozleíró séma (stílusmezőkkel) megszűnt (TODO).
-  - Hirtelen leállított böngésző résztvevője a lapon maradt, és a kijelölt dobozt foglaltnak mutatta a szerver újraindításáig (a próbák során többször). Nem vizsgálva.
   - A `Tests/Editor/gestures.mjs` továbbra is elbukik (lásd lent: a panelre épülő részei).
 
 - **Telepítő szkriptek szétválasztva (2026-11-27): a szerveren kipróbálandó**

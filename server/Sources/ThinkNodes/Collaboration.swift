@@ -14,6 +14,17 @@ struct Participant: Content {
     let viewing: Bool
     /// Nem nézi a lapot (másik ablak vagy fül van előtérben): a jelenlévők között szürkén látszik, a kurzora nem.
     let away: Bool
+    /// Tétlen foglalás: legalább `idleHold` ideje fogja a dobozt, és azóta nem csinált semmit (egér, billentyű, görgetés,
+    /// mentés); a dobozt más átveheti (kijelöléskor).
+    var idle: Bool = false
+    /// Csak a saját sorban, egyszer: a dobozt más vette át tőled (tétlenség miatt).
+    var lost: LostHold? = nil
+}
+
+/// A tétlenség miatt átvett doboz és az átvevő neve.
+struct LostHold: Content {
+    let node: String
+    let by: String
 }
 
 /// Folyamatban lévő előadás (prezentáció mód) a szobában: ki adja elő, milyen módban („invite”: a követők leválhatnak;
@@ -89,6 +100,19 @@ final class Collaboration: @unchecked Sendable {
         let joined = ContinuousClock.now
         var seen = ContinuousClock.now
         var waiter: EventLoopPromise<Void>?
+        /// Utolsó tevékenység (egér, billentyű, görgetés, kijelölés, mentés; a hosszú lekérdezés nem az).
+        var active = ContinuousClock.now
+        /// Mióta fogja a mostani dobozt.
+        var heldSince = ContinuousClock.now
+        /// A WebSocket bezárult (és még nem csatlakozott újra): ennyi idő után a résztvevő kiesik (`disconnectGrace`).
+        var disconnected: ContinuousClock.Instant?
+        /// A tétlenség jelzése (a változáskor a szoba verziója nő, a többiek azonnal látják).
+        var idle = false
+        var lost: LostHold?
+
+        func isIdle(_ hold: Duration) -> Bool {
+            node != nil && !viewing && heldSince.duration(to: .now) >= hold && active.duration(to: .now) >= hold
+        }
     }
 
     private struct Presentation {
@@ -125,8 +149,14 @@ final class Collaboration: @unchecked Sendable {
             for recipient in peers.values { recipient.socket?.send(message) }
         }
 
-        mutating func expire() {
-            let expired = peers.filter { $0.value.seen.duration(to: .now) > .seconds(45) }
+        /// `hold`: a tétlen foglalás ideje; `grace`: a szakadt kapcsolat türelmi ideje.
+        mutating func expire(hold: Duration = .seconds(60), grace: Duration = .seconds(10)) {
+            // Kiesik: 45 mp-e nem jelentkezett, vagy a WebSocketje bezárult, `grace` ideje nem csatlakozott újra, és
+            // azóta lekérdezés sem jött tőle (hirtelen bezárt böngésző, megszakadt hálózat).
+            let expired = peers.filter { _, peer in
+                peer.seen.duration(to: .now) > .seconds(45)
+                    || (peer.socket == nil && peer.disconnected.map { $0.duration(to: .now) >= grace } == true && peer.seen.duration(to: .now) >= grace)
+            }
             for (id, peer) in expired {
                 hideCursor(peer)
                 peer.socket?.close(promise: nil)
@@ -135,7 +165,12 @@ final class Collaboration: @unchecked Sendable {
             }
             if !peers.values.contains(where: \.editing) { checkpoint = nil }
             if let presenter = presentation?.client, peers[presenter] == nil { presentation = nil }
-            if !expired.isEmpty { changed() }
+            var idleChanged = false
+            for (id, peer) in peers where peer.isIdle(hold) != peer.idle {
+                peers[id]?.idle = peer.isIdle(hold)
+                idleChanged = true
+            }
+            if !expired.isEmpty || idleChanged { changed() }
         }
 
         /// Fiók nélküli résztvevő színe: a palettának a szobában még nem használt színe (a fiókok színe a beállításokból jön).
@@ -146,6 +181,10 @@ final class Collaboration: @unchecked Sendable {
     }
 
     let pages = PageUpdates()
+    /// Ennyi ideje fogott és ennyi ideje tétlen résztvevő dobozát más átveheti (a tesztek rövidebbre állítják).
+    var idleHold: Duration = .seconds(60)
+    /// A bezárult WebSocket után ennyi idővel esik ki a résztvevő, ha nem csatlakozott újra és nem kérdezett le.
+    var disconnectGrace: Duration = .seconds(10)
     private let store: WorksheetStore
     private let lock = NSLock()
     private var rooms: [String: Room] = [:]
@@ -156,7 +195,7 @@ final class Collaboration: @unchecked Sendable {
         guard lastSweep.duration(to: .now) > .seconds(45) else { return }
         lastSweep = .now
         for key in Array(rooms.keys) {
-            rooms[key]?.expire()
+            rooms[key]?.expire(hold: idleHold, grace: disconnectGrace)
             if rooms[key]?.peers.isEmpty == true { rooms.removeValue(forKey: key) }
         }
     }
@@ -174,7 +213,7 @@ final class Collaboration: @unchecked Sendable {
             var board = try store.load(path, user: user, unlocks: unlocks)
             let access = try store.access(path, sheet: board, user: user, unlocks: unlocks)
             var room = rooms[path.url] ?? Room()
-            room.expire()
+            room.expire(hold: idleHold, grace: disconnectGrace)
             room.revision = board.revision
             if let existing = room.peers[client], existing.name != user?.name { throw Abort(.forbidden) }
             if action == "snapshot" && room.peers[client] == nil { throw Abort(.gone) }
@@ -235,6 +274,7 @@ final class Collaboration: @unchecked Sendable {
                     if room.checkpoint == nil { room.checkpoint = board; room.changed() }
                 }
                 room.peers[client]?.seen = .now
+                if ["select", "ping", "present", "unpresent", "checkpoint", "resign"].contains(action) { room.peers[client]?.active = .now }
                 if action == "ping" {
                     guard user != nil || access.editable, let peer = room.peers[client], peer.seen.duration(to: .now) < .seconds(45),
                           node.map({ id in board.nodes.contains { $0.id == id } }) ?? (point?.isValid == true) else { throw Abort(.forbidden) }
@@ -279,16 +319,27 @@ final class Collaboration: @unchecked Sendable {
                     if let node {
                         guard board.nodes.contains(where: { $0.id == node }) else { throw Abort(.notFound) }
                         if !viewing, let owner = room.peers.first(where: { $0.key != client && !$0.value.viewing && $0.value.node == node }) {
-                            throw Abort(.locked, reason: "\(owner.value.name ?? "Vendég") már kijelölte ezt a dobozt.")
+                            // Tétlen foglalás (legalább `idleHold` ideje fogja, és azóta nem csinált semmit): átvehető;
+                            // a régi gazdája a következő lekérdezésben értesül (`lost`).
+                            guard owner.value.isIdle(idleHold) else {
+                                throw Abort(.locked, reason: "\(owner.value.name ?? "Vendég") már kijelölte ezt a dobozt.")
+                            }
+                            room.peers[owner.key]?.node = nil
+                            room.peers[owner.key]?.edge = nil
+                            room.peers[owner.key]?.idle = false
+                            room.peers[owner.key]?.lost = LostHold(node: node, by: user?.name ?? "Vendég")
+                            room.changed()
                         }
                     }
                     if let edge {
                         guard node == nil, board.edges.contains(where: { $0.id == edge }) else { throw Abort(.notFound) }
                     }
                     if room.peers[client]?.node != node || room.peers[client]?.edge != edge || room.peers[client]?.viewing != viewing {
+                        if room.peers[client]?.node != node { room.peers[client]?.heldSince = .now }
                         room.peers[client]?.viewing = viewing
                         room.peers[client]?.edge = edge
                         room.peers[client]?.node = node
+                        room.peers[client]?.idle = false
                         room.changed()
                     }
                 }
@@ -313,8 +364,11 @@ final class Collaboration: @unchecked Sendable {
                 if adminA != adminB { return adminA }
                 return a.value.joined == b.value.joined ? a.key < b.key : a.value.joined < b.value.joined
             }.map {
-                Participant(id: $0.value.cursorID, name: $0.value.name ?? "Vendég", color: $0.value.color, node: $0.value.node, edge: $0.value.edge, avatar: $0.value.avatar ?? ($0.value.name == nil ? nil : 1), mine: $0.key == client, viewing: $0.value.viewing, away: $0.value.away)
+                Participant(id: $0.value.cursorID, name: $0.value.name ?? "Vendég", color: $0.value.color, node: $0.value.node, edge: $0.value.edge, avatar: $0.value.avatar ?? ($0.value.name == nil ? nil : 1), mine: $0.key == client, viewing: $0.value.viewing, away: $0.value.away,
+                            idle: $0.value.idle, lost: $0.key == client ? $0.value.lost : nil)
             })
+            // Az átvételről szóló értesítés egyszer megy ki.
+            if room.peers[client]?.lost != nil { room.peers[client]?.lost = nil }
             if let presentation = room.presentation, let presenter = room.peers[presentation.client] {
                 state.presentation = PresentationState(presenter: presenter.cursorID, name: presenter.name ?? "Vendég", color: presenter.color,
                                                        avatar: presenter.avatar ?? (presenter.name == nil ? nil : 1), mode: presentation.mode,
@@ -330,7 +384,7 @@ final class Collaboration: @unchecked Sendable {
     func update(_ path: WorksheetPath, sheet: Worksheet, user: User?, client: String?, unlocks: Set<String> = [], restoring: Bool = false,
                 ownSelections: Bool = false) throws -> Worksheet {
         try lock.withLock {
-            rooms[path.url]?.expire()
+            rooms[path.url]?.expire(hold: idleHold, grace: disconnectGrace)
             let saved = try store.update(path, worksheet: sheet, user: user, restoring: restoring, unlocks: unlocks) { current in
                 // Visszaállításkor a más által kijelölt dobozok nem akadályoznak; a kijelölések alább megszűnnek.
                 if restoring { return }
@@ -338,6 +392,7 @@ final class Collaboration: @unchecked Sendable {
                     guard let peer = rooms[path.url]?.peers[client], peer.name == user?.name else {
                         throw Abort(.conflict, reason: "Kapcsolódj újra a munkalaphoz.")
                     }
+                    rooms[path.url]?.peers[client]?.active = .now
                 }
                 guard let room = rooms[path.url] else { return }
                 let locked = Set(room.peers.filter { $0.key != client && !$0.value.viewing && !(ownSelections && $0.value.name == user?.name) }
@@ -374,6 +429,7 @@ final class Collaboration: @unchecked Sendable {
             guard let peer = rooms[path.url]?.peers[client], peer.seen.duration(to: .now) < .seconds(45) else { return false }
             peer.socket?.close(promise: nil)
             rooms[path.url]?.peers[client]?.socket = socket
+            rooms[path.url]?.peers[client]?.disconnected = nil
             for (id, other) in rooms[path.url]?.peers ?? [:] where id != client {
                 if let cursor = other.cursor { socket.send(cursor.message) }
                 if let cells = other.cells, other.node == cells.node { socket.send(cells.message) }
@@ -387,6 +443,13 @@ final class Collaboration: @unchecked Sendable {
         guard attached else { socket.close(promise: nil); return }
         socket.onText { [weak self] socket, text in
             guard text.utf8.count < 512 else { return }
+            // Tevékenység (egér, billentyű, görgetés a lapon; a kliens legfeljebb 10 mp-enként küldi): a tétlen foglalás
+            // ebből számol.
+            struct Active: Decodable { let active: Bool }
+            if let frame = try? JSONDecoder().decode(Active.self, from: Data(text.utf8)), frame.active {
+                self?.noteActivity(path, client: client, socket: socket)
+                return
+            }
             struct Pointer: Decodable { let mouse: Bool; let point: Point? }
             if let pointer = try? JSONDecoder().decode(Pointer.self, from: Data(text.utf8)) {
                 guard pointer.mouse, pointer.point?.isValid != false else { return }
@@ -396,6 +459,7 @@ final class Collaboration: @unchecked Sendable {
                           !peer.away || pointer.point == nil else { return }
                     let cursor = Cursor(cursor: peer.cursorID, color: peer.color, name: name, avatar: peer.avatar ?? 1, point: pointer.point)
                     self?.rooms[path.url]?.peers[client]?.cursor = pointer.point == nil ? nil : cursor
+                    if pointer.point != nil { self?.rooms[path.url]?.peers[client]?.active = .now }
                     let message = cursor.message
                     for (id, other) in room.peers where id != client { other.socket?.send(message) }
                 }
@@ -417,6 +481,7 @@ final class Collaboration: @unchecked Sendable {
                                                                      points: frame.points, end: frame.end, kind: frame.kind,
                                                                      clear: frame.clear)) else { return }
                     let message = String(decoding: data, as: UTF8.self)
+                    self?.rooms[path.url]?.peers[client]?.active = .now
                     for (id, other) in room.peers where id != client { other.socket?.send(message) }
                 }
                 return
@@ -444,6 +509,7 @@ final class Collaboration: @unchecked Sendable {
                           sender.seen.duration(to: .now) < .seconds(45) else { return }
                     let mark = CellMark(cells: sender.cursorID, node: frame.node, color: sender.color, range: frame.range)
                     self?.rooms[path.url]?.peers[client]?.cells = frame.range == nil ? nil : mark
+                    self?.rooms[path.url]?.peers[client]?.active = .now
                     let message = mark.message
                     for (id, other) in room.peers where id != client { other.socket?.send(message) }
                 }
@@ -457,6 +523,7 @@ final class Collaboration: @unchecked Sendable {
                 self?.lock.withLock {
                     guard let room = self?.rooms[path.url], let sender = room.peers[client], sender.socket === socket,
                           !sender.viewing, sender.node == frame.node, sender.seen.duration(to: .now) < .seconds(45) else { return }
+                    self?.rooms[path.url]?.peers[client]?.active = .now
                     for (id, other) in room.peers where id != client { other.socket?.send(text) }
                 }
                 return
@@ -473,11 +540,13 @@ final class Collaboration: @unchecked Sendable {
                       let sender = room.peers[client], sender.socket === socket, !sender.viewing, sender.node == frame.node,
                       sender.seen.duration(to: .now) < .seconds(45) else { return }
                 guard let data = try? JSONEncoder().encode(frame) else { return }
+                self?.rooms[path.url]?.peers[client]?.active = .now
                 for (id, peer) in room.peers where id != client && peer.seen.duration(to: .now) < .seconds(45) {
                     peer.socket?.send(String(decoding: data, as: UTF8.self))
                 }
             }
         }
+        let loop = socket.eventLoop
         socket.onClose.whenComplete { [weak self, weak socket] _ in
             self?.lock.withLock {
                 if self?.rooms[path.url]?.peers[client]?.socket === socket {
@@ -490,12 +559,52 @@ final class Collaboration: @unchecked Sendable {
                         self?.rooms[path.url]?.peers[client]?.cells = nil
                     }
                     self?.rooms[path.url]?.peers[client]?.socket = nil
+                    self?.rooms[path.url]?.peers[client]?.disconnected = .now
                     if let room = self?.rooms[path.url], let node = room.peers[client]?.node {
                         let clear = "{\"node\":\"\(node)\",\"revision\":\(room.revision)}"
                         for peer in room.peers.values { peer.socket?.send(clear) }
                     }
                 }
             }
+            // Ha nem csatlakozik újra és nem is kérdez le, a türelmi idő után kiesik, és a foglalása felszabadul
+            // (a többiek hosszú lekérdezése ezzel azonnal visszatér).
+            guard let self else { return }
+            self.scheduleSweep(path, on: loop, after: self.disconnectGrace)
+        }
+    }
+
+    /// A szoba lejárt résztvevőinek eltávolítása `after` idő múlva, majd `disconnectGrace`-enként, amíg van szakadt kapcsolatú
+    /// résztvevő (a lekérdezés a türelmi időn belül is jöhetett, ilyenkor később esik ki).
+    private func scheduleSweep(_ path: WorksheetPath, on loop: any EventLoop, after delay: Duration) {
+        let nanoseconds = Int64(delay.components.seconds) * 1_000_000_000 + Int64(delay.components.attoseconds / 1_000_000_000)
+        loop.scheduleTask(in: .nanoseconds(max(1, nanoseconds))) { [weak self] in
+            guard let self else { return }
+            let pending = self.lock.withLock { () -> Bool in
+                self.rooms[path.url]?.expire(hold: self.idleHold, grace: self.disconnectGrace)
+                if self.rooms[path.url]?.peers.isEmpty == true { self.rooms.removeValue(forKey: path.url) }
+                return self.rooms[path.url]?.peers.values.contains { $0.socket == nil && $0.disconnected != nil } == true
+            }
+            if pending { self.scheduleSweep(path, on: loop, after: self.disconnectGrace) }
+        }
+    }
+
+    /// Tevékenység a WebSocketen (és a tesztekben közvetlenül): a résztvevő nem tétlen.
+    func noteActivity(_ path: WorksheetPath, client: String, socket: WebSocket? = nil) {
+        lock.withLock {
+            guard let peer = rooms[path.url]?.peers[client], socket == nil || peer.socket === socket else { return }
+            rooms[path.url]?.peers[client]?.active = .now
+            if peer.idle {
+                rooms[path.url]?.peers[client]?.idle = false
+                rooms[path.url]?.changed()
+            }
+        }
+    }
+
+    /// A WebSocket bezárulásának jelzése (a tesztekben közvetlenül; élesben az onClose).
+    func markDisconnected(_ path: WorksheetPath, client: String) {
+        lock.withLock {
+            rooms[path.url]?.peers[client]?.socket = nil
+            rooms[path.url]?.peers[client]?.disconnected = .now
         }
     }
 
