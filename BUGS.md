@@ -7,6 +7,16 @@
   - Érintéses egyujjas pásztázás megmaradt (eddig a zár tiltotta, most mindig működik). Bal gombos húzás üres vásznon most semmit sem csinál (Alt + húzás a téglalapos kijelölés).
   - Ctrl + kattintás macOS-en továbbra is vonalhúzás, nem helyi menü; trackpaden a kétujjas kattintás + húzás pásztázása kézzel nézendő.
 
+- **A jobb oldali tulajdonságpanel megszűnt (2026-11-27, `right-mouse-pan` ág): nyitott és kézzel nézendő**
+  - A panel és a jobb felső nyitó / záró gombja törölve; minden funkciója a gyors eszközökben (jobb kattintás). A korábban csak a panelen lévő mezők mezőgombok lettek (editor.js `FieldButton`: a gombon az érték vagy ikon, kattintásra lebegő réteg a mezővel; a változás a mező elhagyásakor, választásnál azonnal mentődik): betűméret, kép keretvastagsága, csomópont elforgatása és átmérője, grafikon típusa / kategóriái / értékoszlopai (+ fejlécsor kapcsoló), link célja, weboldal neve, táblázat neve; a táblázat CSV-letöltése gomb lett. A „Szerkesztés” (panelt nyitó) művelet törölve; dupla kattintás: szerkesztés a vásznon.
+  - Chrome-ban ellenőrizve: a régi panel minden kezelőeleme elérhető a gyors eszközökből (doboz, konténer, kód-, szöveg-, CSV-fájl, kép, hang, dokumentum, grafikon, csomópont, táblázat). Nem volt a mérőlapon: linkes doboz, munkalaplink, egyéb (ZIP) fájl, weboldal – kézzel nézendő. Csoportos kijelölésnél a betűméret mezőgomb kézzel nézendő.
+  - **Tesztek nincsenek hozzáigazítva** (a felhasználó kérésére kihagyva): a `Tests/Editor/gestures.mjs` panelre épülő részei (`panel()`, `sidebarToggle()`, a panelen keresett gombok és mezők, kb. 50 hely) elbuknak; át kell írni a gyors eszközökre.
+  - A jobb kattintásos menü (gyors eszközök, vászonmenü, lenyíló listák, lebegő mezők) gombjai is tömörek (Chrome: alfa = 1).
+
+- **Fejléc- és eszköztárgombok tömörek, ikonos vászonmenü (2026-11-27, `right-mouse-pan` ág): kézzel nézendő**
+  - A fejléc, az eszköztár és lenyíló listáik gombjai minden témában tömörek (alap, rámutatás, bekapcsolt, letiltott állapotban is; letiltva csak a tartalom halványul). Chrome-ban mérve: LiquidGlass és p300, minden gomb alfa = 1. Kézzel nézendő a többi téma (Blueprint, NeonGlow, WhiteBoard, Minimalist) világos és sötét módban.
+  - A vászon helyi menüje csak ikonokat mutat (súgó és akadálymentes név a felirat): Ping (célkereszt), Objektum létrehozása (+), Táblázat létrehozása (rács), Új munkalap (lap), Középre állítás (középre mutató nyilak). Az objektumok menüje (gyors eszközök) nem változott.
+
 - **Érintőképernyő (mobil GPU): nyitott kérdések (2026-11-27, `right-mouse-pan` ág)**
   - Normál módban a két grafikus kártyás tartalomanimáció (`fx-shadow` átlátszóság + `will-change`, `wire-arrow` transzform) miatt a tableten ~40 kompozitált réteg van (LowPerformance módban 11, a vásznon belül egy sem). A felhasználó szerint most jó; ha mégis lassú / villog: érintőképernyőn alapból LowPerformance, vagy nem kompozitált animációk (PERF.md, asztali mérés is kell).
   - A vászonréteg 7680 × 3984 eszközpixel a tableten (overscan 1 → 3×3 képernyő); mobilon kisebb overscan megfontolandó (mérni).

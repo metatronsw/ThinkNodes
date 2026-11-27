@@ -1,5 +1,12 @@
 # Változások
 
+## 2026-11-27 – A jobb oldali tulajdonságpanel megszűnt; tömör gombok; ikonos vászonmenü (`right-mouse-pan` ág)
+
+- **Tulajdonságpanel:** a panel és a jobb felső nyitó / záró gombja törölve; minden funkciója a gyors eszközökben (jobb kattintás). A csak a panelen lévő mezők mezőgombok lettek (`FieldButton`: a gombon az érték / ikon, kattintásra lebegő réteg a mezővel; mentés a mező elhagyásakor, választásnál azonnal): betűméret, kép keretvastagsága, csomópont elforgatása és átmérője, grafikon típusa / kategóriái / értékoszlopai (+ fejlécsor kapcsoló), link célja, weboldal neve, táblázat neve; a táblázat CSV-letöltése gomb. A „Szerkesztés” művelet törölve; dupla kattintás: szerkesztés a vásznon. Chrome-ban típusonként összevetve: a régi panel minden kezelőeleme elérhető. `quick-tools.json` frissítve.
+- **Tömör gombok:** a fejléc, az eszköztár, a lenyíló listák, a gyors eszközök, a vászonmenü és a lebegő mezők gombjai minden témában és állapotban tömörek (letiltva csak a tartalom halványul).
+- **Vászonmenü:** csak ikonok (súgó és akadálymentes név a felirat); a Középre állítás és az Új munkalap saját ikont kapott.
+- Útmutató és `docs/hotkeys.json` frissítve. A `Tests/Editor/gestures.mjs` panelre épülő részei még nincsenek hozzáigazítva (BUGS.md).
+
 ## 2026-11-27 – Érintőképernyő: csípés előnézettel, első ujj visszatartása, kevesebb réteg; H / Ctrl+H (`right-mouse-pan` ág)
 
 - **Csípés (két ujj):** mozdulat közben csak a réteg CSS-transzformja változik (mint a görgetésnél), a nézet 400 ms nyugalom után rögzül; az ujjak helye a vászon nem mozgó tárolójához (`.canvas-area`) mérve (a mozgó jelenethez mérve kettős kép, megforduló irány volt). Csípési küszöb: a nagyítás a kezdeti távolság 15%-ánál (legalább 30 px) nagyobb változásra indul, ugrás nélkül.

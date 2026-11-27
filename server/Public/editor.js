@@ -74,6 +74,11 @@ function button(label, onClick, props = {}) {
   return h("button", {type: "button", class: "button", onClick, ...attributes}, [icon(symbol), label]);
 }
 
+// Csak ikonos gomb: a felirat súgó (title) és akadálymentes név (aria-label).
+function iconButton(title, onClick, props = {}) {
+  return button("", onClick, {title, "aria-label": title, ...props, class: ["button option-icon", props.class]});
+}
+
 const headerButtonClass = "button header-button";
 function headerButton(onClick, {class: modifiers, ...props}) {
   return button("", onClick, {...props, class: [headerButtonClass, modifiers]});
@@ -1112,7 +1117,9 @@ createApp({
     } catch { /* History is still available in this tab. */ }
     const toolbarOpen = ref(true);
     const editingObject = ref(null);
-    const objectPanelOpen = ref(true);
+    // A jobb oldali tulajdonságpanel megszűnt (2026-11-27): a mezői a gyors eszközökben vannak (FieldButton); a nevek a
+    // vásznon szerkeszthetők. Az állapot mindig „zárt”, így minden szerkesztés a helyben szerkesztés útját járja.
+    const objectPanelOpen = ref(false);
     const canvasPanelOpen = ref(false);
     // A munkalap megjelenése (téma, paletta, háttér, rácsköz, előnézeti kép): a vászonpanel gombjára a vászon közepén
     // felugró panelben (renderAppearancePopup).
@@ -2466,16 +2473,16 @@ createApp({
       selected.value = {kind, id: itemID};
       inspector.value = {kind, id: itemID};
       menu.value = null;
-      if (focusLabel) {
-        objectPanelOpen.value = true;
+      // A tulajdonságpanel megszűnt (a mezők a gyors eszközökben vannak): a név a vásznon, helyben szerkeszthető.
+      if (focusLabel && showCanvasInput && selected.value?.id === itemID) {
+        editKey.value = kind === "edge" ? "label" : "text";
+        const item = kind === "edge" ? edgeMap.value.get(itemID) : nodeMap.value.get(itemID);
+        inlineDraft.value = item?.[editKey.value] ?? "";
+        editingObject.value = itemID;
         await nextTick();
-        const field = mount.querySelector?.(".object-inspector [data-object-label]");
-        if (selected.value?.id === itemID && field) {
-          field.focus();
-          editKey.value = kind === "edge" ? "label" : "text";
-          editingObject.value = showCanvasInput ? itemID : null;
-          field.select();
-        }
+        const input = mount.querySelector?.(".inline-edit input, .inline-edit textarea");
+        input?.focus?.();
+        input?.select?.();
       }
     }
 
@@ -6068,15 +6075,17 @@ createApp({
         ...endpointActions(edge),
         button("Kapcsolat törlése", () => removeEdge(edge), {class: "button danger", symbol: "trash"}),
       ] : [
-        button("Ping", () => ping({point: clampPoint(open.position)}), {symbol: "center", disabled: !online.value}),
-        button("Objektum létrehozása", () => {
+        // A vászon menüje: csak ikonok, a felirat súgóként (title) és akadálymentes névként marad.
+        iconButton("Ping", () => ping({point: clampPoint(open.position)}), {symbol: "center", disabled: !online.value}),
+        iconButton("Objektum létrehozása", () => {
           menu.value = null;
           addNode(open.position);
         }, {disabled: !board.value, symbol: "plus"}),
-        button("Táblázat létrehozása", () => { menu.value = null; transfer(() => newTable(open.position)); }, {disabled: !board.value || !online.value, symbol: "grid"}),
-        button("Új munkalap", addSubworksheet, {symbol: "plus", disabled: !online.value}),
-        button("Középre állítás", () => { menu.value = null; centerOrigin(); }, {symbol: "center"}),
+        iconButton("Táblázat létrehozása", () => { menu.value = null; transfer(() => newTable(open.position)); }, {disabled: !board.value || !online.value, symbol: "table-grid"}),
+        iconButton("Új munkalap", addSubworksheet, {symbol: "file", disabled: !online.value}),
+        iconButton("Középre állítás", () => { menu.value = null; centerOrigin(); }, {symbol: "fit-content"}),
       ];
+      const iconMenu = type !== "node" && type !== "edge";
       // A menü mindig a böngészőablakon belül marad (jobbra/lent kilógás helyett eltolódik).
       const fit = ({el}) => {
         if (!el?.getBoundingClientRect || typeof innerWidth !== "number") return;
@@ -6088,13 +6097,42 @@ createApp({
       // A leíró `noMenu` típusain (pl. doboz) a hagyományos menü ki van kapcsolva: csak a gombok jelennek meg.
       if (open.tools) return renderQuickTools(open, menuDisabled(type, open.id)
         ? null : h("div", {class: "context-menu panel", "data-effects": graphics.value.effects, "aria-label": "Műveletek"}, entries));
-      return h("div", {class: "context-menu panel", "data-effects": graphics.value.effects, "aria-label": "Műveletek",
-        style: {left: open.x + "px", top: open.y + "px"}, onVnodeMounted: fit, onVnodeUpdated: fit}, entries);
+      return h("div", {class: ["context-menu panel", {"icon-menu": iconMenu}], "data-effects": graphics.value.effects, "aria-label": "Műveletek",
+        role: iconMenu ? "toolbar" : undefined, style: {left: open.x + "px", top: open.y + "px"}, onVnodeMounted: fit, onVnodeUpdated: fit}, entries);
     }
 
     // A tulajdonságpanel csoportjaiból csak a gombok (és a színválasztók), a panel sorai szerint: a szövegmezők,
     // számmezők, listák és feliratok kimaradnak (azok a panelen érhetők el). Eredmény: a sorok listája (egy sor = a
     // panel egy gombsora); ami nem gombsorban áll (pl. az igazítás gombjai), a csoportja végére kerül.
+    // Mezőgomb (a gyors eszközökben, a tulajdonságpanel helyett): ikon vagy érték a gombon, kattintásra lebegő réteg nyílik
+    // a mezővel (számmező, lista, szövegmező, jelölőnégyzetek). A szerkesztés lezárása ugyanúgy történik, mint a panelen
+    // volt: a mező elhagyásakor, választásnál azonnal (finishField). Kívülre kattintásra és Esc-re bezárul.
+    const FieldButton = {
+      props: {label: String, symbol: String, value: [String, Number], disabled: Boolean},
+      setup(props, {slots}) {
+        const open = ref(false), root = ref(null);
+        const outside = event => { if (!root.value?.contains(event.target)) open.value = false; };
+        watch(open, now => { if (now) addEventListener("pointerdown", outside, true); else removeEventListener("pointerdown", outside, true); });
+        onUnmounted(() => removeEventListener("pointerdown", outside, true));
+        return () => h("div", {class: "field-button", ref: root}, [
+          h("button", {type: "button", class: "button option-icon", ...controlName(props.label), disabled: props.disabled,
+            "aria-haspopup": "dialog", "aria-expanded": open.value, onClick: () => { open.value = !open.value; }},
+            [props.symbol ? icon(props.symbol) : null, props.value != null ? h("span", {class: "field-value"}, String(props.value)) : null]),
+          open.value ? h("div", {class: "color-tools floating field-popup stack", role: "dialog", "aria-label": props.label,
+            onVnodeMounted: ({el}) => { placePopup(el, el.parentNode?.querySelector?.("button"), quickDirection(el)); el.querySelector("input, select, textarea")?.focus(); },
+            onFocusin: event => { editingField = event.target.matches("textarea,input,select"); },
+            onFocusout: () => { editingObject.value = null; finishField(); },
+            onChange: event => { if (event.target.matches("select,input[type=checkbox],input[type=radio]")) finishField(); },
+            onInputCapture: () => { editingField = true; },
+            onKeydown: event => {
+              if (event.key === "Escape") { event.stopPropagation(); open.value = false; }
+              else if (event.key === "Enter" && !event.isComposing && event.target.matches("input")) { event.preventDefault(); event.target.blur(); }
+            }}, [h("span", {class: "field-popup-title"}, props.label), slots.default?.()]) : null,
+        ]);
+      },
+    };
+    const fieldButton = (label, options, content) => h(FieldButton, {label, ...options}, {default: () => content});
+
     function toolRows(panels) {
       const skipped = new Set(["input", "textarea", "select", "legend", "p", "small", "label"]);
       const named = (vnode, name) => [vnode.props?.class].flat().some(value => typeof value === "string" && value.split(" ").includes(name));
@@ -6103,7 +6141,7 @@ createApp({
         const collect = (vnode, row) => {
           if (Array.isArray(vnode)) { for (const child of vnode) collect(child, row); return; }
           if (!vnode || typeof vnode !== "object") return;
-          if (vnode.type === ColorPicker || vnode.type === "button") { row.push(vnode); return; }
+          if (vnode.type === ColorPicker || vnode.type === FieldButton || vnode.type === "button") { row.push(vnode); return; }
           if (typeof vnode.type !== "string" || skipped.has(vnode.type)) return;
           const own = named(vnode, "property-options") || named(vnode, "link-row") ? [] : row;
           if (own !== row) rows.push(own);
@@ -6156,6 +6194,7 @@ createApp({
     // Csak ikon: a feliratos gombokról a szöveg lekerül (súgóként megmarad), ha van mellette ikon.
     function quickButton(vnode) {
       if (vnode.type === ColorPicker) return cloneVNode(vnode, {floating: true});
+      if (vnode.type === FieldButton) return vnode;
       const children = [vnode.children].flat(), words = children.filter(child => typeof child === "string" && child.trim().length > 2);
       if (words.length && children.some(child => child && typeof child === "object")) {
         const name = words.join(" ").trim();
@@ -6296,7 +6335,6 @@ createApp({
         const edge = board.value.edges.find(item => item.id === inspector.value.id);
         if (edge) {
           panels = edgePanels([edge]); type = "edge";
-          action("properties", "Szerkesztés", "property-panel", () => { menu.value = null; objectPanelOpen.value = true; openProperties("edge", edge.id); });
           action("delete", "Kapcsolat törlése", "trash", () => { menu.value = null; removeEdge(edge); }, {class: "danger"});
           action("ping", "Ping", "center", () => ping({point: clampPoint(open.position)}), {disabled: !online.value});
           action("edit-name", "Címke szerkesztése", "edit", () => editInline("edge", edge.id));
@@ -6306,7 +6344,6 @@ createApp({
         if (node && held.value === node.id && !occupied(node.id)) {
           panels = nodePanels([node]); type = node.type;
           // A hagyományos menü műveletei gombként (a menü kikapcsolása miatt itt érhetők el).
-          action("properties", "Szerkesztés", "property-panel", () => { menu.value = null; objectPanelOpen.value = true; openProperties("node", node.id); });
           action("delete", "Törlés", "trash", () => { menu.value = null; deleteNode(node); }, {class: "danger"});
           action("ping", "Ping", "center", () => ping({node: node.id}), {disabled: !online.value});
           // Név / megjegyzés szerkesztése a vásznon, a meglévő módon: doboz szövege a dobozon, fájlnév a doboz fölötti
@@ -6688,8 +6725,8 @@ createApp({
 
       if (common.has("label")) panels.push(group("Címke", [
         single ? input(single.text ?? "", v => change("text", v), {"aria-label": "Címke", "data-object-label": "", maxlength: 120}) : null,
-        propertyTools(h("span", {class: "muted"}, [icon("rotate")]),
-          numeric(value("angle", 0), v => change("angle", v ? Math.round(v) : undefined), -360, 360, {...controlName("Elforgatás (fok)"), step: 1})),
+        propertyTools(tool("rotation", fieldButton("Elforgatás (fok)", {symbol: "rotate", value: value("angle", 0) + "°"}, [
+          numeric(value("angle", 0), v => change("angle", v ? Math.round(v) : undefined), -360, 360, {...controlName("Elforgatás (fok)"), step: 1})]))),
       ]));
 
       if (common.has("file") && single) {
@@ -6724,7 +6761,8 @@ createApp({
             h("div", {class: "typography-rows"}, [propertyTools(
               tool("autosize", iconToggle("AutoSize", nodes.every(n => n.fitText), () => change("fitText", !nodes.every(n => n.fitText) || undefined),
                 optionSymbol("path", {d: "M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M8 16l4-8 4 8m-6.5-3h5"}))),
-              fontSize,
+              tool("font-size", fieldButton("Betűméret", {value: nodes.every(n => n.fitText) ? "A" : value("fontSize", 16),
+                disabled: nodes.every(n => n.fitText)}, [fontSize])),
               fontButton(1, "Alap betűtípus"), fontButton(2, "Második betűtípus"), fontButton(3, "Harmadik betűtípus"),
             ), propertyTools(
               tool("text-color", color("Szövegszín", "textColor", 1)),
@@ -6766,7 +6804,8 @@ createApp({
               h("p", {class: "muted"}, "Szerkesztés: dupla kattintás a dobozon, befejezés: Esc."),
             ]),
           propertyTools(
-            numeric(single.fontSize ?? 14, v => change("fontSize", Math.round(v)), 6, 72, {...controlName("Betűméret"), step: 1, clampValue: true}),
+            tool("font-size", fieldButton("Betűméret", {value: single.fontSize ?? 14},
+              [numeric(single.fontSize ?? 14, v => change("fontSize", Math.round(v)), 6, 72, {...controlName("Betűméret"), step: 1, clampValue: true})])),
             color("Szövegszín", "textColor", 1),
             single.type === "code" ? null : uppercaseToggle(nodes, change),
             single.type === "csv" ? null : fitContentButton(single),
@@ -6795,8 +6834,9 @@ createApp({
         const doc = tableOf(single);
         const editing = tableEdit.value?.id === single.id;
         panels.push(group("Táblázat", [
-          doc ? h("input", {class: "input", "aria-label": "Táblázat neve", placeholder: "Táblázat neve", value: doc.name ?? "",
-              onChange: e => modifyTable(single, next => { next.name = e.target.value.trim() || undefined; })}) : h("p", {class: "muted"}, "Betöltés…"),
+          doc ? propertyTools(tool("table-name", fieldButton("Táblázat neve", {symbol: "edit"}, [
+              h("input", {class: "input", "aria-label": "Táblázat neve", placeholder: "Táblázat neve", value: doc.name ?? "",
+                onChange: e => modifyTable(single, next => { next.name = e.target.value.trim() || undefined; })})]))) : h("p", {class: "muted"}, "Betöltés…"),
           propertyTools(
             button(editing ? "Szerkesztés vége" : "Cellák szerkesztése", () => editing ? stopTableEdit() : startTableEdit(single), {symbol: "table-grid", disabled: !doc}),
             iconToggle("Fejlécsor rögzítése", (doc?.header?.rows ?? 0) > 0,
@@ -6810,7 +6850,11 @@ createApp({
           propertyTools(button("Grafikon létrehozása", () => addChartBox(single), {symbol: "chart", disabled: !online.value})),
           propertyTools(
             button("Tartalom cseréje fájlból…", () => transfer(() => reimportTable(single)), {symbol: "restore", disabled: !online.value || !!occupied(single.id)}),
-            h("a", {class: "button", href: exportURL(fileSheet(path, single.file), single.file.asset, "csv"), download: ""}, [icon("download"), "CSV"]),
+            tool("table-csv", button("", () => {
+              const link = document.createElement("a");
+              link.href = exportURL(fileSheet(path, single.file), single.file.asset, "csv"); link.download = "";
+              document.body.append(link); link.click(); link.remove();
+            }, {class: "button option-icon", symbol: "download", ...controlName("Letöltés CSV-ként")})),
             h("small", {class: "muted", role: "status"}, fileSaveState.value.get(single.id) ?? ""),
           ),
         ]));
@@ -6833,19 +6877,22 @@ createApp({
         const scatter = chart.kind === "scatter", pie = chart.kind === "pie";
         const numericColumns = data?.columns.filter(column => column.numeric && column.index !== data.labelColumn) ?? [];
         const limitReached = data && data.valueColumns.length >= (pie ? 1 : scatter ? 3 : module.maximumSeries);
-        panels.push(group("Grafikon", [
+        const sourceNote = source ? h("p", {class: "muted"}, "Forrás: " + nodeName(source))
+          : h("p", {class: "muted"}, "Nincs bekötött táblázat. Húzz vonalat egy táblázatból vagy CSV-ből a grafikonra (Ctrl+húzás).");
+        const labelName = scatter ? "X tengely" : pie ? "Szeletek neve" : "Kategóriák";
+        panels.push(group("Grafikon", [propertyTools(
           // A sorozatok kiosztása típusonként más (kör: egy, pont: szám az x tengelyen), ezért váltáskor újra automatikus.
-          picker("Típus", chart.kind, Object.entries(kinds).map(([id, name]) => [id, name + "diagram"]),
-            kind => change("chart", {kind, ...(chart.header === false ? {header: false} : {})})),
-          source ? h("p", {class: "muted"}, "Forrás: " + nodeName(source))
-            : h("p", {class: "muted"}, "Nincs bekötött táblázat. Húzz vonalat egy táblázatból vagy CSV-ből a grafikonra (Ctrl+húzás)."),
-          source && !data ? h("p", {class: "muted"}, rows === null ? "A táblázat nem olvasható." : "Betöltés…") : null,
-          data ? picker(scatter ? "X tengely" : pie ? "Szeletek neve" : "Kategóriák", chart.labels == null ? "auto" : String(chart.labels), [
+          tool("chart-type", fieldButton("Grafikon típusa", {symbol: "chart", value: kinds[chart.kind] ?? chart.kind}, [
+            picker("Típus", chart.kind, Object.entries(kinds).map(([id, name]) => [id, name + "diagram"]),
+              kind => change("chart", {kind, ...(chart.header === false ? {header: false} : {})})),
+            sourceNote,
+            source && !data ? h("p", {class: "muted"}, rows === null ? "A táblázat nem olvasható." : "Betöltés…") : null])),
+          data ? tool("chart-labels", fieldButton(labelName, {symbol: "list"}, [picker(labelName, chart.labels == null ? "auto" : String(chart.labels), [
             ["auto", "Automatikus" + (data.labelColumn != null && chart.labels == null ? " (" + data.columns[data.labelColumn].name + ")" : "")],
             ...(scatter ? [] : [["-1", "Sorszám"]]),
             ...data.columns.filter(column => column.used && (!scatter || column.numeric)).map(column => [String(column.index), column.name]),
-          ], value => update({labels: value === "auto" ? undefined : Number(value), values: undefined})) : null,
-          data ? h("div", {class: "chart-columns", role: "group", "aria-label": "Értékoszlopok"}, [
+          ], value => update({labels: value === "auto" ? undefined : Number(value), values: undefined})), sourceNote])) : null,
+          data ? tool("chart-values", fieldButton(pie ? "Értékek" : "Értékoszlopok", {symbol: "table-grid"}, [h("div", {class: "chart-columns", role: "group", "aria-label": "Értékoszlopok"}, [
             h("span", pie ? "Értékek" : "Értékoszlopok"),
             numericColumns.length ? numericColumns.map(column => {
               const on = data.valueColumns.includes(column.index);
@@ -6859,14 +6906,10 @@ createApp({
                 h("span", column.name),
               ]);
             }) : h("small", {class: "muted"}, "Nincs számoszlop."),
-          ]) : null,
-          source ? h("label", {class: "check"}, [
-            h("input", {type: "checkbox", checked: chart.header !== false, disabled: !online.value,
-              onChange: event => update({header: event.target.checked ? undefined : false})}),
-            h("span", "Az első sor fejléc"),
-          ]) : null,
-          data?.truncated ? h("p", {class: "muted"}, "A grafikon a táblázat elejét mutatja (" + data.labels.length + " sor).") : null,
-        ]));
+          ]), data?.truncated ? h("p", {class: "muted"}, "A grafikon a táblázat elejét mutatja (" + data.labels.length + " sor).") : null])) : null,
+          source ? tool("chart-header", iconToggle("Az első sor fejléc", chart.header !== false,
+            () => update({header: chart.header !== false ? false : undefined}), icon("heading"), !online.value)) : null,
+        )]));
       }
 
       if (common.has("comment")) {
@@ -6935,8 +6978,9 @@ createApp({
         ] : framed ? [
           iconToggle(framing ? "Keret: be" : "Keret: ki", framing,
             () => change("frame", node => isImage(node) ? (framing ? undefined : true) : (framing ? false : undefined)), icon("box-empty")),
-          numeric(value("frameWidth", boxFrameWidth), v => change("frameWidth", v === boxFrameWidth ? undefined : v), .5, 32,
-            {...controlName("Keret vastagsága"), step: .5, clampValue: true, disabled: !framing}),
+          tool("frame-width", fieldButton("Keret vastagsága", {value: value("frameWidth", boxFrameWidth), disabled: !framing}, [
+            numeric(value("frameWidth", boxFrameWidth), v => change("frameWidth", v === boxFrameWidth ? undefined : v), .5, 32,
+              {...controlName("Keret vastagsága"), step: .5, clampValue: true, disabled: !framing})])),
         ] : [];
         panels.push(group("Megjelenés", [
           h("div", {class: "property-options property-tools box-effect-options"}, [
@@ -6947,7 +6991,8 @@ createApp({
       }
 
       if (common.has("diameter")) panels.push(group("Megjelenés", [propertyTools(
-        numeric(value("width", 12), size => change("width", node => { node.height = size; return size; }), 4, 128, controlName("Átmérő")),
+        tool("diameter", fieldButton("Átmérő", {value: value("width", 12)}, [
+          numeric(value("width", 12), size => change("width", node => { node.height = size; return size; }), 4, 128, controlName("Átmérő"))])),
         color("Szín", "fill", 2),
       )]));
 
@@ -6966,7 +7011,7 @@ createApp({
         panels.unshift(h("fieldset", {class: "property-group stack link-group"}, [
           h("legend", [h("span", "Link · " + kindLabel)]),
           h("div", {class: "link-row"}, [
-            single.link.kind === "web" ? h("input", {"aria-label": "Weboldal neve (a mappa is átnevezve)", value: linkCaption(single.link), maxlength: 80,
+            single.link.kind === "web" ? tool("web-name", fieldButton("Weboldal neve (a mappa is átnevezve)", {symbol: "edit"}, [h("input", {"aria-label": "Weboldal neve (a mappa is átnevezve)", value: linkCaption(single.link), maxlength: 80,
                 onChange: event => {
                   const field = event.target, name = field.value.trim(), previous = linkCaption(single.link);
                   if (name === previous) return;
@@ -6985,13 +7030,13 @@ createApp({
                       modified();
                     } catch (error) { field.value = previous; throw error; }
                   });
-                }}) : h("input", {"aria-label": "Link célja", value: single.link.target, maxlength: 2048,
+                }})])) : tool("link-target", fieldButton("Link célja", {symbol: "link"}, [h("input", {"aria-label": "Link célja", value: single.link.target, maxlength: 2048,
                 onChange: event => {
                   const raw = event.target.value.trim();
                   const target = single.link.kind === "url" ? externalURL(raw) : worksheetLink(raw, path)?.kind === "worksheet" ? raw : null;
                   if (!target) { problem.value = "Érvénytelen hivatkozás."; event.target.value = single.link.target; return; }
                   change("link", {kind: single.link.kind, target});
-                }}),
+                }})])),
             destination ? tool("link-open", button("", () => followBoxLink(destination), {symbol: single.link.kind === "url" ? "website" : "right", class: "button option-icon", ...controlName("Megnyitás")})) : null,
           ]),
           // Második sor: a többi gomb.
@@ -7044,30 +7089,6 @@ createApp({
           single ? h("span", {class: "endpoint-actions"}, endpointActions(single, true)) : null,
         ])]),
       ];
-    }
-
-    function renderInspector() {
-      tally("inspector");
-      if (!objectPanelOpen.value || !selected.value && !batch.value) return null;
-      if (batch.value) {
-        const nodes = board.value.nodes.filter(n => batch.value.nodes.has(n.id) && !occupied(n.id));
-        const edges = board.value.edges.filter(e => batch.value.edges.has(e.id));
-        const joints = nodes.filter(isJunction).length;
-        const summary = (nodes.length-joints)+" doboz, "+edges.length+" vonal, "+joints+" csomópont";
-        return sidebar("Objektumok", [
-          h("p", {class: "muted"}, summary),
-          ...(nodes.length ? nodePanels(nodes) : []),
-          ...(edges.length ? edgePanels(edges) : []),
-        ]);
-      }
-      if (!inspector.value) return null;
-      if (inspector.value.kind === "edge") {
-        const edge = board.value.edges.find(item => item.id === inspector.value.id);
-        return edge ? sidebar("Vonal szerkesztése", edgePanels([edge])) : null;
-      }
-      const node = nodeMap.value.get(inspector.value.id);
-      if (!node || held.value !== node.id || occupied(node.id)) return null;
-      return sidebar(isJunction(node) ? typeLabel(node.type) : typeLabel(node.type) + " szerkesztése", nodePanels([node]));
     }
 
     const topRow = mount.closest?.(".editor-root")?.querySelector(".worksheet-nav");
@@ -7173,19 +7194,12 @@ createApp({
         }}, [
           renderCanvas(),
           problem.value || currentStatus ? h("p", {class: ["canvas-status", {error: problem.value}], role: "status"}, problem.value || currentStatus) : null,
-          h("div", {class: "inspector-column"}, [renderInspector()]),
           canvasPanelOpen.value ? h("div", {class: "inspector-column canvas-inspector-column"}, [renderCanvasInspector()]) : null,
           renderAppearancePopup(),
           renderSearch(),
           h(topRow ? window.Vue.Teleport : "div", topRow ? {to: topRow} : {}, [
           renderHeader(),
           h("a", {class: [headerButtonClass, "worksheet-close"], href: "/" + path, title: "Szerkesztő bezárása", "aria-label": "Bezárás", onClick: switchToViewer}, [icon("close")]),
-          headerButton(() => { finishField(); editingObject.value = null; objectPanelOpen.value = !objectPanelOpen.value; }, {
-            class: ["sidebar-open", {active: (selected.value || batch.value) && !objectPanelOpen.value}],
-            "aria-expanded": objectPanelOpen.value,
-            "aria-label": objectPanelOpen.value ? "Oldalsáv bezárása" : "Oldalsáv megnyitása",
-            symbol: "property-panel",
-          }),
           headerButton(() => { finishField(); canvasPanelOpen.value = !canvasPanelOpen.value; if (canvasPanelOpen.value) loadPreviewImages(); }, {
             class: "sidebar-open sidebar-open-canvas",
             "aria-expanded": canvasPanelOpen.value,

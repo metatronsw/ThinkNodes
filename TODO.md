@@ -79,7 +79,7 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 # GYORS ESZKÖZÖK / TULAJDONSÁGPANEL
 
 + A „kinyíló rész semmit nem tol el” szabály bevezetése a tulajdonságpanelen is: a színválasztó listája ott még eltolja a többi gombot (a gyors eszközökben már rögzített réteg: `ColorPicker floating`, `placePopup`).
-+ A többi típus (fájldobozok, kép, vonal, csomópont) elrendezése a `quick-tools.json`-ban; a tulajdonságpanel kiváltása (szöveg- és számmezők helye).
++ A többi típus (fájldobozok, kép, vonal, csomópont) saját elrendezése a `quick-tools.json`-ban (most a „*” automatikus sorai adják).
 
 
 # RAJZESZKÖZÖK (lézer, filctoll – Public/laser.js)

@@ -239,6 +239,16 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 .worksheet-notes { margin-top: 18px; padding: 22px; }
 .context-menu { position: fixed; z-index: 8; width: 228px; padding: 7px; display: grid; gap: 3px; box-shadow: 0 10px 25px #1c315326; }
 .context-menu .button { justify-content: flex-start; border-color: transparent; white-space: normal; }
+/* Mezőgomb (gyors eszközök, editor.js FieldButton): a gombon ikon és / vagy az érték, kattintásra lebegő réteg a mezővel. */
+.field-button { display: inline-flex; }
+.field-button > .button { gap: 4px; min-width: 32px; }
+.field-value { font-size: .78rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.field-popup { width: max-content; min-width: 180px; max-width: 320px; padding: 8px; }
+.field-popup-title { font-size: .78rem; font-weight: 600; color: var(--muted); }
+.field-popup :is(input:not([type=checkbox], [type=radio]), select) { width: 100%; }
+/* A vászon helyi menüje: csak ikonok egy sorban (a felirat súgóként). */
+.context-menu.icon-menu { width: auto; display: flex; gap: 4px; padding: 5px; }
+.context-menu.icon-menu .button { justify-content: center; border-color: var(--btn-line); }
 /* Gyors eszközök (editor.js renderQuickTools, próba): jobb kattintásra a gombok sorai a mutatónál, alattuk a helyi
    menü (ha a típuson be van kapcsolva); a gomboknak nincs közös háttere és kerete. Az elrendezést a
    quick-tools.json adja. */
@@ -741,7 +751,7 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
   background: transparent;
 }
 .editor-root .worksheet-nav .button:not(:hover, :active, [aria-pressed="true"], .primary) {
-  background: color-mix(in srgb, var(--panel-surface, #fff) 36%, transparent);
+  background: var(--panel-surface, #fff);
 }
 @media (max-width:700px) {
   .editor-root .worksheet-nav { pointer-events:auto; }
@@ -1438,6 +1448,19 @@ svg text { text-rendering: geometricPrecision; }
   --btn-on: color-mix(in srgb, var(--accent) 34%, transparent); --btn-on-ink: var(--accent-ink);
 }
 .editor-workspace[data-effects="liquid"], :is(.quick-tools, .context-menu, .chat-panel)[data-effects="liquid"] { --btn-radius: 11px; }
+/* A fejléc és az eszköztár gombjai (a lenyíló listáikkal együtt) sosem átlátszók: üveges témában is tömör felület, a vászon
+   nem látszik át rajtuk (alap, rámutatás, bekapcsolt állapot). */
+.editor-root .worksheet-nav, .canvas-controls, .canvas-area > :is(.toolbar-group-list, .draw-tools, .cursor-modes),
+:root :is(.quick-tools, .context-menu, .quick-flyout-list, .color-tools.floating) {
+  --btn-surface: var(--panel-surface, #fff);
+  --btn-hover: color-mix(in srgb, var(--accent) 22%, var(--panel-surface, #fff));
+  --btn-on: color-mix(in srgb, var(--accent) 34%, var(--panel-surface, #fff));
+}
+/* Letiltva sem átlátszó: a gomb tömör marad, csak a tartalma halványul. */
+:is(.editor-root .worksheet-nav, .canvas-controls, .canvas-area > :is(.toolbar-group-list, .draw-tools, .cursor-modes),
+  .quick-tools, .context-menu, .quick-flyout-list, .color-tools.floating) .button:disabled {
+  opacity: 1; color: color-mix(in srgb, var(--btn-ink, currentColor) 45%, transparent);
+}
 .site-header { --btn-surface: transparent; --btn-ink: #eef4ff; --btn-line: #526783; --btn-hover: #263953; --btn-hover-line: #8fa6c8; }
 :root :is(.button, .option-icon):not(.primary) {
   background-color: var(--btn-surface); color: var(--btn-ink); border-color: var(--btn-line); border-radius: var(--btn-radius);

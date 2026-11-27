@@ -34,7 +34,7 @@
     "title": "Dobozok és fájlok",
     "rows": [
       {"action": "Új doboz", "icon": "plus", "keys": [["Dupla kattintás"], ["Jobb kattintás", "Objektum létrehozása"]], "where": "Üres vászon", "detail": "Kijelöli az alapértelmezett címet, így azonnal átírhatod."},
-      {"action": "Tulajdonságok megnyitása", "icon": "edit", "keys": [["Dupla kattintás"]], "where": "Doboz vagy vonal", "detail": "A jobb felső panel csukott állapotból is megnyílik."},
+      {"action": "Tulajdonságok", "icon": "edit", "keys": [["Jobb kattintás"]], "where": "Doboz, vonal, csomópont, kijelölt csoport", "detail": "A beállítások a jobb kattintásra megjelenő gombokban vannak (gyors eszközök); a mezők (pl. betűméret, link célja, grafikon adatai) a gombra kattintva nyílnak. Dupla kattintás: a szöveg, illetve a címke szerkesztése a vásznon."},
       {"action": "Szöveg szerkesztése", "keys": [["Alt", "Dupla kattintás"]], "where": "Doboz", "detail": "A doboz szövegmezőjére áll."},
       {"action": "Doboz mozgatása", "keys": [["Húzás"]], "where": "Doboz vagy kijelölés", "detail": "A közösen kijelölt elemek együtt mozgathatók."},
       {"action": "Doboz átméretezése", "keys": [["Alt", "Sarok húzása"]], "where": "Doboz", "detail": "Az Alt lenyomásakor láthatóvá válnak a méretezőfogók."},
@@ -55,7 +55,7 @@
       {"id": "connect", "action": "Vonal bekötése", "icon": "link", "keys": [["Ctrl", "Húzás"]], "where": "Doboz vagy üres vászon", "detail": "Másik dobozra húzva a végpont a dobozhoz kötődik. Üres helyre engedve szabad végpont lesz."},
       {"action": "Végpont áthelyezése", "icon": "unlink", "keys": [["Húzás"]], "where": "A vonal külső harmada", "detail": "A közelebbi végpontot húzza. A középső szakasz kattintással kijelölhető."},
       {"action": "Csomópont beszúrása", "keys": [["Ctrl", "Húzás"]], "where": "A vonal belseje", "detail": "A vonal két szakaszra válik, és a csomópont ugyanazzal a húzással áthelyezhető."},
-      {"action": "Végpont leválasztása vagy újrakötése", "icon": "unlink", "keys": [["Jobb kattintás"]], "where": "Vonal vagy vonalpanel", "detail": "A kezdő- és végpont műveletei külön érhetők el."},
+      {"action": "Végpont leválasztása vagy újrakötése", "icon": "unlink", "keys": [["Jobb kattintás"]], "where": "Vonal", "detail": "A kezdő- és végpont műveletei külön érhetők el."},
       {"action": "Kijelölt elem törlése", "icon": "trash", "keys": [["Delete"], ["Backspace"]], "where": "Vászon", "detail": "A törölt dobozhoz kötött vonalak is törlődnek. Kétágú csomópont törlésekor a rendszer megpróbálja egyesíteni a két ágat."},
       {"action": "Törlés a bekötések megtartásával", "icon": "trash", "keys": [["Ctrl", "Delete"], ["Ctrl", "Backspace"]], "where": "Kijelölt doboz vagy csomópont", "detail": "A bekötött vonalak szabad véggel maradnak. A doboz helyi menüjéből is elérhető."}
     ]
@@ -64,7 +64,6 @@
     "id": "munkamenet",
     "title": "Panelek és munkamenet",
     "rows": [
-      {"action": "Objektumpanel", "icon": "left", "keys": [["Jobb felső nyíl"]], "where": "Szerkesztő", "detail": "A kijelölt objektum, vonal vagy csoport tulajdonságait nyitja és zárja."},
       {"action": "Munkalapbeállítások", "icon": "up", "keys": [["Jobb alsó nyíl"]], "where": "Szerkesztő", "detail": "A fájlfeltöltés, a munkalap címe, szövege és háttérszíne itt érhető el."},
       {"action": "Gyorskereső", "keys": [["Enter"]], "where": "Vászon", "detail": "Dobozcím, szöveg és vonalcímke alapján keres. Az Enter és az Esc bezárja a keresőt."},
       {"action": "Kijelölés vagy művelet megszakítása", "keys": [["Esc"]], "where": "Szerkesztő", "detail": "Megszünteti a kijelölést, és megszakítja a folyamatban lévő vászonműveletet."},
