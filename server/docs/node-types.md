@@ -234,45 +234,71 @@ Importált szöveges fájl: minden nem bináris fájl (UTF-8, NUL bájt nélkül
 
 **Táblázat és CSV doboza:** 5 px-es lekerekítésű téglalap (mint a kép és az előnézet); a grafikoné a szokásos.
 
-### Struktúra-konténer (doboz-konténer forrásfájlból)
+### Név (doboz)
 
-Sima doboz (`box`), amelynek tartalmát a vonallal bekötött forrásfájl (ma `.json`) generálja: a struktúra elemei valódi
-dobozok lesznek a konténerben (`Public/structure-boxes.js`, teszt: `Tests/Editor/structure-boxes.mjs`). A táblázat–grafikon
-párosítás mintájára működik, de a kimenet nem rajz, hanem szerkeszthető, köthető, exportálható doboz.
+Minden sima doboznak (`box`) lehet neve: `name` mező (Swiftben `Idea.boxName`), legfeljebb 255 karakter, egy bekezdés
+(sortörés nélkül), sima szöveg (nem markdown).
 
-- **Mezők:** a konténeren `structure: {digest}` – a forrás ujjlenyomata az utolsó generáláskor (csak `box` típuson érvényes);
-  a generált dobozokon `generated` – az elem ujjlenyomata (a forrásból jövő szöveg és stílus hash-e). Mindkettő azonosító-formájú.
+- **Megjelenés:** a doboz fölött, mint a fájlnév: félkövér, 13 px, a doboz szélességére (8 képpont ráhagyással) tördelve,
+  a doboz szövegének igazításával (balra / középre / jobbra; sorkizárás nincs). A sorok magassága 17, a doboztól 4 képpont.
+  SVG-szöveg (`text.node-name`), nem HTML: sok dobozon is olcsó. A tördelés a szerkesztőben (geometry.js `nameLayout`) és a
+  szerveren (Rendering.swift `nameLayout`) pontosan egyezik; közös teszt: `Tests/Fixtures/box-names.json`
+  (`Tests/Editor/box-names.mjs`, Swift `boxNamesMatchSharedFixtures`). Az export határoló doboza a nevet is tartalmazza.
+- **Szerkesztés:** Shift + dupla kattintás a dobozon, vagy a gyors eszközök „Név szerkesztése” gombja (`box-name`). A
+  felirat helyén szerkeszthető, tördelődő mező (egy réteg); Enter / a mező elhagyása ment, Esc elvet.
+- **Rövid név:** ha van név, a kereső és az akadálymentes felirat azt mutatja (`nodeName`, `Idea.name`).
+- Előnézetes (linkes) dobozon a név tárolható, de nem látszik (ott a link felirata áll a doboz fölött).
+
+### Struktúra-konténer (doboz-konténer forrásfájlból, kétirányú)
+
+Sima doboz (`box`), amely a vonallal bekötött forrásfájllal (ma `.json`) kétirányúan össze van kötve: a JSON szerkezete
+valódi dobozokként jelenik meg benne, és a dobozok szerkesztése visszaíródik a fájlba (`Public/structure-boxes.js`, teszt:
+`Tests/Editor/structure-boxes.mjs`). A táblázat–grafikon párosítás mintájára működik.
+
+- **Leképezés (mindkét irányban ugyanaz):** a doboz **neve a kulcs, a szövege az érték**. Konténer: `list: false` =
+  objektum `{}` (a gyermekek neve a kulcs), `list: true` = tömb `[]` (a gyermekek neve csak felirat, pl. az elem `name`
+  mezője; nem exportálódik). A jelző a név után halványan látszik (`{}` / `[]`), a gyors eszközökben váltható
+  (`structure-list`). Érték: `3` szám, `true` / `false`, `null`, idézőjelben (`"3"`) mindig szöveg, minden más szöveg; a
+  szöveg markdown-jelei generáláskor semlegesítve (visszaper), visszafelé a visszaperek lekerülnek. Sorrend: a gyermekek
+  tárolt sorrendje a lapon. Jelző nélküli (kézzel épített) konténer: ha minden gyermeknek egyedi neve van, objektum,
+  egyébként tömb. Objektumban két azonos név: a második „név (2)” kulcsot kap.
+- **Mezők:** a konténeren `structure: {digest, boxes}` – a forrás és a dobozokból írt JSON ujjlenyomata az utolsó
+  szinkronkor (csak `box` típuson); a konténereken `list`.
+- **Típusszavak:** ha az érték `Int`, `Float`, `Double`, `Bool`, `String`, `Date`, `URL`, `UUID`, illetve `T?`, `[T]`,
+  `[K: V]`, a doboz kitöltése az alaptípus színe (`Public/structure-types.json`, a paletta 0–15 sorszámai, minden témában
+  megvannak; a szöveg kontrasztját a rajzolás javítja). A szín nem kerül a JSON-ba; a kézzel állított szín felülírja.
+  Az adatban véletlenül ilyen szövegű érték is típusszínt kap.
 - **Létrehozás:** a `.json` fájl dobozán (gyors eszközök / helyi menü) „Doboz-konténer létrehozása”: új konténer a fájltól
-  jobbra, az első olyan helyen (lefelé haladva), ahol a már kiszámolt végső méretével nem takar más dobozt; bekötve. A konténer
-  szövege a fájlnév (szerkeszthető); a gyermekdobozok a cím alatt kezdődnek. A fejléc magassága a doboz címketerületéhez
-  igazodik (alakonként más arány, `labelRatios`), különben a körbefuttatott cím a gyermekek alá csúszna.
+  jobbra, az első olyan helyen, ahol a végső méretével nem takar más dobozt; neve a fájlnév; adatvonallal bekötve.
+  Fordítva: bármely konténeren „Mentés .json fájlba” (`structure-save`): új `.json` fájl a projektben, a konténer mellett,
+  kétirányúan bekötve; a konténerek `list` jelzője ekkor rögzül.
 - **Adatvonal:** a forrás és a konténer közti vonal adatvonal (félkorong, nyíl nélkül; `isDataLink`, `isStructureFileNode` /
-  `Idea.isStructureSource`). Egy konténerbe egy forrás köthető; újabb bekötéskor a korábbi adatvonal törlődik (`tidyChartLinks`).
-- **Leképezés:**
-  - Dobozleíró séma (ha a gyökér vagy a gyökértömb minden eleme ilyen): `{text | title, fill, textColor, shape, width, height,
-    fontSize, bold, italic, align, layout: auto | row | column, id, children: [...]}`. A gyökér maga a konténer (szövege,
-    stílusa); a `title` félkövér.
-  - Minden más JSON: objektum és tömb → konténer, egyszerű érték → doboz (**kulcs**, alatta az érték). Csak egyszerű
-    értékeket tartalmazó objektum / tömb elemei egymás alá kerülnek, a többi polcos tördeléssel.
-  - A forrásból jövő szöveg markdown-jelei semlegesek (visszaper). Korlát: 400 generált doboz, 8 szint mélység, elemenként
-    600 karakter; ami kimarad, azt egy „… további N elem” doboz jelzi.
-- **Azonosítók:** a konténer azonosítójából és az elem útvonalából képzett hash. Az útvonal szegmense objektumban a kulcs,
-  tömbben az elem neve (`name`, `title`, `label`, `id`, `key`, … – sémában az `id`, majd a szöveg), egyszerű értéknél maga
-  az érték, ha a testvérek közt egyedi; egyébként a sorszám. Beszúrás, törlés, átrendezés után is ugyanaz az elem ugyanazt
-  az azonosítót kapja, így **a rá kötött vonal megmarad**; a megszűnt elem vonalai törlődnek.
-- **Megőrzés:** ha az elem a forrásban nem változott (`generated` azonos), a kézzel állított megjelenése (szín, háttér,
-  alak, betű, igazítás) és a szövegébe írt megjegyzés megmarad, a doboz mérete ehhez a szöveghez igazodik. Ha az elem
-  változott, a szöveg az új; a kézzel állított színek és betűbeállítások akkor is megmaradnak, kivéve amit a forrás (séma)
-  maga ad meg. A helyet és a méretet mindig az elrendezés adja; a generált dobozba kézzel húzott doboz a konténerbe kerül.
-- **Frissülés:** a szerkesztő figyeli a forrás szövegét (a még mentetlen, gépelés közbeni állapotot is) és 150 ms késleltetéssel
-  újragenerál; húzás közben nem, hanem a mozdulat után. Hibás (pl. félkész) forrásnál a meglévő dobozok maradnak, a hiba a
-  konténer „Újragenerálás” gombjának súgójában látszik. Ha a forrás ujjlenyomata a tárolttal egyezik, nincs újragenerálás.
-- **Gyors eszközök (konténer):** Újragenerálás a forrásból; Leválasztás a forrásról (a dobozok sima dobozok maradnak).
-- **Megtekintő, export:** a generált dobozok közönséges dobozok, a szerver ugyanúgy rajzolja őket (szkript sem kell).
-- **Bővítés (terv):** a forrásformátum a `formats` jegyzékben bővíthető (fájlkiterjesztés → elemző). Swift: csak `struct` és
-  tárolt `let` / `var` tulajdonság (számított változó nem) – struct → konténer, tulajdonság → doboz (név: típus), struct típusú
-  tulajdonság → beágyazott konténer. A kiterjesztés a `geometry.js` `structureSourcePattern` és a `Model.swift`
-  `isStructureSource` listájába is kell.
+  `Idea.isStructureSource`). Egy konténerbe egy forrás köthető (`tidyChartLinks`).
+- **Szinkron, csak jóváhagyáskor (gépelés közben nem):**
+  - forrás → dobozok: a kódszerkesztő elhagyásakor (Escape, kattintás máshova), illetve ha a fájlt más mentette;
+  - dobozok → forrás: egy doboz szövegének / nevének jóváhagyásakor, doboz hozzáadásakor / törlésekor / kihúzásakor, a
+    `list` váltásakor; húzás és szerkesztés közben vár. A dobozokból írt JSON a forrás behúzását követi; utána az
+    elrendezés a visszaírt forrásból frissül (a szöveg normalizálódik, pl. `3 ` → `3`).
+  - A saját írás ujjlenyomata a konténerbe kerül, így nincs oda-vissza ping-pong. Ha mindkét oldal változott, a forrás nyer.
+  - Hibás forrásnál (pl. félkész JSON) a dobozok maradnak; a hiba a konténer „Újragenerálás” gombján látszik.
+- **Párosítás és megőrzés:** újrageneráláskor a meglévő dobozok a szülőjük és a kulcsuk szerint kapják meg az új tartalmat
+  (objektumban a név; tömbben az elem neve vagy egyszerű értéke, ha egyedi, egyébként a helye; a párosítatlan maradékok
+  sorrendben, így az átnevezett kulcs is megtartja a dobozát). A megmaradó doboz **azonosítója, vonalai, kézzel állított
+  színe és betűbeállításai nem változnak**; csak a ténylegesen változott mezők íródnak (a többi doboz nem rajzolódik újra).
+  Új doboz azonosítója a konténerből és az útvonalból képzett hash. A helyet és a méretet mindig az elrendezés adja (a
+  nevek helyével együtt). A struktúrába tett más objektum (kép, fájl) érintetlen marad, és nem kerül a JSON-ba.
+- **Korlátok:** 600 doboz (fölötte csak az első elemek látszanak, és nincs visszaírás – adatvesztés lenne), 12 szint,
+  255 karakteres kulcs (sortörés nélkül), 100 000 karakteres érték; túllépésnél hibaüzenet, a dobozok maradnak.
+- **Figyelem:** a konténerből kihúzott doboz a JSON-ból is kikerül (kétirányú kapcsolat); visszavonással (Ctrl+Z) a doboz
+  visszakerül, és a JSON is.
+- **Gyors eszközök:** Újragenerálás a forrásból; Leválasztás a forrásról (a dobozok maradnak); Tömb / objektum; Mentés .json
+  fájlba (jelző nélküli konténeren).
+- **Megtekintő, export:** a dobozok közönséges dobozok, a nevük a szerver rajzán is látszik.
+- **Bővítés (terv):** a forrásformátum a `formats` jegyzékben bővíthető (kiterjesztés → elemző és író). Swift: csak
+  `struct` és tárolt `let` / `var` tulajdonság (számított változó nem) – struct → konténer, tulajdonság → doboz
+  (név = tulajdonság, érték = típus, így a típusszínek is érvényesek), struct típusú tulajdonság → beágyazott konténer /
+  hivatkozás. A kiterjesztés a `geometry.js` `structureSourcePattern` és a `Model.swift` `isStructureSource` listájába is kell.
+- **Húzás:** a konténer a tartalmával közös eltolással mozog (docs/PERF.md „Konténer húzása”).
 
 ### image
 

@@ -1,0 +1,108 @@
+[
+ {
+  "name": "kor",
+  "width": 176,
+  "lines": [
+   "kor"
+  ],
+  "height": 21
+ },
+ {
+  "name": "Rövid név",
+  "width": 64,
+  "lines": [
+   "Rövid",
+   "név"
+  ],
+  "height": 38
+ },
+ {
+  "name": "Hosszabb név, amely több sorba tördelődik a doboz szélességén",
+  "width": 176,
+  "lines": [
+   "Hosszabb név, amely",
+   "több sorba tördelődik a",
+   "doboz szélességén"
+  ],
+  "height": 55
+ },
+ {
+  "name": "Árvíztűrő tükörfúrógép és ŐŰ nagybetűk",
+  "width": 120,
+  "lines": [
+   "Árvíztűrő",
+   "tükörfúrógép és",
+   "ŐŰ nagybetűk"
+  ],
+  "height": 55
+ },
+ {
+  "name": "nagyonhosszúszóamelynemfértelegysorbanéstovábbisvanbelőle",
+  "width": 140,
+  "lines": [
+   "nagyonhosszúszóa",
+   "melynemfértelegyso",
+   "rbanéstovábbisvanb",
+   "előle"
+  ],
+  "height": 72
+ },
+ {
+  "name": "csapat",
+  "list": true,
+  "width": 240,
+  "lines": [
+   "csapat []"
+  ],
+  "height": 21
+ },
+ {
+  "name": "beallitasok",
+  "list": false,
+  "width": 90,
+  "lines": [
+   "beallitasok",
+   "{}"
+  ],
+  "height": 38
+ },
+ {
+  "name": "",
+  "list": true,
+  "width": 120,
+  "lines": [
+   "[]"
+  ],
+  "height": 21
+ },
+ {
+  "name": "  szóközök   között  ",
+  "width": 200,
+  "lines": [
+   "szóközök között"
+  ],
+  "height": 21
+ },
+ {
+  "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx Lorem ipsum dolor sit amet, Lorem ipsum dolor sit amet, Lorem ipsum dolor sit amet, Lorem ipsum dolor sit amet, Lorem ipsum dolor sit amet, Lorem ipsum dolor sit amet, Lorem ipsum dolor sit amet, Lorem ipsum dolor sit amet,",
+  "width": 300,
+  "lines": [
+   "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "xx Lorem ipsum dolor sit amet, Lorem ipsum",
+   "dolor sit amet, Lorem ipsum dolor sit amet,",
+   "Lorem ipsum dolor sit amet, Lorem ipsum",
+   "dolor sit amet, Lorem ipsum dolor sit amet,",
+   "Lorem ipsum dolor sit amet, Lorem ipsum",
+   "dolor sit amet,"
+  ],
+  "height": 123
+ },
+ {
+  "name": "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+  "width": 4096,
+  "lines": [
+   "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW"
+  ],
+  "height": 21
+ }
+]

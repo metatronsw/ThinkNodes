@@ -60,7 +60,7 @@ js_files[table]="table-engine.mjs table-fuzz.mjs"
 swift_files[markdown]="ThinkNodesTests/CanvasMarkdownTests.swift ThinkNodesTests/TextNoteTests.swift"
 js_files[markdown]="canvas-markdown.mjs"
 js_files[editor]="gestures.mjs text-flow.mjs wires.mjs sketch.mjs"
-js_files[render]="text-flow.mjs wires.mjs sketch.mjs"
+js_files[render]="text-flow.mjs wires.mjs sketch.mjs box-names.mjs"
 swift_files[render]="ThinkNodesTests/RenderingTests.swift ThinkNodesTests/ThemeTests.swift"
 swift_files[highlight]="ThinkHighlightTests/*.swift"
 js_files[highlight]="highlight.mjs"
@@ -72,7 +72,7 @@ swift_files[web]="ThinkNodesTests/WebPresentationTests.swift"
 swift_files[package]="ThinkNodesTests/ProjectPackageTests.swift"
 js_files[package]="package-upload.mjs"
 js_files[chart]="chart.mjs"
-js_files[structure]="structure-boxes.mjs"
+js_files[structure]="structure-boxes.mjs box-names.mjs"
 swift_files[link]="ThinkNodesTests/LinkPreviewTests.swift"
 all_topics="table highlight markdown editor render worksheet collab access files web package chart structure link core"
 
@@ -85,7 +85,8 @@ topics_for() {
         Tests/Editor/canvas-markdown.mjs|Tests/ThinkNodesTests/CanvasMarkdownTests.swift|Tests/ThinkNodesTests/TextNoteTests.swift) echo markdown ;;
         Public/package.js|Tests/Editor/package-upload.mjs) echo "package editor" ;;
         Public/chart.js|Public/lib/d3-chart.js|Tests/Editor/chart.mjs) echo "chart editor" ;;
-        Public/structure-boxes.js|Tests/Editor/structure-boxes.mjs) echo "structure editor" ;;
+        Public/structure-boxes.js|Public/structure-types.json|Tests/Editor/structure-boxes.mjs) echo "structure editor" ;;
+        Tests/Editor/box-names.mjs|Tests/Fixtures/box-names.json) echo "render structure" ;;
         Public/geometry.js|Public/sketch.js|Tests/Fixtures/text-flow.json|Tests/Editor/text-flow.mjs|Tests/Fixtures/wires.json|Tests/Editor/wires.mjs|Tests/Fixtures/sketch.json|Tests/Editor/sketch.mjs) echo "editor render" ;;
         Tests/Editor/*|Public/*.js) echo editor ;;
         Sources/*/Rendering.swift|Sources/*/Theme.swift|Sources/*/Sketch.swift|Public/themes/*|docs/theme.schema.json) echo render ;;

@@ -1,7 +1,7 @@
 import {openPresentation, setWebPublic, webPresentationURL} from "./web-presentations.js";
 import {fetchPage, updateSection, watchPageUpdates} from "./page-updates.js";
 import {bindAudioPlayers} from "./audio-player.js";
-import {assetURL, attachmentURL, checkText, fileSheet, fileURL, isCommonFile, sharedFileBox, fileName, fileNameParts, importFile, nodeName, objectURL, pngForClipboard, validImageStem, writeText} from "./canvas-files.js";
+import {assetURL, attachmentURL, checkText, fileSheet, fileURL, isCommonFile, sharedFileBox, fileName, fileNameParts, importFile, nodeName, objectURL, plainFirstLine, pngForClipboard, validImageStem, writeText} from "./canvas-files.js";
 import {hasTrait, rootType, traits, typeLabel} from "./node-types.js";
 import {chooseRemoval, openFileBrowser} from "./file-browser.js";
 import {chooseZip, exportPackage, importPackage, isPackageZip} from "./package.js";
@@ -17,7 +17,7 @@ import {justifyRows, justifyShifts} from "./justify.js?v=7";
 import {canvasMarkdown, canvasMarkdownAvailable} from "./canvas-markdown.js";
 import {liveConnection, rebaseWorksheet} from "./collaboration.js";
 import {worksheetLink, linkIcons, openExternalLink} from "./links.js";
-import {displayShape, useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, wireHeads, reverseWidth, wireRoutes, edgeInRectangle, edgePaint, labelLayout, editLabelLayout, limit, linkCaption, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, isStructureFileNode, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, taperedArc, lineSize, wireLabelLayout} from "./geometry.js?v=37";
+import {displayShape, useWorksheetGeometry, commentCollapsed, visibleComment, automaticBorder, automaticGridColor, defaultGridSpacing, edgeEndpoint, edgeGeometry, wireHeads, reverseWidth, wireRoutes, edgeInRectangle, edgePaint, labelLayout, editLabelLayout, limit, linkCaption, nameLayout, nameStyle, fitCaption, textWidth, lineAppearances, lineTypes, maximumLineWidth, isDataLink, isGridType, isStructureFileNode, plugPath, plugTransform, polygonVertices, selectionOutline, shapeDistance, shapeGeometry, shapeLabelRatios, shapes, taperedArc, lineSize, wireLabelLayout} from "./geometry.js?v=37";
 
 import {ancestors, layerOrder, overlapFraction} from "./containers.js?v=15";
 import {glowFilter, glowId, glowReach, glowVNode} from "./glow.js";
@@ -43,7 +43,7 @@ const timed = (name, run) => window.__perf ? window.__perf.time(name, run) : run
 // Alapértékek: a mérések szerint legjobb beállítás; a kapcsolókkal a korábbi viselkedés visszaállítható és összemérhető.
 // Teszt ág: üresjárati mérés Safariban (Public/bench-idle.js, Tests/Perf/safari-idle.py).
 if (new URLSearchParams(location.search).has("bench")) import("./bench-idle.js");
-const perfOptions = {overscan: 1, moving: "gesture", shield: true, rest: true, grid: "draw", layer: "wrapper", coalesce: true, pause: true, sharp: true,
+const perfOptions = {overscan: 1, moving: "gesture", shield: true, rest: true, grid: "draw", layer: "wrapper", coalesce: true, pause: true, sharp: true, lift: true,
   ...(() => { try { return JSON.parse(localStorage.getItem("tnPerf") || "{}"); } catch { return {}; } })()};
 const {cloneVNode, createApp, computed, getCurrentInstance, h, markRaw, nextTick, onMounted, onUnmounted, onUpdated, reactive, ref, shallowRef, toRaw, watch, watchEffect} = window.Vue;
 
@@ -935,7 +935,8 @@ createApp({
         if (!parent || isJunction(child)) continue;
         if (!found.has(parent.id)) found.set(parent.id, []);
         const coarse = moving.has(child.id) && !moving.has(parent.id);
-        found.get(parent.id).push({x: place(child.position.x - parent.position.x, coarse), y: place(child.position.y - parent.position.y, coarse),
+        const lifted = liftShift.members?.has(child.id) && liftTick.value >= 0, sx = lifted ? liftShift.dx : 0, sy = lifted ? liftShift.dy : 0;
+        found.get(parent.id).push({x: place(child.position.x + sx - parent.position.x, coarse), y: place(child.position.y + sy - parent.position.y, coarse),
           width: child.width, height: child.height});
       }
       for (const [id, list] of found) {
@@ -980,6 +981,14 @@ createApp({
     let nodeIndex = new Map();
     // Rajzolás közben a nem reaktív tükör, egyébként a mindig friss nodeMap.
     const nodeLookup = () => getCurrentInstance() ? nodeIndex : nodeMap.value;
+    // Konténer húzása (docs/PERF.md „Konténer húzása”): sok tartalmú konténernél képkockánként csak a konténer helye
+    // változik a modellben; a tartalma (a leszármazottai) a DOM-ban kap közös eltolást (a `transform` attribútum
+    // közvetlen átírásával, Vue-újrarajzolás nélkül). A modellbe a mozdulat végén íródik (commitLift).
+    // `liftShift`: {members: Set, dx, dy, elements: Map, base: Map}; `liftTick`: képkockánként nő (a vonalak ebből
+    // tudják, hogy újra kell számolniuk).
+    let liftShift = {};
+    const liftTick = ref(0);
+    const liftMinimum = 4;
     function displayPosition(node) {
       if (!nodeUiOf(node.id).shifted) return node.position;
       const drag = gesture.value;
@@ -994,6 +1003,8 @@ createApp({
     function drawnNode(id) {
       // Rajzolás közben a nem reaktív tükörből (lásd fent), egyébként a mindig friss nodeMap-ből.
       const node = nodeLookup().get(id);
+      // Konténer húzása: a tartalma közös eltolással mozog (liftShift); a vonalak és a ledobás ezzel a hellyel számolnak.
+      if (node && liftShift.members?.has(id) && liftTick.value >= 0) return {...node, position: {x: node.position.x + liftShift.dx, y: node.position.y + liftShift.dy}};
       return node && nodeUiOf(id).shifted ? {...node, position: displayPosition(node)} : node;
     }
     const edgeGeometries = new WeakMap();
@@ -1604,6 +1615,7 @@ createApp({
     const undo = shallowRef([]), redo = shallowRef([]);
     let historyBase;
     let editingField = false;
+    let structureTimer = null;  // struktúra-konténer szinkronjának időzítője (scheduleStructureSync)
     let fieldChanged = false;
 
     function recordChanges() {
@@ -1697,6 +1709,7 @@ createApp({
       if (editingField) fieldChanged = true;
       else recordChanges();
       markDirty();
+      scheduleStructureSync();
     }
 
     function markDirty() {
@@ -2097,7 +2110,8 @@ createApp({
         const d = tag === "path" ? a.d : tag === "polygon" ? "M" + a.points + "Z"
           : tag === "ellipse" ? `M${-a.rx} 0A${a.rx} ${a.ry} 0 1 0 ${a.rx} 0A${a.rx} ${a.ry} 0 1 0 ${-a.rx} 0Z`
           : roundedRectPath(a.x, a.y, a.width, a.height, Math.min(a.rx ?? 0, a.width / 2, a.height / 2));
-        const shift = delta && drag.members?.has(node.id) ? delta : {x: 0, y: 0};
+        const shift = delta && drag.members?.has(node.id) ? delta
+          : liftShift.members?.has(node.id) && liftTick.value >= 0 ? {x: liftShift.dx, y: liftShift.dy} : {x: 0, y: 0};
         return {id: node.id, index, x: node.position.x + shift.x, y: node.position.y + shift.y, width: node.width, height: node.height, d};
       });
     });
@@ -2116,7 +2130,8 @@ createApp({
       orderedNodes.value.forEach((node, index) => {
         const above = holes.filter(hole => hole.index > index);
         if (!above.length) return;
-        const shift = delta && drag.members?.has(node.id) ? delta : {x: 0, y: 0};
+        const shift = delta && drag.members?.has(node.id) ? delta
+          : liftShift.members?.has(node.id) && liftTick.value >= 0 ? {x: liftShift.dx, y: liftShift.dy} : {x: 0, y: 0};
         // Az árnyék a doboz alatt-mellett túlnyúlik: bő ráhagyás.
         const own = area({x: node.position.x + shift.x, y: node.position.y + shift.y, width: node.width, height: node.height}, 48);
         const ids = above.filter(hole => overlaps(own, area(hole, 0))).map(hole => hole.id);
@@ -2619,6 +2634,45 @@ createApp({
         .map(n => ({id: n.id, x: n.position.x, y: n.position.y}));
     }
 
+    // Húzás közben: kis csoport a modellben mozog (mint eddig); nagyobb (konténer a tartalmával) közös eltolással.
+    function moveGroupLive(operation, dx, dy) {
+      const group = operation.group;
+      if (!perfOptions.lift || group.length < liftMinimum || group.some(member => isJunction(nodeMap.value.get(member.id)))) { translateGroup(group, dx, dy); return; }
+      for (const {x, y} of group) {
+        dx = limit(dx, -100000-x, 100000-x);
+        dy = limit(dy, -100000-y, 100000-y);
+      }
+      const [root, ...members] = group;
+      nodeMap.value.get(root.id).position = {x: root.x + dx, y: root.y + dy};
+      if (liftShift.group !== group) {
+        if (liftShift.members) commitLift(false);
+        liftShift = {operation, group, members: new Set(members.map(member => member.id)), elements: new Map(), base: new Map(members.map(member => [member.id, member]))};
+      }
+      liftShift.dx = dx; liftShift.dy = dy;
+      const scene = mount.querySelector?.("[data-scene]");
+      for (const member of members) {
+        let element = liftShift.elements.get(member.id);
+        if (!element?.isConnected) { element = scene?.querySelector('g[data-node="' + member.id + '"]'); liftShift.elements.set(member.id, element); }
+        element?.setAttribute("transform", "translate(" + (member.x + dx) + " " + (member.y + dy) + ")");
+      }
+      liftTick.value++;
+    }
+    // A közös eltolás vége: `apply` – a tartalom a modellben is a helyére kerül; egyébként (megszakítás) visszaáll.
+    function commitLift(apply) {
+      const shift = liftShift;
+      if (!shift.members) return;
+      liftShift = {};
+      if (apply) translateGroup(shift.group, shift.dx, shift.dy);
+      for (const [id, element] of shift.elements) {
+        const base = shift.base.get(id), node = nodeMap.value.get(id);
+        if (!element?.isConnected || !node) continue;
+        element.setAttribute("transform", "translate(" + node.position.x + " " + node.position.y + ")");
+        if (!apply && base) element.setAttribute("transform", "translate(" + base.x + " " + base.y + ")");
+      }
+      liftTick.value++;
+    }
+    watch(gesture, value => { if (!value && liftShift.members) commitLift(false); });
+
     function translateGroup(group, dx, dy) {
       for (const {x, y} of group) {
         dx = limit(dx, -100000-x, 100000-x);
@@ -3107,7 +3161,7 @@ createApp({
           if (operation.type === "move") {
             if (!operation.locked && !operation.group.some(member => occupied(member.id))) {
               const snapped = snapNodePosition(nodeMap.value.get(operation.nodeID), position);
-              translateGroup(operation.group, snapped.x-operation.position.x, snapped.y-operation.position.y);
+              moveGroupLive(operation, snapped.x-operation.position.x, snapped.y-operation.position.y);
               const current = nodeMap.value.get(operation.nodeID).position;
               live.motion({node: operation.nodeID, revision: baseline.revision,
                 delta: {x: current.x-operation.position.x, y: current.y-operation.position.y}});
@@ -3181,6 +3235,8 @@ createApp({
         } else modified();
       } else if (operation.type === "move" && operation.moved) {
         lastClick = null;
+        // A közös eltolással mozgatott tartalom a modellbe (megszakításnál a translateGroup(…, 0, 0) állítja vissza).
+        commitLift(!cancel);
         const node = nodeMap.value.get(operation.nodeID);
         if (!operation.locked) {
           const target = !cancel && junctionDropTarget(node);
@@ -5016,6 +5072,73 @@ createApp({
         },
       });
     }
+    // A doboz neve (docs/node-types.md „Név”): SVG-szöveg a doboz fölött, a szöveg igazításával; struktúra-konténernél
+    // utána halvány [] / {} jel (Rendering.swift nameSVG).
+    function renderBoxName(node, drawn) {
+      const layout = nameLayout(drawn);
+      if (!layout) return null;
+      const alignment = node.alignment ?? "center";
+      const [x, anchor] = alignment === "left" ? [-drawn.width / 2 + 4, "start"] : alignment === "right" ? [drawn.width / 2 - 4, "end"] : [0, "middle"];
+      const count = layout.lines.length;
+      return h("text", {key: "box-name", class: "node-name", "text-anchor": anchor, "font-family": "system-ui, sans-serif",
+        "font-size": nameStyle.size, "font-weight": 600, fill: paint(node.textColor, 1)}, layout.lines.map((line, index) => {
+        const y = -drawn.height / 2 - nameStyle.gap - (count - 1 - index) * nameStyle.line - 4;
+        const marked = index === count - 1 && layout.marker && line.endsWith(layout.marker);
+        return h("tspan", {x, y}, marked ? [line.slice(0, -layout.marker.length),
+          h("tspan", {class: "node-name-marker", opacity: .5, "font-weight": 400}, layout.marker)] : line);
+      }));
+    }
+    // A név szerkesztése helyben: a felirat helyén szerkeszthető, tördelődő mező (egy réteg: az SVG-felirat ilyenkor nem
+    // látszik). Enter vagy a mező elhagyása menti, Esc elveti; legfeljebb 255 karakter, sortörés nélkül.
+    const nameLimit = 255;
+    async function startNameEdit(node) {
+      if (occupied(node.id) || !online.value || node.type !== "box") return;
+      hideTooltip();
+      finishField();
+      if (!(await selectNode(node.id))) return;
+      menu.value = null;
+      nameEdit.value = node.id;
+    }
+    function renderBoxNameEdit(node, drawn) {
+      const stop = event => event.stopPropagation();
+      let cancelled = false;
+      const area = 160;
+      return h("foreignObject", {key: "box-name-edit", class: "box-name-frame", x: -drawn.width / 2, y: -drawn.height / 2 - area, width: drawn.width, height: area}, [
+        h("div", {class: "box-name-edit-wrap align-" + (node.alignment ?? "center")}, [
+          h("span", {class: "node-name-edit box-name-edit", contenteditable: "plaintext-only", role: "textbox", "aria-label": "Név", spellcheck: false,
+            style: {color: paint(node.textColor, 1)},
+            onPointerdown: stop, onMousedown: stop, onClick: stop, onDblclick: stop, onContextmenu: stop,
+            onKeydown: event => {
+              event.stopPropagation();
+              if (event.isComposing) return;
+              if (event.key === "Enter") { event.preventDefault(); event.target.blur(); }
+              else if (event.key === "Escape") { event.preventDefault(); cancelled = true; event.target.blur(); }
+            },
+            onInput: event => {
+              const el = event.target, text = el.textContent ?? "";
+              if (text.length <= nameLimit && !/[\r\n]/.test(text)) return;
+              el.textContent = text.replace(/[\r\n]+/g, " ").slice(0, nameLimit);
+              const selection = window.getSelection?.(), range = document.createRange?.();
+              if (selection && range) { range.selectNodeContents(el); range.collapse(false); selection.removeAllRanges(); selection.addRange(range); }
+            },
+            onBlur: event => {
+              const name = (event.target.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, nameLimit);
+              if (nameEdit.value === node.id) nameEdit.value = null;
+              const current = nodeMap.value.get(node.id);
+              if (cancelled || !current || name === (current.name ?? "") || occupied(current.id)) return;
+              if (name) current.name = name; else delete current.name;
+              modified();
+            },
+            onVnodeMounted: ({el}) => {
+              el.textContent = node.name ?? "";
+              el.focus?.({preventScroll: true});
+              const selection = window.getSelection?.(), range = document.createRange?.();
+              if (selection && range) { range.selectNodeContents(el); selection.removeAllRanges(); selection.addRange(range); }
+            },
+          }),
+        ]),
+      ]);
+    }
     function renderFileDownload(node, label = null, classes = "node-download") {
       const filename = nodeName(node);
       const href = isCommonFile(node.file) ? fileURL(path, node.file) : "/api/box-file/" + path + "?id=" + encodeURIComponent(node.id);
@@ -5163,18 +5286,30 @@ createApp({
       ]);
     }
 
-    // Struktúra-konténer (structure-boxes.js, docs/node-types.md „Struktúra-konténer”): a vonallal bekötött forrásfájlból
-    // (.json) valódi dobozok készülnek a konténerben (`generated`: az elem ujjlenyomata). A forrás minden változására
-    // (gépelés közben is, rövid késleltetéssel) újraépül; a változatlan elemek azonosítója, vonalai, kézzel állított színe
-    // és szövege megmarad.
+    // Struktúra-konténer (structure-boxes.js, docs/node-types.md „Struktúra-konténer”): a vonallal bekötött forrásfájl
+    // (.json) és a konténer dobozai kétirányúan összekötve; a doboz neve a kulcs, a szövege az érték. A szinkron csak
+    // jóváhagyáskor fut: a forrás felől a kódszerkesztő elhagyásakor (vagy ha más mentette), a dobozok felől a szöveg- /
+    // névszerkesztés, illetve a húzás végén. A meglévő dobozok helyben frissülnek (azonosító, vonalak, kézi szín marad).
     const structureModule = shallowRef(null);
     let structureLoading = null;
+    let structureTypeColors = null;
     function loadStructureModule() {
-      structureLoading ??= import("./structure-boxes.js?v=1").then(module => { structureModule.value = markRaw(module); })
-        .catch(() => { structureLoading = null; problem.value = "A struktúra-konténer modulja nem tölthető be."; });
+      structureLoading ??= Promise.all([
+        import("./structure-boxes.js?v=2"),
+        fetch("/structure-types.json", {cache: "no-cache"}).then(response => response.json()).catch(() => ({})),
+      ]).then(([module, types]) => {
+        structureTypeColors = {...module.defaultTypeColors, ...(types?.types ?? {})};
+        structureModule.value = markRaw(module);
+      }).catch(() => { structureLoading = null; problem.value = "A struktúra-konténer modulja nem tölthető be."; });
+      return structureLoading;
     }
-    // Konténerenként az utolsó generálás eredménye: {error} vagy {count, truncated, schema}.
+    // Konténerenként az utolsó szinkron eredménye: {error} vagy {count, truncated}.
     const structureStatus = shallowRef(new Map());
+    function setStructureStatus(id, status) {
+      const next = new Map(structureStatus.value);
+      if (status) next.set(id, status); else next.delete(id);
+      structureStatus.value = next;
+    }
     function structureSource(node) {
       let source = null;
       for (const edge of board.value?.edges ?? []) {
@@ -5184,110 +5319,198 @@ createApp({
       }
       return source;
     }
-    // A konténer generált leszármazottai (generált konténeren belül is).
-    function generatedDescendants(sheet, containerID) {
+    // A konténer összes leszármazottja a lap sorrendjében.
+    function structureDescendants(sheet, containerID) {
       const byParent = new Map();
       for (const node of sheet.nodes) if (node.parent) (byParent.get(node.parent) ?? byParent.set(node.parent, []).get(node.parent)).push(node);
-      const found = new Map(), stack = [containerID];
-      while (stack.length) for (const child of byParent.get(stack.pop()) ?? []) {
-        if (child.generated && !found.has(child.id)) { found.set(child.id, child); stack.push(child.id); }
+      const found = new Set(), stack = [containerID];
+      while (stack.length) for (const child of byParent.get(stack.pop()) ?? []) if (!found.has(child.id)) { found.add(child.id); stack.push(child.id); }
+      return sheet.nodes.filter(node => found.has(node.id));
+    }
+    const sameJSON = (a, b) => a === b || (a && b && typeof a === "object" && typeof b === "object" && JSON.stringify(a) === JSON.stringify(b));
+    // A generálás eredményének alkalmazása helyben: csak a ténylegesen változott mezők íródnak (a többi doboz nem
+    // rajzolódik újra), a sorrend csak akkor változik, ha a forrásé más.
+    function applyStructure(sheet, container, result) {
+      const byId = new Map(sheet.nodes.map(node => [node.id, node]));
+      const removed = new Set(result.removed);
+      let changed = false;
+      const ordered = result.nodes.map(({id, parent, fields}) => {
+        let node = byId.get(id);
+        if (!node) { node = {id, type: "box", text: "", shape: "rounded", fill: 2, textColor: 1, fontSize: 14, alignment: "center"}; changed = true; }
+        if (node.parent !== parent) { node.parent = parent; changed = true; }
+        for (const [key, value] of Object.entries(fields)) {
+          if (value === undefined) { if (key in node) { delete node[key]; changed = true; } }
+          else if (!sameJSON(node[key], value)) { node[key] = key === "position" ? clampPoint(value) : value; changed = true; }
+        }
+        return node;
+      });
+      const managed = new Set([...ordered.map(node => node.id), ...removed]);
+      const rest = sheet.nodes.filter(node => !managed.has(node.id));
+      const at = rest.indexOf(container) + 1;
+      const next = [...rest.slice(0, at), ...ordered, ...rest.slice(at)];
+      if (next.length !== sheet.nodes.length || next.some((node, i) => node !== sheet.nodes[i])) { sheet.nodes = next; changed = true; }
+      for (const [key, value] of Object.entries(result.patch)) {
+        if (value === undefined) { if (key in container) { delete container[key]; changed = true; } }
+        else if (!sameJSON(container[key], value)) { container[key] = key === "position" ? clampPoint(value) : value; changed = true; }
       }
-      return found;
+      // A megszűnt dobozba tett más objektum a konténerbe kerül; a megszűnt dobozok vonalai törlődnek.
+      if (removed.size) {
+        for (const node of sheet.nodes) if (removed.has(node.parent)) node.parent = container.id;
+        sheet.edges = sheet.edges.filter(edge => !removed.has(edge.source) && !removed.has(edge.target?.node));
+      }
+      return changed;
     }
-    function setStructureStatus(id, status) {
-      const next = new Map(structureStatus.value);
-      if (status) next.set(id, status); else next.delete(id);
-      structureStatus.value = next;
-    }
-    // `force`: akkor is újraépül, ha a forrás nem változott (Újragenerálás gomb). Igaz, ha a lap megváltozott.
+    // A forrás felől: a dobozok újraépítése (`force`: akkor is, ha a forrás nem változott – Újragenerálás gomb).
     function regenerateStructure(id, force = false) {
       const sheet = board.value, module = structureModule.value;
       const container = sheet?.nodes.find(node => node.id === id);
       if (!container?.structure || !module || !online.value) return false;
       const source = structureSource(container);
-      if (!source) return false;
+      if (!source || textEdit.value === source.id) return false;
       const format = module.structureFormat(source.file.filename ?? source.file.asset);
       const text = format ? chartText(source) : null;
       if (text == null) return false;
       const digest = module.textDigest(text, format);
       if (!force && container.structure.digest === digest) return false;
-      const old = generatedDescendants(sheet, container.id);
-      if ([container.id, ...old.keys()].some(item => occupied(item))) return false;
+      const previous = structureDescendants(sheet, container.id);
+      if ([container, ...previous].some(node => occupied(node.id))) return false;
       let result;
-      try { result = module.generateBoxes(text, container, {format, previous: old}); } catch (error) {
+      try { result = module.generateBoxes(text, container, {format, previous, typeColors: structureTypeColors}); } catch (error) {
         if (!(error instanceof module.StructureError)) throw error;
-        // Hibás forrás (pl. gépelés közben félkész JSON): a meglévő dobozok maradnak.
+        // Hibás forrás: a meglévő dobozok maradnak, a hiba a konténer gyors eszközeinél látszik.
         setStructureStatus(container.id, {error: error.message});
         return false;
       }
-      setStructureStatus(container.id, {count: result.nodes.length, truncated: result.truncated, schema: result.schema});
-      const nodes = sheet.nodes.filter(node => !old.has(node.id));
-      nodes.splice(nodes.indexOf(container) + 1, 0, ...result.nodes);
-      sheet.nodes = nodes;
-      Object.assign(container, result.patch, {position: clampPoint(result.patch.position), structure: {...container.structure, digest}});
-      // A megszűnt elemek vonalai törlődnek; a generált dobozba kézzel tett doboz a konténerbe kerül.
-      const ids = new Set(nodes.map(node => node.id));
-      for (const node of nodes) if (node.parent && !ids.has(node.parent)) node.parent = container.id;
-      sheet.edges = sheet.edges.filter(edge => (!edge.source || ids.has(edge.source)) && (!edge.target?.node || ids.has(edge.target.node)));
+      setStructureStatus(container.id, {count: result.nodes.length, truncated: result.truncated});
+      applyStructure(sheet, container, result);
+      const boxes = module.textDigest(module.boxesSource(sheet.nodes, container.id, {format, previous: text}), format);
+      container.structure = {...container.structure, digest, boxes};
       modified();
       return true;
     }
-    // Figyelő: a forrás szövege (gépelés közben a még mentetlen is), a bekötés vagy a tárolt ujjlenyomat változik →
-    // újragenerálás rövid késleltetéssel (gépelésnél nem minden leütésre).
-    let structureTimer = null;
+    // A dobozok felől: ha a dobozokból írt JSON eltér az utolsó szinkronétól, a forrás felülíródik, majd az elrendezés
+    // frissül. Csonkolt (túl nagy) forrásnál nincs visszaírás (adatvesztés lenne).
+    async function writeStructure(id) {
+      const sheet = board.value, module = structureModule.value;
+      const container = sheet?.nodes.find(node => node.id === id);
+      if (!container?.structure || !module || !online.value || structureStatus.value.get(id)?.truncated) return;
+      const source = structureSource(container);
+      if (!source || textEdit.value === source.id || isCommonFile(source.file)) return;
+      const format = module.structureFormat(source.file.filename ?? source.file.asset);
+      const current = format ? chartText(source) : null;
+      if (current == null) return;
+      let text;
+      try { text = module.boxesSource(sheet.nodes, container.id, {format, previous: current}); } catch (error) {
+        if (!(error instanceof module.StructureError)) throw error;
+        setStructureStatus(container.id, {error: error.message});
+        return;
+      }
+      const boxes = module.textDigest(text, format);
+      if (container.structure.boxes === boxes) return;
+      // Ha közben a forrás is változott (más mentette), a forrás nyer: újragenerálás.
+      if (container.structure.digest !== module.textDigest(current, format)) { regenerateStructure(id); return; }
+      if (occupied(source.id)) { setStructureStatus(container.id, {error: "A forrásfájlt más szerkeszti; a változás nem íródott vissza."}); return; }
+      container.structure = {...container.structure, digest: module.textDigest(text, format), boxes};
+      const rev = latestRev(source.file) + 1;
+      fileTexts.value = new Map(fileTexts.value).set(fileTextKey(source, rev), text);
+      await checked(await fetch(attachmentURL(fileSheet(path, source.file), source.file.asset), {method: "PUT",
+        headers: {"X-CSRF-Token": csrf, "Content-Type": "text/plain; charset=utf-8"}, body: text}));
+      dropHighlights(fileTextKey(source, rev));
+      const fresh = nodeMap.value.get(source.id);
+      if (fresh?.file) fresh.file = {...fresh.file, rev};
+      // Az elrendezés a visszaírt forrásból (a szöveg normalizálva, a méretek a tartalomhoz igazodnak).
+      regenerateStructure(id, true) || modified();
+    }
+    // Ütemezés: a lap minden módosítása után (modified) és a szerkesztés / húzás végén; amíg szerkesztés vagy húzás
+    // tart, vár. Gépelés közben így nincs szinkron. (`structureTimer` a modified() mellett van deklarálva.)
+    function scheduleStructureSync() {
+      if (!board.value?.nodes.some(node => node.structure)) return;
+      clearTimeout(structureTimer);
+      structureTimer = setTimeout(runStructureSync, 60);
+    }
+    function runStructureSync() {
+      structureTimer = null;
+      if (!structureModule.value) { loadStructureModule()?.then(scheduleStructureSync); return; }
+      if (!online.value || gesture.value || nameEdit.value || editingField) return;
+      transfer(async () => {
+        for (const node of (board.value?.nodes ?? []).filter(item => item.structure)) {
+          const source = structureSource(node);
+          if (!source || textEdit.value === source.id) continue;
+          // Doboz szerkesztése a konténeren belül: a végén szinkronizál.
+          if (textEdit.value && structureDescendants(board.value, node.id).some(item => item.id === textEdit.value)) continue;
+          if (!regenerateStructure(node.id)) await writeStructure(node.id);
+        }
+      });
+    }
+    // A forrás szövege (más mentése, a kódszerkesztő elhagyása), a bekötés, a szerkesztés és a húzás vége indítja.
     watch(() => {
       const containers = (board.value?.nodes ?? []).filter(node => node.structure);
-      if (!containers.length || !online.value) return null;
-      if (!structureModule.value) { loadStructureModule(); return null; }
-      return containers.map(node => {
+      if (!containers.length || !online.value) return "";
+      return [textEdit.value, nameEdit.value, !!gesture.value, ...containers.map(node => {
         const source = structureSource(node);
-        return [node.id, node.structure.digest, source?.id, source ? chartText(source) : null];
-      });
-    }, list => {
-      clearTimeout(structureTimer);
-      if (!list?.length) return;
-      const run = () => {
-        // Húzás, átméretezés közben nem épül át a lap: a mozdulat végén próbálja újra.
-        if (gesture.value) { structureTimer = setTimeout(run, 250); return; }
-        transfer(() => { for (const [id] of list) regenerateStructure(id); });
-      };
-      structureTimer = setTimeout(run, 150);
-    });
+        return node.id + ":" + (source ? fileTextKey(source, latestRev(source.file)) + ":" + (chartText(source) != null) : "");
+      })].join("|");
+    }, key => { if (key) scheduleStructureSync(); });
     // Struktúra-konténer létrehozása forrásfájlból: új konténer a fájl mellett, adatvonallal bekötve. A végső méretet
     // előre kiszámolja, és a fájltól jobbra lefelé haladva az első olyan helyre teszi, ahol nem takar más dobozt.
     async function addStructureBox(source) {
       if (!board.value || !online.value) return;
       finishField();
-      loadStructureModule();
-      await structureLoading;
+      await loadStructureModule();
       const module = structureModule.value, sheet = board.value;
-      if (!sheet || !online.value) return;
-      const name = (source.file.filename ?? "Struktúra").replace(/[\\`*_[\]<>#~|&]/g, "\\$&");
+      if (!sheet || !online.value || !module) return;
       let width = 240, height = 120;
-      const text = module ? chartText(source) : null, format = module?.structureFormat(source.file.filename ?? source.file.asset);
+      const text = chartText(source), format = module.structureFormat(source.file.filename ?? source.file.asset);
+      const draft = {id: "elozetes", type: "box", position: {x: 0, y: 0}, width, height, text: "", fontSize: 16};
       if (text != null && format) {
-        try {
-          ({width, height} = module.generateBoxes(text, {id: "elozetes", position: {x: 0, y: 0}, width, height, text: "**" + name + "**",
-            fontSize: 16, shape: "rounded"}, {format}).patch);
-        } catch {}
+        try { ({width, height} = module.generateBoxes(text, draft, {format, typeColors: structureTypeColors}).patch); } catch {}
       }
-      const x = source.position.x + source.width / 2 + 80 + width / 2, gap = 40;
-      const others = sheet.nodes.filter(node => !node.parent);
-      const free = top => others.every(node => Math.abs(node.position.x - x) * 2 >= node.width + width + gap
-        || Math.abs(node.position.y - (top + height / 2)) * 2 >= node.height + height + gap);
-      let top = source.position.y - source.height / 2;
-      for (let i = 0; i < 400 && !free(top); i++) top += gap;
-      const node = {...makeNode({x, y: top + height / 2}, "box"),
-        width, height, text: "**" + name + "**", fill: 0, alignment: "left", verticalAlignment: "top", structure: {}};
+      const node = {...makeNode(freeSpot(source, width, height), "box"), width, height, name: nodeName(source), fill: 0,
+        alignment: "left", verticalAlignment: "top", structure: {}};
       sheet.nodes.push(node);
       sheet.edges.push({id: id(), source: source.id, target: {node: node.id}, type: "straight", appearance: "plain"});
       modified();
     }
-    // Leválasztás: a konténer és a dobozai megmaradnak, de a forrás többé nem írja felül őket (sima dobozok lesznek).
+    // Szabad hely a `near` doboztól jobbra (lefelé haladva): ahol a `width` × `height` méretű doboz nem takar mást.
+    function freeSpot(near, width, height) {
+      const x = near.position.x + near.width / 2 + 80 + width / 2, gap = 40;
+      const others = board.value.nodes.filter(node => !node.parent);
+      const free = top => others.every(node => Math.abs(node.position.x - x) * 2 >= node.width + width + gap
+        || Math.abs(node.position.y - (top + height / 2)) * 2 >= node.height + height + gap);
+      let top = near.position.y - near.height / 2;
+      for (let i = 0; i < 400 && !free(top); i++) top += gap;
+      return {x, y: top + height / 2};
+    }
+    // Mentés .json fájlba: bármely konténerből (dobozból) új .json fájl a projektben, a konténer mellé, kétirányúan bekötve.
+    // A konténerek fajtája (objektum / tömb) a nevekből adódik és rögzül (`list`).
+    async function saveStructureAs(container) {
+      if (!board.value || !online.value || container.structure) return;
+      finishField();
+      await loadStructureModule();
+      const module = structureModule.value, sheet = board.value;
+      if (!module || !sheet) return;
+      for (const node of [container, ...structureDescendants(sheet, container.id)]) {
+        if (node.type !== "box") continue;
+        const children = sheet.nodes.filter(child => child.parent === node.id && child.type === "box");
+        if (node.list == null && (children.length || node === container)) node.list = module.inferList(children);
+      }
+      const text = module.boxesSource(sheet.nodes, container.id);
+      const base = (container.name?.trim() || plainFirstLine(container.text ?? "") || "struktura").replace(/\.json$/i, "").replace(/[\\/:*?"<>|]+/g, "-").slice(0, 80);
+      const properties = await importFile(new File([text], base + ".json", {type: "application/json"}), path, csrf);
+      if (!properties || !online.value) return;
+      const width = properties.width ?? 320, height = properties.height ?? 240;
+      const left = {position: {x: container.position.x - container.width / 2 - 80 - width - 80, y: container.position.y}, width: 0, height: container.height};
+      const source = {...makeNode(freeSpot(left, width, height), properties.type), ...properties, width, height};
+      sheet.nodes.push(source);
+      sheet.edges.push({id: id(), source: source.id, target: {node: container.id}, type: "straight", appearance: "plain"});
+      const digest = module.textDigest(text);
+      container.structure = {digest, boxes: digest};
+      fileTexts.value = new Map(fileTexts.value).set(fileTextKey(source), text);
+      modified();
+    }
+    // Leválasztás: a konténer és a dobozai megmaradnak, a forrással többé nem szinkronizál.
     function detachStructure(container) {
-      const sheet = board.value;
-      if (!sheet || !online.value || !container.structure) return;
-      for (const node of generatedDescendants(sheet, container.id).values()) delete node.generated;
+      if (!board.value || !online.value || !container.structure) return;
       delete container.structure;
       setStructureStatus(container.id, null);
       modified();
@@ -5535,6 +5758,8 @@ createApp({
               "xml:space": format.code ? "preserve" : undefined,
               "text-decoration": format.link ? "underline" : undefined}, run.text);
           })))) : null;
+      // A doboz neve a doboz fölött (geometry.js nameLayout); szerkesztéskor helyette a szerkeszthető felirat.
+      const boxName = node.type === "box" ? (nameEdit.value === node.id ? renderBoxNameEdit(node, drawn) : renderBoxName(node, drawn)) : null;
       const webClip = "web-clip-" + node.id;
       // .web előnézet a doboz méretében (8-as lépés, WebScreenshot.boxSize); húzás közben a korábbi kép marad,
       // elengedéskor új renderelés.
@@ -5590,6 +5815,9 @@ createApp({
         onPointerdown: event => { hideTooltip(); pressNode(event, node); },
         onDblclick: event => {
           event.stopPropagation();
+          // Shift + dupla kattintás: a doboz nevének szerkesztése (a két Shift-kattintás a csoportos kijelölést
+          // kétszer váltja, így az változatlan marad).
+          if (event.shiftKey && !event.altKey && node.type === "box") { startNameEdit(node); return; }
           // Előnézetes (linkes) doboz: dupla kattintás megnyitja a linket; Alt-tal a szerkesztés marad.
           if (node.type === "preview" && destination && !event.altKey) { followBoxLink(destination); return; }
           // Táblázat és CSV: dupla kattintás a cellák szerkesztése (docs/EXCEL.md 6. fejezet); Alt-tal a tulajdonságpanel.
@@ -5627,6 +5855,7 @@ createApp({
           publicMark,
           // A szöveg közvetlenül a doboz csoportjában van (nincs dobozonkénti vágás): az elrendezés eleve a dobozon belül tartja.
           labels,
+          boxName,
           ui.editing ? editOverlay(node, -drawn.width/2,
             junction ? -14 : (layout.lines[0]?.y ?? (node.file ? drawn.height/2 - 20 : 0)) - 18,
             drawn.width, editKey.value === "text" && !junction ? Math.max(34, drawn.height/2) : 28) : null,
@@ -6199,6 +6428,7 @@ createApp({
         }, {symbol: "link", disabled: !!occupied(node.id)}) : null,
         isGrid(node) ? button("Cellák szerkesztése", () => { menu.value = null; startTableEdit(node); }, {symbol: "table-grid", disabled: !!occupied(node.id)}) : null,
         isGrid(node) ? button("Grafikon létrehozása", () => { menu.value = null; addChartBox(node); }, {symbol: "chart", disabled: !online.value}) : null,
+        node.type === "box" ? button("Név szerkesztése", () => { menu.value = null; startNameEdit(node); }, {symbol: "title-outside", disabled: !!occupied(node.id)}) : null,
         isStructureFileNode(node) ? button("Doboz-konténer létrehozása", () => { menu.value = null; transfer(() => addStructureBox(node)); }, {symbol: "structure", disabled: !online.value}) : null,
         button("Szerkesztés", () => openProperties("node", node.id), {symbol: "edit", disabled: !!occupied(node.id)}),
         // Egyetlen törlés: fájl- és linkes doboznál a közös kérdőablak jön fel (deleteObjects).
@@ -6485,6 +6715,7 @@ createApp({
             action("edit-name", "Fájlnév szerkesztése", "edit", () => { menu.value = null; nameEdit.value = node.id; });
             action("edit-comment", "Megjegyzés szerkesztése", "comment", () => editInline("node", node.id));
           } else if (editsOnBox(node)) action("edit-name", "Szöveg szerkesztése", "edit", () => { menu.value = null; startTextEdit(node); });
+          if (node.type === "box") action("box-name", "Név szerkesztése (Shift + dupla kattintás)", "title-outside", () => { menu.value = null; startNameEdit(node); });
           else if (isJunction(node)) action("edit-name", "Címke szerkesztése", "edit", () => editInline("node", node.id));
           else action("edit-comment", "Megjegyzés szerkesztése", "comment", () => editInline("node", node.id));
           if (node.file) action("copy-link", "Link másolása", "link", () => { menu.value = null; transfer(() => writeText(objectURL(path, node.id))); });
@@ -6996,16 +7227,26 @@ createApp({
 
       if (single?.structure) {
         const status = structureStatus.value.get(single.id), source = structureSource(single);
-        const note = !source ? "Köss be egy .json fájlt." : status?.error ?? (status ? status.count + " doboz" + (status.truncated ? " (a forrás rövidítve)" : "") : "");
+        const note = !source ? "Köss be egy .json fájlt." : status?.error
+          ?? (status?.truncated ? "A forrás túl nagy, csak az első " + status.count + " elem látszik; a dobozok változása nem íródik vissza." : "");
         panels.push(group("Doboz-konténer", [
           propertyTools(
-            tool("structure-regenerate", button("Újragenerálás a forrásból", () => transfer(() => regenerateStructure(single.id, true)),
-              {symbol: "restore", title: note, disabled: !online.value || !source, class: ["button", status?.error ? "danger" : null]})),
-            tool("structure-detach", button("Leválasztás a forrásról (sima dobozok maradnak)", () => detachStructure(single),
+            tool("structure-regenerate", button("Újragenerálás a forrásból" + (note ? " · " + note : ""), () => transfer(() => regenerateStructure(single.id, true)),
+              {symbol: "restore", title: note || undefined, disabled: !online.value || !source, class: ["button", note ? "danger" : null]})),
+            tool("structure-detach", button("Leválasztás a forrásról (a dobozok maradnak)", () => detachStructure(single),
               {symbol: "unlink", disabled: !online.value})),
           ),
-          h("p", {class: "muted", role: "status"}, note),
+          note ? h("p", {class: "muted", role: "status"}, note) : null,
         ]));
+      }
+      // Struktúrán belüli konténer: tömb ([]) vagy objektum ({}); jelző nélküli konténerből .json fájl menthető.
+      if (single?.type === "box" && single.list != null) {
+        panels.push(group("Struktúra", [propertyTools(tool("structure-list", iconToggle(single.list ? "Tömb ([]) – váltás objektumra ({})" : "Objektum ({}) – váltás tömbre ([])",
+          single.list, () => change("list", !single.list), icon("list"), !online.value)))]));
+      }
+      if (single?.type === "box" && !single.structure && containerIDs.value.has(single.id)) {
+        panels.push(group("Struktúra", [propertyTools(tool("structure-save", button("Mentés .json fájlba (kétirányú kapcsolattal)",
+          () => transfer(() => saveStructureAs(single)), {symbol: "structure", disabled: !online.value})))]));
       }
 
       if (single?.type === "chart") {

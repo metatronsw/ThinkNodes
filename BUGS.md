@@ -1,9 +1,12 @@
 ## Nyitott
 
-- **Struktúra-konténer (2026-11-27, `Public/structure-boxes.js`): kézzel nézendő**
-  - Valódi Chrome-ban (CDP, `projects/struktura-proba`) ellenőrizve: betöltés, a .json szerkesztése a dobozon (félkész JSON-nál a dobozok maradnak, kész JSON-nál mentés előtt frissül), mentés után a lemezen: a változatlan elemre kötött vonal és kézi szín megmaradt, a változott elem tartalma új; létrehozás a gyors eszközökből (szabad helyre, adatvonallal). Safariban nincs kipróbálva; több résztvevős szerkesztés (két kliens egyszerre generál) nincs kipróbálva.
-  - Hirtelen leállított böngésző (a Chrome folyamatának kilövése a próba végén) résztvevője a lapon maradt, és a kijelölt dobozt foglaltnak mutatta a következő kliensnek a szerver újraindításáig. Nem a struktúra-konténer hibája; nem vizsgálva, lehet, hogy csak a jelenlét lejárati ideje hosszú.
-  - A `Tests/Editor/gestures.mjs` továbbra is elbukik (lásd lent: a panelre épülő részei); a többi érintett teszt (Swift 43, structure-boxes, chart, text-flow, wires, sketch) átment.
+- **Struktúra-konténer kétirányú változat, doboz neve, konténer húzása (2026-11-27): kézzel nézendő**
+  - Valódi Chrome-ban (CDP, `projects/struktura-proba`) végigpróbálva: létrehozás a gyors eszközökből, név = kulcs / szöveg = érték, `{}` / `[]` konténerek, típusszínek, vonal kötése egy generált dobozra, a .json szerkesztése (gépelés közben nincs szinkron, kilépéskor van; a vonal és az azonosító megmarad), egy doboz értékének és nevének (Shift + dupla kattintás) átírása visszaíródik a .json-ba, a nagy konténer húzása után a tartalom a helyén. Safariban nincs kipróbálva.
+  - **Liquid Glass témában a nagy (151 dobozos) konténer húzása 1–2 fps** (ThinkDefault: 59 fps). Ok: GPU-raszterezés, nem JavaScript (docs/PERF.md „Konténer húzása”). A mérést a gép terhelése miatt félbehagytam; a javasolt külön rétegű megoldás nincs kész (TODO).
+  - A konténerből kihúzott doboz a JSON-ból is kikerül (szándékos, kétirányú); visszavonással visszaáll. Véletlen kihúzásnál ez adatvesztésnek tűnhet.
+  - A dobozleíró séma (stílusmezőkkel) megszűnt (TODO).
+  - Hirtelen leállított böngésző résztvevője a lapon maradt, és a kijelölt dobozt foglaltnak mutatta a szerver újraindításáig (a próbák során többször). Nem vizsgálva.
+  - A `Tests/Editor/gestures.mjs` továbbra is elbukik (lásd lent: a panelre épülő részei).
 
 - **Telepítő szkriptek szétválasztva (2026-11-27): a szerveren kipróbálandó**
   - `update.sh`: csak `git pull` (a régi build.sh-ból); `build.sh`: csak fordít, a bináris a `.build/release/thinknodes`-ben marad; `daemon.sh`: `update.sh` + `build.sh`, és csak sikeres build után leállítás, a bináris áthelyezése a `server/thinknodes` helyre, indítás; a unit `run.sh --binary:…/server/thinknodes`-szal indít. Helyben a `run.sh` a `.build/release/thinknodes`-t indítja.

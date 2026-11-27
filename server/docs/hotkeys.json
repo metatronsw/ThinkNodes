@@ -36,6 +36,7 @@
       {"action": "Új doboz", "icon": "plus", "keys": [["Dupla kattintás"], ["Jobb kattintás", "Objektum létrehozása"]], "where": "Üres vászon", "detail": "Kijelöli az alapértelmezett címet, így azonnal átírhatod."},
       {"action": "Tulajdonságok", "icon": "edit", "keys": [["Jobb kattintás"]], "where": "Doboz, vonal, csomópont, kijelölt csoport", "detail": "A beállítások a jobb kattintásra megjelenő gombokban vannak (gyors eszközök); a mezők (pl. betűméret, link célja, grafikon adatai) a gombra kattintva nyílnak. Dupla kattintás: a szöveg, illetve a címke szerkesztése a vásznon."},
       {"action": "Szöveg szerkesztése", "keys": [["Alt", "Dupla kattintás"]], "where": "Doboz", "detail": "A doboz szövegmezőjére áll."},
+      {"action": "Név szerkesztése", "icon": "title-outside", "keys": [["Shift", "Dupla kattintás"]], "where": "Doboz", "detail": "A doboz fölötti név (legfeljebb 255 karakter, a szöveg igazításával). Enter: mentés, Esc: elvetés. Struktúra-konténerben a név a JSON-kulcs."},
       {"action": "Doboz mozgatása", "keys": [["Húzás"]], "where": "Doboz vagy kijelölés", "detail": "A közösen kijelölt elemek együtt mozgathatók."},
       {"action": "Doboz átméretezése", "keys": [["Alt", "Sarok húzása"]], "where": "Doboz", "detail": "Az Alt lenyomásakor láthatóvá válnak a méretezőfogók."},
       {"action": "Cím vagy szöveg igazítása", "keys": [["Ctrl", "Alt", "Szöveg húzása"]], "where": "A dobozon belüli szöveg", "detail": "A feliratot a kilenc igazítási hely egyikére mozgatja."},

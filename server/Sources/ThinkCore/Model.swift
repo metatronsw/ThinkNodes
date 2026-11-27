@@ -229,13 +229,16 @@ package struct ChartSettings: Codable, Equatable, Sendable {
     }
 }
 
-/// Struktúra-konténer beállítása (Public/structure-boxes.js): a vonallal bekötött forrásfájlból (.json) generált dobozok
-/// konténere. A generált dobozok valódi dobozok (`Idea.generated`); a szerkesztő építi újra őket a forrás változásakor.
+/// Struktúra-konténer beállítása (Public/structure-boxes.js): a vonallal bekötött forrásfájllal (.json) kétirányúan
+/// összekötött dobozok konténere. A dobozok valódi dobozok: a név (`Idea.boxName`) a kulcs, a szöveg az érték, a
+/// konténer `list` jelzője dönti el, hogy objektum vagy tömb. A szinkront a szerkesztő végzi.
 package struct StructureSettings: Codable, Equatable, Sendable {
-    /// A forrás ujjlenyomata az utolsó generáláskor (structure-boxes.js textDigest); nil: még nem generált.
+    /// A forrás ujjlenyomata az utolsó szinkronkor (structure-boxes.js textDigest); nil: még nem generált.
     package var digest: String?
+    /// A dobozokból képzett JSON ujjlenyomata az utolsó szinkronkor: ha eltér, a dobozok változtak, és a forrás frissül.
+    package var boxes: String?
 
-    var isValid: Bool { digest.map(validSlug) ?? true }
+    var isValid: Bool { (digest.map(validSlug) ?? true) && (boxes.map(validSlug) ?? true) }
 }
 
 package struct Idea: Codable, Equatable, Sendable {
@@ -309,17 +312,20 @@ package struct Idea: Codable, Equatable, Sendable {
     package var scroll: Point?
     /// Grafikon (`chart` típus) beállítása: fajta, kategória- és értékoszlopok.
     package var chart: ChartSettings?
-    /// Struktúra-konténer (sima doboz): a bekötött forrásfájlból generált tartalom beállítása.
+    /// Struktúra-konténer (sima doboz): a bekötött forrásfájllal való szinkron állapota.
     package var structure: StructureSettings?
-    /// Struktúra-konténerben generált doboz: az elem ujjlenyomata a forrásban (structure-boxes.js itemSignature).
-    /// Újrageneráláskor ebből tudja a szerkesztő, hogy az elem változatlan-e (ekkor a kézi beállítások megmaradnak).
-    package var generated: String?
+    /// Doboz neve (a fájlban `name`): a doboz fölött áll, mint a fájlnév, tördelve, a szöveg igazításával (nameLayout).
+    /// Struktúra-konténerben a JSON-kulcs. Legfeljebb 255 karakter, egy bekezdés (sortörés nélkül).
+    package var boxName: String?
+    /// Struktúra-konténerben a konténer fajtája: true = tömb, false = objektum; nil = nem struktúra része.
+    package var list: Bool?
     var hasFrame: Bool { isImage ? frame == true : type == "preview" && frame != false }
 
     private enum CodingKeys: String, CodingKey {
         case id, type, text, file, hideText, fitText, shape, fill, backgroundMode, animation, bold, italic, underline, font, justified, link
         case angle, parent, container, locked, textFlow, elevated, staticPreview, webPublic, uppercase, frame, frameWidth, scroll, chart, contentFit
-        case structure, generated
+        case structure, list
+        case boxName = "name"
         case position = "pos", width = "w", height = "h", textColor = "textCol"
         case fontSize = "fontSz", alignment = "align", verticalAlignment = "vAlign"
     }
@@ -347,8 +353,11 @@ package struct Idea: Codable, Equatable, Sendable {
     /// Rövid név (kereső, akadálymentes felirat, listák): fájlnév, illetve a szöveg első sora formázójelek nélkül.
     package var name: String {
         if let file { return file.displayName(image: isImage) }
+        if let boxName, !boxName.trimmingCharacters(in: .whitespaces).isEmpty { return String(boxName.prefix(120)) }
         return plainFirstLine(text)
     }
+    /// A doboz nevének legnagyobb hossza (karakter).
+    static let nameLimit = 255
 
     package var isValid: Bool {
         guard NodeTypes.isKnown(type), validSlug(id), position.isValid, text.utf8.count <= 100_000,
@@ -357,7 +366,8 @@ package struct Idea: Codable, Equatable, Sendable {
               frameWidth.map({ (0.5...32).contains($0) }) ?? true,
               scroll.map({ $0.isValid && $0.x >= 0 && $0.y >= 0 }) ?? true,
               chart.map({ $0.isValid && type == "chart" }) ?? true,
-              structure.map({ $0.isValid && type == "box" }) ?? true, generated.map(validSlug) ?? true,
+              structure.map({ $0.isValid && type == "box" }) ?? true, list == nil || type == "box",
+              boxName.map({ root == "box" && $0.count <= Self.nameLimit && !$0.contains(where: \.isNewline) }) ?? true,
               (1...10000).contains(fontSize), fontSize.rounded() == fontSize, (1...3).contains(font ?? 1),
               [fill, textColor, border].allSatisfy(validColor),
               link.map({ $0.isValid && has("link") }) ?? true,
@@ -2835,7 +2845,8 @@ extension Idea {
         scroll = try? fields.decode(Point.self, forKey: .scroll)
         chart = try? fields.decode(ChartSettings.self, forKey: .chart)
         structure = try? fields.decode(StructureSettings.self, forKey: .structure)
-        generated = try? fields.decode(String.self, forKey: .generated)
+        boxName = (try? fields.decode(String.self, forKey: .boxName)).flatMap { $0.isEmpty ? nil : $0 }
+        list = try? fields.decode(Bool.self, forKey: .list)
         normalizePreview()
     }
 

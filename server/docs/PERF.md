@@ -103,6 +103,7 @@ lenyomástól a következő kirajzolt képkockáig.
 | `grid` | `"draw"` | `"css"`: csempézett CSS-háttér (2026-11-24-ig az alap; Safariban nagyítás közben ugrál, mert a csempe mérete egész képpontra kerekül); `"separate"`: külön SVG-réteg (régi); `"canvas"`: a vászon rétegében; `"none"`: nincs rács. |
 | `coalesce` | `true` | `false`: minden egérmozdulat külön feldolgozva (régi). |
 | `pause` | `true` | `false`: az animációk mozgás közben is futnak (régi). |
+| `lift` | `true` | `false`: konténer húzásakor a tartalom minden képkockán a modellben is mozog, és minden gyermek újrarajzolódik (régi). |
 | `sharp` | `true` | `false`: 100% fölötti nagyításnál is megmarad az előre raszterizált réteg (gyorsabb mozdulatindítás, de a táblázat / CSV / szövegfájl életlen). |
 
 A régi viselkedéshez legközelebb: `{"rest":false,"layer":"svg","shield":false,"moving":"all","grid":"separate","coalesce":false,"pause":false}`
@@ -284,3 +285,27 @@ kijelöléskor és mozgatáskor „véletlenszerű” akadások.
   pásztázást; vonal nélkül nincs háttértára és nincs rAF.
 - Tanulság: képkockánként változó, nem mentett rajz (lézer, ideiglenes jelölés) canvasra kerüljön, ne a vászon-SVG-be.
 
+
+## Konténer húzása – 2026-11-27 (Chrome, struktúra-konténer 151 dobozzal)
+
+**Változtatás:** sok tartalmú konténer (legalább 4 tagú húzott csoport, csomópont nélkül) húzásakor képkockánként csak a
+konténer helye változik a modellben; a leszármazottai a DOM-ban kapnak közös eltolást (a `transform` attribútum közvetlen
+átírásával, Vue-újrarajzolás nélkül). A vonalak és a ledobás a `drawnNode` eltolt helyével számolnak (`liftShift`,
+`liftTick`), a modellbe a mozdulat végén íródik (`commitLift`). Kapcsoló: `lift` (fent).
+
+**Mérés** (valódi Chrome, 1600 × 1000, Retina; a konténer saját margójánál fogva, 40 lépés):
+
+| Téma | Közös eltolás | Régi (minden gyermek újrarajzolódik) |
+|---|---|---|
+| ThinkDefault | 16,9 ms / képkocka (59 fps), leghosszabb 32 ms | 18,8 ms (53 fps), leghosszabb 35 ms |
+| Liquid Glass | 600–1100 ms (1–2 fps) | 780–1100 ms (1 fps) |
+
+**Liquid Glass – nyitott:** a fő szál JavaScriptje húzás közben szinte tétlen (profil: 6,7 s-ból 6,5 s üresjárat); az idő a
+GPU raszterezésében megy el (nyomkövetés: RasterDecoder / RendererRasterWorker, képkockánként 40–240 ms feladatok). A
+Chrome az SVG-n belüli elemeket nem kompozitálja külön, ezért a mozgó csoport teljes területét minden képkockán újra
+raszterezi, a téma áttetsző felületeivel, színátmeneteivel és a csoport alatt futó adatvonallal együtt. Kísérletek (CSS-sel,
+húzás közben): árnyék / csillogás / keret / háttérfény / szöveg elrejtése nem segített érdemben; vonalak nélkül ~9 fps;
+dobozrétegek nélkül 60 fps. A mérések szórnak (a „teljes vászon” nagyítás a konténer helyétől függ), és a gépet erősen
+terhelik, ezért félbehagyva. **Javasolt megoldás:** húzás közben a mozgó csoport egy külön, saját rétegű (`will-change:
+transform`) SVG-be kerül ugyanabban a vászonrétegben, és csak azt tolja a GPU (raszterezés egyszer a húzás elején és végén);
+mérni Chrome-ban és Safariban, rövid, kis terhelésű méréssel.

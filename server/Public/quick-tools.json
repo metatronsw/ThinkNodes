@@ -121,6 +121,7 @@
    "rows": [
     [
      "edit-name",
+     "box-name",
      "autosize",
      "font-size",
      "font",
@@ -150,7 +151,9 @@
     ],
     [
      "structure-regenerate",
-     "structure-detach"
+     "structure-detach",
+     "structure-list",
+     "structure-save"
     ],
     [
      "delete"
@@ -271,6 +274,8 @@
   "link-target, web-name": "Link célja, illetve weboldal neve (mezőgomb, szövegmező)",
   "table-name, table-csv": "Táblázat neve (mezőgomb), letöltés CSV-ként",
   "structure-regenerate, structure-detach": "Doboz-konténer: újragenerálás a forrásból, leválasztás a forrásról",
-  "copy-link, edit-cells, new-chart, new-structure": "Fájldoboz: link másolása; táblázat: cellák szerkesztése, grafikon létrehozása; .json fájl: doboz-konténer létrehozása"
+  "copy-link, edit-cells, new-chart, new-structure": "Fájldoboz: link másolása; táblázat: cellák szerkesztése, grafikon létrehozása; .json fájl: doboz-konténer létrehozása",
+  "box-name": "Doboz neve (a doboz fölött; Shift + dupla kattintás)",
+  "structure-list, structure-save": "Struktúra: konténer tömb ([]) / objektum ({}); konténerből .json fájl (kétirányú kapcsolattal)"
  }
 }

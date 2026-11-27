@@ -887,6 +887,15 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 /* Fájlnév szerkesztése helyben (editor.js renderFileNameEdit): maga a felirat szerkeszthető. */
 .node-name-edit { min-width: 3em; padding: 0 4px; outline: 1px dashed currentColor; outline-offset: 1px; border-radius: 3px; cursor: text; white-space: nowrap; }
 .node-name-edit, .node-name-edit * { -webkit-user-select: text; user-select: text; }
+/* Doboz neve (editor.js renderBoxName / renderBoxNameEdit): SVG-szöveg a doboz fölött; szerkesztéskor tördelődő mező
+   ugyanott, alulra igazítva (felfelé nő). */
+.node-name { -webkit-user-select: none; user-select: none; }
+.box-name-frame { overflow: visible; pointer-events: none; }
+.box-name-edit-wrap { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding-bottom: 2px; pointer-events: none; }
+.box-name-edit-wrap.align-left { align-items: flex-start; text-align: left; }
+.box-name-edit-wrap.align-right { align-items: flex-end; text-align: right; }
+.box-name-edit-wrap.align-center { text-align: center; }
+.node-name-edit.box-name-edit { box-sizing: border-box; max-width: 100%; pointer-events: auto; white-space: normal; overflow-wrap: anywhere; font: 600 13px/17px system-ui, sans-serif; }
 .node-body { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .node-image .node-body img { display: block; flex: 1; width: 100%; min-height: 0; object-fit: contain; background: transparent; }
 .node-image .node-body img { border-radius: 5px; }

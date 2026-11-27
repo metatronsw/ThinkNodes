@@ -1,5 +1,16 @@
 # Változások
 
+## 2026-11-27 – Struktúra-konténer kétirányú: doboz neve (kulcs) és szövege (érték), típusszínek, gyorsabb konténerhúzás
+
+- **Doboz neve (`name`, Swiftben `Idea.boxName`):** a doboz fölött, mint a fájlnév; legfeljebb 255 karakter, egy bekezdés, tördelve, a szöveg igazításával (sorkizárás nélkül). SVG-szöveg; a tördelés a szerkesztőben (geometry.js `nameLayout`) és a szerveren (Rendering.swift `nameLayout`) azonos, közös teszt: `Tests/Fixtures/box-names.json`. Szerkesztés: Shift + dupla kattintás vagy a gyors eszközök „Név szerkesztése” gombja; a kereső és az akadálymentes felirat a nevet mutatja. hotkeys.json, útmutató frissítve.
+- **Struktúra-konténer kétirányú (`Public/structure-boxes.js` újraírva):** név = kulcs, szöveg = érték; konténer `list` jelzővel: `{}` objektum / `[]` tömb (halvány jel a név után, váltható). Érték: szám, `true` / `false`, `null`, idézőjelben szöveg. Szinkron csak jóváhagyáskor: a forrás felől a kódszerkesztő elhagyásakor (vagy más mentése után), a dobozok felől a szöveg / név jóváhagyásakor, doboz hozzáadásakor / törlésekor; gépelés és húzás közben nem. A dobozokból írt JSON a forrás behúzását követi; `structure: {digest, boxes}` ujjlenyomatok, nincs oda-vissza ping-pong.
+- **Párosítás és helyben frissítés:** a meglévő dobozok a szülő és a kulcs (tömbben az elem neve / értéke vagy helye) szerint kapják meg az új tartalmat; az azonosító, a vonalak, a kézi szín és betűbeállítás marad; csak a változott mezők íródnak. A `generated` mező megszűnt.
+- **Típusszavak:** Int, Float, Double, Bool, String, Date, URL, UUID, `T?`, `[T]`, `[K: V]` értéknél a doboz az alaptípus színét kapja (`Public/structure-types.json`, szerkeszthető).
+- **Mentés .json fájlba:** bármely konténerből új .json fájl, kétirányúan bekötve. A konténer neve a fájlnév; létrehozáskor szabad helyre kerül.
+- **A dobozleíró séma (stílusmezőkkel) megszűnt:** a kétirányú kapcsolattal nem írható vissza veszteség nélkül (TODO).
+- **Konténer húzása:** legalább 4 tagú csoportnál a tartalom közös eltolással mozog (DOM-transzform, Vue-újrarajzolás nélkül; kapcsoló: `lift`). Chrome, 151 doboz, ThinkDefault: 53 → 59 fps. Liquid Glass témában 1–2 fps marad (GPU-raszterezés; PERF.md „Konténer húzása”, TODO).
+- **Tesztek:** `structure-boxes.mjs` újraírva (oda-vissza alakítás, párosítás, típusok, elrendezés a nevekkel, korlátok), új `box-names.mjs` és Swift `boxNamesMatchSharedFixtures`, `structureContainerStoresNamedBoxesAndDrawsADataLink`. Chrome-ban (CDP) végigpróbálva; Safariban nem. Gyorsítótár-verziók: editor.js v108, app.css v76, viewer.js v33. node-types.md („Név”, „Struktúra-konténer”), README, PERF.md, TODO, BUGS frissítve.
+
 ## 2026-11-27 – Struktúra-konténer: doboz-konténer .json fájlból
 
 - **Új modul (`Public/structure-boxes.js`):** a vonallal bekötött forrásfájlból valódi dobozok generálódnak a konténerben, a táblázat–grafikon párosítás mintájára. Felépítés: forrásformátum (`formats`, ma `.json`; később Swift struct) → köztes fa → elrendezés → dobozok. Bemenet: saját dobozleíró séma (`text | title, fill, textColor, shape, width, height, fontSize, bold, italic, align, layout, id, children`) vagy bármilyen JSON (objektum / tömb → konténer, egyszerű érték → doboz). Korlátok: 400 doboz, 8 szint, 600 karakter elemenként.

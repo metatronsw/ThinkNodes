@@ -56,6 +56,7 @@ export function fileName(file, image = false) {
 // Az objektum rövid neve (Model.swift Idea.name): fájlnév, illetve a szöveg első sora formázójelek nélkül.
 export function nodeName(node) {
   if (node?.file) return fileName(node.file, rootType(node.type) === "image");
+  if (node?.name?.trim()) return node.name.trim().slice(0, 120);
   return plainFirstLine(node?.text ?? "");
 }
 

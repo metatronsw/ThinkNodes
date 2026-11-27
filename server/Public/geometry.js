@@ -543,6 +543,21 @@ function textWidth(value, size, {bold = false, monospace = false} = {}) {
 }
 
 
+// A doboz neve (`name`, docs/node-types.md „Név”) a doboz fölött, mint a fájlnév: félkövér, a doboz szélességére
+// (8 képpont ráhagyással) tördelve, a szöveg igazításával. Struktúra-konténernél utána halvány jel: `[]` tömb, `{}`
+// objektum (`list`). Rendering.swift nameLayout párja; pontosan egyezniük kell (Tests/Fixtures/text-flow.json).
+export const nameStyle = {size: 13, line: 17, gap: 4};
+export function nameLayout(node) {
+  if (node?.type !== "box") return null;
+  const name = (node.name ?? "").trim();
+  const marker = node.list == null ? null : node.list ? "[]" : "{}";
+  if (!name && !marker) return null;
+  const display = !name ? marker : marker ? name + " " + marker : name;
+  const rows = wrapRuns([{text: display, format: undefined}], Math.max(24, node.width - 8), false, letterMeasure(nameStyle.size, true, false));
+  const lines = rows.map(row => row.pieces.map(piece => piece.text).join(""));
+  return {lines, height: lines.length * nameStyle.line + nameStyle.gap, marker};
+}
+
 // Tördelés becsült szélesség szerint: `width(betű, formátum)` adja egy betű szélességét, `limit` a sor szélessége.
 // Alapértelmezésben minden betű 1 széles, így `limit` oszlopszám (CanvasMarkdown.swift wrapMarkdown párja).
 // `limit`: a sor szélessége, vagy függvény, amely soronként ad helyet ({x, width, skip}; lásd textSlot) – ekkor a sor

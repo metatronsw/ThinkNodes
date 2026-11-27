@@ -584,24 +584,31 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     #expect(throws: (any Error).self) { try bad.validate() }
 }
 
-@Test func structureContainerStoresGeneratedBoxesAndDrawsADataLink() throws {
+@Test func structureContainerStoresNamedBoxesAndDrawsADataLink() throws {
     var source = Idea(id: "forras", type: "code", file: CanvasFile(asset: "file-1", filename: "adat.json"), position: Point(x: 0, y: 0))
     source.width = 200; source.height = 120
-    var box = Idea(id: "kontener", text: "**adat.json**", position: Point(x: 400, y: 0))
-    box.width = 300; box.height = 200; box.container = true
-    box.structure = StructureSettings(digest: "0123456789abcdef01234567")
-    var item = Idea(id: "0123456789abcdef0123456789abcdef", text: "**name**\nteszt", position: Point(x: 400, y: 20))
-    item.parent = "kontener"; item.generated = "abcdef0123456789abcdef01"
+    var box = Idea(id: "kontener", text: "", position: Point(x: 400, y: 0))
+    box.width = 300; box.height = 200; box.container = true; box.list = false; box.boxName = "adat.json"
+    box.structure = StructureSettings(digest: "0123456789abcdef01234567", boxes: "abcdef0123456789abcdef01")
+    var item = Idea(id: "0123456789abcdef0123456789abcdef", text: "teszt", position: Point(x: 400, y: 20))
+    item.parent = "kontener"; item.boxName = "name"; item.alignment = .left
     let link = Connection(id: "adatvonal", source: "forras", target: ConnectionTarget(node: "kontener", point: nil))
     var sheet = Worksheet(title: "Struktúra", nodes: [source, box, item], edges: [link])
     try sheet.validate()
-    sheet = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(sheet))
-    #expect(sheet.nodes[1].structure == box.structure && sheet.nodes[2].generated == item.generated)
+    let encoded = String(decoding: try JSONEncoder().encode(sheet), as: UTF8.self)
+    #expect(encoded.contains("\"name\":\"name\"") && encoded.contains("\"list\":false"))
+    sheet = try JSONDecoder().decode(Worksheet.self, from: Data(encoded.utf8))
+    #expect(sheet.nodes[1].structure == box.structure && sheet.nodes[1].list == false && sheet.nodes[2].boxName == "name")
+    // A rövid név (kereső, akadálymentes felirat) a doboz neve.
+    #expect(sheet.nodes[2].name == "name")
 
     // A .json forrás és a konténer közti vonal adatvonal (félkorong, nyíl nélkül); más kiterjesztésnél közönséges vonal.
     let text: (Idea) -> String? = { _ in "{\"name\": \"teszt\"}" }
     let viewer = boardSVG(sheet, noteBase: "/projekt/lap", fileText: text)
     #expect(viewer.components(separatedBy: "data-plug").count == 3 && !viewer.contains("id=\"arrow-adatvonal\""))
+    // A név a doboz fölött, a szöveg igazításával; a konténer neve után halvány {} jel.
+    #expect(viewer.contains(#"<text class="node-name" text-anchor="start""#) && viewer.contains(#"<tspan x="-84.000" y="-48.000">name</tspan>"#))
+    #expect(viewer.contains(#"adat.json <tspan class="node-name-marker" opacity="0.5" font-weight="400">{}</tspan>"#))
     var plain = sheet
     plain.nodes[0].file = CanvasFile(asset: "file-1", filename: "adat.css")
     #expect(!boardSVG(plain, noteBase: "/projekt/lap", fileText: text).contains("data-plug"))
@@ -609,7 +616,8 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     plain.nodes[1].structure = nil
     #expect(!boardSVG(plain, noteBase: "/projekt/lap", fileText: text).contains("data-plug"))
 
-    // Struktúra-beállítás csak sima dobozon; az ujjlenyomatok azonosító-formájúak.
+    // Struktúra-beállítás és list jelző csak sima dobozon; az ujjlenyomatok azonosító-formájúak; a név legfeljebb 255
+    // karakter, sortörés nélkül, csak dobozon.
     var bad = sheet
     bad.nodes[0].structure = StructureSettings()
     #expect(throws: (any Error).self) { try bad.validate() }
@@ -617,8 +625,37 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     bad.nodes[1].structure = StructureSettings(digest: "Nem jó")
     #expect(throws: (any Error).self) { try bad.validate() }
     bad = sheet
-    bad.nodes[2].generated = "Nagybetű"
+    bad.nodes[0].list = true
     #expect(throws: (any Error).self) { try bad.validate() }
+    bad = sheet
+    bad.nodes[2].boxName = String(repeating: "x", count: 256)
+    #expect(throws: (any Error).self) { try bad.validate() }
+    bad = sheet
+    bad.nodes[2].boxName = "két\nsor"
+    #expect(throws: (any Error).self) { try bad.validate() }
+    bad = sheet
+    bad.nodes[0].boxName = "fájl"
+    #expect(throws: (any Error).self) { try bad.validate() }
+    var long = sheet
+    long.nodes[2].boxName = String(repeating: "é", count: 255)
+    try long.validate()
+}
+
+/// A doboz nevének tördelése a szerveren pontosan egyezzen a szerkesztőével (Public/geometry.js nameLayout).
+/// Közös esetek: Tests/Fixtures/box-names.json (kliensoldali párja: Tests/Editor/box-names.mjs).
+@Test func boxNamesMatchSharedFixtures() throws {
+    let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("Fixtures/box-names.json")
+    struct Case: Decodable { let name: String; let list: Bool?; let width: Double; let lines: [String]; let height: Double }
+    let cases = try JSONDecoder().decode([Case].self, from: Data(contentsOf: fixture))
+    #expect(cases.count >= 10)
+    for item in cases {
+        var node = Idea(id: "n", text: "", position: Point(x: 0, y: 0))
+        node.boxName = item.name; node.list = item.list; node.width = item.width
+        let layout = nameLayout(node)
+        #expect((layout?.lines ?? []) == item.lines, "\(item.name.prefix(30))")
+        #expect((layout?.height ?? 0) == item.height, "\(item.name.prefix(30))")
+    }
 }
 
 /// Színezett kódfájl: az önálló SVG-be (letöltés, előnézeti kép) a színszabályok beágyazódnak; a megtekintő oldalon

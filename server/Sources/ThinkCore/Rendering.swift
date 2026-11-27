@@ -77,7 +77,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
         <script defer src="/vendor/vue.js"></script>
         <script defer src="/lib/d3-zoom.js?v=1"></script>
         <script defer src="/vendor/commonmark.js"></script>
-        <script type="module" src="/editor.js?v=107"></script>
+        <script type="module" src="/editor.js?v=108"></script>
         """ : ""
     let live = updates.map { "<meta name=\"thinknodes-updates\" data-id=\"\($0.id)\" content=\"\($0.version)\">" } ?? ""
     return response("""
@@ -88,7 +88,7 @@ package func htmlPage(title: String, body: String, scripts: Bool = false, update
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>\(escaped(title)) · ThinkNodes</title>
           \(live)
-          <link rel="stylesheet" href="/app.css?v=75">
+          <link rel="stylesheet" href="/app.css?v=76">
           <script defer src="/site-mode.js"></script>
           \(assets)
         </head>
@@ -394,6 +394,43 @@ private func textWidth(_ value: String, size: Double) -> Double {
     var width = 0.0
     for letter in value { width += measure(letter, nil) }
     return width
+}
+
+/// A doboz nevének betűmérete, sormagassága és távolsága a doboztól (geometry.js nameStyle).
+let nameFontSize = 13.0, nameLineHeight = 17.0, nameGap = 4.0
+
+/// A doboz neve a doboz fölött (geometry.js nameLayout párja; pontosan egyezniük kell): félkövér, a doboz szélességére
+/// (8 képpont ráhagyással) tördelve. Struktúra-konténernél utána halvány jel: `[]` tömb, `{}` objektum.
+func nameLayout(_ node: Idea) -> (lines: [String], height: Double, marker: String?)? {
+    guard node.type == "box" else { return nil }
+    let name = (node.boxName ?? "").trimmingCharacters(in: .whitespaces)
+    let marker: String? = node.list.map { $0 ? "[]" : "{}" }
+    guard !name.isEmpty || marker != nil else { return nil }
+    let display = name.isEmpty ? marker! : marker.map { name + " " + $0 } ?? name
+    let measure = letterMeasure(size: nameFontSize, bold: true, monospace: false)
+    let rows = wrapMarkdown([MarkdownRun(text: display)], limit: max(24, node.width - 8), width: measure)
+    let lines = rows.map { row in row.pieces.map(\.text).joined() }
+    return (lines, Double(lines.count) * nameLineHeight + nameGap, marker)
+}
+
+/// A név SVG-je a doboz csoportjában (az origó a doboz közepe).
+private func nameSVG(_ node: Idea) -> String {
+    guard let layout = nameLayout(node) else { return "" }
+    let (x, anchor): (Double, String) = switch node.alignment {
+    case .left: (-node.width / 2 + 4, "start")
+    case .right: (node.width / 2 - 4, "end")
+    case .center: (0, "middle")
+    }
+    let count = layout.lines.count
+    let spans = layout.lines.enumerated().map { index, line in
+        let baseline = -node.height / 2 - nameGap - Double(count - 1 - index) * nameLineHeight - 4
+        var content = escaped(line)
+        if index == count - 1, let marker = layout.marker, line.hasSuffix(marker) {
+            content = escaped(String(line.dropLast(marker.count))) + "<tspan class=\"node-name-marker\" opacity=\"0.5\" font-weight=\"400\">\(escaped(marker))</tspan>"
+        }
+        return "<tspan x=\"\(number(x))\" y=\"\(number(baseline))\">\(content)</tspan>"
+    }.joined()
+    return "<text class=\"node-name\" text-anchor=\"\(anchor)\" font-family=\"system-ui, sans-serif\" font-size=\"\(number(nameFontSize))\" font-weight=\"600\" fill=\"\(escaped(node.textColor))\">\(spans)</text>"
 }
 
 /// Egysoros felirat (link, fájlnév, címke): ha nem fér el, „…”-tal rövidül (geometry.js fitCaption).
@@ -1094,7 +1131,7 @@ private func nodeSVG(_ drawing: IdeaDrawing, siteHost: String?, graphics: Visual
         \(elevationShadow(node, geometry: geometry, graphics: graphics))
         \(boxSurface(node, geometry: geometry, graphics: graphics, interactive: interactive))
         \(previewImage)\(frameOutline(node))<text class="node-text" text-rendering="geometricPrecision" font-family="\(escaped((graphics ?? VisualTheme.Graphics()).fontFamily(node.font)))" pointer-events="none">\(spans)</text>
-        \(marker)\(noteBelow)\(publicMark)
+        \(marker)\(noteBelow)\(publicMark)\(nameSVG(node))
         """
     return """
         <g aria-label="\(escaped(node.name))" transform="translate(\(number(node.position.x)) \(number(node.position.y)))">
@@ -1581,6 +1618,10 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
             }
         } else if node.link != nil {
             include(node.position.x, node.position.y + node.height / 2 + 20, node.width / 2 + padding, padding)
+        }
+        // A doboz neve a doboz felett.
+        if let name = nameLayout(node) {
+            include(node.position.x, node.position.y - node.height / 2 - name.height, node.width / 2 + padding, padding)
         }
     }
     var elevated = Set(renderedIdeas.filter { $0.elevated == true }.map(\.id))

@@ -1,136 +1,167 @@
-// Struktúra-konténer (Public/structure-boxes.js): fa, elrendezés, stabil azonosítók, kézi beállítások megőrzése.
+// Struktúra-konténer (Public/structure-boxes.js): értékek, típusszavak, generálás, párosítás, visszafelé alakítás.
 // Futtatás a server/ mappából: node Tests/Editor/structure-boxes.mjs
 import assert from "node:assert/strict";
-import {generateBoxes, boxTree, isSchema, structureFormat, escapeMarkdown, StructureError, generatedLimit} from "../../Public/structure-boxes.js";
+import {generateBoxes, boxesValue, boxesSource, parseValue, formatValue, typeInfo, automaticFill, structureFormat, escapeMarkdown,
+  unescapeMarkdown, StructureError, generatedLimit, defaultTypeColors, textDigest, inferList} from "../../Public/structure-boxes.js";
+import {nameLayout} from "../../Public/geometry.js?v=37";
 
-const container = {id: "c0ffee", position: {x: 100, y: 100}, width: 240, height: 120, text: "**adat.json**", fontSize: 16};
-const byText = result => new Map(result.nodes.map(node => [node.text, node]));
-const previousOf = result => new Map(result.nodes.map(node => [node.id, structuredClone(node)]));
+const container = {id: "c0ffee", type: "box", position: {x: 100, y: 100}, width: 240, height: 120, text: "", name: "adat.json", fontSize: 16};
+
+// A szerkesztő alkalmazási lépése (editor.js applyStructure): a meglévő doboz mezői frissülnek, az új létrejön, a
+// megszűnő törlődik; a sorrend a forrásé. Eredmény: a konténer és a leszármazottai (a lap sorrendjében).
+function apply(result, root, previous = []) {
+  const byId = new Map(previous.map(node => [node.id, node]));
+  const nodes = result.nodes.map(({id, parent, fields}) => {
+    const node = {...(byId.get(id) ?? {id}), parent};
+    for (const [key, value] of Object.entries(fields)) if (value === undefined) delete node[key]; else node[key] = value;
+    return node;
+  });
+  return [{...root, ...result.patch}, ...nodes];
+}
+const generate = (value, previous = [], root = container) => {
+  const result = generateBoxes(typeof value === "string" ? value : JSON.stringify(value), root, {previous: previous.slice(1)});
+  return {result, nodes: apply(result, previous[0] ?? root, previous.slice(1))};
+};
+const find = (nodes, predicate) => nodes.find(predicate);
+const byName = (nodes, name) => find(nodes, node => node.name === name);
 
 // Formátum a fájlnévből.
 assert.equal(structureFormat("adat.JSON"), "json");
 assert.equal(structureFormat("adat.swift"), null);
-assert.equal(structureFormat("json"), "json");
-assert.equal(structureFormat(undefined), null);
 
-// Általános JSON: objektum → konténer, egyszerű érték → doboz; a gyökér maga a konténer.
-const sample = {name: "teszt", count: 3, ok: true, list: [1.5, null, "hosszú szöveg"], meta: {}};
-let result = generateBoxes(JSON.stringify(sample), container);
-assert.equal(result.schema, false);
-assert.equal(result.nodes.length, 8);
-let nodes = byText(result);
-assert.ok(nodes.has("**name**\nteszt") && nodes.has("**ok**\ntrue") && nodes.has("**meta**\n{ }"));
-const list = nodes.get("**list** [3]");
-assert.equal(list.parent, container.id);
-assert.equal(list.verticalAlignment, "top");
-assert.deepEqual(result.nodes.filter(node => node.parent === list.id).map(node => node.text), ["1.5", "null", "hosszú szöveg"]);
-assert.equal(nodes.get("null").italic, true);
-// Minden azonosító érvényes (Model.swift validSlug), egyedi, és minden doboz generált, szülővel.
-assert.ok(result.nodes.every(node => /^[0-9a-f]{32}$/.test(node.id) && /^[0-9a-f]{24}$/.test(node.generated) && node.parent));
-assert.equal(new Set(result.nodes.map(node => node.id)).size, result.nodes.length);
-// A szülő előbb áll, mint a gyermeke; a gyermek a szülője területén belül van.
-const boxes = new Map([[container.id, {...container, ...result.patch}]]);
-for (const node of result.nodes) {
+// Értékek: oda-vissza veszteség nélkül; a literálnak látszó szöveg idézőjelben, a markdown-jelek semlegesek.
+for (const value of [3, -2.5, 1e21, true, false, null, "szöveg", "3", "true", "null", " szóköz", "\"idézett\"", "*csillag* _al_ `kód`", "# cím",
+  "- lista", "1. elem", "a\nb", "a\\*b", "[x](y)", "Int", "[String: Int]", "", "&amp;", "<b>"]) {
+  assert.deepEqual(parseValue(formatValue(value)), value, JSON.stringify(value));
+}
+assert.equal(formatValue("3"), "\"3\"");
+assert.equal(formatValue("*a*"), "\\*a\\*");
+assert.equal(formatValue("[Int]"), "[Int]", "link nélkül a szögletes zárójel marad");
+assert.equal(parseValue("  42 "), 42);
+assert.equal(parseValue("kézzel írt *szöveg*"), "kézzel írt *szöveg*");
+assert.equal(unescapeMarkdown(escapeMarkdown("a\\b*c")), "a\\b*c");
+
+// Típusszavak.
+assert.deepEqual(typeInfo("Int"), {base: "Int", collection: null, optional: false});
+assert.deepEqual(typeInfo("Double?"), {base: "Double", collection: null, optional: true});
+assert.deepEqual(typeInfo("[String]"), {base: "String", collection: "array", optional: false});
+assert.deepEqual(typeInfo("[String: [Int]]?"), {base: "Int", collection: "dictionary", optional: true});
+assert.deepEqual(typeInfo(formatValue("[UUID]")), {base: "UUID", collection: "array", optional: false});
+for (const text of ["int", "Integer", "[Int", "Int??x", "[: Int]", "valami", ""]) assert.equal(typeInfo(text), null, text);
+assert.equal(automaticFill("Bool", true), defaultTypeColors.Bool);
+assert.equal(automaticFill("Bool", false), 0);
+assert.equal(automaticFill("szöveg", true), 2);
+
+// Generálás: objektum → {} konténer (list: false), tömb → [] (list: true), egyszerű érték → doboz (név = kulcs).
+const sample = {name: "teszt", kor: 3, aktiv: true, csapat: [{name: "Anna", kor: 30}, {name: "Béla", kor: 41}], cimkek: ["a", "b"], ures: {}, tipus: "Int"};
+let {result, nodes} = generate(sample);
+assert.equal(nodes[0].list, false);
+assert.deepEqual([byName(nodes, "name").text, byName(nodes, "kor").text, byName(nodes, "aktiv").text], ["teszt", "3", "true"]);
+const csapat = byName(nodes, "csapat");
+assert.equal(csapat.list, true);
+assert.deepEqual(nodes.filter(node => node.parent === csapat.id).map(node => [node.name, node.list]), [["Anna", false], ["Béla", false]]);
+assert.deepEqual(nodes.filter(node => node.parent === byName(nodes, "cimkek").id).map(node => [node.name, node.text]), [[undefined, "a"], [undefined, "b"]]);
+assert.equal(byName(nodes, "ures").list, false);
+assert.equal(byName(nodes, "tipus").fill, defaultTypeColors.Int);
+assert.equal(byName(nodes, "name").fill, 2);
+assert.equal(csapat.fill, 0);
+assert.ok(nodes.slice(1).every(node => /^[0-9a-f]{32}$/.test(node.id) && node.parent && node.type === "box"));
+assert.equal(new Set(nodes.map(node => node.id)).size, nodes.length);
+// Oda-vissza: a dobozokból ugyanaz a JSON.
+assert.deepEqual(boxesValue(nodes, container.id), sample);
+assert.equal(boxesSource(nodes, container.id), JSON.stringify(sample, null, 2) + "\n");
+assert.equal(boxesSource(nodes, container.id, {previous: "{\n\t\"a\": 1\n}"}), JSON.stringify(sample, null, "\t") + "\n", "a forrás behúzása marad");
+
+// Elrendezés: a szülő előbb áll, mint a gyermeke; a gyermek a neve fölötte együtt a szülő területén belül van.
+const boxes = new Map([[container.id, nodes[0]]]);
+for (const node of nodes.slice(1)) {
   const parent = boxes.get(node.parent);
   assert.ok(parent, "a szülő előbb jön");
+  const name = nameLayout(node)?.height ?? 0;
+  const top = node.position.y - node.height / 2 - name, parentTop = parent.position.y - parent.height / 2;
+  assert.ok(top >= parentTop - .001, "a név a szülőn belül: " + node.name);
   assert.ok(node.position.x - node.width / 2 >= parent.position.x - parent.width / 2 - .001);
   assert.ok(node.position.x + node.width / 2 <= parent.position.x + parent.width / 2 + .001);
-  assert.ok(node.position.y - node.height / 2 >= parent.position.y - parent.height / 2 - .001);
   assert.ok(node.position.y + node.height / 2 <= parent.position.y + parent.height / 2 + .001);
-  assert.ok(node.width >= 64 && node.height >= 40);
   boxes.set(node.id, node);
 }
-// A konténer címe a gyermekek fölött elfér: a címketerület a doboz tetejétől 3% + 6 képpontra kezdődik (0,94-es arány),
-// a sor 1,25 betűméret magas, a körbefuttatás térköze 8 (geometry.js labelLayout) – különben a cím a gyermekek alá csúszik.
-for (const owner of [{...container, ...result.patch, fontSize: 16}, ...result.nodes]) {
-  const children = result.nodes.filter(node => node.parent === owner.id);
-  if (!children.length || !owner.text) continue;
-  const top = owner.position.y - owner.height / 2;
-  const firstChild = Math.min(...children.map(node => node.position.y - node.height / 2));
-  assert.ok(firstChild - top >= owner.height * .03 + 6 + owner.fontSize * 1.25 + 8, owner.text);
+// Egy sorban a testvérek (név + doboz) nem fedik egymást.
+for (const parent of nodes) {
+  const children = nodes.filter(node => node.parent === parent.id);
+  for (const a of children) for (const b of children) {
+    if (a === b) continue;
+    const ra = [a.position.x - a.width / 2, a.position.y - a.height / 2 - (nameLayout(a)?.height ?? 0), a.position.x + a.width / 2, a.position.y + a.height / 2];
+    const rb = [b.position.x - b.width / 2, b.position.y - b.height / 2 - (nameLayout(b)?.height ?? 0), b.position.x + b.width / 2, b.position.y + b.height / 2];
+    assert.ok(ra[2] <= rb[0] + .001 || rb[2] <= ra[0] + .001 || ra[3] <= rb[1] + .001 || rb[3] <= ra[1] + .001, a.name + " / " + b.name);
+  }
 }
 // A konténer bal felső sarka a helyén marad.
 assert.equal(result.patch.position.x - result.patch.width / 2, container.position.x - container.width / 2);
 assert.equal(result.patch.position.y - result.patch.height / 2, container.position.y - container.height / 2);
 
-// Stabil azonosítók: beszúrás és átrendezés után ugyanaz az elem ugyanazt az azonosítót kapja (a vonal megmarad).
-const people = [{name: "Anna", age: 30}, {name: "Béla", age: 41}];
-const first = generateBoxes(JSON.stringify({people}), container);
-const second = generateBoxes(JSON.stringify({people: [{name: "Cecil", age: 22}, people[1], people[0]], extra: 1}), container);
-const idOf = (res, text) => res.nodes.find(node => node.text === text)?.id;
-for (const text of ["**Anna**", "**Béla**", "**age**\n30", "**people** [2]"]) assert.ok(idOf(first, text), text);
-assert.equal(idOf(first, "**Anna**"), idOf(second, "**Anna**"));
-assert.equal(idOf(first, "**Béla**"), idOf(second, "**Béla**"));
-assert.equal(first.nodes.find(node => node.text === "**age**\n30").id, second.nodes.find(node => node.text === "**age**\n30").id);
-// Azonos nevű testvérek: a sorszám a kulcs.
-const twins = generateBoxes(JSON.stringify([{name: "x"}, {name: "x"}]), container);
-assert.equal(new Set(twins.nodes.map(node => node.id)).size, twins.nodes.length);
-// Egyszerű értékek tömbje: az érték a kulcs.
-const tags = generateBoxes(JSON.stringify(["a", "b"]), container), tags2 = generateBoxes(JSON.stringify(["c", "a", "b"]), container);
-assert.equal(idOf(tags, "a"), idOf(tags2, "a"));
-// Más konténer: más azonosítók.
-assert.notEqual(idOf(generateBoxes(JSON.stringify(["a"]), {...container, id: "other"}), "a"), idOf(tags, "a"));
+// Párosítás: beszúrás a tömb elejére, kulcs átnevezése, érték változása – a meglévő dobozok azonosítója, kézi színe marad.
+const previous = nodes;
+const anna = find(previous, node => node.name === "Anna"), annaKor = previous.find(node => node.parent === anna.id && node.name === "kor");
+const aktiv = byName(previous, "aktiv"), tipus = byName(previous, "tipus"), cimkeB = previous.find(node => node.text === "b");
+aktiv.fill = "#ff0000"; aktiv.alignment = "left"; aktiv.fontSize = 18;
+const changed = {...sample, aktiv: false, tipus: "String", csapat: [{name: "Cecil", kor: 22}, ...sample.csapat], cimkek: ["c", "a", "b"]};
+delete changed.name; changed.nev = "teszt";
+({result, nodes} = generate(changed, previous));
+assert.equal(find(nodes, node => node.name === "Anna").id, anna.id);
+assert.equal(nodes.find(node => node.parent === anna.id && node.name === "kor").id, annaKor.id);
+assert.equal(find(nodes, node => node.text === "b").id, cimkeB.id);
+const aktivNow = byName(nodes, "aktiv");
+assert.deepEqual([aktivNow.id, aktivNow.text, aktivNow.fill, aktivNow.alignment, aktivNow.fontSize], [aktiv.id, "false", "#ff0000", "left", 18]);
+assert.equal(byName(nodes, "tipus").id, tipus.id);
+assert.equal(byName(nodes, "tipus").fill, defaultTypeColors.String, "az automatikus típusszín követi az értéket");
+assert.equal(byName(nodes, "nev").id, byName(previous, "name").id, "átnevezett kulcs: a maradék dobozzal párosodik");
+assert.ok(find(nodes, node => node.name === "Cecil") && !previous.some(node => node.id === find(nodes, n => n.name === "Cecil").id));
+assert.deepEqual(result.removed, []);
+assert.deepEqual(boxesValue(nodes, container.id), changed);
+// Törlés: a megszűnő elem azonosítója a `removed` listában.
+({result, nodes} = generate({...changed, csapat: [changed.csapat[0]]}, nodes));
+assert.ok(result.removed.includes(anna.id) && result.removed.includes(annaKor.id));
 
-// Megőrzés: változatlan elemen a kézzel állított szín és szöveg (megjegyzés) marad; változott elemen a szín marad,
-// a tartalom az új.
-let previous = previousOf(result);
-const nameBox = [...previous.values()].find(node => node.text === "**name**\nteszt");
-const countBox = [...previous.values()].find(node => node.text === "**count**\n3");
-Object.assign(nameBox, {fill: "#ff0000", textColor: 5, text: "**name**\nteszt\n\n*megjegyzés*", backgroundMode: "translucent"});
-Object.assign(countBox, {fill: 7, text: "**count**\n3 – kézi"});
-result = generateBoxes(JSON.stringify({...sample, count: 4}), container, {previous});
-nodes = new Map(result.nodes.map(node => [node.id, node]));
-const name = nodes.get(nameBox.id), count = nodes.get(countBox.id);
-assert.deepEqual([name.fill, name.textColor, name.backgroundMode, name.text], ["#ff0000", 5, "translucent", "**name**\nteszt\n\n*megjegyzés*"]);
-assert.equal(name.generated, nameBox.generated);
-assert.deepEqual([count.fill, count.text], [7, "**count**\n4"]);
-assert.notEqual(count.generated, countBox.generated);
-// A megőrzött, hosszabb szöveghez a doboz is nagyobb.
-assert.ok(name.height > countBox.height);
+// Visszafelé: a dobozok szerkesztése a JSON-ban.
+({nodes} = generate(sample));
+byName(nodes, "kor").text = "4";
+byName(nodes, "name").text = "\"5\"";
+nodes.push({id: "uj", type: "box", parent: container.id, name: "uj", text: "kézzel *írt*"});
+nodes.push({id: "kep", type: "image", parent: container.id, text: ""});
+nodes.push({id: "lista-uj", type: "box", parent: byName(nodes, "cimkek").id, text: "null"});
+assert.deepEqual(boxesValue(nodes, container.id), {...sample, kor: 4, name: "5", uj: "kézzel *írt*", cimkek: ["a", "b", null]});
+// Azonos nevek objektumban: a második egyedi kulcsot kap (nem vész el).
+nodes.push({id: "dupla", type: "box", parent: container.id, name: "kor", text: "9"});
+assert.equal(boxesValue(nodes, container.id)["kor (2)"], 9);
+// Jelző nélküli (kézzel épített) konténer: egyedi nevek → objektum, egyébként tömb.
+assert.equal(inferList([{name: "a"}, {name: "b"}]), false);
+assert.equal(inferList([{name: "a"}, {}]), true);
+assert.equal(inferList([{name: "a"}, {name: "a"}]), true);
+const hand = [{id: "k", type: "box"}, {id: "x", type: "box", parent: "k", name: "x", text: "1"}, {id: "y", type: "box", parent: "k", name: "y", text: "igen"}];
+assert.deepEqual(boxesValue(hand, "k"), {x: 1, y: "igen"});
+assert.deepEqual(boxesValue([{id: "k", type: "box"}], "k"), {});
 
-// Dobozleíró séma: a gyökér a konténer (szöveg, szín), a gyermekek stílusa a forrásból.
-const schema = {text: "Csapat", fill: 4, children: [
-  {title: "Fejlesztés", layout: "column", children: [{text: "Anna"}, {text: "Béla", fill: "#FFCC00", shape: "ellipse"}]},
-  {text: "Design", width: 200, height: 90, align: "right", fontSize: 18},
-]};
-assert.ok(isSchema(schema) && isSchema(schema.children) && !isSchema({text: "x", other: 1}) && !isSchema({text: 5}));
-result = generateBoxes(JSON.stringify(schema), container);
-assert.equal(result.schema, true);
-assert.deepEqual([result.patch.text, result.patch.fill], ["Csapat", 4]);
-nodes = byText(result);
-assert.deepEqual([nodes.get("Béla").fill, nodes.get("Béla").shape], ["#ffcc00", "ellipse"]);
-assert.equal(nodes.get("Fejlesztés").bold, true);
-assert.equal(nodes.get("Anna").width, nodes.get("Béla").width, "oszlopban egyforma szélesség");
-assert.deepEqual([nodes.get("Design").width, nodes.get("Design").height, nodes.get("Design").alignment, nodes.get("Design").fontSize], [200, 90, "right", 18]);
-// Sémában a forrásban megadott szín változáskor a forrásé, a kézi szín csak ott marad, ahol a forrás nem ad színt.
-previous = previousOf(result);
-for (const node of previous.values()) node.fill = 9;
-const changed = structuredClone(schema);
-changed.children[0].children[1].fill = "#00aa00";
-result = generateBoxes(JSON.stringify(changed), container, {previous});
-nodes = byText(result);
-assert.deepEqual([nodes.get("Béla").fill, nodes.get("Anna").fill, nodes.get("Design").fill], ["#00aa00", 9, 9]);
-
-// Hibás forrás: StructureError, hogy a szerkesztő a meglévő dobozokat megtartsa.
-assert.throws(() => generateBoxes("{\"a\": ", container), StructureError);
-assert.throws(() => boxTree("[]", "yaml"), StructureError);
 // Egyszerű érték és üres tömb gyökérként.
-assert.deepEqual(generateBoxes("42", container).nodes.map(node => node.text), ["42"]);
-assert.deepEqual(generateBoxes("[]", container).nodes.map(node => node.text), ["[ ]"]);
+({nodes} = generate("42"));
+assert.deepEqual([nodes[0].list, nodes.slice(1).map(node => node.text)], [true, ["42"]]);
+assert.deepEqual(boxesValue(nodes, container.id), [42]);
+({nodes} = generate("[]"));
+assert.deepEqual([nodes.length, nodes[0].list, boxesValue(nodes, container.id)], [1, true, []]);
 
-// Korlátok: legfeljebb generatedLimit + 1 doboz (a „… további” jelzéssel), és a méretek a modell határain belül.
-const big = generateBoxes(JSON.stringify(Array.from({length: 1000}, (_, i) => ({name: "n" + i, value: i}))), container);
-assert.equal(big.truncated, true);
-assert.ok(big.nodes.length <= generatedLimit + 1);
-assert.ok(big.nodes.at(-1).text.startsWith("… további"));
-assert.ok([big.patch, ...big.nodes].every(node => node.width <= 4096 && node.height <= 4096));
+// Hibák és korlátok: hibás JSON, túl hosszú vagy sortöréses kulcs, túl mély szerkezet; sok elemnél csonkolás jelzéssel.
+assert.throws(() => generateBoxes("{\"a\": ", container), StructureError);
+assert.throws(() => generateBoxes(JSON.stringify({["k".repeat(256)]: 1}), container), StructureError);
+assert.throws(() => generateBoxes(JSON.stringify({"a\nb": 1}), container), StructureError);
 let deep = 1;
 for (let i = 0; i < 20; i++) deep = {level: deep};
-assert.ok(generateBoxes(JSON.stringify(deep), container).nodes.some(node => node.text.includes("túl mély")));
+assert.throws(() => generateBoxes(JSON.stringify(deep), container), StructureError);
+const big = generateBoxes(JSON.stringify(Array.from({length: 1000}, (_, i) => ({name: "n" + i, value: i}))), container);
+assert.equal(big.truncated, true);
+assert.ok(big.nodes.length <= generatedLimit);
+assert.ok([big.patch, ...big.nodes.map(node => node.fields)].every(node => node.width <= 4096 && node.height <= 4096));
 
-// A forrás szövegében a markdown-jelek semlegesek.
-assert.equal(escapeMarkdown("*a* _b_ [c](d) # e"), "\\*a\\* \\_b\\_ \\[c\\](d) \\# e");
-assert.equal(escapeMarkdown("- lista\n1. elem"), "\\- lista\n1\\. elem");
-assert.equal(byText(generateBoxes(JSON.stringify({"a*b": "x_y"}), container)).has("**a\\*b**\nx\\_y"), true);
+// Ujjlenyomat: formátumtól és szövegtől függ.
+assert.notEqual(textDigest("{}"), textDigest("{ }"));
+assert.match(textDigest("{}"), /^[0-9a-f]{24}$/);
 
 console.log("structure-boxes: rendben");
