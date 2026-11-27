@@ -1,11 +1,12 @@
 import {avatarSymbol, cursorLabelMode, setCursorLabelMode} from "./presence.js";
+import {screenMatrix} from "./screen-matrix.js";
 
 // The layer's coordinate system is the worksheet, including the editor's pan and zoom. The markers keep their
 // screen size (counter-scaled by the zoom), so the name or avatar beside them stays readable at any zoom level.
 export function sharedMouse(send) {
   const ns = "http://www.w3.org/2000/svg";
   const cursors = new Map();
-  let layer, enabled = false, pending, timer, listeners, modeList = null;
+  let layer, root, enabled = false, pending, timer, listeners, modeList = null;
   let labelMode = cursorLabelMode();
   function hide() {
     clearTimeout(timer);
@@ -14,7 +15,8 @@ export function sharedMouse(send) {
     pending = null;
   }
   function screenScale() {
-    const matrix = layer?.isConnected ? layer.getScreenCTM() : null;
+    // A jelölők a vászonnal együtt skálázódnak; a képernyő-lépték a Safari-biztos leképezésből (screen-matrix.js).
+    const matrix = screenMatrix(layer, root);
     return matrix?.a ? 1 / matrix.a : 1;
   }
   function place(marker, scale = screenScale()) {
@@ -131,6 +133,7 @@ export function sharedMouse(send) {
     hide();
     listeners = new AbortController();
     const options = {signal: listeners.signal};
+    root = svg;
     layer?.remove();
     layer = document.createElementNS(ns, "g");
     layer.setAttribute("data-editor-only", "");
@@ -174,7 +177,7 @@ export function sharedMouse(send) {
     svg.addEventListener("pointermove", event => {
       // Nem aktív ablak fölött is jön pointermove (macOS): ilyenkor a kurzor nem látszik a többieknél.
       if (!enabled || event.pointerType === "touch" || document.hidden || !document.hasFocus()) return;
-      const matrix = layer.getScreenCTM();
+      const matrix = screenMatrix(layer, root);
       if (!matrix) return;
       const {x, y} = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
       pending = {x, y};

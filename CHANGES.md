@@ -1,5 +1,13 @@
 # Változások
 
+## 2026-11-27 – Jobb gombos pásztázás, helyi menü felengedéskor, új lézer pointer (`right-mouse-pan` ág)
+
+- **Pásztázás és helyi menü:** megszűnt a kéz gomb (vászonmozgatás-zár, a `panLocked` beállítás szerveroldalon is), a szóközös és a bal gombos pásztázás. Jobb gomb + húzás pásztáz (objektum fölött is); mozgás nélküli jobb kattintás (küszöb 5 px, `rightClickSlop`) felengedéskor nyitja a helyi menüt, macOS- és Windows-eseménysorrenddel is. Útmutató és `docs/hotkeys.json` frissítve; a Chrome-os mérőszkriptek jobb gombbal pásztáznak.
+- **Lézer kurzor:** fekete-fehér varázspálca (`Public/laser-cursor.svg`); a vászon CSS-ből, a mutatott doboz / vonal inline kapja (leszármazott-szabály p1000-en a váltást 50 → 100–200 ms-ra rontotta).
+- **Lézer rajz:** hibrid mintavétel (12 px, 40–100 ms, fordulópont-megőrzés 3 px tűréssel), 100 ms-os csomagküldés, centripetális Catmull-Rom görbe, elvékonyodó vég, 2,2 mp élettartam, max. 48 pont. Ugyanazon a húzáson 146 → 89 pont, az üzenetek ~fele.
+- **Lézer canvason:** a rajz a látható terület méretű `<canvas>`-on (a vászon-SVG-ben képkockánként festést és rétegezést okozott): p1000-en rajzolás 38 → 60 fps. Részletek: `server/docs/PERF.md`.
+- **Safari zoom-hiba:** a Safari `getScreenCTM`-je nem tartalmazza a vászon burkolójának CSS-transzformját (görgős nagyítás / pásztázás előnézete), ezért a lézer elcsúszott, a közben kezdett vonal rossz helyről indult, és a megosztott egérmutató is rossz helyet küldött. Közös javítás: `Public/screen-matrix.js` (a vászon valódi téglalapjából számolt korrekció). A bennragadt rajzot (elveszett felengedés) a lézer lezárja.
+
 ## 2026-11-27 – Szerver Fedora 45-ön: swift.org Swift 6.3.3, Swift-verziók a swift.env-ben, Linux-javítások
 
 - **Miért nem a 6.0.3:** a swift.org 6.0.3-as toolchainjének clangja (LLVM 17) a Fedora 45 C++ fejléceit (GCC 16) nem fordítja (a swift-crypto BoringSSL-je C++); a Fedora `swift-lang` 6.3.2 pedig assertionnel épült, és egy függőségen összeomlott. A szerver ezért a swift.org hivatalos 6.3.3-át használja (`fedora41` építés, `/opt/swift-6.3.3`), a fejlesztőgép marad 6.0.3.

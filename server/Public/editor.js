@@ -1061,8 +1061,6 @@ createApp({
     const fullscreen = ref(!!document.fullscreenElement);
     document.addEventListener?.("fullscreenchange", () => { fullscreen.value = !!document.fullscreenElement; });
     const snapToGrid = ref(preferences.snap ?? false);
-    const panLocked = ref(preferences.panLocked ?? false);
-    const spacePan = ref(false);
     const previewImages = ref([]);
     async function loadPreviewImages() {
       try {
@@ -1072,8 +1070,7 @@ createApp({
     let preferenceWrite = Promise.resolve();
     function savePreferences() {
       if (!user) return;
-      const body = JSON.stringify({theme: preferences.theme, showGrid: gridVisible.value, snap: snapToGrid.value,
-        panLocked: panLocked.value});
+      const body = JSON.stringify({theme: preferences.theme, showGrid: gridVisible.value, snap: snapToGrid.value});
       preferenceWrite = preferenceWrite.then(async () => checked(await fetch("/api/preferences", {
         method: "POST", keepalive: true, headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body
       }))).catch(error => { problem.value = error.message; });
@@ -1135,7 +1132,10 @@ createApp({
     let resizeObserver;
     let lastClick;
     let canDeselectOnClick = false;
-    let rightPress = false;
+    // Jobb egérgomb: nyomva tartva és mozgatva pásztáz (d3-zoom, initializeZoom), mozgás nélküli felengedésre a helyi
+    // menü nyílik (context). A rightClickSlop képpontnál nagyobb elmozdulás már pásztázás, nem kattintás.
+    const rightClickSlop = 5;
+    let rightPress = null;
 
     const peers = ref([]);
     const held = ref(null);
@@ -1704,7 +1704,7 @@ createApp({
     }
 
     const resizeTarget = computed(() => {
-      if (spacePan.value || !alt.value || ctrl.value) return;
+      if (!alt.value || ctrl.value) return;
       if (gesture.value?.type === "resize") return gesture.value.nodeID;
       if (!canvasPointer.value || !canvas.value) return;
       const point = world(canvasPointer.value);
@@ -1815,9 +1815,9 @@ createApp({
           if (forcedFollow()) return false;
           if (event.type === "wheel") return !gesture.value && !scrollsSelectedText(event);
           if (event.type === "touchstart") return false;
-          if (spacePan.value) return !event.button && !gesture.value;
-          return !panLocked.value && !event.button && !event.altKey && !event.ctrlKey && !reconnect.value && !gesture.value
-            && !event.target.closest("[data-node], [data-edge]");
+          // Egérrel csak a jobb gomb pásztáz, objektum fölött is; a bal gomb nem mozgatja a vásznat. Ctrl+jobb gomb a
+          // vonalhúzásé (pressCanvas, pressNode). Mozgás nélküli felengedésre a helyi menü nyílik (rightPress, context).
+          return event.button === 2 && !event.ctrlKey && !gesture.value;
         })
         .on("start", event => {
           menu.value = null;
@@ -3468,15 +3468,15 @@ createApp({
 
     function pressCanvas(event) {
       flushView();
+      rightPress = null;
       // Szerkesztett táblázaton belül a táblázat kezeli a kattintást (cellakijelölés, Shift+kattintás tartomány).
       if (event.target?.closest?.("[data-table-editor]")) return;
       if (event.pointerType === "touch" && (!event.isPrimary || touchView)) {
         event.stopPropagation();
         return;
       }
-      const touchPan = event.pointerType === "touch" && !panLocked.value && !reconnect.value &&
-        !event.target.closest("[data-node], [data-edge]");
-      if ((spacePan.value || touchPan) && event.button === 0) {
+      const touchPan = event.pointerType === "touch" && !reconnect.value && !event.target.closest("[data-node], [data-edge]");
+      if (touchPan && event.button === 0) {
         beginDrag(event, "pan", {startView: view.value});
         return;
       }
@@ -3511,7 +3511,9 @@ createApp({
           return;
         }
       }
-      rightPress = event.button === 2 && !event.ctrlKey;
+      if (event.button === 2 && !event.ctrlKey) {
+        rightPress = {pointer: event.pointerId, screen: [event.clientX, event.clientY], moved: false, released: false, pending: null};
+      }
       if (!reconnect.value && !hit) {
         if (event.ctrlKey && !event.altKey && [0, 2].includes(event.button) && online.value) {
           event.preventDefault();
@@ -3541,11 +3543,33 @@ createApp({
       if (endpoint.createdJunction) openProperties("node", endpoint.node);
     }
 
+    // A jobb gombos lenyomás követése ablakszintű, elfogó figyelőkkel (a pásztázás a vásznon kívül is végződhet).
+    // A felengedéskor dől el, kattintás volt-e: ha a mutató rightClickSlop-nál messzebbre ment, pásztázás volt, menü nincs.
+    function trackRightPress(event) {
+      const press = rightPress;
+      if (!press || press.released || event.pointerId !== press.pointer) return;
+      press.moved ||= Math.hypot(event.clientX - press.screen[0], event.clientY - press.screen[1]) > rightClickSlop;
+      if (event.type === "pointermove") return;
+      if (event.type === "pointercancel" || press.moved) { rightPress = null; return; }
+      // macOS-en (és Linuxon) a contextmenu esemény már a lenyomáskor megjött: a menü most, a felengedéskor nyílik.
+      if (press.pending) { rightPress = null; openContext(...press.pending); return; }
+      // Windowson a contextmenu a felengedés után érkezik, és azonnal nyit (context).
+      press.released = true;
+    }
+
+    // A böngésző helyi menüje sosem jelenik meg a vásznon; a sajátunk csak mozgás nélküli jobb kattintásra nyílik.
     function context(event, kind = "canvas", itemID) {
       event.preventDefault();
       event.stopPropagation();
-      if (!rightPress || event.ctrlKey || event.button !== 2 || gesture.value?.type === "cable") return;
-      rightPress = false;
+      const press = rightPress;
+      if (!press || press.pending || event.ctrlKey || event.button !== 2 || gesture.value?.type === "cable") return;
+      if (!press.released) { press.pending = [event, kind, itemID]; return; }
+      rightPress = null;
+      openContext(event, kind, itemID);
+    }
+
+    function openContext(event, kind, itemID) {
+      if (gesture.value?.type === "cable") return;
       lastClick = null;
       // Objektum fölött a helyi menü mellett a tulajdonságpanel gombjai is megjelennek (quickTools, renderQuickTools).
       if (quickTools && kind !== "canvas") { openQuickTools(event, kind, itemID); return; }
@@ -3774,33 +3798,17 @@ createApp({
     }
 
     function modifiers(event) {
-      if (event.type === "keyup" && event.code === "Space") {
-        spacePan.value = false;
-        if (gesture.value?.type === "pan") gesture.value = null;
-      }
       ctrl.value = event.ctrlKey;
       alt.value = event.altKey;
       shift.value = event.shiftKey;
     }
-    function clearModifiers() { spacePan.value = false; ctrl.value = false; alt.value = false; shift.value = false; panning.value = false; }
+    function clearModifiers() { ctrl.value = false; alt.value = false; shift.value = false; panning.value = false; }
 
     function keyboard(event) {
       modifiers(event);
       // Előadás: Esc megszakítja a keret rajzolását.
       if (event.key === "Escape" && drawingFrame.value) { drawingFrame.value = false; event.preventDefault(); return; }
       if (event.key === "Escape" && appearanceOpen.value) { appearanceOpen.value = false; event.preventDefault?.(); return; }
-      if (event.code === "Space" && !editingText(event.target) && (canvasPointer.value || !event.target?.closest?.("button, a"))) {
-        event.preventDefault();
-        spacePan.value = true;
-        const drag = gesture.value;
-        if (drag && drag.type !== "pan") {
-          const screen = canvasPointer.value ? [canvasPointer.value.clientX, canvasPointer.value.clientY] : drag.screen;
-          finishPointer({pointerId: drag.pointer}, true);
-          gesture.value = {type: "pan", pointer: drag.pointer, screen, startView: view.value};
-          capturePointer(canvas.value, drag.pointer);
-        }
-        return;
-      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
         if (!event.repeat) saveVersion();
@@ -3892,6 +3900,7 @@ createApp({
     function cancelGesture() {
       touchView = null;
       if (gesture.value) finishPointer({pointerId: gesture.value.pointer}, true);
+      rightPress = null;
       canvasPointer.value = null;
       clearModifiers();
     }
@@ -3920,6 +3929,7 @@ createApp({
       window.addEventListener("blur", cancelGesture);
       window.addEventListener("pointermove", outsideMove);
       window.addEventListener("pointerup", outsideUp);
+      for (const type of ["pointermove", "pointerup", "pointercancel"]) window.addEventListener(type, trackRightPress, true);
       window.addEventListener("beforeunload", beforeUnload);
       window.addEventListener("pagehide", live.stop);
       window.addEventListener("pageshow", restore);
@@ -3987,6 +3997,7 @@ createApp({
       window.removeEventListener("blur", cancelGesture);
       window.removeEventListener("pointermove", outsideMove);
       window.removeEventListener("pointerup", outsideUp);
+      for (const type of ["pointermove", "pointerup", "pointercancel"]) window.removeEventListener(type, trackRightPress, true);
       window.removeEventListener("beforeunload", beforeUnload);
     });
 
@@ -5680,14 +5691,13 @@ createApp({
     }
     const DragShield = {
       setup: () => () => {
-        const cursor = spacePan.value && gesture.value?.type !== "pan" ? undefined : dragCursor();
+        const cursor = dragCursor();
         return h("div", {class: "drag-shield", "aria-hidden": "true", "data-editor-only": "",
           style: {cursor: cursor ?? "auto", pointerEvents: cursor ? "auto" : "none"}});
       },
     };
     function dragCursor() {
       if (perfOptions.debugNoCursor) return undefined;
-      if (spacePan.value) return gesture.value?.type === "pan" ? "grabbing" : "grab";
       const active = gesture.value;
       if (active?.type === "resize") return active.sx === active.sy ? "nwse-resize" : "nesw-resize";
       if (active?.type === "rectangle") return "crosshair";
@@ -5787,17 +5797,15 @@ createApp({
         // A mozdulat közbeni CSS-transzform a vásznat körülvevő rétegen van ("wrapper", alap), nem magán az SVG-n: a
         // transzformált SVG-gyökérben Safari minden HTML-változásra (táblázat, szövegfájl) a teljes réteget újrafestette.
         h("div", {class: ["canvas-layer", {"is-layer": perfOptions.layer !== "svg"}]}, [h("svg", {ref: canvas, class: ["canvas", "editor-canvas", {"is-layer": perfOptions.layer === "svg", "ctrl-held": ctrl.value, "alt-held": alt.value}],
-          "data-drag-cursor": perfOptions.shield ? (spacePan.value && gesture.value?.type !== "pan" ? "grab" : undefined) : dragCursor(), "aria-label": "Ötletvászon",
+          "data-drag-cursor": perfOptions.shield ? undefined : dragCursor(), "aria-label": "Ötletvászon",
           onContextmenu: event => context(event),
-          onClickCapture: event => { if (spacePan.value) { event.preventDefault(); event.stopPropagation(); } },
           onClick: event => {
             // D3 suppresses the click after a pan.
             if (canDeselectOnClick && !event.target.closest("[data-node], [data-edge]")) clearSelection();
             canDeselectOnClick = false;
           },
-          onDblclickCapture: event => { if (spacePan.value) { event.preventDefault(); event.stopPropagation(); } },
           onDblclick: event => {
-            if (spacePan.value || event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
+            if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
                 gesture.value || reconnect.value || event.target.closest("[data-node], [data-edge]")) return;
             addNode(world(event));
           },
@@ -5846,8 +5854,6 @@ createApp({
             ] : []),
           ]),
           h("g", {ref: sceneOrigin, transform: "translate(" + margin().join(" ") + ")"}, [perfOptions.grid === "canvas" || perfOptions.grid === "none" ? h(GridLayer) : null, h(ViewLayer)]),
-          spacePan.value ? h("rect", {width: "100%", height: "100%", fill: "none",
-            "pointer-events": "all", "aria-hidden": "true", "data-editor-only": ""}) : null,
         ])]),
         // A pajzs mindig a DOM-ban van (beszúrása és eltávolítása is megakadást okozna a nagy vászonréteg fölött);
         // nyugalomban nem kap egéreseményt, húzáskor csak a saját stílusa változik.
@@ -5877,8 +5883,6 @@ createApp({
             title: lined ? "Saját rács megjelenítése" : "Saját pontrács megjelenítése",
             "aria-label": lined ? "Rács" : "Pontrács", "aria-pressed": gridVisible.value, symbol: "grid"}),
           button("", () => { snapToGrid.value = !snapToGrid.value; savePreferences(); }, {title: "Rácsra igazítás", "aria-label": "Rácsra igazítás", "aria-pressed": snapToGrid.value, symbol: "snap"}),
-          button("", () => { panLocked.value = !panLocked.value; savePreferences(); },
-            {symbol: "hand", title: "Vászonmozgatás zárolása", "aria-label": "Vászonmozgatás zárolása", "aria-pressed": panLocked.value}),
           button("", fit, {"aria-label": "Mind", title: "A teljes vászon megjelenítése", symbol: "fit-objects"}),
           button("", toggleMotion, {title: motionOff.value ? "Animációk bekapcsolása" : "Animációk leállítása (minimális terhelés)",
             "aria-label": "Animációk leállítása", "aria-pressed": motionOff.value, symbol: "pause"}),

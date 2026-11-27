@@ -3,7 +3,8 @@
     "id": "vaszon",
     "title": "Vászon és kijelölés",
     "rows": [
-      {"action": "Vászon mozgatása", "keys": [["Húzás"]], "where": "Üres vászon", "detail": "A kijelölés megmarad."},
+      {"action": "Vászon mozgatása", "keys": [["Jobb gomb", "Húzás"]], "where": "Vászon, objektum fölött is", "detail": "A kijelölés megmarad. Elengedéskor nem nyílik helyi menü."},
+      {"action": "Helyi menü", "keys": [["Jobb kattintás"]], "where": "Vászon, doboz vagy vonal", "detail": "Felengedéskor nyílik, ha közben az egér nem mozdult el."},
       {"action": "Nagyítás és kicsinyítés", "icon": "plus", "keys": [["Görgetés"]], "where": "Vászon", "detail": "A + és − gombokkal is állítható."},
       {"action": "Nézet középre állítása", "icon": "center", "keys": [["Közép"]], "where": "Bal alsó eszköztár", "detail": "A vászon origójára ugrik."},
       {"action": "Teljes vászon befoglalása", "icon": "fit", "keys": [["Mind"]], "where": "Bal alsó eszköztár", "detail": "A nézetet a munkalap tartalmához igazítja."},

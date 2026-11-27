@@ -589,17 +589,15 @@ package struct Worksheet: Content, Equatable {
 package struct UserPreferences: Content {
     var snap = false
     var showGrid = true
-    var panLocked = false
     package var avatar: Int?
     /// A felhasználó színe (#rrggbb, kisbetűvel); csak az admin állítja. `nil` = automatikus (`SiteSettings.color(for:)`).
     package var color: String?
     package var theme: String?
 
     // A memberwise inicializáló pontos mása (modulhatár).
-    package init(snap: Bool = false, showGrid: Bool = true, panLocked: Bool = false, avatar: Int? = nil, color: String? = nil, theme: String? = nil) {
+    package init(snap: Bool = false, showGrid: Bool = true, avatar: Int? = nil, color: String? = nil, theme: String? = nil) {
         self.snap = snap
         self.showGrid = showGrid
-        self.panLocked = panLocked
         self.avatar = avatar
         self.color = color
         self.theme = theme

@@ -1,9 +1,25 @@
 ## Nyitott
 
+- **Jobb gombos pásztázás és helyi menü (2026-11-27, `right-mouse-pan` ág): kézzel nézendő**
+  - Megszűnt: kéz gomb (vászonmozgatás-zár, a `panLocked` beállítás szerveroldalon is), szóközös és bal gombos pásztázás. Új: jobb gomb + húzás pásztáz (objektum fölött is), mozgás nélküli jobb kattintás (küszöb: 5 px, `rightClickSlop`) felengedéskor nyitja a helyi menüt.
+  - Valódi Chrome-ban (macOS, CDP) ellenőrizve: bal húzás és szóköz + húzás nem pásztáz, jobb húzás üres vásznon és dobozon pásztáz menü nélkül, jobb kattintás 3 px remegéssel menüt nyit. Safariban nincs kipróbálva.
+  - A Windows-sorrend (a `contextmenu` a felengedés után jön) csak egységtesztben (gestures.mjs) van lefedve, valódi Windows-böngészőben nem.
+  - Érintéses egyujjas pásztázás megmaradt (eddig a zár tiltotta, most mindig működik). Bal gombos húzás üres vásznon most semmit sem csinál (Alt + húzás a téglalapos kijelölés).
+  - Ctrl + kattintás macOS-en továbbra is vonalhúzás, nem helyi menü; trackpaden a kétujjas kattintás + húzás pásztázása kézzel nézendő.
+
+- **Lézer pointer: kurzor és új vonalrajz (2026-11-27, `right-mouse-pan` ág): nyitott és kézzel nézendő**
+  - Kurzor: fekete-fehér varázspálca (`Public/laser-cursor.svg`). A vászon CSS-ből kapja, a mutatott doboz / vonal a laser.js-ből inline (leszármazott-szabály p1000-en a váltást 50 → 100–200 ms-os képkockára rontotta). Chrome-ban mérve (LiquidGlass, p1000): váltás, rámutatás, pásztázás, üresjárat az alapszinten. Safariban nincs mérve; a megtekintőben (passive-frame) nincs kipróbálva. Bekapcsolt lézerrel a dobozok rámutatási kurzora (pointer, copy stb.) helyett is a pálca látszik.
+  - Vonalrajz: hibrid mintavétel (12 px / 40–100 ms), 100 ms-os csomagküldés, Catmull-Rom görbe, elvékonyodó vég, 2,2 mp élettartam, max. 48 pont. Ugyanazon a húzáson: 146 → 65–70 pont, 50–80 → 27–36 üzenet, a bájtok −55%. A lézer saját JS-e képkockánként ~0,2 ms. Két böngészővel (a fogadó oldal ütemezett csóvája) nincs kipróbálva.
+  - Sarkok és interpoláció (2026-11-27): centripetális Catmull-Rom görbe, és a mintavétel megtartja a fordulópontot, ha a mozgás 3 px-nél jobban eltér két pont egyenesétől. Chrome-ban: a hullám sima, a valódi sarkok élesek; ugyanazon a pályán 70 → 89 pont (az eredeti 146 helyett), 60 fps (p1000 is).
+  - Zoom és lézer (2026-11-27): ok megtalálva – Safari 18.6 `getScreenCTM`-je nem tartalmazza a vászon burkolójának CSS-transzformját (görgős nagyítás / pásztázás előnézete, editor.js previewView), ezért zoom közben a rajz elcsúszott, a közben kezdett vonal első pontja rossz helyre (a szél felé) esett. A laser.js most a vászon valódi téglalapjából számol korrekciót (Chrome-ban egységmátrix). Safariban szimulált előnézettel (CSS-transzform a burkolón) és WebDriver-egérrel ellenőrizve; **kézzel nézendő:** valódi görgővel és trackpaddel Safariban. A bennragadt rajz elleni lezárások is megmaradtak.
+  - A megosztott egérmutató (mouse.js) is a közös `Public/screen-matrix.js` leképezést használja: Safariban és Chrome-ban szimulált előnézettel ellenőrizve, a küldött pozíció a mutató helye. **Kézzel nézendő:** valódi görgős / trackpades zoom két böngészővel (a fogadó oldalon a mutató helye).
+  - Rajz canvason (2026-11-27): a vonal a látható terület méretű `<canvas>`-ra kerül (laser.js), a munkalap képernyő-mátrixával. Chrome, p1000 (animációk ki): rajzolás 38 → 60 fps, elhalványulás 44–53 → 60 fps; pásztázás, váltás, rámutatás az alapszinten. Pásztázás közben a vonal a tartalommal együtt mozog (képernyőképpel ellenőrizve). Safariban nincs mérve; a megtekintőben a canvas betöltődik, rajzolás ott nincs kipróbálva. A jelenlévők egérmutatói ([data-mouse-layer]) még a vászon-SVG-ben vannak, ugyanazzal a festési költséggel.
+
 - **Szerver Fedora 45-ön (2026-11-27): nyitott tételek**
   - A szerver Swift 6.3.3-mal fut (swift.org, `/opt/swift-6.3.3`), a fejlesztőgép 6.0.3-mal: a két fordító eltérhet (a 6.3.3 két Linux-hibát mutatott meg, ezek javítva). Ha a Mac is 6.3.3-ra áll, újra egyezik.
   - A szerveren a szokásos frissítés (`build.sh`, `THINKNODES_SWIFT` nélkül) végigment (2026-11-27): a swift.env alapján a 6.3.3-at veszi fel; a `server/Package.resolved` a 6.3.3 miatt helyben módosul (a build.sh pull előtt eldobja).
   - Az új Fedora-telepítés teljes folyamata (`git clone` → `install.sh` → `daemon.sh`) tiszta gépen nincs végigpróbálva; a lépései külön-külön a szerveren futottak.
+  - Újraindításkor a naplóban: `Could not stop HTTP server: Abort.500: Server stop took too long` (a leállás ~10 mp-ig vár, valószínűleg a nyitott hosszú lekérdezések miatt), és indításkor `Failed to set thread priority for worker thread … errno=13` (a szolgáltatás nem rootként fut). Mindkettő ártalmatlannak tűnik, a szolgáltatás újraindul.
   - A régi `thinknodes.service.d/chromium.conf` drop-in megmaradt (a daemon.sh a unitba is beírja a Chromium útját); ártalmatlan.
 
 - **WhiteBoard textúrák és füzetlap (2026-11-26): nyitott és kézzel nézendő**

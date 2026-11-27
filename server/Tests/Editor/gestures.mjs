@@ -258,10 +258,15 @@ assert.ok(find(n => n.tag === "input" && n.props.value === sheet.title, canvasPa
 assert.equal(find(n => n.tag === "button" && text(n) === "Sorkizárás", canvasPanel()), undefined);
 assert.ok(button("Fájl feltöltése"));
 const emptyCanvasEvent = (x, y) => event(canvas(), x, y, {target: {closest: () => null}});
-const panLock = prop("aria-label", "Vászonmozgatás zárolása");
+// Egérrel csak a jobb gomb pásztáz (objektum fölött is); a bal gomb, a szóköz és a vászonmozgatás-zár megszűnt.
+assert.equal(prop("aria-label", "Vászonmozgatás zárolása"), undefined, "no pan-lock toolbar button");
 const plainPress = {button: 0, type: "mousedown", target: {closest: () => null}};
-panLock.props.onClick(); await tick();
-assert.equal(zoomEvents.filter(plainPress), false);
+const rightPan = {...plainPress, button: 2};
+assert.equal(zoomEvents.filter(plainPress), false, "the left button does not pan");
+assert.equal(zoomEvents.filter({...plainPress, target: {closest: () => graphic("outer")}}), false);
+assert.equal(zoomEvents.filter(rightPan), true, "the right button pans the empty canvas");
+assert.equal(zoomEvents.filter({...rightPan, target: {closest: () => graphic("outer")}}), true, "the right button pans over objects too");
+assert.equal(zoomEvents.filter({...rightPan, ctrlKey: true}), false, "Ctrl + right button is left for cables");
 const touches = (coordinates) => ({preventDefault() {}, touches: coordinates.map(([clientX, clientY], identifier) =>
   ({identifier, clientX, clientY}))});
 canvas().props.onTouchstartCapture(touches([[10, 10], [30, 10]]));
@@ -277,19 +282,45 @@ canvas().props.onTouchendCapture(touches([]));
 assert.equal(zoomEvents.filter({...plainPress, type: "wheel"}), true);
 listeners.keydown({key: " ", code: "Space", preventDefault() {}});
 await tick();
-assert.equal(canvas().props["data-drag-cursor"], "grab");
-assert.equal(zoomEvents.filter({...plainPress, target: {closest: () => graphic("outer")}}), true);
-canvas().props.onPointerdownCapture(event(canvas(), 0, 0, {target: graphic("outer")}));
-canvas().props.onPointermove(event(canvas(), 35, -12));
+assert.equal(canvas().props["data-drag-cursor"], undefined, "Space no longer switches to panning");
+listeners.keyup({type: "keyup", key: " ", code: "Space"});
+// Jobb kattintás: a helyi menü a felengedéskor nyílik, ha közben nem volt (küszöb fölötti) mozgás.
+globalThis.innerWidth = 1200;
+globalThis.innerHeight = 800;
+const contextMenuOpen = () => !!button("Objektum létrehozása");
+const rightAt = (x, y, extra = {}) => event(canvas(), x, y, {button: 2, target: {closest: () => null}, ...extra});
+const rightRelease = (x, y, type = "pointerup") => listeners[type]({...rightAt(x, y), type});
+// macOS: a contextmenu már a lenyomáskor jön; a menü csak felengedéskor nyílik.
+canvas().props.onPointerdownCapture(rightAt(300, -100));
+canvas().props.onContextmenu(rightAt(300, -100));
 await tick();
-assert.deepEqual([requestedZoom.x, requestedZoom.y], [35, -12]);
-// Húzás közben a kurzort a vászon fölötti pajzs adja (editor.js DragShield), a vászon attribútuma nem változik:
-// az attribútum váltása Safariban a teljes vászon stílusát újraszámoltatta (docs/PERF.md).
-assert.equal(canvas().props["data-drag-cursor"], undefined);
-canvas().props.onPointerup(event(canvas(), 35, -12));
-listeners.keyup({type: "keyup", code: "Space"});
-panLock.props.onClick(); await tick();
-assert.equal(zoomEvents.filter(plainPress), true);
+assert.ok(!contextMenuOpen(), "the menu waits for the release");
+rightRelease(302, -98);
+await tick();
+assert.ok(contextMenuOpen(), "a still right click opens the menu on release");
+toggle("Escape", true); await tick();
+// Mozgással (pásztázás) nincs menü, akármikor jön a contextmenu.
+canvas().props.onPointerdownCapture(rightAt(300, -100));
+canvas().props.onContextmenu(rightAt(300, -100));
+listeners.pointermove({...rightAt(340, -60), type: "pointermove"});
+rightRelease(300, -100);
+await tick();
+assert.ok(!contextMenuOpen(), "a right drag pans without opening the menu");
+// Windows: a contextmenu a felengedés után jön.
+canvas().props.onPointerdownCapture(rightAt(300, -100));
+rightRelease(301, -100);
+canvas().props.onContextmenu(rightAt(301, -100));
+await tick();
+assert.ok(contextMenuOpen(), "contextmenu after a still release opens the menu");
+toggle("Escape", true); await tick();
+canvas().props.onPointerdownCapture(rightAt(300, -100));
+listeners.pointermove({...rightAt(300, -140), type: "pointermove"});
+rightRelease(300, -100);
+canvas().props.onContextmenu(rightAt(300, -100));
+await tick();
+assert.ok(!contextMenuOpen(), "contextmenu after a right drag is ignored");
+oneWire().props.onClick(); await tick();
+assert.ok(panel() && canvasPanel());
 const wirePointerHandler = oneWire().props.onPointerdown;
 canvas().props.onPointerdownCapture(emptyCanvasEvent(280, 180));
 zoomEvents.zoom({transform: d3.zoomIdentity.translate(25, 15), sourceEvent: {type: "mousemove"}});
@@ -1214,6 +1245,7 @@ globalThis.innerHeight = 800;
 const contextClick = event(canvas(), 310, -130, {button: 2, target: {closest: () => null}});
 canvas().props.onPointerdownCapture(contextClick);
 canvas().props.onContextmenu(contextClick);
+listeners.pointerup({...contextClick, type: "pointerup"});
 await tick();
 await press("Objektum létrehozása"); await save();
 assert.deepEqual(sheet.nodes.at(-1).position, {x: 310, y: -130});
@@ -1221,6 +1253,7 @@ assert.deepEqual(titleActions, ["focus", "", "focus", ""]);
 window.prompt = () => "jegyzet";
 canvas().props.onPointerdownCapture(contextClick);
 canvas().props.onContextmenu(contextClick);
+listeners.pointerup({...contextClick, type: "pointerup"});
 await tick();
 titleActions.length = 0;
 const beforeCreatingWorksheet = sheet.nodes.length;
