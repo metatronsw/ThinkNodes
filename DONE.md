@@ -6,6 +6,11 @@ Megjegyzés: 2026-11-24 óta a `Model.swift`, `Rendering.swift`, `Theme.swift`, 
 
 ## Javítva
 
+- **Érintőképernyő: villogás, „szétesés”, kettős kép kétujjas pásztázásnál, véletlen nagyítás (2026-11-27, `right-mouse-pan` ág)**
+  - Okok: (1) a csípés és az egyujjas pásztázás minden érintésmozdulatnál rögzítette a nézetet; (2) kétujjas mozdulatnál az első ujj azonnal kijelölte a doboz alatta, a tulajdonságpanel ki-be ugrált (képernyőfelvételen azonosítva); (3) a vásznon belüli görgethető jegyzet miatt a rétegek láncszerűen szaporodtak (49, köztük végtelen méretű); (4) a csípés az ujjak helyét a mozgó (CSS-transzformált) jelenethez mérte: kettős kép, megforduló irány, belassulás; (5) 6 px-es csípési tűrés: pásztázás közben véletlen nagyítás.
+  - Javítás (editor.js, app.css): a csípés előnézettel (CSS-transzform), rögzítés 400 ms nyugalom után; az egyujjas pásztázás megszűnt; az első ujj lenyomása legfeljebb 150 ms-ig visszatartva (második ujjra elvész); érintőképernyőn csak a kijelölt doboz jegyzete görgethető; a húzáspajzs és az üres lézercanvas nyugalomban nem fest; az ujjak helye a .canvas-area-hoz mérve; csípési küszöb: a kezdeti távolság 15%-a, legalább 30 px.
+  - Honor tableten (Android 14, Chrome 157) mérve és a felhasználó kézzel is kipróbálta: „Most jó”.
+
 - **Szerver: a frissítés után nem indult el, a build nem fordult Fedora 45-ön (2026-11-27)**
   - Okok: a régi unit a már nem létező `/opt/ThinkNodes/run.sh`-t indította; a Fedora `swift-lang` 6.3.2 fordítója egy függőségen összeomlott; a swift.org 6.0.3 clangja a Fedora 45 C++ fejléceit (GCC 16) nem fordítja; két kódrész csak macOS-en fordult (`volumeAvailableCapacityForImportantUsage`, `addrinfo` tagonkénti inicializálója).
   - Javítás: swift.org Swift 6.3.3 (`/opt/swift-6.3.3`, aláírás-ellenőrzéssel), a két kódrész hordozható (statvfs alapú `systemFreeSize`, mezőnkénti `addrinfo`), új unit (`server/run.sh`). A szerver fut (HTTPS 443, a régi adatokkal). A szkriptek a verziót a `server/deploy/swift.env`-ből veszik, az `install.sh` C++-fejléc-próbát végez. A `run.sh` futó szerverkeresése nem akad meg a `-bash` folyamatnéven.

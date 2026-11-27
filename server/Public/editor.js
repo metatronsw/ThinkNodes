@@ -1774,39 +1774,74 @@ createApp({
     function setView(transform) { d3.select(zoomHost()).call(zoom.transform, constrainView(transform)); }
 
     const pinchTolerance = 6; // CSS pixels between the two touch points
+    // Csípési küszöb: két ujjal pásztázva az ujjak távolsága természetesen ingadozik; a nagyítás csak akkor indul, ha a
+    // távolság a kezdetihez képest ennyinél jobban változik (a kezdeti távolság 15%-a, legalább 30 képpont). Onnan ugrás
+    // nélkül folytatódik, és a mozdulat végéig követi az ujjakat.
+    const pinchStart = distance => Math.max(30, distance * .15);
     let touchView;
+    // Az ujjak helye a vászon nem mozgó tárolójához (.canvas-area) mérve – ugyanez a koordinátarendszer, amelyben a nézet
+    // transzformja értelmezett. A jelenet csoportjához (sceneOrigin) mérve a csípés előnézete alatt (a réteg CSS-transzformja
+    // mozog) visszacsatolás lett: kettős kép, megforduló irány, végül „elszaladó” nézet.
     function touchPair(event) {
+      const frame = zoomHost() ?? sceneOrigin.value ?? canvas.value;
       const points = [...event.touches].sort((a, b) => a.identifier - b.identifier)
-        .slice(0, 2).map(touch => d3.pointer(touch, sceneOrigin.value ?? canvas.value));
+        .slice(0, 2).map(touch => d3.pointer(touch, frame));
       const [[ax, ay], [bx, by]] = points;
       return {x: (ax + bx) / 2, y: (ay + by) / 2, distance: Math.max(1, Math.hypot(ax - bx, ay - by))};
     }
     function startTouchView(event) {
       if (event.touches.length < 2) return;
       event.preventDefault();
+      dropTouch();
       const drag = gesture.value;
       if (drag) {
         if (drag.waiting) gesture.value = null;
         else finishPointer({pointerId: drag.pointer}, true);
       }
       const pair = touchPair(event);
-      touchView = {...pair, zoomDistance: pair.distance, transform: view.value};
+      clearTimeout(commitTimer);
+      touchView = {...pair, zoomDistance: pair.distance, transform: pendingView ?? view.value};
       canDeselectOnClick = false;
     }
+    // Csípés (két ujj): mozdulat közben, mint a görgetés és az egérrel pásztázás, csak a réteg CSS-transzformja változik
+    // (previewView); a nézet a mozdulat végén, rövid nyugalom után rögzül (panCommitDelay). Korábban minden érintésmozdulat
+    // rögzítette a nézetet (teljes újrarajzolás és újraraszterizálás): a tableten ettől villogtak az objektumok
+    // (40 mozdulatra 42 újrarajzolás, 41 fps). A d3-zoom állapota (__zoom) is követi, hogy a következő mozdulat innen induljon.
     function moveTouchView(event) {
       if (!touchView || event.touches.length < 2) return;
       event.preventDefault();
+      if (forcedFollow()) return;
       const pair = touchPair(event);
       const start = touchView.transform;
-      touchView.zoomDistance = limit(touchView.zoomDistance, pair.distance - pinchTolerance, pair.distance + pinchTolerance);
+      const spread = pair.distance - touchView.distance, threshold = pinchStart(touchView.distance);
+      if (!touchView.zooming && Math.abs(spread) > threshold) { touchView.zooming = true; touchView.offset = Math.sign(spread) * threshold; }
+      const effective = touchView.zooming ? pair.distance - touchView.offset : touchView.distance;
+      touchView.zoomDistance = limit(touchView.zoomDistance, effective - pinchTolerance, effective + pinchTolerance);
       const k = limit(start.k * touchView.zoomDistance / touchView.distance, Math.min(minScale(), start.k), maxScale);
       const [x, y] = start.invert([touchView.x, touchView.y]);
-      setView(d3.zoomIdentity.translate(pair.x - x*k, pair.y - y*k).scale(k));
+      const transform = constrainView(d3.zoomIdentity.translate(pair.x - x*k, pair.y - y*k).scale(k));
+      const host = zoomHost();
+      if (host) host.__zoom = transform;
+      if (!touchView.moving) {
+        touchView.moving = true;
+        menu.value = null;
+        lastClick = null;
+        if (presentation.value && !presenting.value) following.value = false;
+        markMoving("zoom", true);
+      }
+      if (presenting.value) sendPresentRect(transform);
+      showZoomLevel(transform.k);
+      previewView(transform);
+    }
+    function settleTouchView() {
+      if (!touchView?.moving) return;
+      markMoving("zoom", false);
+      if (pendingView) commitTimer = setTimeout(() => commitView(pendingView), panCommitDelay);
     }
     function endTouchView(event) {
       if (!touchView) return;
-      if (event.touches.length >= 2) startTouchView(event);
-      else if (!event.touches.length) touchView = null;
+      if (event.touches.length >= 2) { settleTouchView(); startTouchView(event); }
+      else if (!event.touches.length) { settleTouchView(); touchView = null; }
     }
     function scrollsSelectedText(event) {
       if (event.ctrlKey || selected.value?.kind !== "node") return false;
@@ -3009,12 +3044,6 @@ createApp({
       const operation = gesture.value;
       if (!operation && !reconnect.value) return;
       if (operation && operation.pointer !== event.pointerId) return;
-      if (operation?.type === "pan") {
-        const [x, y] = operation.screen;
-        const start = operation.startView;
-        setView(start.translate((event.clientX - x) / start.k, (event.clientY - y) / start.k));
-        return;
-      }
       if (operation?.waiting) {
         operation.latest = event;
         operation.moved ||= Math.hypot(event.clientX-operation.screen[0], event.clientY-operation.screen[1]) > 3;
@@ -3485,7 +3514,45 @@ createApp({
       capturePointer((type === "clone" ? event.currentTarget : canvas.value), event.pointerId);
     }
 
+    // Érintés: az első ujj lenyomását rövid ideig visszatartjuk (touchHoldDelay). Ha közben leér a második ujj, a
+    // lenyomás elvész – csak pásztázás / nagyítás lesz (startTouchView), kijelölés nem. Korábban az első ujj azonnal
+    // kijelölte, ami alatta volt: minden kétujjas mozdulatnál megnyílt / átváltott a tulajdonságpanel, felengedéskor újra –
+    // a tableten ez villogott, „szétesett” a kép. Ha az ujj elindul (touchHoldSlop), lejár az idő vagy felengedik
+    // (koppintás), a lenyomás az eredeti elemen lefut, mintha akkor történt volna.
+    const touchHoldDelay = 150, touchHoldSlop = 8;
+    const replayedTouches = new WeakSet();
+    let touchHold = null;
+    function holdTouch(event) {
+      const init = {};
+      for (const key of ["pointerId", "pointerType", "isPrimary", "clientX", "clientY", "screenX", "screenY", "button", "buttons",
+        "pressure", "width", "height", "tiltX", "tiltY", "ctrlKey", "altKey", "shiftKey", "metaKey"]) init[key] = event[key];
+      clearTimeout(touchHold?.timer);
+      touchHold = {init, target: event.target, timer: setTimeout(releaseTouch, touchHoldDelay)};
+    }
+    function releaseTouch() {
+      const held = touchHold;
+      if (!held) return;
+      touchHold = null;
+      clearTimeout(held.timer);
+      if (!held.target.isConnected) return;
+      const replay = new PointerEvent("pointerdown", {...held.init, bubbles: true, cancelable: true, composed: true});
+      replayedTouches.add(replay);
+      held.target.dispatchEvent(replay);
+    }
+    function dropTouch() { clearTimeout(touchHold?.timer); touchHold = null; }
+    // A visszatartott érintés sorsa: elmozdulásnál és felengedésnél előbb lefut (a mozdulat / felengedés utána jön).
+    function touchMoveCapture(event) {
+      if (touchHold && event.pointerId === touchHold.init.pointerId &&
+          Math.hypot(event.clientX - touchHold.init.clientX, event.clientY - touchHold.init.clientY) > touchHoldSlop) releaseTouch();
+    }
+    function touchUpCapture(event) { if (touchHold && event.pointerId === touchHold.init.pointerId) releaseTouch(); }
+
     function pressCanvas(event) {
+      if (event.pointerType === "touch" && event.isPrimary && !replayedTouches.has(event) && !reconnect.value) {
+        event.stopPropagation();
+        holdTouch(event);
+        return;
+      }
       flushView();
       rightPress = null;
       // Szerkesztett táblázaton belül a táblázat kezeli a kattintást (cellakijelölés, Shift+kattintás tartomány).
@@ -3494,11 +3561,7 @@ createApp({
         event.stopPropagation();
         return;
       }
-      const touchPan = event.pointerType === "touch" && !reconnect.value && !event.target.closest("[data-node], [data-edge]");
-      if (touchPan && event.button === 0) {
-        beginDrag(event, "pan", {startView: view.value});
-        return;
-      }
+      // Érintésen a vászon csak két ujjal mozog (csípés: startTouchView); az egy ujj nem pásztáz.
       finishField();
       canDeselectOnClick = false;
       if (event.target.closest?.("[data-audio-player]")) return;
@@ -3884,13 +3947,17 @@ createApp({
       }
       if (event.key !== "Escape" && event.target?.closest?.("input, textarea, select, [contenteditable=true]")) return;
       // Eszköztár-csoportok billentyűi. „Rács és megjelenítés”: S rácsra igazítás, G rács, L LowPerformance mód.
-      // „Teljes vászon”: Shift+1 a teljes vászon (mint a Figmában / Miróban; a Ctrl+Z a visszavonásé marad), Z 100%,
-      // Ctrl+F teljes képernyő (Macen a keresés a ⌘F; Windowson a böngésző keresőjét felülírja).
+      // „Mind”: H a teljes vászon, Ctrl+H 100%, Ctrl+F teljes képernyő (Macen a keresés a ⌘F; Windowson a Ctrl+F a
+      // böngésző keresőjét, a Ctrl+H az előzményeket írja felül).
       if (!event.metaKey && !event.altKey && !event.repeat) {
-        if (event.ctrlKey && !event.shiftKey && event.key?.toLowerCase?.() === "f") { event.preventDefault?.(); toggleFullscreen(); return; }
-        if (!event.ctrlKey && event.shiftKey && event.code === "Digit1") { event.preventDefault?.(); fit(); return; }
+        const key = event.key?.toLowerCase?.();
+        if (event.ctrlKey && !event.shiftKey && (key === "f" || key === "h")) {
+          event.preventDefault?.();
+          if (key === "f") toggleFullscreen(); else zoomActual();
+          return;
+        }
         const toggle = event.ctrlKey || event.shiftKey ? null
-          : {s: toggleSnap, g: toggleGrid, l: toggleLowPerformance, z: zoomActual}[event.key?.toLowerCase?.()];
+          : {s: toggleSnap, g: toggleGrid, l: toggleLowPerformance, h: fit}[key];
         if (toggle) { event.preventDefault?.(); toggle(); return; }
       }
       if (event.key === "Enter" && !event.shiftKey && (canvasPointer.value || !event.target?.closest?.("button, a"))) {
@@ -5531,7 +5598,7 @@ createApp({
       const mine = ui.mine;
       // Húzás közben (doboz, végpont, csoport, átméretezés) a vonal animációja szünetel: a futó animáció (pötty, lüktető
       // nyíl) Safariban a régi helyén maradt és megállt. Csak az animált vonal figyeli a húzást.
-      const still = !!edge.animated && !!gesture.value?.moved && gesture.value.type !== "pan";
+      const still = !!edge.animated && !!gesture.value?.moved;
       const animatedArrows = !still && edge.animated && edge.appearance === "thick";
       // Saját kijelölés: világosabb és vastagabb vonal; más felhasználó kijelölése: az ő színű glow.
       const local = mine || ui.local;
@@ -5725,14 +5792,17 @@ createApp({
     // A mutatót elfogó elem: ahol a böngésző elfogás közben ennek a kurzorát mutatja, ott ezen állítjuk be a húzás kurzorát.
     let capturing = null;
     function capturePointer(element, pointer) {
-      element.setPointerCapture(pointer);
+      // Koppintásnál a visszatartott érintés a felengedéskor fut le; ott az ujj már nem fogható meg (nem hiba).
+      try { element.setPointerCapture(pointer); } catch {}
       capturing = element;
     }
     const DragShield = {
       setup: () => () => {
         const cursor = dragCursor();
         return h("div", {class: "drag-shield", "aria-hidden": "true", "data-editor-only": "",
-          style: {cursor: cursor ?? "auto", pointerEvents: cursor ? "auto" : "none"}});
+          // Nyugalomban láthatatlan (nem fest; a teljes képernyős átlátszó réteg mobil GPU-n minden képkockában munka), de a
+          // helyén marad: a megjelenítése / eltávolítása minden húzás elején újrarétegezést okozna.
+          style: {cursor: cursor ?? "auto", pointerEvents: cursor ? "auto" : "none", visibility: cursor ? "visible" : "hidden"}});
       },
     };
     function dragCursor() {
@@ -5866,11 +5936,13 @@ createApp({
           onTouchendCapture: endTouchView,
           onTouchcancelCapture: endTouchView,
           onPointerdownCapture: pressCanvas,
+          onPointermoveCapture: touchMoveCapture,
+          onPointerupCapture: touchUpCapture,
           onPointerenter: rememberCanvasPointer,
           onPointermove: event => { rememberCanvasPointer(event); queuePointer(event); },
           onPointerleave: () => { canvasPointer.value = null; },
           onPointerup: event => finishPointer(event),
-          onPointercancel: event => finishPointer(event, true),
+          onPointercancel: event => { dropTouch(); finishPointer(event, true); },
 
 
         }, [
@@ -6174,13 +6246,13 @@ createApp({
         [(lined ? "Saját rács megjelenítése" : "Saját pontrács megjelenítése") + " (G)", gridVisible.value, toggleGrid, "grid"],
         ["LowPerformance mód (L): animációk és díszítő háttér ki, minimális terhelés", lowPerformance.value, toggleLowPerformance, "pause"],
       ]});
-    // „Teljes vászon”: a gomb a teljes vásznat mutatja (Shift+1); a listában még a 100%-os nagyítás (Z) és a teljes
+    // „Teljes vászon”: a gomb a teljes vásznat mutatja (H); a listában még a 100%-os nagyítás (Ctrl+H) és a teljes
     // képernyő (Ctrl+F).
     const renderFitGroup = () => renderToolbarGroup({name: "toolbar-fit", label: "Mind", symbol: "fit-objects", primary: fit,
-      title: "A teljes vászon megjelenítése (Shift+1); jobb kattintásra vagy nyomva tartva: 100% (Z), teljes képernyő (Ctrl+F)",
+      title: "A teljes vászon megjelenítése (H); jobb kattintásra vagy nyomva tartva: 100% (Ctrl+H), teljes képernyő (Ctrl+F)",
       options: [
-        ["A teljes vászon megjelenítése (Shift+1)", undefined, fit, "fit-objects"],
-        ["Nagyítás 100%-ra (Z)", undefined, zoomActual, "zoom-actual"],
+        ["A teljes vászon megjelenítése (H)", undefined, fit, "fit-objects"],
+        ["Nagyítás 100%-ra (Ctrl+H)", undefined, zoomActual, "zoom-actual"],
         ["Teljes képernyő (Ctrl+F)", fullscreen.value, toggleFullscreen, "fit", {"data-canvas-fullscreen": ""}],
       ]});
     // 100%-os nagyítás (a nagyítási szint 0): a látható terület közepe helyben marad.

@@ -7,9 +7,14 @@
   - Érintéses egyujjas pásztázás megmaradt (eddig a zár tiltotta, most mindig működik). Bal gombos húzás üres vásznon most semmit sem csinál (Alt + húzás a téglalapos kijelölés).
   - Ctrl + kattintás macOS-en továbbra is vonalhúzás, nem helyi menü; trackpaden a kétujjas kattintás + húzás pásztázása kézzel nézendő.
 
+- **Érintőképernyő (mobil GPU): nyitott kérdések (2026-11-27, `right-mouse-pan` ág)**
+  - Normál módban a két grafikus kártyás tartalomanimáció (`fx-shadow` átlátszóság + `will-change`, `wire-arrow` transzform) miatt a tableten ~40 kompozitált réteg van (LowPerformance módban 11, a vásznon belül egy sem). A felhasználó szerint most jó; ha mégis lassú / villog: érintőképernyőn alapból LowPerformance, vagy nem kompozitált animációk (PERF.md, asztali mérés is kell).
+  - A vászonréteg 7680 × 3984 eszközpixel a tableten (overscan 1 → 3×3 képernyő); mobilon kisebb overscan megfontolandó (mérni).
+  - iPaden / Safariban nincs kipróbálva.
+
 - **Eszköztár: „Rács és megjelenítés” csoport, LowPerformance mód, S / G / L (2026-11-27, `right-mouse-pan` ág): kézzel nézendő**
   - A rácsra igazítás, a saját (pont)rács és a LowPerformance mód (az animációk leállítása + a díszítő háttér kikapcsolása együtt) egy felfelé nyíló csoportban; a lista a vászon területére kerül (Teleport), mert az eszköztár görgethető sávja levágta / elcsúsztatta. Billentyűk: S, G, L (váltókapcsolók, gépelés közben nem). A korábbi külön beállítás (tnMotionOff / tnPlainBackground) egyszer átvándorol LowPerformance-ra; a bench-idle.js (`?bench=`) a két részt továbbra is külön kapcsolja.
-  - „Mind” csoport (2026-11-27): a gomb bal kattintásra a teljes vásznat mutatja, jobb kattintásra / nyomva tartva kinyílik: Mind, 100% (új `zoom-actual` ikon), teljes képernyő. Billentyűk: Shift+1 teljes vászon (a kért Ctrl+Z helyett, mert az a visszavonás; Figma / Miro / Excalidraw szokás), Z 100%, Ctrl+F teljes képernyő ki / be – **Windowson a Ctrl+F a böngésző keresőjét írja felül**, Macen szabad (a keresés ⌘F). A mobilra korlátozó teljes képernyő-szabály visszavonva; a megtekintő teljes képernyő gombja a régi.
+  - „Mind” csoport (2026-11-27): a gomb bal kattintásra a teljes vásznat mutatja, jobb kattintásra / nyomva tartva kinyílik: Mind, 100% (új `zoom-actual` ikon), teljes képernyő. Billentyűk: H teljes vászon, Ctrl+H 100%, Ctrl+F teljes képernyő ki / be – **Windowson a Ctrl+F a böngésző keresőjét, a Ctrl+H az előzményeket írja felül**, Macen szabad (⌘F / ⌘Y). A mobilra korlátozó teljes képernyő-szabály visszavonva; a megtekintő teljes képernyő gombja a régi.
   - Minden csoportgomb jobb kattintásra nyílik (közös `groupTrigger`: eszköztár-csoportok, gyors eszközök lenyílói; a lézer és az egérmutató gombja eddig is). Chrome-ban ellenőrizve; a teljes képernyő a vezérelt Chrome-ban csak CDP-engedéllyel kapcsolható, ott működik.
   - Chrome-ban ellenőrizve (kapcsolás nyitott listában, kívülre kattintás, S/G/L, átvándorlás). Kézzel nézendő: Safariban, keskeny (mobil) eszköztárnál a lista helye; a billentyűk nem jeleznek vissza látható módon, ha a csoport zárva van.
 

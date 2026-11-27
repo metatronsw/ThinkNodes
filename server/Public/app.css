@@ -170,6 +170,8 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
    változása nem jár újrafestéssel és újrarétegezéssel (az SVG-ben rajzolt vonal p1000-en képkockánként ~20 ms festést és
    rétegezést okozott); háttértára csak amíg vonal látszik. */
 .laser-overlay { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
+/* Üresen (nincs rajz, nincs rajzmód) nem fest: a teljes képernyős átlátszó réteg mobil GPU-n minden képkockában munka. */
+.laser-overlay[width="0"]:not([data-tool]) { visibility: hidden; }
 .editor-canvas { display: block; width: 100%; height: 100%; touch-action: none; -webkit-user-select: none; user-select: none; cursor: default; }
 .editor-canvas :is(.node, .wire-handle, .wire-label, .wire-hit, .wire-line, .junction-handle) { cursor: pointer; }
 .sidebar-open { position: absolute; top: 8px; right: 12px; z-index: 5; box-shadow: 0 4px 14px #1c31531b; }
@@ -752,6 +754,10 @@ body:has(#worksheet-view) .worksheet-nav .header-parent { order:1; }
 
 .inline-edit :is(input,textarea) { width:100%; height:100%; border:0; border-radius:6px; padding:2px 5px; text-align:center; outline:0; }
 .node-note { overflow:auto; overscroll-behavior:contain; }
+/* Érintőképernyőn csak a saját kijelölt doboz jegyzete görgethető (görgetni amúgy is csak kijelölt dobozban lehet). A
+   görgethető elem Androidon saját grafikus réteget kap, és minden utána festett, vele átfedő vászonelem is külön réteget
+   kapott (a tableten ~40 réteg, köztük végtelen méretű): ettől villogott és esett szét a kép. */
+@media (any-pointer: coarse) { .node:not(.own-selected) .node-note { overflow: hidden; } }
 .node-note pre { overflow:visible; }
 .editor-canvas :is(.node-file pre, .inline-edit textarea) { overscroll-behavior: contain; }
 .editor-root .sidebar-open:not(.sidebar-open-canvas) { order:3; }

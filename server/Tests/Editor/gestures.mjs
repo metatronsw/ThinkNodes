@@ -269,16 +269,29 @@ assert.equal(zoomEvents.filter({...rightPan, target: {closest: () => graphic("ou
 assert.equal(zoomEvents.filter({...rightPan, ctrlKey: true}), false, "Ctrl + right button is left for cables");
 const touches = (coordinates) => ({preventDefault() {}, touches: coordinates.map(([clientX, clientY], identifier) =>
   ({identifier, clientX, clientY}))});
-canvas().props.onTouchstartCapture(touches([[10, 10], [30, 10]]));
-canvas().props.onTouchmoveCapture(touches([[18, 16], [38, 16]]));
-assert.deepEqual([requestedZoom.x, requestedZoom.y, requestedZoom.k], [8, 6, 1]);
-canvas().props.onTouchmoveCapture(touches([[17, 16], [43, 16]]));
-assert.deepEqual([requestedZoom.x, requestedZoom.y, requestedZoom.k], [10, 6, 1]);
-canvas().props.onTouchmoveCapture(touches([[0, 10], [40, 10]]));
-assert.equal(requestedZoom.k, 1.7);
-canvas().props.onTouchmoveCapture(touches([[2, 10], [40, 10]]));
-assert.equal(requestedZoom.k, 1.7);
-canvas().props.onTouchendCapture(touches([]));
+// Csípés: mozdulat közben csak előnézet (nincs nézet-rögzítés, zoom.transform), a felengedés után rövid nyugalommal rögzül.
+const committedView = () => {
+  const g = find(n => n.tag === "g" && /^translate\([^)]*\) scale\(/.test(String(n.props?.transform ?? "")));
+  const [, x, y, k] = String(g.props.transform).match(/^translate\(([-\d.e]+),([-\d.e]+)\) scale\(([-\d.e]+)\)/);
+  return [+(+x).toFixed(3), +(+y).toFixed(3), +(+k).toFixed(3)];
+};
+const pinchStart = requestedZoom;
+const pinch = async (moves) => {
+  canvas().props.onTouchstartCapture(touches(moves[0]));
+  for (const move of moves.slice(1)) canvas().props.onTouchmoveCapture(touches(move));
+  assert.equal(requestedZoom, pinchStart, "no view commit while pinching");
+  canvas().props.onTouchendCapture(touches([]));
+  await new Promise(resolve => setTimeout(resolve, 450)); await tick();
+};
+const before = committedView();
+await pinch([[[10, 10], [30, 10]], [[18, 16], [38, 16]]]);
+assert.deepEqual(committedView(), [before[0] + 8, before[1] + 6, before[2]], "a two finger move pans");
+const panned = committedView();
+await pinch([[[0, 10], [200, 10]], [[10, 20], [228, 20]], [[20, 30], [238, 30]]]);
+assert.equal(committedView()[2], panned[2], "a slightly changing finger distance only pans (pinch threshold)");
+await pinch([[[0, 10], [100, 10]], [[-100, 10], [200, 10]], [[-98, 10], [200, 10]]]);
+// 100 → 300 képpont: a 30 képpontos küszöb után ugrás nélkül indul ((300 − 30 − 6 tűrés) / 100).
+assert.equal(committedView()[2], 2.64, "pinching zooms beyond the threshold without a jump");
 assert.equal(zoomEvents.filter({...plainPress, type: "wheel"}), true);
 listeners.keydown({key: " ", code: "Space", preventDefault() {}});
 await tick();

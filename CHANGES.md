@@ -1,5 +1,13 @@
 # Változások
 
+## 2026-11-27 – Érintőképernyő: csípés előnézettel, első ujj visszatartása, kevesebb réteg; H / Ctrl+H (`right-mouse-pan` ág)
+
+- **Csípés (két ujj):** mozdulat közben csak a réteg CSS-transzformja változik (mint a görgetésnél), a nézet 400 ms nyugalom után rögzül; az ujjak helye a vászon nem mozgó tárolójához (`.canvas-area`) mérve (a mozgó jelenethez mérve kettős kép, megforduló irány volt). Csípési küszöb: a nagyítás a kezdeti távolság 15%-ánál (legalább 30 px) nagyobb változásra indul, ugrás nélkül.
+- **Egy ujj** már nem pásztáz. Az első ujj lenyomása legfeljebb 150 ms-ig visszatartva: második ujjra elvész (nincs kijelölés, panelváltás), elmozdulásra, lejáratra vagy koppintásra lefut.
+- **Rétegek mobil GPU-n:** érintőképernyőn csak a kijelölt doboz jegyzete görgethető; a húzáspajzs és az üres lézercanvas nyugalomban nem fest (a tableten 49 → 40 réteg, a végtelen méretű réteg megszűnt).
+- **Billentyűk:** H teljes vászon, Ctrl+H 100% (a Shift+1 és a Z helyett).
+- Honor tableten (Android 14, Chrome 157) mérve (csípés: 40 mozdulatra 42 → 3 újrarajzolás, 41 → 56 fps; pásztázás 0 px eltérés), a felhasználó kézzel is jóváhagyta. Útmutató, `docs/hotkeys.json`, tesztek frissítve.
+
 ## 2026-11-27 – Filctoll, rajzmód, egyszeri eszköz (D), eszköztár-csoportok, LowPerformance mód (`right-mouse-pan` ág)
 
 - **Filctoll:** a lézerrel közös motoron (`Public/laser.js`, eszközleírások). Nem halványul; 3 mp-en belül kezdett vonás az előző rajzhoz adódik, később az új vonás mindenkinél törli az előzőt. Nem mentődik; a rajzoló kilépésekor a többieknél eltűnik. Pontkorlát: lézer vonásonként 48, filc rajzonként 1500 pont. Saját kurzor (`marker-cursor.svg`). A szerver a `kind` / `clear` mezőt is továbbítja (`Collaboration.swift`).
