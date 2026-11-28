@@ -1,5 +1,10 @@
 # Változások
 
+## 2026-11-28 – Konténer húzása drága témában: húzási réteg
+
+- **Húzási réteg (`DragLayerSvg`):** drága témában (Liquid Glass, üveg) a húzott konténer a tartalmával a húzás elején egy külön, saját rétegű SVG-be kerül a vászon fölött (ugyanabban a vászonrétegben, ugyanazzal a nézettel); képkockánként csak a réteg CSS-transzformja változik, a GPU tolja, nincs újrafestés. A modell (a konténer helye is) a mozdulat végén íródik; a csoporthoz kötött vonalak a fő jelenetben maradnak. Kapcsoló: `lift` (`"layer"`, `"dom"`, `false`).
+- Mérés (valódi Chrome, Liquid Glass, 151 dobozos konténer): húzás közben 744 → 18 ms / képkocka (1 → 55 fps); az indulás (~0,27 s) és az elengedés (~0,4 s) egyszeri akadása nyitott (TODO). Safariban nincs mérve. PERF.md, TODO, BUGS frissítve.
+
 ## 2026-11-28 – Struktúra-konténer: összecsukás, rátakarás jelzése, objektum mindig egymás alatt
 
 - **Összecsukás (`collapsed`):** a struktúrán belüli konténer vagy maga a struktúra a gyors eszközökkel összecsukható (`structure-collapse`): csak a neve és egy összegzés látszik („▸ 12 elem”, „mező”, Swift-structnál „tag” és a protokollok), a tartalma nem rajzolódik (szerkesztő: `hiddenNodes`; szerver: `collapsedView`), a rejtett dobozokra mutató vonalak a konténerhez futnak; az adat és a vonalak a modellben változatlanok. Swift-modell: `collapsed` mező.

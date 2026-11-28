@@ -173,6 +173,9 @@ body:has(#worksheet-view), .passive-canvas { -webkit-user-select: none; user-sel
 /* Üresen (nincs rajz, nincs rajzmód) nem fest: a teljes képernyős átlátszó réteg mobil GPU-n minden képkockában munka. */
 .laser-overlay[width="0"]:not([data-tool]) { visibility: hidden; }
 .editor-canvas { display: block; width: 100%; height: 100%; touch-action: none; -webkit-user-select: none; user-select: none; cursor: default; }
+/* Húzási réteg (editor.js DragLayerSvg): a fő vászon fölött, saját rétegen; csak húzás közben van tartalma és látszik. */
+.editor-canvas.drag-layer { position: absolute; left: 0; top: 0; pointer-events: none; visibility: hidden; }
+.editor-canvas.drag-layer.active { visibility: visible; will-change: transform; }
 .editor-canvas :is(.node, .wire-handle, .wire-label, .wire-hit, .wire-line, .junction-handle) { cursor: pointer; }
 .sidebar-open { position: absolute; top: 8px; right: 12px; z-index: 5; box-shadow: 0 4px 14px #1c31531b; }
 .sidebar-open-canvas { right: auto; left: 12px; }

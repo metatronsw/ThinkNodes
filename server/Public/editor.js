@@ -839,10 +839,15 @@ createApp({
       while (current && hidden.has(current)) current = nodeMap.value.get(current)?.parent;
       return current;
     }
+    // Húzási réteg (docs/PERF.md „Konténer húzása”): drága témában (Liquid Glass, üveg) a húzott konténer a tartalmával egy
+    // külön, saját rétegű SVG-be kerül a vászon fölött; képkockánként csak ennek a CSS-transzformja változik (a GPU tolja,
+    // nincs újrafestés). A fő jelenetből ilyenkor kimaradnak. {ids: Set, nodes: [...]}.
+    const dragLayer = shallowRef(null);
+    const dragLayerElement = ref(null);
     const orderedNodes = computed(() => {
       const ordered = layerOrder(sceneNodes.value, elevatedNodes.value, containerIDs.value, liftedNodes.value);
-      const hidden = hiddenNodes.value;
-      return hidden.size ? ordered.filter(node => !hidden.has(node.id)) : ordered;
+      const hidden = hiddenNodes.value, layered = dragLayer.value?.ids;
+      return hidden.size || layered ? ordered.filter(node => !hidden.has(node.id) && !layered?.has(node.id)) : ordered;
     });
     // Vonalak rétege – egyetlen szabály: minden vonal minden doboz fölött fut (konténer, a tartalma és a sima dobozok
     // fölött is), kivéve a Kiemelt objektumokat: azok a vonalak fölött vannak. Egyetlen kivétel a data-connection
@@ -2729,6 +2734,20 @@ createApp({
         dx = limit(dx, -100000-x, 100000-x);
         dy = limit(dy, -100000-y, 100000-y);
       }
+      // Drága témában (vagy `lift: "layer"`): a csoport (a konténerrel együtt) a húzási rétegben, a modell a végén íródik.
+      if (perfOptions.lift === "layer" || (perfOptions.lift !== "dom" && (liquid() || graphics.value.glass))) {
+        if (liftShift.group !== group) {
+          if (liftShift.members) commitLift(false);
+          const ids = new Set(group.map(member => member.id));
+          liftShift = {operation, group, overlay: true, members: ids, elements: new Map(), base: new Map(group.map(member => [member.id, member]))};
+          dragLayer.value = {ids, nodes: orderedNodes.value.filter(node => ids.has(node.id))};
+        }
+        liftShift.dx = dx; liftShift.dy = dy;
+        const k = view.value.k, layer = dragLayerElement.value;
+        if (layer) layer.style.transform = "translate(" + dx * k + "px, " + dy * k + "px)";
+        liftTick.value++;
+        return;
+      }
       const [root, ...members] = group;
       nodeMap.value.get(root.id).position = {x: root.x + dx, y: root.y + dy};
       if (liftShift.group !== group) {
@@ -2750,6 +2769,13 @@ createApp({
       if (!shift.members) return;
       liftShift = {};
       if (apply) translateGroup(shift.group, shift.dx, shift.dy);
+      if (shift.overlay) {
+        // A csoport visszakerül a fő jelenetbe (a modellben már a helyén); a réteg kiürül.
+        dragLayer.value = null;
+        if (dragLayerElement.value) dragLayerElement.value.style.transform = "";
+        liftTick.value++;
+        return;
+      }
       for (const [id, element] of shift.elements) {
         const base = shift.base.get(id), node = nodeMap.value.get(id);
         if (!element?.isConnected || !node) continue;
@@ -3249,7 +3275,7 @@ createApp({
             if (!operation.locked && !operation.group.some(member => occupied(member.id))) {
               const snapped = snapNodePosition(nodeMap.value.get(operation.nodeID), position);
               moveGroupLive(operation, snapped.x-operation.position.x, snapped.y-operation.position.y);
-              const current = nodeMap.value.get(operation.nodeID).position;
+              const current = drawnNode(operation.nodeID).position;
               live.motion({node: operation.nodeID, revision: baseline.revision,
                 delta: {x: current.x-operation.position.x, y: current.y-operation.position.y}});
             }
@@ -6298,6 +6324,18 @@ createApp({
       },
     };
 
+    // A húzási réteg SVG-je (a fő vászon mellett, ugyanabban a vászonrétegben, ugyanazzal a nézettel); nyugalomban üres és
+    // láthatatlan (nem fest).
+    const DragLayerSvg = {
+      setup: () => () => {
+        const layer = dragLayer.value;
+        return h("svg", {ref: dragLayerElement, class: ["canvas", "editor-canvas", "drag-layer", {active: !!layer}], "aria-hidden": "true", "data-editor-only": ""},
+          layer ? [h("g", {transform: "translate(" + margin().join(" ") + ")"}, [
+            h("g", {transform: view.value + " translate(" + center().join(" ") + ")"}, layer.nodes.map(node => h(NodeView, {key: node.id, node}))),
+          ])] : []);
+      },
+    };
+
     // Húzás közbeni kurzor. A vászon gyökerén váltott attribútum (régi megoldás) Safariban a teljes vászon stílusát
     // újraszámoltatja (30–60 ms megakadás a húzás elején és végén), ezért a kurzort egy átlátszó pajzs adja a vászon fölött
     // (és maga a mutatót elfogó elem, ahol a böngésző annak a kurzorát használja). Egyszerű kattintásnál nincs pajzs,
@@ -6478,7 +6516,7 @@ createApp({
             ] : []),
           ]),
           h("g", {ref: sceneOrigin, transform: "translate(" + margin().join(" ") + ")"}, [perfOptions.grid === "canvas" || perfOptions.grid === "none" ? h(GridLayer) : null, h(ViewLayer)]),
-        ])]),
+        ]), h(DragLayerSvg)]),
         // A pajzs mindig a DOM-ban van (beszúrása és eltávolítása is megakadást okozna a nagy vászonréteg fölött);
         // nyugalomban nem kap egéreseményt, húzáskor csak a saját stílusa változik.
         perfOptions.shield ? h(DragShield) : null,

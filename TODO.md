@@ -46,7 +46,7 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 - A helyi próbalap (`projects/a/grafikon`) törölhető, ha már nem kell.
 
 # Struktúra-konténer (Public/structure-boxes.js)
-- Liquid Glass témában a nagy (100+ dobozos) konténer húzása 1–2 fps (GPU-raszterezés; docs/PERF.md „Konténer húzása”). Javaslat: húzás közben a mozgó csoport külön, saját rétegű SVG-ben; rövid, kis terhelésű méréssel ellenőrizni (Chrome, Safari).
+- Konténer húzása drága témában (húzási réteg, 2026-11-28): az indulás (~0,27 s) és az elengedés (~0,4 s) egyszeri akadása 150 dobozos konténernél; Safariban mérni. Lehetőség: a csoport már a lenyomáskor (a mozgás előtt) átkerülhet a rétegbe.
 - Swift-forrás (kész, csak olvasás): kétirányú (célzott sorcserés) visszaírás, ha kell; class / enum / protocol megjelenítése; generikus típus-paraméterek színezése; `Array<T>` / `Optional<T>` alak típusszíne.
 - A dobozleíró séma (text / title / fill / children …, egyirányú, stílusokkal) a kétirányú változatban megszűnt (a stílus nem írható vissza veszteség nélkül). Ha mégis kell: külön, egyirányú forrásfajtaként.
 - Újragenerálás visszavonása: visszavonás után a forrás és a dobozok ujjlenyomata eltérhet, a szinkron ilyenkor a forrásból újraépít / visszaír.

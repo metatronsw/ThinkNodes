@@ -103,7 +103,7 @@ lenyomástól a következő kirajzolt képkockáig.
 | `grid` | `"draw"` | `"css"`: csempézett CSS-háttér (2026-11-24-ig az alap; Safariban nagyítás közben ugrál, mert a csempe mérete egész képpontra kerekül); `"separate"`: külön SVG-réteg (régi); `"canvas"`: a vászon rétegében; `"none"`: nincs rács. |
 | `coalesce` | `true` | `false`: minden egérmozdulat külön feldolgozva (régi). |
 | `pause` | `true` | `false`: az animációk mozgás közben is futnak (régi). |
-| `lift` | `true` | `false`: konténer húzásakor a tartalom minden képkockán a modellben is mozog, és minden gyermek újrarajzolódik (régi). |
+| `lift` | `true` | Konténer húzása (legalább 4 tagú csoport): alapból drága témában (Liquid Glass, üveg) húzási réteg, egyébként a tartalom DOM-transzformmal mozog. `"layer"`: mindig húzási réteg; `"dom"`: mindig DOM-transzform; `false`: minden képkockán a modellben mozog, és minden gyermek újrarajzolódik (régi). |
 | `sharp` | `true` | `false`: 100% fölötti nagyításnál is megmarad az előre raszterizált réteg (gyorsabb mozdulatindítás, de a táblázat / CSV / szövegfájl életlen). |
 
 A régi viselkedéshez legközelebb: `{"rest":false,"layer":"svg","shield":false,"moving":"all","grid":"separate","coalesce":false,"pause":false}`
@@ -309,3 +309,18 @@ dobozrétegek nélkül 60 fps. A mérések szórnak (a „teljes vászon” nagy
 terhelik, ezért félbehagyva. **Javasolt megoldás:** húzás közben a mozgó csoport egy külön, saját rétegű (`will-change:
 transform`) SVG-be kerül ugyanabban a vászonrétegben, és csak azt tolja a GPU (raszterezés egyszer a húzás elején és végén);
 mérni Chrome-ban és Safariban, rövid, kis terhelésű méréssel.
+
+**Megoldva – húzási réteg (2026-11-28):** drága témában (`liquid()` vagy `graphics.glass`) a húzott csoport (a konténer a
+tartalmával) a húzás elején egy külön SVG-be kerül (`DragLayerSvg`, `.drag-layer.active`: `will-change: transform`) a fő
+vászon mellett, ugyanabban a vászonrétegben, ugyanazzal a nézettel; a fő jelenetből kimarad (`orderedNodes`). Képkockánként
+csak a réteg CSS-transzformja változik (a GPU tolja, nincs újrafestés); a modell (a konténer helye is) a mozdulat végén íródik
+(`commitLift`). A csoporthoz kötött vonalak a fő jelenetben maradnak (a `drawnNode` eltolt helyével), húzás közben a csoport
+dobozai alatt futnak. Mérés (valódi Chrome, Liquid Glass, 151 doboz, oda-vissza húzás):
+
+| | Húzás közben | Indulás | Elengedés |
+|---|---|---|---|
+| Húzási réteg | 18,3 ms / képkocka (55 fps) | 266 ms | 400 ms |
+| Korábbi (DOM-transzform) | 744 ms (1 fps) | 283 ms | 867 ms |
+
+Nyitva: az indulás és az elengedés egyszeri akadása (a csoport átkerül a rétegbe, illetve vissza: újrarajzolás és egyszeri
+raszterezés); Safariban nincs mérve.
