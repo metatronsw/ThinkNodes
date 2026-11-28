@@ -818,19 +818,91 @@ createApp({
       if (drag.type === "batch") return drag.members;
       return noLift;
     });
-    const orderedNodes = computed(() => layerOrder(sceneNodes.value, elevatedNodes.value, containerIDs.value, liftedNodes.value));
+    // Összecsukott konténer (`collapsed`, struktúra-konténer) tartalma: nem rajzolódik, a rá mutató vonalak a legközelebbi
+    // látható ősre (az összecsukott konténerre) futnak (Rendering.swift collapsedView). A modellben a dobozok megmaradnak.
+    const noHidden = new Set();
+    let lastHidden = noHidden;
+    const hiddenNodes = computed(() => {
+      const nodes = sceneNodes.value;
+      if (!nodes.some(node => node.collapsed)) return lastHidden = noHidden;
+      const byParent = new Map();
+      for (const node of nodes) if (node.parent) (byParent.get(node.parent) ?? byParent.set(node.parent, []).get(node.parent)).push(node.id);
+      const hidden = new Set(), stack = nodes.filter(node => node.collapsed).map(node => node.id);
+      while (stack.length) for (const id of byParent.get(stack.pop()) ?? []) if (!hidden.has(id)) { hidden.add(id); stack.push(id); }
+      if (hidden.size === lastHidden.size && [...hidden].every(id => lastHidden.has(id))) return lastHidden;
+      return lastHidden = hidden;
+    });
+    // A rejtett dobozt helyettesítő látható ős.
+    function visibleNode(id) {
+      const hidden = hiddenNodes.value;
+      let current = id;
+      while (current && hidden.has(current)) current = nodeMap.value.get(current)?.parent;
+      return current;
+    }
+    const orderedNodes = computed(() => {
+      const ordered = layerOrder(sceneNodes.value, elevatedNodes.value, containerIDs.value, liftedNodes.value);
+      const hidden = hiddenNodes.value;
+      return hidden.size ? ordered.filter(node => !hidden.has(node.id)) : ordered;
+    });
     // Vonalak rétege – egyetlen szabály: minden vonal minden doboz fölött fut (konténer, a tartalma és a sima dobozok
     // fölött is), kivéve a Kiemelt objektumokat: azok a vonalak fölött vannak. Egyetlen kivétel a data-connection
     // (táblázatot és grafikont összekötő adatvonal): az mindig minden objektum mögött van.
+    // A rejtett dobozhoz kötött vonal rajzolt változata: a végpontja a látható ősé (az objektum ugyanaz marad, amíg a
+    // végpontok nem változnak – a geometria-gyorsítótár objektum szerint működik). Ha mindkét vége ugyanoda kerül, nem rajzolódik.
+    const displayEdges = new WeakMap();
+    function displayEdge(edge) {
+      if (!hiddenNodes.value.size) return edge;
+      const source = edge.source && visibleNode(edge.source), target = edge.target?.node && visibleNode(edge.target.node);
+      if (source === edge.source && target === edge.target?.node) return edge;
+      if (source && target && source === target) return null;
+      const known = displayEdges.get(edge);
+      if (known?.source === source && known?.target === target && known.from === edge) return known.edge;
+      const copy = {...edge, source, target: target ? {node: target} : edge.target};
+      displayEdges.set(edge, {source, target, from: edge, edge: copy});
+      return copy;
+    }
     const wireLayers = computed(() => {
       const nodes = orderedNodes.value;
       const firstElevated = nodes.findIndex(node => elevatedNodes.value.has(node.id));
       const top = firstElevated >= 0 ? firstElevated : nodes.length;
       const layers = Array.from({length: nodes.length + 1}, () => []);
-      for (const edge of sceneEdges.value) layers[dataLink(edge) ? 0 : top].push(edge);
+      for (const original of sceneEdges.value) {
+        const edge = displayEdge(original);
+        if (edge) layers[dataLink(edge) ? 0 : top].push(edge);
+      }
       return layers;
     });
     const nodeMap = computed(() => new Map(sceneNodes.value.map(node => [node.id, node])));
+    // Rátakarás jelzése: csak az élő adatkapcsolatú struktúra-konténeren (be van kötve a forrásfájlhoz; sima dobozon és
+    // konténeren nincs). Ha a konténer más (nem a saját tartalmába, nem az őseibe tartozó, látható) dobozra lóg, a sarkában
+    // figyelmeztető jel áll a rálógó dobozok nevével. Húzás közben az előző eredmény marad; változatlan eredménynél
+    // ugyanaz az objektum (a konténer nem rajzolódik újra).
+    const noOverlaps = new Map();
+    let lastOverlaps = noOverlaps, lastOverlapKey = "";
+    const structureOverlaps = computed(() => {
+      const nodes = sceneNodes.value, containers = nodes.filter(node => node.structure && structureSource(node));
+      if (!containers.length) { lastOverlapKey = ""; return lastOverlaps = noOverlaps; }
+      if (gesture.value?.moved) return lastOverlaps;
+      const hidden = hiddenNodes.value, byParent = new Map();
+      for (const node of nodes) if (node.parent) (byParent.get(node.parent) ?? byParent.set(node.parent, []).get(node.parent)).push(node.id);
+      const box = node => ({left: node.position.x - node.width / 2, top: node.position.y - node.height / 2, right: node.position.x + node.width / 2, bottom: node.position.y + node.height / 2});
+      const result = new Map();
+      for (const container of containers) {
+        const inside = new Set([container.id]), stack = [container.id];
+        while (stack.length) for (const id of byParent.get(stack.pop()) ?? []) if (!inside.has(id)) { inside.add(id); stack.push(id); }
+        for (const parent of ancestors(container, nodeMap.value)) inside.add(parent.id);
+        const area = box(container);
+        const hits = nodes.filter(node => !inside.has(node.id) && !hidden.has(node.id) && !isJunction(node)).filter(node => {
+          const other = box(node);
+          return other.left < area.right - 1 && area.left < other.right - 1 && other.top < area.bottom - 1 && area.top < other.bottom - 1;
+        });
+        if (hits.length) result.set(container.id, hits.map(node => nodeName(node) || "névtelen doboz"));
+      }
+      const key = [...result].map(([id, names]) => id + ":" + names.join(",")).join(";");
+      if (key === lastOverlapKey) return lastOverlaps;
+      lastOverlapKey = key;
+      return lastOverlaps = result.size ? result : noOverlaps;
+    });
     const edgeMap = computed(() => new Map(board.value?.edges.map(edge => [edge.id, edge])));
     const containerReceivers = computed(() => (board.value?.nodes ?? [])
       .filter(isBox)
@@ -932,9 +1004,10 @@ createApp({
       const flowing = new Map(nodes.filter(node => node.textFlow !== false && containerIDs.value.has(node.id)).map(node => [node.id, node]));
       if (!flowing.size) return noObstacles;
       const found = new Map();
+      const hidden = hiddenNodes.value;
       for (const child of nodes) {
         const parent = flowing.get(child.parent);
-        if (!parent || isJunction(child)) continue;
+        if (!parent || isJunction(child) || hidden.has(child.id)) continue;
         if (!found.has(parent.id)) found.set(parent.id, []);
         const coarse = moving.has(child.id) && !moving.has(parent.id);
         const lifted = liftShift.members?.has(child.id) && liftTick.value >= 0, sx = lifted ? liftShift.dx : 0, sy = lifted ? liftShift.dy : 0;
@@ -5086,6 +5159,17 @@ createApp({
         },
       });
     }
+    // Rátakarás jelzése a struktúra-konténer jobb felső sarkában (csak a szerkesztőben); a súgó a rálógó dobozok neve.
+    function renderOverlapMark(node, drawn) {
+      const names = structureOverlaps.value.get(node.id);
+      if (!names) return null;
+      const shown = names.slice(0, 6).join(", ") + (names.length > 6 ? " és még " + (names.length - 6) : "");
+      return h("g", {key: "overlap", class: "structure-overlap", "data-editor-only": "", transform: "translate(" + (drawn.width / 2 - 14) + " " + (-drawn.height / 2 + 14) + ")"}, [
+        h("title", "A konténer más dobozokra lóg rá: " + shown + ". Húzd arrébb, vagy méretezd át / csukd össze."),
+        h("circle", {r: 10, fill: "#f5a524", stroke: "#ffffff", "stroke-width": 1.5}),
+        h("text", {"text-anchor": "middle", "dominant-baseline": "central", "font-size": 14, "font-weight": 700, fill: "#1b1b1b", "font-family": "system-ui, sans-serif", "pointer-events": "none"}, "!"),
+      ]);
+    }
     // A doboz neve (docs/node-types.md „Név”): SVG-szöveg a doboz fölött, a szöveg igazításával; struktúra-konténernél
     // utána halvány [] / {} jel (Rendering.swift nameSVG).
     function renderBoxName(node, drawn) {
@@ -5551,6 +5635,15 @@ createApp({
       node.layoutHeight = Math.round(node.height);
       transfer(async () => { await loadStructureModule(); if (!regenerateStructure(root.id, true)) modified(); });
     }
+    // A doboz struktúra-konténere (önmaga vagy egy őse), ha van.
+    const structureRootOf = node => node && [node, ...ancestors(node, nodeMap.value)].find(item => item.structure);
+    // Összecsukás / kibontás (struktúrán belüli konténer vagy maga a struktúra): az elrendezés azonnal újraépül.
+    function toggleCollapse(node) {
+      const root = structureRootOf(node);
+      if (!root || !online.value || occupied(node.id)) return;
+      if (node.collapsed) delete node.collapsed; else node.collapsed = true;
+      transfer(async () => { await loadStructureModule(); if (!regenerateStructure(root.id, true)) modified(); });
+    }
     // Automatikus elrendezés: a kézi szélességek törlése a konténerben és a dobozain, majd újraépítés.
     function resetStructureLayout(container) {
       const sheet = board.value;
@@ -5810,6 +5903,7 @@ createApp({
           })))) : null;
       // A doboz neve a doboz fölött (geometry.js nameLayout); szerkesztéskor helyette a szerkeszthető felirat.
       const boxName = node.type === "box" ? (nameEdit.value === node.id ? renderBoxNameEdit(node, drawn) : renderBoxName(node, drawn)) : null;
+      const overlapMark = node.structure ? renderOverlapMark(node, drawn) : null;
       const webClip = "web-clip-" + node.id;
       // .web előnézet a doboz méretében (8-as lépés, WebScreenshot.boxSize); húzás közben a korábbi kép marad,
       // elengedéskor új renderelés.
@@ -5906,6 +6000,7 @@ createApp({
           // A szöveg közvetlenül a doboz csoportjában van (nincs dobozonkénti vágás): az elrendezés eleve a dobozon belül tartja.
           labels,
           boxName,
+          overlapMark,
           ui.editing ? editOverlay(node, -drawn.width/2,
             junction ? -14 : (layout.lines[0]?.y ?? (node.file ? drawn.height/2 - 20 : 0)) - 18,
             drawn.width, editKey.value === "text" && !junction ? Math.max(34, drawn.height/2) : 28) : null,
@@ -7292,6 +7387,11 @@ createApp({
           ),
           note ? h("p", {class: "muted", role: "status"}, note) : null,
         ]));
+      }
+      // Összecsukás: struktúrán belüli konténer (vagy a struktúra maga); csak a neve és az összegzés látszik.
+      if (single?.type === "box" && (containerIDs.value.has(single.id) || single.collapsed) && structureRootOf(single)) {
+        panels.push(group("Struktúra", [propertyTools(tool("structure-collapse", iconToggle(single.collapsed ? "Kibontás" : "Összecsukás (csak a név és az összegzés látszik)",
+          !!single.collapsed, () => toggleCollapse(single), icon(single.collapsed ? "plus" : "minus"), !online.value)))]));
       }
       // Struktúrán belüli konténer: tömb ([]) vagy objektum ({}); jelző nélküli konténerből .json fájl menthető.
       if (single?.type === "box" && single.list != null) {

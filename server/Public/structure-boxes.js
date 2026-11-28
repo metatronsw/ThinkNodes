@@ -88,7 +88,7 @@ export const generatedId = (containerId, path) => hash128(containerId + "\u0000"
 // A szerkezetből adódó (kezelt) vonal azonosítója: konténer + két végpont.
 export const structureEdgeId = (containerId, source, target) => hash128(containerId + "\u0000edge\u0000" + source + "\u0000" + target);
 // Szöveg ujjlenyomata (a forrásé és a dobozokból írt JSON-é): ha nem változott, nincs szinkron.
-export const textDigest = (text, format = "json") => hash128("structure:8\u0000" + format + "\u0000" + text).slice(0, 24);
+export const textDigest = (text, format = "json") => hash128("structure:10\u0000" + format + "\u0000" + text).slice(0, 24);
 
 // ---- Értékek ------------------------------------------------------------------------------------------------------
 
@@ -333,6 +333,17 @@ function measure(item) {
     if (item.targetHeight) only.targetHeight = item.targetHeight - (pad - 4) - pad - nameSpace(only, only.target);
   }
   for (const child of item.children) measure(child);
+  // Összecsukott konténer (`collapsed`): csak a neve és egy rövid összegzés látszik; a tartalma rejtett (a rajzolás
+  // kihagyja, a rá mutató vonalak a konténerhez futnak).
+  if (item.collapsed) {
+    item.layout = {slots: [], width: 0, height: 0};
+    const {natural} = textSize(item.text, fontSize);
+    item.width = Math.min(sizeLimits.width[1], Math.max(Math.ceil(natural + 30), 100, Math.round(item.target ?? 0)));
+    item.header = 0;
+    item.height = Math.max(40, Math.round(item.targetHeight ?? 0));
+    item.nameHeight = nameSpace(item, item.width);
+    return item;
+  }
   item.layout = arrange(item);
   const innerWidth = Math.max(60, item.layout.width);
   // Kézzel átméretezett konténer (`target`): a szélessége marad, ha a tartalom elfér benne; ha nem, a tartalomé.
@@ -350,10 +361,11 @@ function measure(item) {
 
 // Elrendezés: a konténer elemeinek helye a konténer tartalomterületén belül ({slots: [{child, x, y}], width, height};
 // y a doboz teteje, a neve fölötte). Három mód:
-// - alap: egymás alatt, a forrás (kód) sorrendjében; ha egy oszlop túl magas lenne (a doboz legfeljebb 4096 képpont),
-//   a sorrend a következő oszlopban folytatódik (újságszerűen);
+// - objektum / struct: egymás alatt, a forrás (kód) sorrendjében, akkor is, ha több hely van (a kézzel szélesebbre
+//   húzott konténerben a fölösleg üres marad); új oszlop csak akkor, ha az oszlop túl magas lenne (a doboz legfeljebb
+//   4096 képpont);
 // - JSON-tömb (`list: true`): rács, balról jobbra, majd soronként lefelé (mint az írott szöveg); az oszlopok száma a
-//   közel 1:1 arányhoz igazodik;
+//   közel 1:1 arányhoz igazodik, kézzel méretezett konténerben a szélességhez (egyenletesen kitöltve);
 // - Swift-struct számított tulajdonsággal / függvénnyel (`side`): a többi tag bal oldalt egymás alatt, ezek jobb oldalt,
 //   ahol lehet, a használt tag magasságában.
 // Oszloponként az egyszerű dobozok egyforma szélesek.
@@ -409,32 +421,6 @@ function grid(children, count) {
   }
   return {slots, width: widths.reduce((sum, width) => sum + width, 0) + gap * (count - 1), height: Math.max(0, y - gap)};
 }
-// Sorrendtartó, kiegyensúlyozott bontás legfeljebb `count` oszlopra (a magasságok szerint).
-function splitBalanced(children, count) {
-  const total = children.reduce((sum, child) => sum + slotHeight(child) + gap, 0), share = total / count;
-  const groups = [];
-  let group = null, height = 0;
-  for (const child of children) {
-    const slot = slotHeight(child) + gap;
-    if (!group || (group.length && groups.length < count && height + slot / 2 > share)) { groups.push(group = []); height = 0; }
-    group.push(child);
-    height += slot;
-  }
-  return groups;
-}
-// A megadott szélességbe (`target`, a tartalomterület) férő legtöbb oszlop; ha így túl magas, több oszlop.
-function fitColumns(children, target, reset) {
-  let chosen = 1;
-  for (let count = 2; count <= children.length; count++) {
-    reset();
-    if (stack(columnsOf(splitBalanced(children, count))).width > target) break;
-    chosen = count;
-  }
-  reset();
-  let layout = stack(columnsOf(splitBalanced(children, chosen)));
-  while (layout.height > columnLimit && chosen < children.length) { reset(); layout = stack(columnsOf(splitBalanced(children, ++chosen))); }
-  return layout;
-}
 function arrange(item) {
   const children = item.children;
   const reset = () => { for (const child of children) if (child.naturalWidth != null) { child.width = child.naturalWidth; child.nameHeight = nameSpace(child, child.width); } };
@@ -470,8 +456,7 @@ function arrange(item) {
   if (side.length && main.length) {
     // Bal oszlop: a többi tag a forrás sorrendjében; jobb oszlop: a számított tagok, a használt tag magasságában.
     const [right] = columnsOf([side]);
-    const resetMain = () => { for (const child of main) if (child.naturalWidth != null) { child.width = child.naturalWidth; child.nameHeight = nameSpace(child, child.width); } };
-    const left = target ? fitColumns(main, target - right.width - gap * 3, resetMain) : stack(columnsOf(splitByHeight(main)));
+    const left = stack(columnsOf(splitByHeight(main)));
     const top = new Map(left.slots.map(slot => [slot.child.name, slot.y - slot.child.nameHeight]));
     const x = left.width + gap * 3, slots = [...left.slots];
     let bottom = 0;
@@ -483,16 +468,35 @@ function arrange(item) {
     }
     return {slots, width: x + right.width, height: Math.max(left.height, bottom - gap)};
   }
-  return target ? fitColumns(children, target, reset) : stack(columnsOf(splitByHeight(children)));
+  // Objektum / struct: mindig egymás alatt, a kód sorrendjében (a több hely nem ad több oszlopot, a fölösleg üres marad);
+  // új oszlop csak a doboz legnagyobb magassága miatt.
+  return stack(columnsOf(splitByHeight(children)));
 }
 
 // Helyek kiosztása: a dobozok `position`-je a középpontjuk munkalap-koordinátában.
 function place(item, left, top, out) {
+  if (item.collapsed) { placeHidden(item, left + item.width / 2, top + item.height / 2, out); return; }
   for (const {child, x, y} of item.layout?.slots ?? []) {
     const boxLeft = left + pad + x, boxTop = top + item.header + y;
     out.push({item: child, position: {x: boxLeft + child.width / 2, y: boxTop + child.height / 2}});
     if (child.children?.length) place(child, boxLeft, boxTop, out);
   }
+}
+// Az összecsukott konténer rejtett tartalma: a konténer közepén (nem rajzolódik; így a határoló doboz sem nő tőle).
+function placeHidden(item, x, y, out) {
+  for (const child of item.children ?? []) {
+    out.push({item: child, position: {x, y}});
+    placeHidden(child, x, y, out);
+  }
+}
+
+// Összecsukott konténer szövege: „▸ N elem” (Swift-structnál a protokollok előtte); felismerhető, kibontáskor törlődik.
+const summaryMark = "▸ ";
+const summaryText = text => String(text ?? "").startsWith(summaryMark);
+function collapsedSummary(item) {
+  const count = item.children.length;
+  const protocols = item.sourceText && item.text && !summaryText(item.text) ? " · " + item.text : "";
+  return summaryMark + count + (item.list ? " elem" : item.ref ? " tag" : " mező") + protocols;
 }
 
 // A doboz mezői: a forrásból (név, szöveg, list) és az automatikus kitöltés; meglévő doboznál a kézi beállítások maradnak.
@@ -550,8 +554,10 @@ export function generateBoxes(source, container, {format = "json", previous = []
       child.hadChildren = (byParent.get(child.previous?.id) ?? []).length > 0;
       child.target = child.previous?.layoutWidth;
       child.targetHeight = child.previous?.layoutHeight;
-      // A konténer saját szövege nem adat: a meglévő konténeré marad.
-      if (!leafLayout(child) && !child.sourceText) child.text = child.previous?.text ?? "";
+      // A konténer saját szövege nem adat: a meglévő konténeré marad (az összecsukáskori összegzés nem).
+      child.collapsed = !leafLayout(child) && child.previous?.collapsed === true && child.children?.length > 0;
+      if (!leafLayout(child) && !child.sourceText) child.text = summaryText(child.previous?.text) ? "" : child.previous?.text ?? "";
+      if (child.collapsed) child.text = collapsedSummary(child);
       child.fields = fieldsFor(child, typeColors);
       all.push(child);
       walk(child);
@@ -561,7 +567,9 @@ export function generateBoxes(source, container, {format = "json", previous = []
   root.target = container.layoutWidth;
   root.targetHeight = container.layoutHeight;
   // Egyetlen Swift-struct: maga a konténer a struct (név, protokollok); egyébként a konténer saját szövege marad.
-  if (!root.sourceText) root.text = container.text ?? "";
+  if (!root.sourceText) root.text = summaryText(container.text) ? "" : container.text ?? "";
+  root.collapsed = container.collapsed === true && root.children?.length > 0;
+  if (root.collapsed) root.text = collapsedSummary(root);
   measure(root);
   const width = Math.max(sizeLimits.width[0], root.width), height = Math.max(sizeLimits.height[0], root.height);
   const left = container.position.x - container.width / 2, top = container.position.y - container.height / 2;
@@ -578,7 +586,7 @@ export function generateBoxes(source, container, {format = "json", previous = []
   const kept = new Set(nodes.map(node => node.id));
   const removed = previous.filter(node => !kept.has(node.id)).map(node => node.id);
   const patch = {width, height, position: {x: left + width / 2, y: top + height / 2}, list: root.list};
-  if (root.root) Object.assign(patch, {name: root.name, text: root.text});
+  if (root.root || root.collapsed || summaryText(container.text)) Object.assign(patch, root.root ? {name: root.name} : {}, {text: root.text});
   // Kezelt vonalak (Swift): a képletben / függvénytörzsben használt testvér-tagtól a számított tulajdonsághoz, illetve
   // függvényhez; a struct típusú tulajdonságtól a struct konténeréhez. Az azonosító a végpontokból képzett hash
   // (structureEdgeId), így a szerkesztő felismeri őket.

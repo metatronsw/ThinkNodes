@@ -52,7 +52,7 @@ Közös fájlok / .web / lomtár – hátralévő (2026-11-23):
 - Újragenerálás visszavonása: visszavonás után a forrás és a dobozok ujjlenyomata eltérhet, a szinkron ilyenkor a forrásból újraépít / visszaír.
 - Két szerkesztő egyszerre szinkronizálhat (azonos eredménnyel); lehetőség: csak a forrást vagy a dobozt szerkesztő kliens szinkronizáljon.
 - A dobozméret becsült szövegszélességből számol (nem a szerkesztő mérőjéből): szélsőséges betűtípusnál a szöveg kilóghat vagy sok hely marad.
-- Újragenerálás után a megnőtt konténer rátakarhat a mellette / alatta lévő dobozokra (a bal felső sarka marad, jobbra-lefelé nő); lehetőség: a szomszédok eltolása vagy jelzés.
+- Újragenerálás után a megnőtt konténer rátakarhat a mellette / alatta lévő dobozokra (a bal felső sarka marad, jobbra-lefelé nő). Összecsukás és jelzés (csak élő adatkapcsolatú struktúra-konténeren) kész (2026-11-27). Lehetőség még: a szomszédok eltolása.
 - A konténer 4096 képpontos legnagyobb méretén túl a tartalom kilóg (nagy forrásnál); lehetőség: kisebb betű / tömörebb elrendezés.
 - Objektum-konténerbe húzott, név nélküli doboz kulcsa üres szöveg ("") lesz; lehetőség: automatikus név („mező 1”).
 - A doboz neve előnézetes (linkes) dobozon nem látszik (ott a link felirata áll a doboz fölött).

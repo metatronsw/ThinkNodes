@@ -179,7 +179,8 @@ assert.match(textDigest("{}"), /^[0-9a-f]{24}$/);
   const order = tags.filter(node => node.parent === container.id).map(node => [node.name, top(node), node.position.x]);
   assert.ok(order[0][1] === order[1][1] && order[0][2] < order[1][2], "az első két elem egy sorban, balról jobbra");
 }
-// Átméretezés (`layoutWidth`): a konténer a megadott szélességhez igazítja az oszlopok számát; a doboz szélessége marad.
+// Átméretezés (`layoutWidth`): objektumnál az elemek akkor is egymás alatt maradnak (a fölösleg üres), tömbnél a
+// szélességhez igazodik az oszlopok száma; a doboz szélessége marad.
 {
   const value = Object.fromEntries(Array.from({length: 12}, (_, i) => ["mezo" + i, "érték " + i]));
   const columnsOf = nodes => new Set(nodes.map(node => node.position.x - node.width / 2)).size;
@@ -187,12 +188,13 @@ assert.match(textDigest("{}"), /^[0-9a-f]{24}$/);
   assert.equal(columnsOf(auto.slice(1)), 1, "alapból egy oszlop");
   const wide = {...container, layoutWidth: 700};
   const r = generateBoxes(JSON.stringify(value), wide), fitted = apply(r, wide);
-  assert.ok(columnsOf(fitted.slice(1)) > 1, "szélesebb konténerben több oszlop");
-  assert.equal(r.patch.width, 700, "a megadott szélesség marad");
-  assert.ok(fitted.slice(1).every(node => node.position.x + node.width / 2 <= r.patch.position.x + 350 + .001), "a tartalom elfér");
-  // A sorrend oszloponként fentről lefelé, majd a következő oszlop.
-  const lefts = fitted.slice(1).map(node => node.position.x - node.width / 2);
-  assert.ok(lefts.every((left, i) => i === 0 || left >= lefts[i - 1]), "oszlopfolytonos sorrend");
+  assert.equal(columnsOf(fitted.slice(1)), 1, "objektum: szélesebb konténerben is egy oszlop, a kód sorrendjében");
+  assert.equal(r.patch.width, 700, "a megadott szélesség marad (a fölösleg üres)");
+  const tops = fitted.slice(1).map(node => node.position.y);
+  assert.ok(tops.every((top, i) => i === 0 || top > tops[i - 1]), "fentről lefelé");
+  const narrowArr = generateBoxes(JSON.stringify(Array.from({length: 20}, (_, i) => i)), {...container, layoutWidth: 200});
+  const wideArr = generateBoxes(JSON.stringify(Array.from({length: 20}, (_, i) => i)), {...container, layoutWidth: 700});
+  assert.ok(columnsOf(wideArr.nodes.map(node => node.fields)) > columnsOf(narrowArr.nodes.map(node => node.fields)), "tömb: szélesebben több oszlop");
   // Túl keskeny: egy oszlop, a konténer a tartalomhoz nő.
   const narrow = generateBoxes(JSON.stringify(value), {...container, layoutWidth: 70});
   assert.ok(narrow.patch.width > 70);
@@ -215,6 +217,31 @@ assert.match(textDigest("{}"), /^[0-9a-f]{24}$/);
   previous.find(node => node.name === "mezo3").layoutWidth = 280;
   const again = apply(generateBoxes(JSON.stringify(value), auto[0], {previous}), auto[0], previous);
   assert.equal(byName(again, "mezo3").width, 280);
+}
+// Összecsukás (`collapsed`): a konténer csak a nevével és egy összegzéssel látszik, a tartalma a közepén (rejtve);
+// kibontáskor minden visszaáll.
+{
+  const value = {nev: "x", tagok: Array.from({length: 12}, (_, i) => "elem " + i), adat: {a: 1, b: 2}};
+  const open = apply(generateBoxes(JSON.stringify(value), container), container);
+  const tagok = byName(open, "tagok");
+  const previous = open.slice(1).map(node => node.id === tagok.id ? {...node, collapsed: true} : {...node});
+  const r = generateBoxes(JSON.stringify(value), open[0], {previous}), closed = apply(r, open[0], previous);
+  const folded = byName(closed, "tagok");
+  assert.equal(folded.text, "▸ 12 elem");
+  assert.ok(folded.height <= 60 && folded.width < tagok.width, "kicsi: " + folded.width + " × " + folded.height);
+  assert.ok(closed.filter(node => node.parent === folded.id).every(node => node.position.x === folded.position.x && node.position.y === folded.position.y), "a tartalma a közepén");
+  assert.ok(r.patch.height < open[0].height, "a külső konténer is kisebb");
+  assert.deepEqual(boxesValue(closed, container.id), value, "az adat nem változik");
+  // Kibontás: az összegzés eltűnik, az elrendezés visszaáll.
+  const expanded = apply(generateBoxes(JSON.stringify(value), closed[0], {previous: closed.slice(1).map(node => node.id === folded.id ? {...node, collapsed: undefined} : node)}), closed[0], closed.slice(1));
+  assert.equal(byName(expanded, "tagok").text, "");
+  assert.equal(byName(expanded, "tagok").height, tagok.height);
+  // A gyökér is összecsukható.
+  const root = generateBoxes(JSON.stringify(value), {...open[0], collapsed: true}, {previous: open.slice(1)});
+  assert.equal(root.patch.text, "▸ 3 mező");
+  assert.ok(root.patch.height <= 60);
+  const reopened = generateBoxes(JSON.stringify(value), {...open[0], ...root.patch, collapsed: undefined}, {previous: open.slice(1)});
+  assert.equal(reopened.patch.text, "");
 }
 // JSON-számok és logikai értékek: típusjel (Int / Double / Bool) és típusszín; a forrásbeli számalak marad (39.10, nagy egész).
 {

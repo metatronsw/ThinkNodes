@@ -1,9 +1,14 @@
 ## Nyitott
 
+- **Struktúra-konténer: összecsukás; objektum mindig egymás alatt (2026-11-27): kézzel nézendő**
+  - Valódi Chrome-ban rövid próbával ellenőrizve (`projects/struktura-csukas`): a `tagok` tömb összecsukva („▸ 12 elem”), a tartalma rejtve, a rá mutató vonal a konténerhez fut, kibontva minden visszaáll. Safariban nem; a megtekintőben / exportban csak Swift-tesztben ellenőrizve.
+  - Rejtett (összecsukott) dobozra a kereső találhat; kijelölni / szerkeszteni nem lehet, amíg a konténer össze van csukva.
+  - Objektum / struct elemei a szélesebbre húzott konténerben is egymás alatt maradnak (a fölösleg üres); csak a tömb tölti ki a helyet. A rátakarás jelzése csak az élő adatkapcsolatú struktúra-konténeren látszik (sima dobozon / konténeren nem).
+
 - **Swift-forrás, JSON-típusjelek, nil / null, elrendezés, átméretezés (2026-11-27): kézzel nézendő**
   - .swift fájlból struktúra-konténer (csak olvasás): egyetlen felső szintű structnál maga a konténer a struct; beágyazott struct a szülőjében; tulajdonságok `let` / `var` jellel, „Típus = érték”; számított tulajdonság (ƒ, szaggatott keret) és függvény (func) dobozként, a használt tagoktól feléjük mutató pontozott nyíllal; minden konténerben egymás alatt, forrássorrendben (túl magas tartalom a következő oszlopban); nil (alapérték nélküli opcionális var, `= nil`) és JSON `null`: üres doboz, dőlt szöveg. Valódi Chrome-ban rövid próbával ellenőrizve (`projects/struktura-proba/Modell.swift`); Safariban nem.
   - Egymás alatti elrendezésnél a konténer lefelé nő, és rátakarhat az alatta lévő dobozokra (a próbalapon a nagy.json konténere a Modell.swift-ére).
-  - Elrendezés: objektum / struct egymás alatt (túl magasnál újságszerűen több oszlop), tömb közel 1:1 rácsban soronként balról jobbra, Swift számított tagok és függvények jobb oldalt a használt tag magasságában. Átméretezéssel formázható (`layoutWidth`): valódi Chrome-ban rövid próbával ellenőrizve (`projects/struktura-meret`: 1 → 6 oszlop, 888 → 158 magas). Safariban nem.
+  - Elrendezés: objektum / struct egymás alatt (túl magasnál újságszerűen több oszlop), tömb közel 1:1 rácsban soronként balról jobbra, Swift számított tagok és függvények jobb oldalt a használt tag magasságában. Átméretezéssel formázható (`layoutWidth`): a tömb oszlopszáma a szélességhez igazodik, az objektum egymás alatt marad. Safariban nem.
   - A nagyobbra húzott konténer / doboz a kézi méretét (szélesség és magasság) tartja akkor is, ha a tartalom kisebb (szándékos: a felesleges hely marad). Egyetlen belső konténer (pl. `{"tagok": [...]}`) kitölti a kézzel méretezett külsőt. Ez a két utóbbi csak egységtesztben van ellenőrizve, a böngészőben nem.
   - A számított változó és a függvény is szaggatott keretet kap.
   - Nem teljes Swift-elemző: szokatlan szintaxisnál (makrók, `#if`, több változó egy deklarációban, `let (a, b) = …`, operátor-függvények) kimaradhat vagy rossz lehet egy tag.

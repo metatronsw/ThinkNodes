@@ -328,12 +328,15 @@ package struct Idea: Codable, Equatable, Sendable {
     package var layoutWidth: Double?
     /// Struktúra-konténerben kézzel beállított magasság: a doboz / konténer legalább ilyen magas marad. 40–4096; csak dobozon.
     package var layoutHeight: Double?
+    /// Összecsukott (struktúra-)konténer: csak a neve és az összegzése látszik; a tartalma nem rajzolódik, a rá mutató vonalak
+    /// a konténerhez futnak (Rendering.swift collapsedView). Csak dobozon.
+    package var collapsed: Bool?
     var hasFrame: Bool { isImage ? frame == true : type == "preview" && frame != false }
 
     private enum CodingKeys: String, CodingKey {
         case id, type, text, file, hideText, fitText, shape, fill, backgroundMode, animation, bold, italic, underline, font, justified, link
         case angle, parent, container, locked, textFlow, elevated, staticPreview, webPublic, uppercase, frame, frameWidth, scroll, chart, contentFit
-        case structure, list, nameNote, computed, layoutWidth, layoutHeight
+        case structure, list, nameNote, computed, layoutWidth, layoutHeight, collapsed
         case boxName = "name"
         case position = "pos", width = "w", height = "h", textColor = "textCol"
         case fontSize = "fontSz", alignment = "align", verticalAlignment = "vAlign"
@@ -379,7 +382,7 @@ package struct Idea: Codable, Equatable, Sendable {
               boxName.map({ root == "box" && $0.count <= Self.nameLimit && !$0.contains(where: \.isNewline) }) ?? true,
               nameNote.map({ type == "box" && $0.count <= 24 && !$0.contains(where: \.isNewline) }) ?? true, computed == nil || type == "box",
               layoutWidth.map({ type == "box" && $0.isFinite && (64...4096).contains($0) }) ?? true,
-              layoutHeight.map({ type == "box" && $0.isFinite && (40...4096).contains($0) }) ?? true,
+              layoutHeight.map({ type == "box" && $0.isFinite && (40...4096).contains($0) }) ?? true, collapsed == nil || type == "box",
               (1...10000).contains(fontSize), fontSize.rounded() == fontSize, (1...3).contains(font ?? 1),
               [fill, textColor, border].allSatisfy(validColor),
               link.map({ $0.isValid && has("link") }) ?? true,
@@ -2863,6 +2866,7 @@ extension Idea {
         computed = (try? fields.decode(Bool.self, forKey: .computed)) == true ? true : nil
         layoutWidth = try? fields.decode(Double.self, forKey: .layoutWidth)
         layoutHeight = try? fields.decode(Double.self, forKey: .layoutHeight)
+        collapsed = (try? fields.decode(Bool.self, forKey: .collapsed)) == true ? true : nil
         normalizePreview()
     }
 

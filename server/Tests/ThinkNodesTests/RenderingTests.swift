@@ -678,6 +678,22 @@ func polygonBoxesRoundTrip(shape: Shape, corners: Int, borderX: String) throws {
     bad = sized
     bad.nodes[0].layoutWidth = 300
     #expect(throws: (any Error).self) { try bad.validate() }
+
+    // Összecsukott konténer: a tartalma nem rajzolódik, a rá mutató vonal a konténerhez fut; csak dobozon.
+    var folded = sized
+    folded.nodes[1].collapsed = true
+    folded.edges.append(Connection(id: "belso", source: "forras", target: ConnectionTarget(node: folded.nodes[2].id, point: nil)))
+    try folded.validate()
+    folded = try JSONDecoder().decode(Worksheet.self, from: JSONEncoder().encode(folded))
+    #expect(folded.nodes[1].collapsed == true)
+    let view = collapsedView(folded)
+    #expect(view.nodes.map(\.id) == ["forras", "kontener"])
+    #expect(view.edges.first { $0.id == "belso" }?.target.node == "kontener")
+    let drawnFolded = boardSVG(folded, noteBase: "/projekt/lap", fileText: text)
+    #expect(drawn.contains(#"</tspan> name</tspan>"#) && !drawnFolded.contains(#"</tspan> name</tspan>"#) && drawnFolded.contains("adat.json"))
+    bad = folded
+    bad.nodes[0].collapsed = true
+    #expect(throws: (any Error).self) { try bad.validate() }
 }
 
 /// A doboz nevének tördelése a szerveren pontosan egyezzen a szerkesztőével (Public/geometry.js nameLayout).

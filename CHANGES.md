@@ -1,5 +1,12 @@
 # Változások
 
+## 2026-11-28 – Struktúra-konténer: összecsukás, rátakarás jelzése, objektum mindig egymás alatt
+
+- **Összecsukás (`collapsed`):** a struktúrán belüli konténer vagy maga a struktúra a gyors eszközökkel összecsukható (`structure-collapse`): csak a neve és egy összegzés látszik („▸ 12 elem”, „mező”, Swift-structnál „tag” és a protokollok), a tartalma nem rajzolódik (szerkesztő: `hiddenNodes`; szerver: `collapsedView`), a rejtett dobozokra mutató vonalak a konténerhez futnak; az adat és a vonalak a modellben változatlanok. Swift-modell: `collapsed` mező.
+- **Rátakarás jelzése:** csak az élő adatkapcsolatú struktúra-konténeren (sima dobozon / konténeren nincs): ha más dobozra lóg, a jobb felső sarkában figyelmeztető jel, a súgója a rálógó dobozok neve (csak a szerkesztőben).
+- **Elrendezés:** objektum / struct elemei mindig egymás alatt, a kód sorrendjében, akkor is, ha a konténer szélesebb (a fölösleg üres); csak a tömb tölti ki a helyet (közel 1:1 rács, soronként balról jobbra; átméretezve annyi oszlop, amennyi elfér).
+- Tesztek: `structure-boxes.mjs` (összecsukás, elrendezés), Swift `RenderingTests` (collapsedView). Valódi Chrome-ban rövid próbával ellenőrizve. node-types.md, TODO, BUGS frissítve.
+
 ## 2026-11-27 – Közös szerkesztés: szakadt kapcsolat gyors felismerése, tétlen foglalás átvétele
 
 - **Szakadt kapcsolat:** a bezárult WebSocket után a türelmi idő (10 mp) elteltével, ha a résztvevő nem csatlakozott újra és nem kérdezett le, kiesik, és a foglalt doboza felszabadul (ütemezett ellenőrzés; a többiek hosszú lekérdezése azonnal visszatér). Eddig csak 45 mp csend után (a hirtelen bezárt / összeomlott böngésző „szellem-résztvevőként” foglalva tartotta a dobozt).

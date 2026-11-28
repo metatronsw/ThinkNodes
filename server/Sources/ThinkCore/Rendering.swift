@@ -1370,6 +1370,39 @@ private func chartBox(_ node: Idea, source: Idea?, base: String, interactive: Bo
         """
 }
 
+/// Összecsukott konténer (`collapsed`, struktúra-konténer) nézete: a leszármazottai kimaradnak, a rájuk mutató vonalak a
+/// legközelebbi látható ősre (az összecsukott konténerre) futnak; ha egy vonal mindkét vége ugyanoda kerülne, kimarad
+/// (editor.js hiddenNodes, displayEdge).
+func collapsedView(_ board: Worksheet) -> Worksheet {
+    let collapsed = board.nodes.filter { $0.collapsed == true }.map(\.id)
+    guard !collapsed.isEmpty else { return board }
+    var children: [String: [String]] = [:]
+    for node in board.nodes { if let parent = node.parent { children[parent, default: []].append(node.id) } }
+    var hidden = Set<String>(), stack = collapsed
+    while let id = stack.popLast() {
+        for child in children[id] ?? [] where hidden.insert(child).inserted { stack.append(child) }
+    }
+    guard !hidden.isEmpty else { return board }
+    let parents = Dictionary(board.nodes.map { ($0.id, $0.parent) }, uniquingKeysWith: { first, _ in first })
+    func visible(_ id: String?) -> String? {
+        var current = id
+        while let value = current, hidden.contains(value) { current = parents[value] ?? nil }
+        return current
+    }
+    var view = board
+    view.nodes.removeAll { hidden.contains($0.id) }
+    view.edges = board.edges.compactMap { edge in
+        let source = visible(edge.source), target = visible(edge.target.node)
+        guard source != edge.source || target != edge.target.node else { return edge }
+        if let source, let target, source == target { return nil }
+        var moved = edge
+        moved.source = source
+        if edge.target.node != nil { moved.target.node = target }
+        return moved
+    }
+    return view
+}
+
 /// Adatvonal: táblázatot (vagy CSV-t) és grafikont, illetve struktúra-forrást (.json) és struktúra-konténert összekötő
 /// vonal. Nem tárolt tulajdonság, a két végpont adja; nyíl helyett a két végén félkorong áll (geometry.js isDataLink,
 /// plugTransform).
@@ -1547,7 +1580,8 @@ package func renderWorksheetCanvas(_ board: Worksheet, noteBase: String?, siteHo
                            fileText: (Idea) -> String? = { _ in nil }) -> (svg: String, tooltipNodes: [Idea]) {
     let graphics = Themes.catalog.first { $0.id == board.appearance?.theme }?.graphics
     // Vászonszín háttérmód: a doboz felülete a munkalap háttérszínét kapja (editor.js surfaceColor); a papír (cetli) kivétel.
-    var board = board
+    // Összecsukott konténer: a tartalma nem rajzolódik, a vonalai a konténerhez futnak (collapsedView).
+    var board = collapsedView(board)
     // Textúrás / effektes vásznon (Liquid Glass fényfoltjai, a téma textúrája) a felület a vászon háttere a textúrával
     // együtt (a `canvas-art` másolata a doboz alakjára vágva, boxSurface): a rács, az alatta álló elemek és a doboz saját
     // árnyéka nem látszik (editor.js seeThrough, underMasks). A fájl- és grafikondoboz (HTML-felület) a vászon színét kapja.

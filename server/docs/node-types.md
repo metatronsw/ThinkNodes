@@ -324,24 +324,33 @@ valódi dobozokként jelenik meg benne, és a dobozok szerkesztése visszaíród
   a doboz csak keretet kap (`backgroundMode: empty`, a keret a típus színe), a szövege dőlt.
 - **Automatikus megjelenés és kézi beállítás:** a kitöltés (típusszín), az alak (lekerekített doboz), az üres háttér és a
   dőlt betű automatikus; ha a dobozon kézzel más áll (eltér a korábbi automatikustól), az megmarad. Az ujjlenyomat
-  verziója (`textDigest`, „structure:8”) a generálás szabályainak változásakor nő: a meglévő konténerek betöltéskor
+  verziója (`textDigest`, „structure:10”) a generálás szabályainak változásakor nő: a meglévő konténerek betöltéskor
   újraépülnek (ha nem foglalja más a konténert vagy egy dobozát).
 - **Elrendezés:**
-  - objektum, struct: az elemek egymás alatt, a forrás (kód) sorrendjében; ha egy oszlop 3600 képpontnál magasabb lenne
-    (a doboz legfeljebb 4096), a sorrend a következő oszlopban folytatódik (újságszerűen);
+  - objektum, struct: az elemek egymás alatt, a forrás (kód) sorrendjében, akkor is, ha több hely van (a kézzel
+    szélesebbre húzott konténerben a fölösleg üres marad); új oszlop csak akkor, ha egy oszlop 3600 képpontnál magasabb
+    lenne (a doboz legfeljebb 4096);
   - JSON-tömb (`[]`): rács, balról jobbra, majd soronként lefelé (mint az írott szöveg); az oszlopok száma, amelynél a
     tartalom aránya a legközelebb esik az 1:1-hez; egy sorban a dobozok teteje egy vonalban;
   - Swift-struct számított tulajdonsággal / függvénnyel: a tárolt tagok és a beágyazott structok bal oldalt egymás alatt,
     a számított tulajdonságok és a függvények jobb oldalt, ahol lehet, a legfelső használt tag magasságában (egymást nem
     fedve, a forrás sorrendjében);
   - az egyszerű dobozok oszloponként egyforma szélesek; a hely és a méret mindig az elrendezésből adódik.
+- **Összecsukás (`collapsed`):** a struktúrán belüli konténer (vagy maga a struktúra-konténer) a gyors eszközökkel
+  (`structure-collapse`) összecsukható: csak a neve és egy összegzés látszik („▸ 12 elem”, objektumnál „mező”,
+  Swift-structnál „tag” és a protokollok), a konténer kicsi, a tartalma nem rajzolódik (szerkesztő: `hiddenNodes`;
+  szerver: `collapsedView`), a rejtett dobozokra mutató vonalak a konténerhez futnak (a modellben változatlanok). Az adat
+  nem változik; kibontáskor az elrendezés visszaáll.
+- **Rátakarás jelzése:** csak az élő adatkapcsolatú (a forrásfájlhoz bekötött) struktúra-konténeren: ha más (nem a saját
+  tartalmába, nem az őseibe tartozó) dobozra lóg, a jobb felső sarkában figyelmeztető jel áll (csak a szerkesztőben), a
+  súgója a rálógó dobozok neve (`structureOverlaps`). Sima dobozon és konténeren nincs.
 - **Formázás átméretezéssel (`layoutWidth`, `layoutHeight`):** amíg a forrással fennáll a kapcsolat, a struktúrán belüli
   konténer vagy doboz átméretezése után a mérete megmarad (`layoutWidth` 64–4096, `layoutHeight` 40–4096, csak dobozon;
   a nagyobbra húzott doboz a felesleges helyet is megtartja, nem vágódik vissza), és az elrendezés azonnal újraépül hozzá.
   Ha a konténer egyetlen eleme konténer (pl. `{"tagok": [...]}`), a belső (saját kézi méret nélkül) kitölti a külsőt, így
-  a külső átméretezése a belsőt is újrarendezi: a konténer annyi oszlopba rendez, amennyi elfér (objektum / struct: sorrendtartóan, kiegyensúlyozott
-  oszlopmagassággal; tömb: soronként balról jobbra; a számított tagok jobb oldali oszlopa a maradék helyen), a magasság a
-  tartalomból adódik; ha a tartalom nem fér el, a konténer szélesebb lesz. Az egyszerű doboz a megadott szélességet
+  a külső átméretezése a belsőt is újrarendezi: a tömb annyi oszlopba rendez (soronként balról jobbra), amennyi elfér; az
+  objektum / struct elemei egymás alatt maradnak, a kód sorrendjében (a fölösleg üres); ha a tartalom nem fér el, a
+  konténer nagyobb lesz. Az egyszerű doboz a megadott szélességet
   tartja, a szövege ahhoz tördel. A forrás következő változásakor is megmarad. „Automatikus elrendezés” (gyors eszköz a
   struktúra-konténeren, `structure-auto`): a kézi méretek törlése a konténerben és a dobozain.
 - **Bővítés:** a forrásformátum a `formats` jegyzékben bővíthető (kiterjesztés → `parse` + `write`, vagy `tree`); a
